@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src 'none'">
+<title>electron.mbt world boundary probe</title>
+<script>
+'use strict';
+window.firstScriptObservation = Object.freeze({
+  preloadHidden: typeof globalThis.electronMbtPreloadValue === 'undefined',
+  handlerHidden: !window.webkit?.messageHandlers?.electronMbtProbe,
+});
+Array.prototype.map = function pageOwnedMap() { return 'page-owned'; };
+</script>
+<p id="shared-dom">shared DOM is not a privilege credential</p>

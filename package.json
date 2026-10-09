@@ -1,0 +1,17 @@
+{
+  "name": "electron-mbt",
+  "version": "0.0.1",
+  "private": true,
+  "description": "MoonBit-first Electron runtime feasibility implementation; not a compatible runtime release",
+  "type": "commonjs",
+  "bin": { "electron-mbt": "cmd/electron-mbt.cjs" },
+  "engines": { "node": ">=22.16.0" },
+  "scripts": {
+    "build": "node scripts/build-core.cjs && node scripts/build-native.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:leaf": "node --test tests/clone.test.cjs tests/loader.test.cjs tests/transport.test.cjs tests/manifest.test.cjs",
+    "test:core": "moon test --target js && moon test --target native && node --test tests/core-integration.test.cjs",
+    "doctor": "node cmd/electron-mbt.cjs doctor fixtures/cjs",
+    "probe:macos": "node scripts/macos-probe.cjs"
+  }
+}

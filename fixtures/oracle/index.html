@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; frame-src 'none'">
+<title>electron.mbt differential bridge fixture</title>
+<script>
+'use strict';
+(async () => {
+  const api = window.fixture;
+  const observed = { availableAtFirstScript: !!api };
+  observed.syncValue = api.syncValue();
+  try { api.syncThrow(); observed.syncThrow = false; }
+  catch (error) { observed.syncThrow = error.message.includes('fixture-sync-error'); }
+  const promise = api.promiseValue();
+  observed.returnsPromise = promise instanceof Promise;
+  observed.promiseValue = await promise;
+  try { await api.promiseReject(); observed.promiseReject = false; }
+  catch (error) { observed.promiseReject = error.message.includes('fixture-promise-error'); }
+  observed.dataFrozen = Object.isFrozen(api.data) && Object.isFrozen(api.data.nested);
+  try { api.data.nested.value = 9; } catch (_) {}
+  observed.dataUnchanged = api.data.nested.value === 7;
+  const received = [];
+  const callback = value => { received.push(value); };
+  api.add(callback);
+  api.fire('first');
+  api.remove(callback);
+  api.fire('second');
+  observed.callbackValues = received;
+  Array.prototype.map = function pageOwnedMap() { return 'page-owned'; };
+  observed.primordialIntact = api.primordialIntact();
+  api.report(observed);
+})().catch(error => window.fixture?.report({ fixtureError: String(error) }));
+</script>
+<p>Unchanged main, preload and renderer fixture.</p>

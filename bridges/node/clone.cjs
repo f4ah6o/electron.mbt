@@ -30,8 +30,10 @@ function encodeTiny(value) {
     }
     if (typeof value !== 'object' || types.isProxy(value) || seen.has(value)) unsupported();
     seen.add(value);
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const keys = Reflect.ownKeys(descriptors);
+    // Count keys before requesting any descriptors. A wide object can have a
+    // modest key list but an enormous descriptor map, which must not bypass
+    // the profile's node limit by exhausting the process heap first.
+    const keys = Reflect.ownKeys(value);
     if (keys.length > LIMITS.nodes) exceeded();
     if (keys.some(key => typeof key === 'symbol')) unsupported();
     if (Array.isArray(value)) {
@@ -41,7 +43,7 @@ function encodeTiny(value) {
       if (keys.length !== value.length + 1) unsupported();
       const output = [];
       for (let index = 0; index < value.length; index++) {
-        const descriptor = descriptors[index];
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
         if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) unsupported();
         output.push(copy(descriptor.value, depth + 1));
       }
@@ -52,8 +54,8 @@ function encodeTiny(value) {
     account(2 + Math.max(0, keys.length - 1));
     const output = Object.create(null);
     for (const key of keys) {
-      const descriptor = descriptors[key];
-      if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) unsupported();
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) unsupported();
       if (Buffer.byteLength(key, 'utf8') > LIMITS.bytes) exceeded();
       account(Buffer.byteLength(JSON.stringify(key), 'utf8') + 1);
       output[key] = copy(descriptor.value, depth + 1);

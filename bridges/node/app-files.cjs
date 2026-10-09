@@ -54,7 +54,6 @@ function snapshot(appDir) {
       try {
         let entry;
         while ((entry = directory.readSync()) !== null) {
-          if (logical === root && entry.name === '.git') continue;
           if (names.length + entries >= LIMITS.entries) throw runtimeError('ELECTRON_MBT_LIMIT', 'App directory exceeds traversal limits');
           names.push(entry.name);
         }

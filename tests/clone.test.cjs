@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const { encodeTiny, decodeTiny } = require('../bridges/node/clone.cjs');
 test('tiny values round-trip without losing object keys or Unicode', () => {
   const value = JSON.parse('{"__proto__":{"polluted":true},"text":"日本語","array":[1,true,null]}');
@@ -44,4 +45,20 @@ test('proxy traps and aggregate string growth cannot bypass the codec boundary',
   assert.throws(() => encodeTiny(proxy), { code: 'ELECTRON_MBT_UNSUPPORTED_VALUE' });
   assert.equal(traps, 0);
   assert.throws(() => encodeTiny(Array(100).fill('x'.repeat(500000))), { code: 'ELECTRON_MBT_LIMIT' });
+});
+
+test('a wide object is limited before descriptors can exhaust a small Node heap', () => {
+  const source = [
+    "const { encodeTiny } = require('./bridges/node/clone.cjs');",
+    'const value = Object.create(null);',
+    'for (let index = 0; index < 500000; index++) value[`key${index}`] = null;',
+    'try { encodeTiny(value); process.exitCode = 2; }',
+    'catch (error) { if (error.code !== \'ELECTRON_MBT_LIMIT\') throw error; process.stdout.write(error.code); }'
+  ].join('\n');
+  const result = spawnSync(process.execPath, ['--max-old-space-size=64', '-e', source], {
+    cwd: require('node:path').resolve(__dirname, '..'), encoding: 'utf8', timeout: 30000
+  });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'ELECTRON_MBT_LIMIT');
 });

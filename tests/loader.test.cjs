@@ -76,3 +76,16 @@ test('directory symlink targets participate in the source snapshot', t => {
   const second = snapshot(root);
   assert.notEqual(first.sha256, second.sha256);
 });
+
+test('top-level .git files participate in the source snapshot', t => {
+  const root = temp(t);
+  const gitDir = path.join(root, '.git');
+  fs.mkdirSync(gitDir);
+  const runtimeFile = path.join(gitDir, 'runtime-used.txt');
+  fs.writeFileSync(runtimeFile, 'first runtime input\n');
+  const first = snapshot(root);
+  assert.ok(first.files.some(file => file.path === '.git/runtime-used.txt'));
+  fs.writeFileSync(runtimeFile, 'second runtime input\n');
+  const second = snapshot(root);
+  assert.notEqual(first.sha256, second.sha256);
+});

@@ -13,11 +13,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24.21.0'
-      - name: Bootstrap MoonBit and record the exact toolchain
+      - name: Bootstrap and validate the observed toolchain
         shell: bash
         run: |
           set -euo pipefail
@@ -26,18 +28,72 @@ jobs:
           bash "$RUNNER_TEMP/install-moon.sh"
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
           "$HOME/.moon/bin/moon" version --all | tee evidence/moon-version.txt
+          grep -Fq 'moonc v0.10.14+7d59c7ec9 (2026-09-18)' evidence/moon-version.txt
+          grep -Fq 'moon 0.1.20260920 (914d7da 2026-09-20)' evidence/moon-version.txt
           node --version | tee evidence/node-version.txt
           uname -a | tee evidence/environment.txt
+          sha256sum "$RUNNER_TEMP/install-moon.sh" > evidence/installer-sha256.txt
       - name: Check MoonBit JS
         run: moon check --target js
       - name: Test MoonBit JS
-        run: moon test --target js
+        shell: bash
+        run: moon test --target js 2>&1 | tee evidence/moon-js.log
       - name: Test MoonBit native
-        run: moon test --target native
-      - name: Build CommonJS boundary
-        run: node scripts/build-core.cjs
-      - uses: actions/upload-artifact@v4
+        shell: bash
+        run: moon test --target native 2>&1 | tee evidence/moon-native.log
+      - name: Build compiled core and native control channel
+        run: npm run build
+      - name: Test complete Node boundary
+        shell: bash
+        run: npm test 2>&1 | tee evidence/node-tests.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: compiled-core
+          path: dist/core.cjs
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: toolchain-evidence
+          name: linux-evidence
           path: evidence/
+          if-no-files-found: error
+  macos:
+    needs: moonbit
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.21.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: compiled-core
+          path: dist/
+      - name: Build macOS native control channel
+        run: node scripts/build-native.cjs
+      - name: Test complete Node boundary on macOS
+        shell: bash
+        run: |
+          mkdir -p evidence
+          npm test 2>&1 | tee evidence/node-tests.log
+      - name: Probe actual WKContentWorld observations
+        run: node scripts/macos-probe.cjs
+      - name: Install the separate pinned test oracle
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/electron-oracle" --save-exact electron@44.7.0
+          cp "$RUNNER_TEMP/electron-oracle/package-lock.json" evidence/oracle-package-lock.json
+      - name: Collect unchanged Electron baseline
+        shell: bash
+        run: |
+          ORACLE="$(node -e 'process.stdout.write(require(process.argv[1]))' "$RUNNER_TEMP/electron-oracle/node_modules/electron")"
+          node scripts/oracle.cjs "$ORACLE"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: macos-evidence
+          path: evidence/
+          if-no-files-found: error

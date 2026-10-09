@@ -42,10 +42,13 @@ function encodeTiny(value) {
       account(2 + Math.max(0, value.length - 1));
       if (keys.length !== value.length + 1) unsupported();
       const output = [];
+      // JSON.stringify consults inherited toJSON properties even on copied
+      // arrays. Keep the copy's prototype empty and assign dense indices.
+      Object.setPrototypeOf(output, null);
       for (let index = 0; index < value.length; index++) {
         const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
         if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable) unsupported();
-        output.push(copy(descriptor.value, depth + 1));
+        output[index] = copy(descriptor.value, depth + 1);
       }
       return output;
     }

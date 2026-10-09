@@ -24,6 +24,25 @@ test('getters and toJSON are never invoked by the codec', () => {
   assert.throws(() => encodeTiny(custom));
   assert.equal(calls, 0);
 });
+
+test('an inherited Array.prototype.toJSON getter cannot change copied arrays', () => {
+  const source = [
+    "const { encodeTiny } = require('./bridges/node/clone.cjs');",
+    'let calls = 0;',
+    "Object.defineProperty(Array.prototype, 'toJSON', { configurable: true, get() { calls++; return () => 'replaced'; } });",
+    'let wire;',
+    'try { wire = encodeTiny([1, 2]); }',
+    "finally { delete Array.prototype.toJSON; }",
+    'process.stdout.write(`${wire}|${calls}`);'
+  ].join('\n');
+  const result = spawnSync(process.execPath, ['-e', source], {
+    cwd: require('node:path').resolve(__dirname, '..'), encoding: 'utf8', timeout: 10000
+  });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '[1,2]|0');
+});
+
 test('depth nodes and encoded bytes are bounded', () => {
   let value = null;
   for (let i = 0; i < 65; i++) value = [value];

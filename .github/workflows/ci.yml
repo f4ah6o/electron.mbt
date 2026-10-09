@@ -1,0 +1,43 @@
+name: Runtime contracts
+on:
+  push:
+    branches: [main, 'impl/**']
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: contracts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  moonbit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Bootstrap MoonBit and record the exact toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          curl --fail --silent --show-error --location https://cli.moonbitlang.com/install/unix.sh -o "$RUNNER_TEMP/install-moon.sh"
+          bash "$RUNNER_TEMP/install-moon.sh"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          "$HOME/.moon/bin/moon" version --all | tee evidence/moon-version.txt
+          node --version | tee evidence/node-version.txt
+          uname -a | tee evidence/environment.txt
+      - name: Check MoonBit JS
+        run: moon check --target js
+      - name: Test MoonBit JS
+        run: moon test --target js
+      - name: Test MoonBit native
+        run: moon test --target native
+      - name: Build CommonJS boundary
+        run: node scripts/build-core.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: toolchain-evidence
+          path: evidence/

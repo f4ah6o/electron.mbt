@@ -1,0 +1,12 @@
+import {
+  "f4ah6o/electron/core" @core,
+  "moonbitlang/core/json" @json,
+}
+options(
+  link: {
+    "js": {
+      "exports": ["new_runtime", "dispatch", "diagnose"],
+      "format": "cjs",
+    },
+  },
+)

@@ -1,0 +1,5 @@
+name = "f4ah6o/electron"
+version = "0.0.1"
+readme = "README.md"
+repository = "https://github.com/f4ah6o/electron.mbt"
+preferred_target = "js"

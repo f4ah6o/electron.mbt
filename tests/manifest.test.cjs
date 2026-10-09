@@ -33,3 +33,12 @@ test('snapshot CLI records the same unchanged files across invocations', () => {
   assert.equal(first.status, 0); assert.equal(second.status, 0);
   assert.equal(JSON.parse(first.stdout).sha256, JSON.parse(second.stdout).sha256);
 });
+
+test('oracle rejects missing executables with a controlled diagnostic', () => {
+  for (const args of [[], [path.join(root, 'missing-oracle')]]) {
+    const result = spawnSync(process.execPath, ['scripts/oracle.cjs', ...args], { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^ELECTRON_MBT_ORACLE:/);
+    assert.doesNotMatch(result.stderr, /Error: ENOENT/);
+  }
+});

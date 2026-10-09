@@ -7,7 +7,7 @@
   "versions": {
     "electronOracle": "44.7.0",
     "electronSourceRef": "v44.7.0",
-    "electronSourceCommit": null,
+    "electronSourceCommit": "61f55c4ce540416b3e43f75f6c0f125d22e5e908",
     "nodeOracle": "24.21.0",
     "moonbit": {
       "moonc": "v0.10.14+7d59c7ec9 (2026-09-18)",

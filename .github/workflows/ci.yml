@@ -68,7 +68,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24.21.0'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: compiled-core
           path: dist/
@@ -85,6 +85,7 @@ jobs:
         shell: bash
         run: |
           npm install --prefix "$RUNNER_TEMP/electron-oracle" --save-exact electron@44.7.0
+          node "$RUNNER_TEMP/electron-oracle/node_modules/electron/install.js"
           cp "$RUNNER_TEMP/electron-oracle/package-lock.json" evidence/oracle-package-lock.json
       - name: Collect unchanged Electron baseline
         shell: bash

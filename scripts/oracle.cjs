@@ -7,7 +7,9 @@ const { snapshot } = require('../bridges/node/app-files.cjs');
 const manifest = require('../compatibility/manifest.json');
 const root = path.resolve(__dirname, '..');
 const executable = process.argv[2];
-if (!executable || !path.isAbsolute(executable) || !fs.statSync(executable).isFile()) {
+let executableIsFile = false;
+try { executableIsFile = typeof executable === 'string' && path.isAbsolute(executable) && fs.statSync(executable).isFile(); } catch {}
+if (!executableIsFile || process.argv.length !== 3) {
   console.error('ELECTRON_MBT_ORACLE: supply an absolute path to the separately installed pinned Electron executable'); process.exit(1);
 }
 const fixture = path.join(root, 'fixtures/oracle');

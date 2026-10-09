@@ -178,8 +178,8 @@ test "insecure web preferences never silently downgrade" {
 ///|
 test "bounded tiny JSON profile rejects deep values" {
   assert_true(validate_json(@json.parse("{\"text\":\"日本語\",\"items\":[null,true,1]}")))
-  let mut value : Json = Null
-  for _ in 0..<65 { value = Array([value]) }
+  let mut value : Json = null
+  for _ in 0..<65 { value = [value].to_json() }
   assert_false(validate_json(value))
 }
 
@@ -197,4 +197,10 @@ test "terminal history stays bounded under repeated successful requests" {
   assert_eq(runtime.pending_count(), 0)
   assert_eq(runtime.queued_bytes(), 0)
   assert_true(runtime.complete_request(1, id, generation) is Err(UnknownRequest))
+}
+
+///|
+test "negative zero is rejected instead of losing its sign" {
+  assert_false(validate_json(@json.parse("-0")))
+  assert_true(validate_json(@json.parse("0")))
 }

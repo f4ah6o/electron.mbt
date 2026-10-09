@@ -4,14 +4,14 @@ pub(all) enum AppState {
   Ready
   Quitting
   Stopped
-} derive(Eq, Show)
+} derive(Eq)
 
 ///|
 pub(all) enum WindowState {
   Creating
   Live
   Closing
-} derive(Eq, Show)
+} derive(Eq)
 
 ///|
 pub(all) enum RuntimeError {
@@ -24,7 +24,41 @@ pub(all) enum RuntimeError {
   UnknownRequest
   AlreadyCompleted
   IdExhausted
-} derive(Eq, Show)
+} derive(Eq)
+
+///|
+pub extend AppState with Eq::{equal, not_equal}
+
+///|
+pub extend WindowState with Eq::{equal, not_equal}
+
+///|
+pub extend RuntimeError with Eq::{equal, not_equal}
+
+///|
+pub fn AppState::name(self : AppState) -> String {
+  match self {
+    Booting => "Booting"
+    Ready => "Ready"
+    Quitting => "Quitting"
+    Stopped => "Stopped"
+  }
+}
+
+///|
+pub fn RuntimeError::code(self : RuntimeError) -> String {
+  match self {
+    InvalidState => "InvalidState"
+    UnknownWindow => "UnknownWindow"
+    StaleDocument => "StaleDocument"
+    Denied => "Denied"
+    LimitExceeded => "LimitExceeded"
+    InvalidPayload => "InvalidPayload"
+    UnknownRequest => "UnknownRequest"
+    AlreadyCompleted => "AlreadyCompleted"
+    IdExhausted => "IdExhausted"
+  }
+}
 
 ///|
 struct Window {
@@ -209,7 +243,7 @@ fn Runtime::cancel_window_requests(self : Runtime, window : Int) -> Unit {
 
 ///|
 pub fn Runtime::destroy_window(self : Runtime, id : Int) -> Bool {
-  if not(self.windows.contains(id)) { return false }
+  if !self.windows.contains(id) { return false }
   self.cancel_window_requests(id)
   self.windows.remove(id)
   true
@@ -267,12 +301,12 @@ pub fn Runtime::grant(
 ) -> Result[Unit, RuntimeError] {
   match self.windows.get(id) {
     Some(window) => {
-      if window.state != Live || not(window.active) {
+      if window.state != Live || !window.active {
         return Err(InvalidState)
       }
       if window.generation != generation { return Err(StaleDocument) }
       if channel == "" || channel.length() > 128 { return Err(Denied) }
-      if window.grants.length() >= 128 && not(window.grants.contains(channel)) {
+      if window.grants.length() >= 128 && !window.grants.contains(channel) {
         return Err(LimitExceeded)
       }
       window.grants[channel] = true
@@ -294,14 +328,14 @@ pub fn Runtime::authorize(
   if self.app != Ready { return Err(InvalidState) }
   match self.windows.get(id) {
     Some(window) => {
-      if window.state != Live || not(window.active) {
+      if window.state != Live || !window.active {
         return Err(InvalidState)
       }
       if window.generation != generation { return Err(StaleDocument) }
-      if not(main_frame) || window.origin != host_origin {
+      if !main_frame || window.origin != host_origin {
         return Err(Denied)
       }
-      if not(window.grants.contains(channel)) { return Err(Denied) }
+      if !window.grants.contains(channel) { return Err(Denied) }
       Ok(())
     }
     None => Err(UnknownWindow)
@@ -380,28 +414,7 @@ pub fn validate_preferences(
   sandbox : Bool,
   web_security : Bool,
 ) -> Bool {
-  not(node_integration) && context_isolation && sandbox && web_security
-}
-
-///|
-pub fn validate_json(value : Json, depth : Int = 0) -> Bool {
-  if depth > 64 { return false }
-  match value {
-    Null | True | False | String(_) => true
-    Number(number) => number.is_finite()
-    Array(values) => {
-      for value in values {
-        if not(validate_json(value, depth + 1)) { return false }
-      }
-      true
-    }
-    Object(values) => {
-      for _, value in values {
-        if not(validate_json(value, depth + 1)) { return false }
-      }
-      true
-    }
-  }
+  !node_integration && context_isolation && sandbox && web_security
 }
 
 ///|

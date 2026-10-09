@@ -6,8 +6,8 @@ pub fn new_runtime() -> @core.Runtime {
 ///|
 fn field(value : Json, key : String) -> Json {
   match value {
-    Object(fields) => fields.get(key).unwrap_or(Null)
-    _ => Null
+    Object(fields) => fields.get(key).unwrap_or(null)
+    _ => null
   }
 }
 
@@ -24,7 +24,7 @@ fn code_result(result : Result[Unit, @core.RuntimeError]) -> String {
   match result {
     Ok(_) => "{\"ok\":true}"
     Err(code) => {
-      let value : Json = { "ok": false, "code": code.to_string().to_json() }
+      let value : Json = { "ok": false, "code": code.code().to_json() }
       value.stringify()
     }
   }
@@ -43,7 +43,7 @@ pub fn dispatch(runtime : @core.Runtime, operation : String) -> String {
     "state" => {
       let result : Json = {
         "ok": true,
-        "state": runtime.app_state().to_string().to_json(),
+        "state": runtime.app_state().name().to_json(),
       }
       result.stringify()
     }
@@ -64,7 +64,7 @@ pub fn diagnose(raw : String) -> String {
   if text(value, "entryType") != "commonjs" {
     problems.push("ELECTRON_MBT_UNSUPPORTED_ENTRY".to_json())
   }
-  if field(value, "nativeAddons") != False {
+  if !(field(value, "nativeAddons") is False) {
     problems.push("ELECTRON_MBT_NATIVE_ADDON_UNVERIFIED".to_json())
   }
   if text(value, "platform") != "darwin" {

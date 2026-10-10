@@ -91,6 +91,69 @@ app.whenReady().then(async () => {
   await assert.rejects(inflight);
   assert.equal(rapid.isDestroyed(), true);
   assert.equal(BrowserWindow.getAllWindows().length, 0);
+  let windowAllClosed = 0;
+  let willQuit = 0;
+  app.on('window-all-closed', () => { windowAllClosed++; });
+  app.on('will-quit', () => { willQuit++; });
+
+  const ordinaryWindow = new BrowserWindow({ show: false });
+  ordinaryWindow.destroy();
+  assert.equal(windowAllClosed, 1);
+
+  const quitWindow = new BrowserWindow({ show: false });
+  let beforeQuitCancelled = 0;
+  app.once('before-quit', event => { beforeQuitCancelled++; event.preventDefault(); });
+  app.quit();
+  assert.equal(beforeQuitCancelled, 1);
+  assert.equal(quitWindow.isDestroyed(), false);
+  assert.equal(app.isReady(), true);
+  assert.equal(willQuit, 0);
+  assert.equal(windowAllClosed, 1);
+
+  let closeCancelledDuringQuit = 0;
+  quitWindow.once('close', event => {
+    closeCancelledDuringQuit++;
+    event.preventDefault();
+  });
+  app.quit();
+  assert.equal(closeCancelledDuringQuit, 1);
+  assert.equal(quitWindow.isDestroyed(), false);
+  assert.equal(BrowserWindow.getAllWindows().length, 1);
+  assert.equal(app.isReady(), true);
+  assert.equal(willQuit, 0);
+  assert.equal(windowAllClosed, 1);
+
+  let willQuitCancelled = 0;
+  app.once('will-quit', event => { willQuitCancelled++; event.preventDefault(); });
+  app.quit();
+  assert.equal(willQuitCancelled, 1);
+  assert.equal(willQuit, 1);
+  assert.equal(quitWindow.isDestroyed(), true);
+  assert.equal(BrowserWindow.getAllWindows().length, 0);
+  assert.equal(app.isReady(), true);
+  assert.equal(windowAllClosed, 1);
+
+  const finalWindow = new BrowserWindow({ show: false });
+  const order = [];
+  let reentrantQuit = 0;
+  app.once('before-quit', () => {
+    reentrantQuit++;
+    app.quit();
+    assert.throws(() => new BrowserWindow({ show: false }),
+      { code: 'ELECTRON_MBT_INVALID_STATE' });
+  });
+  app.on('before-quit', () => order.push('before-quit'));
+  finalWindow.on('close', () => order.push('close'));
+  finalWindow.on('closed', () => order.push('closed'));
+  app.once('will-quit', () => order.push('will-quit'));
+  app.once('quit', () => order.push('quit'));
+  app.quit();
+  assert.deepEqual(order, ['before-quit', 'close', 'closed', 'will-quit', 'quit']);
+  assert.equal(reentrantQuit, 1);
+  assert.equal(willQuit, 2);
+  assert.equal(windowAllClosed, 1);
+  assert.equal(finalWindow.isDestroyed(), true);
+
   console.log(JSON.stringify({
     fixture: 'm1-cjs', status: 'PASS', readyOrder: true,
     synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, overlappingLoadRejected: true, nodeEventLoopResponsive: true, immediateShowSafe: true,
@@ -98,22 +161,11 @@ app.whenReady().then(async () => {
     eventChainedLoad: true, listenerFailureNotNativeFailure: true,
     destroyForced: true, nativeVisibilityRoundTrip: true,
     destroyedVisibilityRejected: true, closedListenerVisibilityRejected: true,
-    unsafeOptionsRejected: true, quitCancellationAndReentry: true, compatible: false,
+    unsafeOptionsRejected: true, quitCancellationAndReentry: true,
+    quitCloseCancellation: true, willQuitCancellation: true,
+    quitEventOrder: true, noWindowAllClosedDuringQuit: true,
+    compatible: false,
   }));
-  let cancelledQuit = 0;
-  app.once('before-quit', event => { cancelledQuit++; event.preventDefault(); });
-  app.quit();
-  assert.equal(cancelledQuit, 1);
-  assert.equal(app.isReady(), true);
-  let reentrantQuit = 0;
-  app.on('before-quit', () => {
-    reentrantQuit++;
-    app.quit();
-    assert.throws(() => new BrowserWindow({ show: false }),
-      { code: 'ELECTRON_MBT_INVALID_STATE' });
-  });
-  app.quit();
-  assert.equal(reentrantQuit, 1);
 }).catch(error => {
   console.error(error.stack || error.message);
   process.exitCode = 1;

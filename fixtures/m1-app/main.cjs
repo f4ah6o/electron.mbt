@@ -1,6 +1,9 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { app, BrowserWindow } = require('electron');
+const dependencyFacade = require('./dependency');
+assert.equal(dependencyFacade.app, app);
+assert.equal(dependencyFacade.BrowserWindow, BrowserWindow);
 assert.equal(app.isReady(), false);
 assert.throws(() => new BrowserWindow({ show: false }), { code: 'ELECTRON_MBT_INVALID_STATE' });
 let readyEvents = 0;
@@ -36,7 +39,7 @@ app.whenReady().then(async () => {
   assert.equal(BrowserWindow.getAllWindows().length, 0);
   console.log(JSON.stringify({
     fixture: 'm1-cjs', status: 'PASS', readyOrder: true,
-    synchronousConstructor: true, realWebViewLoaded: true, staleLoadCancelled: true, closeCancelled: true,
+    synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, staleLoadCancelled: true, closeCancelled: true,
     destroyForced: true, unsafeOptionsRejected: true, compatible: false,
   }));
   app.quit();

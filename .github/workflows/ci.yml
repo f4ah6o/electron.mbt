@@ -107,6 +107,10 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-host-init-fault.cjs 2>&1 | tee evidence/m1-host-init-fault.log
+      - name: Verify asynchronous spawn errors and host-loss propagation
+        shell: bash
+        run: |
+          node scripts/m1-host-loss.cjs 2>&1 | tee evidence/m1-host-loss.log
       - name: Verify load event reentrancy and failure retry
         shell: bash
         run: |

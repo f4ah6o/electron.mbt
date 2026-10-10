@@ -125,15 +125,20 @@ class ExperimentalRuntime {
             'Overlapping loadFile calls are unsupported in experimental M1'));
         }
         let real, generation;
+        let moonbitGenerationAdvanced = false;
         try {
           real = fileWithin(runtime.appInfo.root, file);
           generation = checked(runtime.core.window_navigate(runtime.runtime, this.id)).generation;
+          moonbitGenerationAdvanced = true;
           // Reserve this navigation on the short native control lane before
           // show/close/destroy can observe the new MoonBit document generation.
           runtime.host.request('begin-load', this.id, generation);
           this._generation = generation;
         } catch (error) {
-          if (runtime.host.dead) runtime.abort();
+          // MoonBit generations are monotonic. Once the core advanced, a
+          // failed native reservation cannot be rolled back to the old
+          // privilege generation. Tear down both peers instead.
+          if (moonbitGenerationAdvanced || runtime.host.dead) runtime.abort();
           return Promise.reject(error);
         }
         this._loading = true;

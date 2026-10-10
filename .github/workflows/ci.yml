@@ -95,6 +95,10 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-app-smoke.cjs 2>&1 | tee evidence/m1-cjs-app.log
+      - name: Fail closed on native begin-load generation divergence
+        shell: bash
+        run: |
+          node scripts/m1-begin-load-failure.cjs 2>&1 | tee evidence/m1-begin-load-failure.log
       - name: Confirm slow HTML does not block the Node event loop
         shell: bash
         run: |

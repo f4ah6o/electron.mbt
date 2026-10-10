@@ -169,3 +169,36 @@ test "What: failed visibility terminals are not success ACKs" {
     assert_eq(session.pending_count(), 0)
   }
 }
+
+///|
+test "What: native window titles require bounded values and matching success ACKs" {
+  let initial = visibility_wire("get-window-title", "{}", "")
+  let gate = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(gate.register(initial) is Ok(_))
+  assert_true(gate.accept(visibility_wire("get-window-title", "{\"title\":false}", ",\"terminal\":\"success\"")) is Err(_))
+  assert_eq(gate.pending_count(), 1)
+  assert_true(gate.accept(visibility_wire("get-window-title", "{\"title\":\"日本語\"}", ",\"terminal\":\"success\"")) is Ok(_))
+  assert_eq(gate.pending_count(), 0)
+
+  let set_request = visibility_wire("set-window-title", "{\"title\":\"New title\"}", "")
+  let pending = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(pending.register(set_request) is Ok(_))
+  let wrong = visibility_wire("set-window-title", "{\"title\":\"Other\"}", ",\"terminal\":\"success\"")
+  assert_true(pending.accept(wrong) is Err(_))
+  assert_eq(pending.pending_count(), 1)
+  let good = visibility_wire("set-window-title", "{\"title\":\"New title\"}", ",\"terminal\":\"success\"")
+  assert_true(pending.accept(good) is Ok(_))
+  assert_eq(pending.pending_count(), 0)
+  assert_true(pending.accept(good) is Err(_))
+
+  assert_true(validate(visibility_wire("get-window-title", "{\"title\":\"injected\"}", "")) is Err(_))
+  assert_true(validate(visibility_wire("set-window-title", "{}", "")) is Err(_))
+  assert_true(validate(visibility_wire("set-window-title", "{\"title\":5}", "")) is Err(_))
+  assert_true(validate(visibility_wire("get-window-title", "{\"extra\":1}", ",\"terminal\":\"success\"")) is Err(_))
+  let mut title = ""
+  for i = 0; i < 257; i = i + 1 { title = title + "x" }
+  assert_true(validate(visibility_wire("set-window-title", "{\"title\":\"" + title + "\"}", "")) is Err(_))
+  let failed = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(failed.register(set_request) is Ok(_))
+  assert_true(failed.accept(visibility_wire("set-window-title", "{\"code\":\"ELECTRON_MBT_WINDOW_OPTIONS\"}", ",\"terminal\":\"failure\"")) is Ok(_))
+}

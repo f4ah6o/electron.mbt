@@ -30,7 +30,7 @@ test "What: malformed grammar and nonfinite or unsafe payloads fail closed" {
 ///|
 test "What: deep wire is rejected before recursive library parsing" {
   let mut payload = "0"
-  for i = 0; i < 66; i += 1 { payload = "{\"child\":" + payload + "}" }
+  for i = 0; i < 66; i = i + 1 { payload = "{\"child\":" + payload + "}" }
   assert_true(validate(wire("1", payload, "")) is Err(_))
 }
 
@@ -60,7 +60,7 @@ test "What: completion and cancellation never release an issued ID for reuse" {
 ///|
 test "What: bounded ledgers drain cancellation IDs exactly once on close" {
   let session = Session::new("0123456789abcdef0123456789abcdef")
-  for id = 1; id <= MaxPending; id += 1 {
+  for id = 1; id <= MaxPending; id = id + 1 {
     assert_true(session.register(wire(id.to_string(), "{}", "")) is Ok(_))
   }
   assert_true(session.register(wire("257", "{}", "")) is Err(_))

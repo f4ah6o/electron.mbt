@@ -48,7 +48,7 @@ fn utf8_size(raw : String) -> Int raise BadProtocol {
 }
 
 ///|
-struct WireParser {
+priv struct WireParser {
   raw : String
   mut position : Int
   mut nodes : Int
@@ -113,7 +113,7 @@ fn WireParser::value(self : WireParser, depth : Int) -> Json raise BadProtocol {
   match self.peek() {
     123 => {
       self.position += 1
-      let fields : Map[String, Json] = {}
+      let fields : Map[String, Json] = Map([])
       self.whitespace()
       if self.peek() == 125 { self.position += 1; return Json::object(fields) }
       while true {
@@ -204,7 +204,7 @@ fn identifier(value : Json) -> Int64 raise BadProtocol {
 ///|
 fn session_valid(value : String) -> Bool {
   if value.length() != 32 { return false }
-  for i = 0; i < value.length(); i += 1 {
+  for i = 0; i < value.length(); i = i + 1 {
     let c = value[i].to_int()
     if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) { return false }
   }
@@ -212,7 +212,7 @@ fn session_valid(value : String) -> Bool {
 }
 
 ///|
-struct Envelope {
+priv struct Envelope {
   session : String
   request : Int64
   window : Int64
@@ -257,7 +257,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
     _ => raise BadProtocol("Invalid operation")
   }
   let payload = field("payload")
-  if !(payload is Object(_)) || !payload_ok(payload, 0, Ref::new(MaxNodes)) {
+  if !(payload is Object(_)) || !payload_ok(payload, 0, Ref(MaxNodes)) {
     raise BadProtocol("Unsupported or excessive payload")
   }
   let terminal = fields.contains("terminal")

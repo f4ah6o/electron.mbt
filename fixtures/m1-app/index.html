@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Experimental M1 CJS app</title></head>
+<body>
+  <h1 id="native">Native WKWebView Electron subset</h1>
+  <script>
+    window.m1NoNode = typeof process === 'undefined' &&
+      typeof require === 'undefined' && typeof Buffer === 'undefined';
+  </script>
+</body>
+</html>

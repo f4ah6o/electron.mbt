@@ -16,7 +16,10 @@ function main(args) {
   const [command, appDir, ...extra] = args;
   if (command === '--version' && args.length === 1) { report({ version: '0.0.1', milestone: manifest.milestone, compatible: false }); return 0; }
   if (command === '--help' && args.length === 1) {
-    report({ usage: 'electron-mbt <doctor|snapshot|compat-check|run|pack> <app-dir>', run: 'not implemented: M0 gates remain open', pack: 'not implemented: no distributable runtime' }); return 0;
+    report({ usage: 'electron-mbt <doctor|snapshot|compat-check|run|pack> <app-dir>', run: 'not implemented by default: optional --experimental-m1 enables a constrained macOS CJS native-host profile', pack: 'not implemented: no distributable runtime' }); return 0;
+  }
+  if (command === 'run' && appDir && extra.length === 1 && extra[0] === '--experimental-m1') {
+    return require('./m1-runner.cjs').run(appDir);
   }
   if (!['doctor', 'snapshot', 'compat-check', 'run', 'pack'].includes(command) || !appDir || extra.length) {
     throw runtimeError('ELECTRON_MBT_USAGE', 'Use electron-mbt <doctor|snapshot|compat-check|run|pack> <app-dir>.');

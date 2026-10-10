@@ -92,6 +92,7 @@ class ExperimentalRuntime {
         this.webContents.id = id;
         this.webContents.send = () => fail('ELECTRON_MBT_UNSUPPORTED_API', 'Renderer IPC is not available in M1');
         this._generation = 0;
+        this._loading = false;
         this._destroyed = false;
         this._closing = false;
         try {
@@ -112,6 +113,12 @@ class ExperimentalRuntime {
         if (this._destroyed) {
           return Promise.reject(runtimeError('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed'));
         }
+        if (this._loading) {
+          // Overlapping navigations need native cancellation acknowledgements
+          // which are not an accepted M1 contract. Reject them explicitly.
+          return Promise.reject(runtimeError('ELECTRON_MBT_NAVIGATION_IN_PROGRESS',
+            'Overlapping loadFile calls are unsupported in experimental M1'));
+        }
         let real, generation;
         try {
           real = fileWithin(runtime.appInfo.root, file);
@@ -124,6 +131,7 @@ class ExperimentalRuntime {
           if (runtime.host.dead) runtime.abort();
           return Promise.reject(error);
         }
+        this._loading = true;
         // A worker owns the blocking socket wait, not the Node main thread.
         // The Promise settles on the genuine native didFinishNavigation ACK.
         return runtime.host.requestAsync('load-file', this.id, generation, { file: real }).then(() => {
@@ -133,7 +141,7 @@ class ExperimentalRuntime {
         }).catch(error => {
           this.webContents.emit('did-fail-load', error);
           throw error;
-        });
+        }).finally(() => { this._loading = false; });
       }
       show() {
         if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');

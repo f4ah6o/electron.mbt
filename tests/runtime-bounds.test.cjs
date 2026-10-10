@@ -10,6 +10,7 @@ class FakeNativeHost extends EventEmitter {
     this.dead = false;
     this.bounds = new Map();
     this.badAck = null;
+    this.boundsWrites = [];
   }
   request(operation, window = 0, generation = 0, payload = {}) {
     if (this.dead) throw Object.assign(new Error('Host closed'), { code: 'ELECTRON_MBT_TRANSPORT_CLOSED' });
@@ -20,6 +21,7 @@ class FakeNativeHost extends EventEmitter {
         return { webViewAttached: true };
       case 'get-window-bounds': return this.badAck ?? { ...this.bounds.get(window) };
       case 'set-window-bounds':
+        this.boundsWrites.push({ ...payload });
         Object.assign(this.bounds.get(window), payload);
         return this.badAck ?? { ...this.bounds.get(window) };
       case 'destroy-window': case 'close-window':
@@ -144,6 +146,93 @@ test('What: malformed native setBounds success ACK aborts without accepting forg
     const win = new runtime.BrowserWindow({ show: false });
     runtime.host.badAck = reply;
     assert.throws(() => win.setBounds({ width: 750 }), { code: 'ELECTRON_MBT_PROTOCOL' });
+    assert.equal(runtime.host.dead, true);
+    assert.equal(runtime.terminated, true);
+    assert.equal(win.isDestroyed(), true);
+  }
+});
+
+
+test('What: native-backed size and position convenience APIs preserve the other geometry axis', async () => {
+  const runtime = await readyRuntime();
+  const win = new runtime.BrowserWindow({ width: 640, height: 480, show: false });
+  assert.deepEqual(win.getSize(), [640, 480]);
+  assert.deepEqual(win.getPosition(), [-12, 33]);
+  assert.equal(win.setSize(780, 520), undefined);
+  assert.deepEqual(runtime.host.boundsWrites.at(-1), { width: 780, height: 520 });
+  assert.deepEqual(win.getSize(), [780, 520]);
+  assert.deepEqual(win.getPosition(), [-12, 33]);
+  assert.equal(win.setPosition(120, 140, false), undefined);
+  assert.deepEqual(runtime.host.boundsWrites.at(-1), { x: 120, y: 140 });
+  assert.deepEqual(win.getPosition(), [120, 140]);
+  assert.deepEqual(win.getSize(), [780, 520]);
+
+  runtime.host.bounds.get(win.id).x = 55;
+  runtime.host.bounds.get(win.id).width = 890;
+  assert.deepEqual(win.getPosition(), [55, 140]);
+  assert.deepEqual(win.getSize(), [890, 520]);
+  assert.deepEqual(win.getBounds(), { x: 55, y: 140, width: 890, height: 520 });
+  win.destroy();
+  runtime.app.quit();
+});
+
+test('What: size and position setters reject malformed arguments locally while keeping the native window alive', async () => {
+  const runtime = await readyRuntime();
+  const win = new runtime.BrowserWindow({ width: 640, height: 480, show: false });
+  const invalid = [
+    ['setSize', [undefined, 480]], ['setSize', [640, undefined]],
+    ['setSize', [99, 480]], ['setSize', [640, 4097]],
+    ['setSize', [640.5, 480]], ['setSize', [-0, 480]],
+    ['setSize', [640, Infinity]], ['setSize', [640, '480']],
+    ['setSize', [640, 480, true]], ['setSize', [640, 480, null]],
+    ['setPosition', [undefined, 10]], ['setPosition', [15, undefined]],
+    ['setPosition', [-0, 25]], ['setPosition', [1.5, 25]],
+    ['setPosition', [1048577, 20]], ['setPosition', [20, -1048577]],
+    ['setPosition', [NaN, 20]], ['setPosition', [20, false]],
+    ['setPosition', [20, 30, true]], ['setPosition', [20, 30, 'false']],
+  ];
+  for (const [method, args] of invalid) {
+    const writesBefore = runtime.host.boundsWrites.length;
+    assert.throws(() => win[method](...args), {
+      code: args.length === 3 ? 'ELECTRON_MBT_UNSUPPORTED_API' : 'ELECTRON_MBT_INVALID_ARGUMENT',
+    });
+    assert.equal(runtime.host.boundsWrites.length, writesBefore);
+    assert.equal(runtime.host.dead, false);
+    assert.equal(runtime.app.isReady(), true);
+    assert.equal(win.isDestroyed(), false);
+    assert.deepEqual(win.getBounds(), { x: -12, y: 33, width: 640, height: 480 });
+  }
+  assert.equal(win.setSize(720, 510), undefined);
+  assert.equal(win.setPosition(120, 140), undefined);
+  assert.deepEqual(win.getBounds(), { x: 120, y: 140, width: 720, height: 510 });
+  win.destroy();
+  runtime.app.quit();
+});
+
+test('What: all size and position facade methods deny destroyed windows', async () => {
+  const runtime = await readyRuntime();
+  const win = new runtime.BrowserWindow({ show: false });
+  win.once('closed', () => {
+    for (const [name, args] of [
+      ['getSize', []], ['getPosition', []],
+      ['setSize', [700, 500]], ['setPosition', [100, 120]],
+    ]) {
+      assert.throws(() => win[name](...args), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    }
+  });
+  win.destroy();
+  runtime.app.quit();
+});
+
+test('What: malformed native geometry aborts size and position facade operations', async () => {
+  for (const [method, args] of [
+    ['getSize', []], ['getPosition', []],
+    ['setSize', [700, 500]], ['setPosition', [120, 140]],
+  ]) {
+    const runtime = await readyRuntime();
+    const win = new runtime.BrowserWindow({ show: false });
+    runtime.host.badAck = { x: 1.5, y: 2, width: 640, height: 480 };
+    assert.throws(() => win[method](...args), { code: 'ELECTRON_MBT_PROTOCOL' });
     assert.equal(runtime.host.dead, true);
     assert.equal(runtime.terminated, true);
     assert.equal(win.isDestroyed(), true);

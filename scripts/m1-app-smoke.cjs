@@ -28,6 +28,8 @@ assert.equal(observed.nativeWebContentsURL, true);
 assert.equal(observed.nativeWebContentsTitle, true);
 assert.equal(observed.nativeWindowBounds, true);
 assert.equal(observed.nativeSetBoundsRoundTrip, true);
+assert.equal(observed.nativeSizePositionRoundTrip, true);
+assert.equal(observed.destroyedSizePositionRejected, true);
 assert.equal(observed.destroyedSetBoundsRejected, true);
 assert.equal(observed.destroyedWindowBoundsRejected, true);
 assert.equal(observed.destroyedWebContentsTitleRejected, true);

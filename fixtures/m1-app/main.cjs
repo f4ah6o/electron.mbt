@@ -32,6 +32,23 @@ app.whenReady().then(async () => {
   assert.equal(initialBounds.width, 640);
   assert.equal(initialBounds.height, 480);
   assert.ok(Number.isSafeInteger(initialBounds.x) && Number.isSafeInteger(initialBounds.y));
+  assert.deepEqual(win.getSize(), [640, 480]);
+  assert.deepEqual(win.getPosition(), [initialBounds.x, initialBounds.y]);
+  assert.equal(win.setSize(720, 520), undefined);
+  assert.deepEqual(win.getSize(), [720, 520]);
+  assert.deepEqual(win.getPosition(), [initialBounds.x, initialBounds.y]);
+  assert.equal(win.setPosition(120, 140, false), undefined);
+  assert.deepEqual(win.getPosition(), [120, 140]);
+  assert.deepEqual(win.getSize(), [720, 520]);
+  assert.throws(() => win.setSize(99, 520), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
+  assert.throws(() => win.setPosition(-0, 140), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
+  assert.throws(() => win.setSize(720, 520, true), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
+  assert.throws(() => win.setPosition(120, 140, true), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
+  assert.deepEqual(win.getPosition(), [120, 140]);
+  assert.deepEqual(win.getSize(), [720, 520]);
+  assert.equal(win.setPosition(initialBounds.x, initialBounds.y), undefined);
+  assert.equal(win.setSize(initialBounds.width, initialBounds.height), undefined);
+  assert.deepEqual(win.getBounds(), initialBounds);
   assert.equal(win.setBounds({ width: initialBounds.width + 32 }, false), undefined);
   assert.equal(win.getBounds().width, initialBounds.width + 32);
   assert.equal(win.isVisible(), false);
@@ -133,6 +150,10 @@ app.whenReady().then(async () => {
     assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     assert.throws(() => win.setBounds({ width: 700 }), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    assert.throws(() => win.getSize(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    assert.throws(() => win.getPosition(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    assert.throws(() => win.setSize(700, 500), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    assert.throws(() => win.setPosition(120, 140), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     visibilityRejectedInsideClosed = true;
   });
   win.destroy();
@@ -142,6 +163,10 @@ app.whenReady().then(async () => {
   assert.throws(() => win.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.setBounds({ x: 20 }), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.getSize(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.getPosition(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.setSize(720, 520), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.setPosition(120, 140), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.setTitle('forbidden'), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
@@ -236,6 +261,7 @@ app.whenReady().then(async () => {
     nativeWebContentsTitle: true, destroyedWebContentsTitleRejected: true,
     nativeWindowBounds: true, destroyedWindowBoundsRejected: true,
     nativeSetBoundsRoundTrip: true, destroyedSetBoundsRejected: true,
+    nativeSizePositionRoundTrip: true, destroyedSizePositionRejected: true,
     unsafeOptionsRejected: true, quitCancellationAndReentry: true,
     quitCloseCancellation: true, willQuitCancellation: true,
     quitEventOrder: true, quitEventArguments: true,

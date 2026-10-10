@@ -365,6 +365,20 @@ class ExperimentalRuntime {
         const partial = normalizedPartialBounds(bounds, animate);
         checkedBounds(runtime, runtime.host.request('set-window-bounds', this.id, this._generation, partial));
       }
+      getSize() {
+        const { width, height } = this.getBounds();
+        return [width, height];
+      }
+      setSize(width, height, animate = false) {
+        this.setBounds({ width, height }, animate);
+      }
+      getPosition() {
+        const { x, y } = this.getBounds();
+        return [x, y];
+      }
+      setPosition(x, y, animate = false) {
+        this.setBounds({ x, y }, animate);
+      }
     };
     this.host.on('native-close-request', details => {
       if (this.terminated || this.quitting) return;

@@ -1,11 +1,12 @@
 import {
   "f4ah6o/electron/core" @core,
+  "f4ah6o/electron/transport" @transport,
   "moonbitlang/core/json" @json,
 }
 options(
   link: {
     "js": {
-      "exports": ["new_runtime", "dispatch", "diagnose"],
+      "exports": ["new_runtime", "dispatch", "diagnose", "host_limits", "host_validate", "host_new", "host_status", "host_register", "host_accept", "host_cancel", "host_pending", "host_close"],
       "format": "cjs",
     },
   },

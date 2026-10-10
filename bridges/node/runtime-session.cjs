@@ -194,6 +194,26 @@ class ExperimentalRuntime {
         }
         return acknowledgement.visible;
       }
+      getTitle() {
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        const acknowledgement = runtime.host.request('get-window-title', this.id, this._generation);
+        if (typeof acknowledgement.title !== 'string' || acknowledgement.title.length > 256) {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Malformed native title acknowledgement');
+        }
+        return acknowledgement.title;
+      }
+      setTitle(title) {
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        if (typeof title !== 'string' || title.length > 256) {
+          fail('ELECTRON_MBT_INVALID_ARGUMENT', 'Expected a window title of at most 256 code units');
+        }
+        const acknowledgement = runtime.host.request('set-window-title', this.id, this._generation, { title });
+        if (acknowledgement.title !== title) {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Native title acknowledgement mismatch');
+        }
+      }
       _ackCancelledClose() {
         const acknowledgement = runtime.host.request('cancel-close', this.id, this._generation);
         const requestID = acknowledgement.cancelledNativeRequest;

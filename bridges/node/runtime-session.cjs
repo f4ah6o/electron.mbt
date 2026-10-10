@@ -12,6 +12,9 @@ function checked(json) {
   if (!value.ok) fail('ELECTRON_MBT_' + (value.code || 'INVALID_STATE'), 'MoonBit rejected lifecycle transition');
   return value;
 }
+function supportedTitle(value) {
+  return typeof value === 'string' && value.length <= 256 && value.isWellFormed();
+}
 function supportedOptions(options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) {
     fail('ELECTRON_MBT_UNSUPPORTED_API', 'BrowserWindow expects ordinary options');
@@ -40,7 +43,7 @@ function supportedOptions(options = {}) {
   const show = options.show ?? true;
   if (!Number.isInteger(width) || width < 100 || width > 4096 ||
       !Number.isInteger(height) || height < 100 || height > 4096 ||
-      typeof title !== 'string' || title.length > 256 || typeof show !== 'boolean') {
+      !supportedTitle(title) || typeof show !== 'boolean') {
     fail('ELECTRON_MBT_UNSUPPORTED_API', 'Unsupported BrowserWindow options');
   }
   return { width, height, title, show };
@@ -205,8 +208,8 @@ class ExperimentalRuntime {
       }
       setTitle(title) {
         if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
-        if (typeof title !== 'string' || title.length > 256) {
-          fail('ELECTRON_MBT_INVALID_ARGUMENT', 'Expected a window title of at most 256 code units');
+        if (!supportedTitle(title)) {
+          fail('ELECTRON_MBT_INVALID_ARGUMENT', 'Expected a well-formed window title of at most 256 code units');
         }
         const acknowledgement = runtime.host.request('set-window-title', this.id, this._generation, { title });
         if (acknowledgement.title !== title) {

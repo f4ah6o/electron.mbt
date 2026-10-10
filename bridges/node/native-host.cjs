@@ -118,9 +118,11 @@ class NativeHost extends EventEmitter {
       version: 1, session: this.session, request: ++this.nextRequest,
       window, generation, operation, payload,
     };
+    // Local encoding and registration failures occur before native I/O and
+    // must not revoke unrelated windows as if the peer had corrupted the wire.
+    const bytes = encodeEnvelope(request);
+    this.gate.register(request);
     try {
-      this.gate.register(request);
-      const bytes = encodeEnvelope(request);
       const result = this.addon.request(this.fd, decoder.decode(bytes), this.watchdogMs);
       const response = this.gate.accept(result);
       if (response.terminal !== 'success') {
@@ -179,11 +181,11 @@ class NativeHost extends EventEmitter {
     };
     let raw;
     try {
-      this.gate.register(request);
+      // No worker has received this request; local validation is not a
+      // peer-protocol fault and must not poison the native session.
       raw = decoder.decode(encodeEnvelope(request));
+      this.gate.register(request);
     } catch (error) {
-      this.gate.cancel(request.request);
-      if (error.code === 'ELECTRON_MBT_PROTOCOL') this.abort();
       return Promise.reject(error);
     }
     const deadlineNs = startedNs + BigInt(this.watchdogMs) * 1000000n;

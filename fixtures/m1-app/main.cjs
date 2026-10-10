@@ -28,6 +28,19 @@ app.whenReady().then(async () => {
   assert.equal(win.getTitle(), 'M1 title 日本語');
   assert.throws(() => win.setTitle(12), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
   assert.equal(win.getTitle(), 'M1 title 日本語');
+  for (const invalid of ['\uD800', '\uDC00', 'x'.repeat(255) + '\uD83D']) {
+    assert.throws(() => win.setTitle(invalid), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
+    assert.throws(() => new BrowserWindow({ title: invalid, show: false }),
+      { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
+    assert.equal(win.isDestroyed(), false);
+    assert.equal(app.isReady(), true);
+    assert.equal(win.getTitle(), 'M1 title 日本語');
+  }
+  const boundedEmojiTitle = 'x'.repeat(254) + '\uD83D\uDE00';
+  assert.equal(win.setTitle(boundedEmojiTitle), undefined);
+  assert.equal(win.getTitle(), boundedEmojiTitle);
+  assert.equal(win.setTitle('M1 title 日本語'), undefined);
+  assert.equal(win.getTitle(), 'M1 title 日本語');
   assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   assert.throws(() => win.webContents.send('danger'), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   assert.throws(() => new BrowserWindow({ webPreferences: { sandbox: false } }),
@@ -177,6 +190,7 @@ app.whenReady().then(async () => {
     destroyForced: true, nativeVisibilityRoundTrip: true,
     destroyedVisibilityRejected: true, closedListenerVisibilityRejected: true,
     nativeTitleRoundTrip: true, destroyedTitleRejected: true,
+    invalidSurrogateKeepsHost: true,
     unsafeOptionsRejected: true, quitCancellationAndReentry: true,
     quitCloseCancellation: true, willQuitCancellation: true,
     quitEventOrder: true, quitEventArguments: true,

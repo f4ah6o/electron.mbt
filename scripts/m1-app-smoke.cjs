@@ -23,6 +23,7 @@ assert.equal(observed.destroyForced, true);
 assert.equal(observed.nativeVisibilityRoundTrip, true);
 assert.equal(observed.nativeTitleRoundTrip, true);
 assert.equal(observed.destroyedTitleRejected, true);
+assert.equal(observed.invalidSurrogateKeepsHost, true);
 assert.equal(observed.quitCloseCancellation, true);
 assert.equal(observed.willQuitCancellation, true);
 assert.equal(observed.quitEventOrder, true);

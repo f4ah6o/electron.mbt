@@ -101,3 +101,30 @@ test('What: malformed get-title native success fails closed before reaching the 
   assert.equal(runtime.host.dead, true);
   assert.equal(window.isDestroyed(), true);
 });
+
+test('What: malformed UTF-16 titles are rejected locally without killing either native window', async () => {
+  const runtime = await readyRuntime();
+  const first = new runtime.BrowserWindow({ title: 'first', show: false });
+  const second = new runtime.BrowserWindow({ title: 'second', show: false });
+  const originalCount = runtime.windows.size;
+  for (const invalid of ['\uD800', '\uDC00', 'x'.repeat(255) + '\uD83D']) {
+    assert.throws(() => first.setTitle(invalid), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
+    assert.throws(() => new runtime.BrowserWindow({ title: invalid, show: false }),
+      { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
+    assert.equal(runtime.windows.size, originalCount);
+    assert.equal(runtime.app.isReady(), true);
+    assert.equal(runtime.host.dead, false);
+    assert.equal(first.isDestroyed(), false);
+    assert.equal(second.isDestroyed(), false);
+    assert.equal(first.getTitle(), 'first');
+    assert.equal(second.getTitle(), 'second');
+  }
+  const maxValid = 'x'.repeat(254) + '\uD83D\uDE00';
+  assert.equal(maxValid.length, 256);
+  assert.equal(first.setTitle(maxValid), undefined);
+  assert.equal(first.getTitle(), maxValid);
+  first.destroy();
+  second.destroy();
+  runtime.app.quit();
+  assert.equal(runtime.terminated, true);
+});

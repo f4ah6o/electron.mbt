@@ -384,7 +384,16 @@ static NSString *canonicalPath(NSString *path) {
       return;
     }
     [window.native orderFront:nil];
-    done(@"success", @{@"visible": @YES});
+    done(@"success", @{@"visible": @([window.native isVisible])});
+    return;
+  }
+  if ([operation isEqualToString:@"hide-window"]) {
+    [window.native orderOut:nil];
+    done(@"success", @{@"visible": @([window.native isVisible])});
+    return;
+  }
+  if ([operation isEqualToString:@"is-window-visible"]) {
+    done(@"success", @{@"visible": @([window.native isVisible])});
     return;
   }
   if ([operation isEqualToString:@"close-window"] || [operation isEqualToString:@"destroy-window"]) {

@@ -105,3 +105,17 @@ test "What: native close events share the monotonic private notification ledger"
   let unknown = "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":3,\"window\":4,\"generation\":1,\"operation\":\"cancel-close\",\"payload\":{}}"
   assert_true(session.observe(unknown) is Err(_))
 }
+
+///|
+test "What: MoonBit gates native visibility commands and their correlation" {
+  let prefix = "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":2,\"generation\":0,\"operation\":\""
+  for operation in ["show-window", "hide-window", "is-window-visible"] {
+    let raw = prefix + operation + "\",\"payload\":{}}"
+    assert_true(validate(raw) is Ok(_))
+    let session = Session::new("0123456789abcdef0123456789abcdef")
+    assert_true(session.register(raw) is Ok(_))
+    let completed = prefix + operation + "\",\"payload\":{\"visible\":true},\"terminal\":\"success\"}"
+    assert_true(session.accept(completed) is Ok(_))
+  }
+  assert_true(validate(prefix + "toggle-visibility\",\"payload\":{}}") is Err(_))
+}

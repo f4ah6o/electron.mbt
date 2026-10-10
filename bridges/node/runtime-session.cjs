@@ -171,7 +171,28 @@ class ExperimentalRuntime {
       show() {
         if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
         if (this._renderProcessGone) fail('ELECTRON_MBT_WEB_PROCESS_TERMINATED', 'WebKit content process terminated');
-        runtime.host.request('show-window', this.id, this._generation);
+        const acknowledgement = runtime.host.request('show-window', this.id, this._generation);
+        if (acknowledgement.visible !== true) {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Native window did not confirm visibility');
+        }
+      }
+      hide() {
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        const acknowledgement = runtime.host.request('hide-window', this.id, this._generation);
+        if (acknowledgement.visible !== false) {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Native window did not confirm hiding');
+        }
+      }
+      isVisible() {
+        if (this._destroyed) return false;
+        const acknowledgement = runtime.host.request('is-window-visible', this.id, this._generation);
+        if (typeof acknowledgement.visible !== 'boolean') {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Malformed native visibility acknowledgement');
+        }
+        return acknowledgement.visible;
       }
       _ackCancelledClose() {
         const acknowledgement = runtime.host.request('cancel-close', this.id, this._generation);

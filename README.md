@@ -2,7 +2,7 @@
 
 MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/open/0001-electron-compatible-lightweight-runtime.md).
 
-**Status: M0 gates open; experimental macOS M1 native-window path runs an unchanged CommonJS fixture. NOT an Electron-compatible runtime release.** The isolated synchronous `contextBridge` remains unresolved. Standard `run` and `pack` still reject; a limited `run --experimental-m1` profile can load static HTML in a real WKWebView with no preload or renderer IPC. The design issue remains open.
+**Status: M0 gates open; experimental macOS M1 native-window path runs an unchanged CommonJS fixture. NOT an Electron-compatible runtime release.** The isolated synchronous `contextBridge` remains unresolved. Standard `run` and `pack` still reject; a limited `run --experimental-m1` profile can load static HTML in a real WKWebView with no preload or renderer IPC. Native-backed show/hide/isVisible are available, but Electron visibility events and focus semantics are not yet verified. The design issue remains open.
 
 ## Implemented paths
 

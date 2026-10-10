@@ -16,6 +16,13 @@ app.whenReady().then(async () => {
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   });
   assert.equal(BrowserWindow.getAllWindows()[0], win);
+  assert.equal(win.isVisible(), false);
+  assert.equal(win.hide(), undefined);
+  assert.equal(win.isVisible(), false);
+  assert.equal(win.show(), undefined);
+  assert.equal(win.isVisible(), true);
+  assert.equal(win.hide(), undefined);
+  assert.equal(win.isVisible(), false);
   assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   assert.throws(() => win.webContents.send('danger'), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   assert.throws(() => new BrowserWindow({ webPreferences: { sandbox: false } }),
@@ -28,6 +35,7 @@ app.whenReady().then(async () => {
   assert.equal(typeof promise.then, 'function');
   // An immediate public sync operation must not race with queued WebKit loads.
   win.show();
+  assert.equal(win.isVisible(), true);
   let nodeTurnRan = false;
   await new Promise(resolve => setImmediate(() => {
     nodeTurnRan = true;
@@ -68,6 +76,8 @@ app.whenReady().then(async () => {
   win._generation = validGeneration;
   win.destroy();
   assert.equal(win.isDestroyed(), true);
+  assert.equal(win.isVisible(), false);
+  assert.throws(() => win.hide(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   const rapid = new BrowserWindow({ show: false });
   const inflight = rapid.loadFile('index.html');
   rapid.destroy();
@@ -79,7 +89,8 @@ app.whenReady().then(async () => {
     synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, overlappingLoadRejected: true, nodeEventLoopResponsive: true, immediateShowSafe: true,
     nativeDestroyErrorPreserved: true, inflightDestroySafe: true, closeCancelled: true,
     eventChainedLoad: true, listenerFailureNotNativeFailure: true,
-    destroyForced: true, unsafeOptionsRejected: true, quitCancellationAndReentry: true, compatible: false,
+    destroyForced: true, nativeVisibilityRoundTrip: true,
+    unsafeOptionsRejected: true, quitCancellationAndReentry: true, compatible: false,
   }));
   let cancelledQuit = 0;
   app.once('before-quit', event => { cancelledQuit++; event.preventDefault(); });

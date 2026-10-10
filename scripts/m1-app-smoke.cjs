@@ -20,6 +20,7 @@ assert.equal(observed.status, 'PASS');
 assert.equal(observed.realWebViewLoaded, true);
 assert.equal(observed.closeCancelled, true);
 assert.equal(observed.destroyForced, true);
+assert.equal(observed.nativeVisibilityRoundTrip, true);
 assert.equal(snapshot(root).sha256, before);
 console.log(JSON.stringify({
   probe: 'm1-unchanged-cjs-app', status: 'PASS',

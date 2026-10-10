@@ -22,6 +22,19 @@ test('What: spoofed session and duplicate terminal completion are rejected', () 
   assert.equal(gate.accept(done).terminal, 'success');
   assert.throws(() => gate.accept(done), { code: 'ELECTRON_MBT_PROTOCOL' });
 });
+test('What: native visibility commands remain MoonBit-gated and correlate their ACKs', () => {
+  for (const operation of ['show-window', 'hide-window', 'is-window-visible']) {
+    const message = envelope({ operation, window: 3, generation: 2 });
+    const gate = createSessionGate(session);
+    assert.deepEqual(decodeEnvelope(encodeEnvelope(message)), message);
+    gate.register(message);
+    assert.equal(gate.accept(encodeEnvelope({ ...message, payload: { visible: false },
+      terminal: 'success' })).operation, operation);
+    assert.equal(gate.pendingCount(), 0);
+  }
+  assert.throws(() => encodeEnvelope(envelope({ operation: 'toggle-visibility' })),
+    { code: 'ELECTRON_MBT_PROTOCOL' });
+});
 test('What: closed sessions reject subsequent messages', () => {
   const gate = createSessionGate(session);
   gate.close();

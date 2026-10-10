@@ -30,10 +30,19 @@ async function main() {
     });
     assert.equal(created.webViewAttached, true);
     assert.equal(created.visible, false);
+    assert.equal(host.request('is-window-visible', 1, 0).visible, false);
+    assert.equal(host.request('hide-window', 1, 0).visible, false);
+    assert.equal(host.request('show-window', 1, 0).visible, true);
+    assert.equal(host.request('is-window-visible', 1, 0).visible, true);
+    assert.equal(host.request('hide-window', 1, 0).visible, false);
     assert.equal(host.request('begin-load', 1, 1).generation, 1);
     const loading = host.requestAsync('load-file', 1, 1, {
       file: path.join(root, 'index.html'),
     });
+    assert.equal(host.request('show-window', 1, 1).visible, true);
+    assert.equal(host.request('is-window-visible', 1, 1).visible, true);
+    assert.equal(host.request('hide-window', 1, 1).visible, false);
+    assert.equal(host.request('is-window-visible', 1, 1).visible, false);
     assert.equal(host.request('show-window', 1, 1).visible, true);
     // If Node's main event loop is blocked during WK navigation, even an
     // immediate callback cannot execute before the load's response.
@@ -50,6 +59,12 @@ async function main() {
       file: path.join(root, 'index.html'),
     }), { code: 'ELECTRON_MBT_FILE_OR_GENERATION_DENIED' });
     assert.equal(host.request('begin-load', 1, 2).generation, 2);
+    assert.throws(() => host.request('hide-window', 1, 1), {
+      code: 'ELECTRON_MBT_STALE_DOCUMENT',
+    });
+    assert.throws(() => host.request('is-window-visible', 1, 1), {
+      code: 'ELECTRON_MBT_STALE_DOCUMENT',
+    });
     await assert.rejects(host.requestAsync('load-file', 1, 2, {
       file: path.resolve(root, '../oracle/index.html'),
     }), { code: 'ELECTRON_MBT_FILE_OR_GENERATION_DENIED' });
@@ -67,7 +82,8 @@ async function main() {
       backend: hello.backend, childPid: hello.pid, builtWindow: true,
       loadDidFinish: true, outOfRootPathRejected: true,
       staleGenerationRejected: true, destroyed: true,
-      sourceHashPreserved: true, nodeEventLoopResponsive: true, childExitedCleanly: true, compatible: false,
+      sourceHashPreserved: true, nodeEventLoopResponsive: true, childExitedCleanly: true,
+      nativeVisibilityRoundTrip: true, staleVisibilityDenied: true, compatible: false,
     }));
   } finally {
     if (!closed) host.abort();

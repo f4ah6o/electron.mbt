@@ -49,7 +49,7 @@ app.whenReady().then(async () => {
   assert.equal(win.getTitle(), boundedEmojiTitle);
   assert.equal(win.setTitle('M1 title 日本語'), undefined);
   assert.equal(win.getTitle(), 'M1 title 日本語');
-  assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
+  assert.deepEqual(win.getBounds(), initialBounds);
   assert.throws(() => win.webContents.send('danger'), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   assert.throws(() => new BrowserWindow({ webPreferences: { sandbox: false } }),
     { code: 'ELECTRON_MBT_UNSUPPORTED_API' });

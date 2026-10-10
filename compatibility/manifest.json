@@ -86,10 +86,11 @@
         "core/runtime_wbtest.mbt",
         "tests/transport.test.cjs",
         "scripts/m1-app-smoke.cjs",
-        "scripts/m1-macos-smoke.cjs"
+        "scripts/m1-macos-smoke.cjs",
+        "scripts/m1-slow-load.cjs"
       ],
       "evidence": [],
-      "gap": "Native AppKit BrowserWindow subset exercised; OS-originated close, full synchronous semantics, reentrancy and Electron event-order differential remain open."
+      "gap": "Native BrowserWindow subset, cancelable close, reentrant quit, and worker-backed slow-load demonstrated; OS close negotiation, complete event ordering and all Electron async scheduling remain unverified."
     },
     {
       "id": "C",
@@ -123,10 +124,12 @@
       "scope": "sender and document authority",
       "status": "partial",
       "tests": [
-        "core/runtime_wbtest.mbt"
+        "core/runtime_wbtest.mbt",
+        "scripts/m1-renderer-delegate-sim.cjs",
+        "scripts/m1-invalid-wire.cjs"
       ],
       "evidence": [],
-      "gap": "No native sender-attestation adapter; caller-supplied metadata is not authentication."
+      "gap": "Private native events revoke MoonBit document grants and malformed native identity frames fail closed; real WebKit crash injection, native sender attestation and complete renderer/frame origin policy remain open."
     },
     {
       "id": "G",
@@ -142,10 +145,11 @@
       "status": "partial",
       "tests": [
         "tests/transport.test.cjs",
-        "scripts/m1-macos-smoke.cjs"
+        "scripts/m1-macos-smoke.cjs",
+        "scripts/m1-renderer-delegate-sim.cjs"
       ],
       "evidence": [],
-      "gap": "Native child shutdown/crash and private transport tested; complete WebView/GPU process-tree accounting and fault injection remain open."
+      "gap": "Native child failure and cleanup, load cancellation, and simulated WKWebView termination callback tested; real WebKit crash and complete host/renderer/GPU process-tree accounting not verified."
     },
     {
       "id": "I",
@@ -200,7 +204,10 @@
     "engine": "AppKit/WKWebView system engine",
     "tests": [
       "scripts/m1-macos-smoke.cjs",
-      "scripts/m1-app-smoke.cjs"
+      "scripts/m1-app-smoke.cjs",
+      "scripts/m1-invalid-wire.cjs",
+      "scripts/m1-slow-load.cjs",
+      "scripts/m1-renderer-delegate-sim.cjs"
     ],
     "exposed": [
       "app.whenReady",
@@ -222,10 +229,15 @@
       "synchronous isolated contextBridge unsupported",
       "no renderer IPC or privileged preload",
       "macOS native-close control disabled",
-      "loadFile Promise does not imply Electron-equivalent Node event scheduling",
+      "loadFile is worker-backed and tested against a slow WebKit page; full Electron event ordering remains unverified",
       "no gpui.mbt integration or native sender attestation",
       "no third-party Electron app acceptance",
-      "no full security/release/size evidence"
+      "no full security/release/size evidence",
+      "concurrent loadFile is fail-closed with ELECTRON_MBT_NAVIGATION_IN_PROGRESS",
+      "WebKit delegate termination simulated in CI; real WebKit process crash E2E not run"
+    ],
+    "experimentalSignals": [
+      "runtime-web-content-gone (not an Electron render-process-gone event)"
     ]
   }
 }

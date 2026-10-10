@@ -24,9 +24,9 @@ Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter in
 
 ## Experimental M1 native execution (partial)
 
-The standalone native macOS host and a thin Node runner are now implemented on PR #2. The private socketpair passes bounded envelopes through the compiled MoonBit session gate, with native AppKit windows and WKWebView navigation on the main thread. The experiment exposes a small CJS app/BrowserWindow subset under the explicit --experimental-m1 flag only; unflagged run still rejects. The same test app main and dependency resolve one Electron facade without rewrites. See [M1 boundaries](0002-native-host.md).
+The standalone native macOS host and a thin Node runner are now implemented on PR #2. Private control/navigation/event socketpairs pass bounded envelopes through compiled MoonBit session gates, with native AppKit windows and WKWebView navigation on the main thread. Navigation waits run off the Node main thread; a separate event channel invalidates MoonBit document grants when native WebKit reports content termination. The experiment exposes a small CJS app/BrowserWindow subset under the explicit --experimental-m1 flag only; unflagged run still rejects. The same test app main and dependency resolve one Electron facade without rewrites. See [M1 boundaries](0002-native-host.md).
 
-Actual WKWebView create/load/show/destroy and a CJS main fixture were tested in macOS CI. The tests do not prove synchronous contextBridge, Electron's complete event ordering, renderer-origin attestation, interactive IME/accessibility, or a real third-party app. No acceptance row becomes verified.
+Actual WKWebView create/load/show/destroy and a CJS main fixture were tested in macOS CI. Slow HTML, native wire identity rejection, reentrant quit, crash cleanup and simulated WKWebView termination callback are also covered. The tests do not prove synchronous contextBridge, Electron's complete event ordering, a real WebKit renderer crash, renderer-origin attestation, interactive IME/accessibility, or a real third-party app. No acceptance row becomes verified.
 
 ## Open milestone gates
 

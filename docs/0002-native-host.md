@@ -9,16 +9,20 @@ Install the pinned MoonBit toolchain and Node 24.21.0 with matching Node-API hea
 1. npm run build
 2. node scripts/build-macos-host.cjs
 3. node scripts/m1-macos-smoke.cjs
-4. node scripts/m1-app-smoke.cjs
-5. node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1
+4. node scripts/m1-invalid-wire.cjs
+5. node scripts/m1-app-smoke.cjs
+6. node scripts/m1-slow-load.cjs
+7. node scripts/build-macos-host.cjs --simulate-webkit-termination
+8. node scripts/m1-renderer-delegate-sim.cjs
+9. node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1
 
 Ordinary run and pack still fail closed. The explicit --experimental-m1 switch opts into a narrow test profile, **not** compatibility certification. The CJS fixture and dependency both import electron without rewriting app source.
 
 ## Actual ownership and native plumbing
 
 1. MoonBit core owns application and window lifecycle, close cancellation, destruction and document generations. MoonBit transport owns the strict parser, bounds, session ledger, replay defense and exactly-once correlation.
-2. A Node-API leaf creates a private POSIX socketpair; the native executable receives an inherited child descriptor, an ephemeral session value and a canonical app root. Frames are length-prefixed (max 1 MiB) with a monotonic watchdog; there is no public TCP listener or renderer message handler.
-3. AppKit/WKWebView run on the native main thread. A worker handles only private framed I/O and schedules UI actions. The host acknowledges create, show, close, destroy and shutdown; load-file completes on WKWebView didFinishNavigation rather than first paint.
+2. A Node-API leaf creates private POSIX socketpairs for synchronous control, asynchronous navigation and native events. The native executable receives inherited child descriptors, an ephemeral session value and a canonical app root. Frames are length-prefixed (max 1 MiB) with a monotonic watchdog; there is no public TCP listener or renderer message handler.
+3. AppKit/WKWebView run on the native main thread. Native I/O workers queue UI actions; a Node worker thread waits for WK navigation responses without blocking the Node main event loop. A separate bounded socket streams native WebKit termination events into the MoonBit session verifier. The host acknowledges create, show, close, destroy and shutdown; load-file completes on WKWebView didFinishNavigation rather than first paint.
 4. WKWebView has a nonpersistent data store and no preload, Node globals or generic evaluate-script API. The host independently canonicalizes paths, restricts file access to the app root and denies external or alternate main-frame navigation.
 5. Correlation error, timeout or EOF poisons the channel. Native operation errors are separately typed. After shutdown, the host process exits; a bounded kill fallback handles a stuck child.
 
@@ -26,16 +30,16 @@ Ordinary run and pack still fail closed. The explicit --experimental-m1 switch o
 
 App: whenReady, isReady, ready event, quit, getName, getVersion and getAppPath.
 
-BrowserWindow: synchronous construction after ready; width, height, title, show and explicitly safe webPreferences only; loadFile, show, close (cancelable), destroy, isDestroyed, getAllWindows and webContents did-finish-load event. A newer queued load invalidates an older generation. The window constructor only returns after a real native WKWebView has been created.
+BrowserWindow: synchronous construction after ready; width, height, title, show and explicitly safe webPreferences only; loadFile, show, close (cancelable), destroy, isDestroyed, getAllWindows and webContents did-finish-load event. Each load reserves its generation synchronously; a concurrent loadFile is explicitly rejected until the current load settles. The renderer is not allowed to initiate a new main-frame navigation or same-file reload. Native WebKit termination emits an experimental runtime-web-content-gone signal and invalidates document grants through MoonBit. The window constructor only returns after a real native WKWebView has been created.
 
 Explicitly unsupported: preload, contextBridge, ipcMain, ipcRenderer, nodeIntegration:true, sandbox:false, contextIsolation:false, webSecurity:false, ESM Electron imports, native addons, ASAR, unlisted options, getBounds, webContents.send, DevTools, OS-driven close event negotiation and all other Electron APIs. The native close button remains disabled until OS-to-main cancellation is proven.
 
 ## Unfinished acceptance and security
 
-- Some synchronous host calls block Node, including the experimental Promise-returning loadFile operation. This is not proof of equivalent Electron event scheduling or arbitrary reentrancy behavior.
+- Short control operations still block Node synchronously, but the Promise-returning loadFile operation uses a separate worker/channel. CI verifies a Node timer stays responsive during a deliberately slow WebKit document. Arbitrary Electron reentrancy/event ordering and true multi-navigation cancellation remain unverified.
 - CI proves real WKWebView and an unchanged CJS fixture, but not a real third-party app or the same complete Electron oracle. WKContentWorld observations do not demonstrate a synchronous cross-realm function proxy.
 - Renderer-to-host IPC does not exist. A random session value over a private inherited socket is not OS-level sender/frame/document attestation. Main remains a trusted Node process.
-- Main-frame navigation checks are implemented; remote subresource traffic, storage origin, popup handling, IME/focus/accessibility, content process isolation and permission equivalence have not been fully audited or accepted.
+- Main-frame navigation checks and document revocation are implemented; native frames with fractional/rounded identifiers are rejected before dispatch. CI exercises a **simulated public WKWebView termination delegate callback**, but not an actual WebKit renderer kill. Remote subresource traffic, storage origin, popup handling, IME/focus/accessibility, process isolation and permission equivalence have not been fully audited or accepted.
 - gpui.mbt integration, signing, distribution, real app acceptance, process-tree fault accounting, cold/warm size/performance measurement, and Windows/Linux backends remain open.
 
 Never treat the CI smoke, old Electron baseline or successful compilation as a verified A-J compatibility row. Preserve test evidence and exact pinned environment versions.

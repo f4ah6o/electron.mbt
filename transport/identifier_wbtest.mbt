@@ -4,10 +4,10 @@ test "What: exact decimal identifiers cannot alias pending integers by rounding"
   assert_true(session.register(wire("1", "{}", "")) is Ok(_))
   for id in ["1.00000000000000001", "0.99999999999999999", "100000000000000001e-17", "1e-400", "9007199254740991.1", "9007199254740990.9"] {
     assert_true(validate(wire(id, "{}", "")) is Err(_))
-    assert_true(session.accept(wire(id, "{}", ",\"terminal\":\"success\"")) is Err(_))
+    assert_true(session.accept(wire(id, "{\"visible\":true}", ",\"terminal\":\"success\"")) is Err(_))
     assert_eq(session.pending_count(), 1)
   }
-  assert_true(session.accept(wire("1", "{}", ",\"terminal\":\"success\"")) is Ok(_))
+  assert_true(session.accept(wire("1", "{\"visible\":true}", ",\"terminal\":\"success\"")) is Ok(_))
 }
 
 ///|

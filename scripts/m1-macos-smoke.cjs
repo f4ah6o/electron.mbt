@@ -30,19 +30,30 @@ async function main() {
     });
     assert.equal(created.webViewAttached, true);
     assert.equal(created.visible, false);
-    const loaded = host.request('load-file', 1, 1, {
+    assert.equal(host.request('begin-load', 1, 1).generation, 1);
+    const loading = host.requestAsync('load-file', 1, 1, {
       file: path.join(root, 'index.html'),
     });
+    assert.equal(host.request('show-window', 1, 1).visible, true);
+    // If Node's main event loop is blocked during WK navigation, even an
+    // immediate callback cannot execute before the load's response.
+    let mainThreadProgress = false;
+    await new Promise(resolve => setImmediate(() => {
+      mainThreadProgress = true;
+      resolve();
+    }));
+    assert.equal(mainThreadProgress, true);
+    const loaded = await loading;
     assert.equal(loaded.didFinishLoad, true);
     assert.match(loaded.url, /^file:\/\//);
-    assert.equal(host.request('show-window', 1, 1).visible, true);
-    assert.throws(() => host.request('load-file', 1, 1, {
+    await assert.rejects(host.requestAsync('load-file', 1, 1, {
       file: path.join(root, 'index.html'),
     }), { code: 'ELECTRON_MBT_FILE_OR_GENERATION_DENIED' });
-    assert.throws(() => host.request('load-file', 1, 2, {
+    assert.equal(host.request('begin-load', 1, 2).generation, 2);
+    await assert.rejects(host.requestAsync('load-file', 1, 2, {
       file: path.resolve(root, '../oracle/index.html'),
     }), { code: 'ELECTRON_MBT_FILE_OR_GENERATION_DENIED' });
-    assert.equal(host.request('destroy-window', 1, 1).destroyed, true);
+    assert.equal(host.request('destroy-window', 1, 2).destroyed, true);
     assert.throws(() => host.request('show-window', 1, 1), {
       code: 'ELECTRON_MBT_WINDOW_UNKNOWN',
     });
@@ -54,9 +65,9 @@ async function main() {
     console.log(JSON.stringify({
       status: 'PASS', probe: 'm1-native-host-lifecycle',
       backend: hello.backend, childPid: hello.pid, builtWindow: true,
-      loadDidFinish: true, symlinkEscapeRejected: true,
+      loadDidFinish: true, outOfRootPathRejected: true,
       staleGenerationRejected: true, destroyed: true,
-      sourceHashPreserved: true, childExitedCleanly: true, compatible: false,
+      sourceHashPreserved: true, nodeEventLoopResponsive: true, childExitedCleanly: true, compatible: false,
     }));
   } finally {
     if (!closed) host.abort();

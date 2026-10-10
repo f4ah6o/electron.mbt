@@ -156,7 +156,7 @@ fn WireParser::value(self : WireParser, depth : Int) -> Json raise BadProtocol {
           if n - n != 0.0 || (n == 0.0 && 1.0 / n < 0.0) {
             raise BadProtocol("Unsupported JSON number")
           }
-          value
+          Json::number(n, repr=self.raw[start:self.position].to_string())
         }
         _ => raise BadProtocol("Expected JSON scalar")
       }
@@ -189,7 +189,11 @@ fn payload_ok(value : Json, depth : Int, remaining : Ref[Int]) -> Bool {
 ///|
 fn identifier(value : Json) -> Int64 raise BadProtocol {
   match value {
-    Number(n, ..) => {
+    Number(n, repr~) => {
+      match repr {
+        Some(token) => return exact_identifier(token)
+        None => ()
+      }
       if n < 0.0 || n > 9007199254740991.0 || n - n != 0.0 || (n == 0.0 && 1.0 / n < 0.0) {
         raise BadProtocol("Invalid identifier")
       }

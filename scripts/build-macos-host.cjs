@@ -9,11 +9,19 @@ if (process.platform !== 'darwin') {
 }
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'platform/macos/NativeHost.m');
-const output = path.join(root, 'dist/electron-mbt-native-host');
+const testFault = process.argv.length === 3 &&
+  process.argv[2] === '--fault-webkit';
+if (process.argv.length > (testFault ? 3 : 2)) {
+  console.error('ELECTRON_MBT_USAGE: build-macos-host.cjs [--fault-webkit]');
+  process.exit(1);
+}
+const output = path.join(root, 'dist',
+  testFault ? 'electron-mbt-native-host-webkit-fault' : 'electron-mbt-native-host');
 fs.mkdirSync(path.dirname(output), { recursive: true });
 const args = [
   '-fobjc-arc', '-fblocks', '-O2', '-Wall', '-Wextra', '-Werror',
-  '-mmacosx-version-min=12.0', source, '-framework', 'AppKit',
+  '-mmacosx-version-min=12.0', ...(testFault ? ['-DELECTRON_MBT_TEST_WEBKIT_KILL'] : []),
+  source, '-framework', 'AppKit',
   '-framework', 'WebKit', '-o', output,
 ];
 const result = spawnSync(process.env.CC || 'clang', args, {

@@ -56,7 +56,7 @@ function fileWithin(root, file) {
   return real;
 }
 class ExperimentalRuntime {
-  constructor(appInfo) {
+  constructor(appInfo, options = {}) {
     this.core = require('../../dist/core.cjs');
     this.runtime = this.core.new_runtime();
     this.appInfo = appInfo;
@@ -64,7 +64,7 @@ class ExperimentalRuntime {
     this.ready = false;
     this.terminated = false;
     this.quitting = false;
-    this.host = new NativeHost(appInfo.root);
+    this.host = new NativeHost(appInfo.root, options.nativeHostOptions || {});
     try {
       this.host.request('hello');
       this.host.request('ready');

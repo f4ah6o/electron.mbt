@@ -396,6 +396,24 @@ static NSString *canonicalPath(NSString *path) {
     done(@"success", @{@"visible": @([window.native isVisible])});
     return;
   }
+  if ([operation isEqualToString:@"get-window-title"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    done(@"success", @{@"title": window.native.title ?: @""});
+    return;
+  }
+  if ([operation isEqualToString:@"set-window-title"]) {
+    NSString *title = payload[@"title"];
+    if (payload.count != 1 || ![title isKindOfClass:[NSString class]] || title.length > 256) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+      return;
+    }
+    window.native.title = title;
+    done(@"success", @{@"title": window.native.title ?: @""});
+    return;
+  }
   if ([operation isEqualToString:@"close-window"] || [operation isEqualToString:@"destroy-window"]) {
     [window tearDown];
     [self.windows removeObjectForKey:windowID];

@@ -93,7 +93,8 @@
         "scripts/m1-begin-load-failure.cjs",
         "scripts/m1-native-close.cjs",
         "scripts/m1-native-close-race.cjs",
-        "tests/runtime-quit.test.cjs"
+        "tests/runtime-quit.test.cjs",
+        "tests/runtime-title.test.cjs"
       ],
       "evidence": [],
       "gap": "Native AppKit close gestures and app.quit before-quit/close/will-quit cancellation are mediated by native ACKs and MoonBit state. Queued stale notifications are ignored in deterministic tests. Host-loss fault injection prevents false normal-quit events; real macOS CJS tests validate quit event arguments. Renderer beforeunload/unload, human physical UI and complete Electron event ordering remain unverified."

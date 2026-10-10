@@ -91,12 +91,12 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-app-smoke.cjs 2>&1 | tee evidence/m1-cjs-app.log
-      - name: Build test-only renderer-fault AppKit host
-        run: node scripts/build-macos-host.cjs --fault-webkit
-      - name: Validate native WebKit death notification and document revocation
+      - name: Build test-only WebKit termination-callback simulator
+        run: node scripts/build-macos-host.cjs --simulate-webkit-termination
+      - name: Validate simulated WebKit termination notification and MoonBit revocation
         shell: bash
         run: |
-          node scripts/m1-renderer-crash.cjs 2>&1 | tee evidence/m1-renderer-crash.log
+          node scripts/m1-renderer-delegate-sim.cjs 2>&1 | tee evidence/m1-renderer-delegate-sim.log
       - name: Install the separate pinned test oracle
         shell: bash
         run: |

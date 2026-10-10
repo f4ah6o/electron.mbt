@@ -11,7 +11,7 @@
 #import <string.h>
 #import <errno.h>
 #import <math.h>
-#import <signal.h>
+
 
 static const uint32_t kMaxFrame = 1048576;
 static const int kControlChannel = 3;
@@ -144,17 +144,17 @@ static NSString *canonicalPath(NSString *path) {
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
   (void)webView; (void)navigation;
   [self completeLoad:YES reason:@""];
-#if defined(ELECTRON_MBT_TEST_WEBKIT_KILL)
-  // Compiled only into a separate CI fault binary, never production output.
-  // Send SIGKILL to this WKWebView's observed WebContent PID, not to an
-  // arbitrary process found by name or to the entire WebKit process group.
-  pid_t renderer = webView.webContentProcessIdentifier;
-  if (renderer > 0) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC),
-                   dispatch_get_main_queue(), ^{
-      (void)kill(renderer, SIGKILL);
-    });
-  }
+#if defined(ELECTRON_MBT_TEST_TERMINATION_CALLBACK)
+  // A separate CI-only binary invokes the public delegate callback, not
+  // a real WebKit subprocess kill. It tests event/revocation plumbing only.
+  __weak MBTWindow *weakWindow = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC),
+                 dispatch_get_main_queue(), ^{
+    MBTWindow *window = weakWindow;
+    if (window && window.contentAlive) {
+      [window webViewWebContentProcessDidTerminate:window.web];
+    }
+  });
 #endif
 }
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation
@@ -176,6 +176,7 @@ static NSString *canonicalPath(NSString *path) {
   if (newlyTerminated && self.contentGone) self.contentGone(self.generation);
 }
 - (void)tearDown {
+  self.contentAlive = NO;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   self.web.navigationDelegate = nil;
   self.web.UIDelegate = nil;

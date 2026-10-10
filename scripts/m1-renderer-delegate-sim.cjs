@@ -9,7 +9,7 @@ async function main() {
   const app = inspectApp(path.resolve(__dirname, '../fixtures/m1-app'));
   const runtime = new ExperimentalRuntime(app, {
     nativeHostOptions: {
-      testingExecutable: path.resolve(__dirname, '../dist/electron-mbt-native-host-webkit-fault'),
+      testingExecutable: path.resolve(__dirname, '../dist/electron-mbt-native-host-termination-sim'),
     },
   });
   let timeout;
@@ -19,7 +19,7 @@ async function main() {
     const window = new runtime.BrowserWindow({ show: false });
     const gone = new Promise((resolve, reject) => {
       timeout = setTimeout(() => reject(new Error(
-        'WKWebView content crash did not reach the MoonBit event gate')), 9000);
+        'Simulated WKWebView delegate termination did not reach the MoonBit event gate')), 9000);
       runtime.app.once('runtime-web-content-gone', resolve);
     });
     const loaded = window.loadFile('index.html');
@@ -37,10 +37,10 @@ async function main() {
     runtime.quit();
     assert.equal(runtime.terminated, true);
     console.log(JSON.stringify({
-      probe: 'm1-webkit-renderer-fault', status: 'PASS',
-      realWebContentProcessKilled: true, nativeEventValidatedByMoonBit: true,
+      probe: 'm1-webkit-delegate-termination-simulation', status: 'PASS',
+      delegateCallbackSimulated: true, nativeEventValidatedByMoonBit: true,
       documentGenerationRevoked: true, subsequentShowRejected: true,
-      hostStayedAliveForCleanup: true, compatible: false,
+      hostStayedAliveForCleanup: true, realWebKitCrashTested: false, compatible: false,
     }));
   } finally {
     if (timeout) clearTimeout(timeout);

@@ -74,6 +74,8 @@ jobs:
           path: dist/
       - name: Build macOS native control channel
         run: node scripts/build-native.cjs
+      - name: Build standalone macOS AppKit WebView host
+        run: node scripts/build-macos-host.cjs
       - name: Test complete Node boundary on macOS
         shell: bash
         run: |
@@ -81,6 +83,10 @@ jobs:
           npm test 2>&1 | tee evidence/node-tests.log
       - name: Probe actual WKContentWorld observations
         run: node scripts/macos-probe.cjs
+      - name: Smoke-test real AppKit WKWebView host lifecycle
+        shell: bash
+        run: |
+          node scripts/m1-macos-smoke.cjs 2>&1 | tee evidence/native-host-smoke.log
       - name: Install the separate pinned test oracle
         shell: bash
         run: |

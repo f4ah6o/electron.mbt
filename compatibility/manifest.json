@@ -96,7 +96,7 @@
         "tests/runtime-quit.test.cjs"
       ],
       "evidence": [],
-      "gap": "Native AppKit close gestures and app.quit before-quit/close/will-quit cancellation are mediated by native ACKs and MoonBit state. Queued stale notifications are ignored in deterministic tests. Renderer beforeunload/unload, human physical UI and complete Electron event ordering remain unverified."
+      "gap": "Native AppKit close gestures and app.quit before-quit/close/will-quit cancellation are mediated by native ACKs and MoonBit state. Queued stale notifications are ignored in deterministic tests. Host-loss fault injection prevents false normal-quit events; real macOS CJS tests validate quit event arguments. Renderer beforeunload/unload, human physical UI and complete Electron event ordering remain unverified."
     },
     {
       "id": "C",
@@ -257,7 +257,7 @@
       "worker and native host process cleanup tested for injected faults, not full process-tree verification",
       "native close cancel ACK carries monotonic event identity, stale queued close notifications are ignored",
       "native NSWindow-backed visibility is implemented; Electron show/hide events, focus and Page Visibility API parity are unverified",
-      "app.quit respects native-backed close, before-quit and will-quit cancellation; renderer beforeunload/unload is not implemented"
+      "app.quit respects native-backed close, before-quit and will-quit cancellation, supplies (event, exitCode=0), and suppresses normal quit after host loss; renderer beforeunload/unload is not implemented"
     ],
     "experimentalSignals": [
       "runtime-web-content-gone (not an Electron render-process-gone event)",

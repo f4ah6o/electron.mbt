@@ -22,8 +22,8 @@ app.whenReady().then(async () => {
     { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   let loaded = 0;
   win.webContents.on('did-finish-load', () => { loaded++; });
-  const superseded = win.loadFile('index.html');
   const promise = win.loadFile('index.html');
+  const overlapping = win.loadFile('index.html');
   assert.equal(typeof promise.then, 'function');
   // An immediate public sync operation must not race with queued WebKit loads.
   win.show();
@@ -33,7 +33,7 @@ app.whenReady().then(async () => {
     resolve();
   }));
   assert.equal(nodeTurnRan, true);
-  await assert.rejects(superseded, { code: 'ELECTRON_MBT_STALE_DOCUMENT' });
+  await assert.rejects(overlapping, { code: 'ELECTRON_MBT_NAVIGATION_IN_PROGRESS' });
   await promise;
   assert.equal(loaded, 1);
   win.show();
@@ -58,7 +58,7 @@ app.whenReady().then(async () => {
   assert.equal(BrowserWindow.getAllWindows().length, 0);
   console.log(JSON.stringify({
     fixture: 'm1-cjs', status: 'PASS', readyOrder: true,
-    synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, staleLoadCancelled: true, nodeEventLoopResponsive: true, immediateShowSafe: true,
+    synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, overlappingLoadRejected: true, nodeEventLoopResponsive: true, immediateShowSafe: true,
     nativeDestroyErrorPreserved: true, inflightDestroySafe: true, closeCancelled: true,
     destroyForced: true, unsafeOptionsRejected: true, compatible: false,
   }));

@@ -67,6 +67,8 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic, copy) NSString *loadedFile;
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
 @property(nonatomic, copy) void (^contentGone)(long long);
+@property(nonatomic, copy) void (^closeRequested)(long long);
+@property(nonatomic) BOOL closeRequestOutstanding;
 @property(nonatomic) long long generation;
 @property(nonatomic) long long loadedGeneration;
 @property(nonatomic) BOOL permittedClose;
@@ -89,10 +91,10 @@ static NSString *canonicalPath(NSString *path) {
                                   configuration:config];
     self.web.navigationDelegate = self;
     self.web.UIDelegate = self;
-    // The close button is intentionally absent until native-to-main close
-    // cancellation can be proven, rather than silently ignoring Electron's close event.
+    // The native close button never destroys the window without a matching
+    // MoonBit/Node main-process cancellation decision and native close ACK.
     self.native = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, width, height)
-      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskResizable)
+      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
       backing:NSBackingStoreBuffered defer:NO];
     self.native.releasedWhenClosed = NO;
     self.native.delegate = self;
@@ -102,6 +104,7 @@ static NSString *canonicalPath(NSString *path) {
     self.loadedGeneration = 0;
     self.contentAlive = YES;
     self.allowNextNavigation = NO;
+    self.closeRequestOutstanding = NO;
     if (visible) [self.native orderFront:nil];
   }
   return self;
@@ -113,7 +116,14 @@ static NSString *canonicalPath(NSString *path) {
 }
 - (BOOL)windowShouldClose:(NSWindow *)sender {
   (void)sender;
-  return self.permittedClose;
+  if (self.permittedClose) return YES;
+  // AppKit delegate callbacks run on the UI thread. Never synchronously
+  // consult a Node event handler from here (which could deadlock the host).
+  if (!self.closeRequestOutstanding) {
+    self.closeRequestOutstanding = YES;
+    if (self.closeRequested) self.closeRequested(self.generation);
+  }
+  return NO;
 }
 - (void)webView:(WKWebView *)webView
     decidePolicyForNavigationAction:(WKNavigationAction *)action
@@ -177,6 +187,8 @@ static NSString *canonicalPath(NSString *path) {
 }
 - (void)tearDown {
   self.contentAlive = NO;
+  self.closeRequestOutstanding = NO;
+  self.closeRequested = nil;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   self.web.navigationDelegate = nil;
   self.web.UIDelegate = nil;
@@ -194,6 +206,8 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic, strong) dispatch_queue_t notificationQueue;
 @property(nonatomic) long long nextEvent;
 - (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation;
+- (void)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation;
+- (void)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID generation:(long long)generation;
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done;
 @end
 
@@ -207,18 +221,26 @@ static NSString *canonicalPath(NSString *path) {
   }
   return self;
 }
-- (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation {
+- (void)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID
+                generation:(long long)generation {
   if (self.nextEvent == 9007199254740991LL) _exit(2);
   NSNumber *eventID = @(++self.nextEvent);
   NSDictionary *notice = @{
     @"version": @1, @"session": self.session, @"request": eventID,
     @"window": windowID, @"generation": @(generation),
-    @"operation": @"web-content-gone", @"payload": @{}
+    @"operation": operation, @"payload": @{}
   };
-  // The WKWebView delegate runs on the UI thread. Never block it on socket I/O.
+  // Delegate callbacks run on AppKit's main thread. Never perform blocking
+  // native-to-Node I/O here; the dedicated serial event queue preserves order.
   dispatch_async(self.notificationQueue, ^{
     if (!writeFrame(kEventChannel, notice)) _exit(2);
   });
+}
+- (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation {
+  [self publishNativeEvent:@"web-content-gone" windowID:windowID generation:generation];
+}
+- (void)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation {
+  [self publishNativeEvent:@"native-close-request" windowID:windowID generation:generation];
 }
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done {
   if (![NSThread isMainThread]) { done(@"failure", @{@"code": @"ELECTRON_MBT_THREAD"}); return; }
@@ -264,7 +286,27 @@ static NSString *canonicalPath(NSString *path) {
     window.contentGone = ^(long long eventGeneration) {
       [weakHost publishContentGone:windowID generation:eventGeneration];
     };
+    window.closeRequested = ^(long long eventGeneration) {
+      [weakHost publishCloseRequested:windowID generation:eventGeneration];
+    };
     self.windows[windowID] = window;
+#if defined(ELECTRON_MBT_TEST_NATIVE_CLOSE)
+    // A standalone test build invokes the actual NSWindow close action twice.
+    // The first should be cancellable by main, the second should close only
+    // after native ACK. This is not a physical mouse/keyboard test.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC),
+                   dispatch_get_main_queue(), ^{
+      MBTHost *host = weakHost;
+      MBTWindow *candidate = host.windows[windowID];
+      if (candidate) [candidate.native performClose:nil];
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1300 * NSEC_PER_MSEC),
+                   dispatch_get_main_queue(), ^{
+      MBTHost *host = weakHost;
+      MBTWindow *candidate = host.windows[windowID];
+      if (candidate) [candidate.native performClose:nil];
+    });
+#endif
     done(@"success", @{@"webViewAttached": @YES,
       @"visible": visible, @"width": width, @"height": height});
     return;
@@ -316,6 +358,11 @@ static NSString *canonicalPath(NSString *path) {
   }
   if (generation.longLongValue != window.generation) {
     done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+    return;
+  }
+  if ([operation isEqualToString:@"cancel-close"]) {
+    window.closeRequestOutstanding = NO;
+    done(@"success", @{@"cancelled": @YES});
     return;
   }
   if ([operation isEqualToString:@"show-window"]) {

@@ -107,7 +107,7 @@ pub fn Session::close(self : Session) -> Array[Int64] {
 pub fn Session::observe(self : Session, raw : String) -> Result[Unit, String] {
   try {
     let envelope = self.read(raw)
-    if envelope.operation != "web-content-gone" || envelope.terminal ||
+    if !(envelope.operation == "web-content-gone" || envelope.operation == "native-close-request") || envelope.terminal ||
         envelope.window <= 0L || envelope.request <= self.last_event {
       raise BadProtocol("Invalid or replayed native event")
     }

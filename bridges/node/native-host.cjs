@@ -155,10 +155,10 @@ class NativeHost extends EventEmitter {
       try {
         const envelope = this.gate.observe(bytes);
         if (envelope.session !== this.session ||
-            envelope.operation !== 'web-content-gone') {
+            !['web-content-gone', 'native-close-request'].includes(envelope.operation)) {
           throw runtimeError('ELECTRON_MBT_PROTOCOL', 'Unauthenticated or unexpected native event');
         }
-        this.emit('web-content-gone', {
+        this.emit(envelope.operation, {
           window: envelope.window, generation: envelope.generation,
         });
       } catch (error) { this.abort(); return; }

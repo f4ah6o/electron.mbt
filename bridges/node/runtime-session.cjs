@@ -175,28 +175,41 @@ class ExperimentalRuntime {
       close() {
         if (this._destroyed || this._closing) return;
         this._closing = true;
-        checked(runtime.core.window_begin_close(runtime.runtime, this.id));
-        let prevented = false;
-        const event = { preventDefault() { prevented = true; } };
+        let beganClose = false;
+        let nativeAcknowledged = false;
+        const event = { preventDefault() { this.defaultPrevented = true; }, defaultPrevented: false };
         try {
+          checked(runtime.core.window_begin_close(runtime.runtime, this.id));
+          beganClose = true;
           this.emit('close', event);
           if (this._destroyed) return;
-          if (prevented) {
+          if (event.defaultPrevented) {
+            // OS close gestures are not dispatched again until native ACKs
+            // that main has restored the window to its Live state.
+            runtime.host.request('cancel-close', this.id, this._generation);
             checked(runtime.core.window_cancel_close(runtime.runtime, this.id));
+            beganClose = false;
             return;
           }
           runtime.host.request('close-window', this.id, this._generation);
+          nativeAcknowledged = true;
           this._finishDestroy();
         } catch (error) {
-          if (runtime.host.dead) {
-            // An ambiguous native close must invalidate the whole session,
-            // not pretend the WKWebView is known to be live again.
+          if (runtime.host.dead || nativeAcknowledged) {
+            // Unknown native outcome must never resurrect a closed OS window.
             runtime.abort();
-          } else if (!this._destroyed) {
-            runtime.core.window_cancel_close(runtime.runtime, this.id);
+          } else if (beganClose && !this._destroyed) {
+            try {
+              runtime.host.request('cancel-close', this.id, this._generation);
+              checked(runtime.core.window_cancel_close(runtime.runtime, this.id));
+            } catch (cleanupError) {
+              runtime.abort();
+            }
           }
           throw error;
-        } finally { this._closing = false; }
+        } finally {
+          this._closing = false;
+        }
       }
       destroy() {
         if (this._destroyed) return;
@@ -224,6 +237,21 @@ class ExperimentalRuntime {
         fail('ELECTRON_MBT_UNSUPPORTED_API', 'Real native bounds are not exposed by M1');
       }
     };
+    this.host.on('native-close-request', details => {
+      if (this.terminated || this.quitting) return;
+      const window = this.windows.get(details.window);
+      if (!window || window._destroyed) return;
+      if (window._generation !== details.generation) {
+        // The physical gesture belonged to an older document. Unlock the
+        // native close request instead of dispatching stale UI authority.
+        try {
+          this.host.request('cancel-close', window.id, window._generation);
+        } catch (error) { this.invalidateHost(error); }
+        return;
+      }
+      try { window.close(); }
+      catch (error) { this.invalidateHost(error); }
+    });
     this.host.on('web-content-gone', details => {
       const window = this.windows.get(details.window);
       if (!window || window._destroyed || window._generation !== details.generation) return;

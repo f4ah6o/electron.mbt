@@ -92,3 +92,16 @@ test "What: native renderer-death events are correlated to the session and canno
   assert_eq(session.close().length(), 0)
   assert_true(session.observe(next) is Err(_))
 }
+
+
+///|
+test "What: native close events share the monotonic private notification ledger" {
+  let session = Session::new("0123456789abcdef0123456789abcdef")
+  let first = "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":4,\"generation\":0,\"operation\":\"native-close-request\",\"payload\":{}}"
+  assert_true(session.observe(first) is Ok(_))
+  assert_true(session.observe(first) is Err(_))
+  let next = "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":2,\"window\":4,\"generation\":1,\"operation\":\"native-close-request\",\"payload\":{}}"
+  assert_true(session.observe(next) is Ok(_))
+  let unknown = "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":3,\"window\":4,\"generation\":1,\"operation\":\"cancel-close\",\"payload\":{}}"
+  assert_true(session.observe(unknown) is Err(_))
+}

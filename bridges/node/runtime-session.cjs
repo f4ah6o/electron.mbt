@@ -121,6 +121,10 @@ class ExperimentalRuntime {
         // A Promise surface does not imply that the synchronous native call
         // provides Electron-equivalent rendering/event-loop scheduling.
         return Promise.resolve().then(() => {
+          if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed before loading');
+          if (this._generation !== generation) {
+            fail('ELECTRON_MBT_STALE_DOCUMENT', 'A newer load invalidated this document generation');
+          }
           runtime.host.request('load-file', this.id, generation, { file: real });
           if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed while loading');
           this.webContents.emit('did-finish-load');

@@ -34,50 +34,66 @@ class NativeHost extends EventEmitter {
     if (!Number.isSafeInteger(this.watchdogMs) || this.watchdogMs < 1 || this.watchdogMs > 60000) {
       throw runtimeError('ELECTRON_MBT_INVALID_ARGUMENT', 'Invalid native watchdog');
     }
-    const [parent, child] = this.addon.pair();
-    const [loadParent, loadChild] = this.addon.pair();
-    const [eventParent, eventChild] = this.addon.pair();
-    this.fd = parent;
-    this.loadFd = loadParent;
+    // Each acquired descriptor is either retained on this instance or
+    // closed if a subsequent pair, spawn, Worker or socket initialization fails.
+    this.fd = null;
+    this.loadFd = null;
+    this.eventFd = null;
+    this.eventSocket = null;
+    this.loadWorker = null;
+    this.process = null;
     this.pendingAsync = new Map();
-    this.eventFd = eventParent;
     this.eventBytes = Buffer.alloc(0);
+    const inherited = [];
+    const pairFactory = options.testingPairFactory || this.addon.pair.bind(this.addon);
     try {
+      const [controlParent, controlChild] = pairFactory();
+      this.fd = controlParent;
+      inherited.push(controlChild);
+      const [loadParent, loadChild] = pairFactory();
+      this.loadFd = loadParent;
+      inherited.push(loadChild);
+      const [eventParent, eventChild] = pairFactory();
+      this.eventFd = eventParent;
+      inherited.push(eventChild);
+
       this.process = spawn(binary, options.testingArgs || [this.root], {
-        stdio: ['ignore', 'ignore', 'pipe', child, loadChild, eventChild],
+        stdio: ['ignore', 'ignore', 'pipe',
+          controlChild, loadChild, eventChild],
         env: { ...process.env, ELECTRON_MBT_HOST_SESSION: this.session },
       });
-    } catch (error) {
-      this.addon.close(parent);
-      this.addon.close(loadParent);
-      this.addon.close(eventParent);
-      throw error;
-    } finally {
-      this.addon.close(child);
-      this.addon.close(loadChild);
-      this.addon.close(eventChild);
-    }
-    // The private socketpair is the only control ingress. stderr is never
-    // parsed as a privileged message or granted a reply channel.
-    this.process.stderr.resume();
-    this.process.on('error', () => { this.abort(); });
-    this.process.on('exit', () => { if (!this.dead) this.abort(); });
-    this.loadWorker = new Worker(path.join(__dirname, 'load-worker.cjs'), {
-      workerData: { fd: loadParent, addon: addonFile },
-    });
-    this.loadWorker.on('message', message => this.onLoadReply(message));
-    this.loadWorker.on('error', () => this.abort());
-    this.loadWorker.on('exit', () => { if (!this.dead) this.abort(); });
-    try {
+      // Test-only hooks are never exposed to an application's Electron facade.
+      if (typeof options.testingOnSpawn === 'function') options.testingOnSpawn(this.process);
+      this.process.stderr?.resume();
+      this.process.on('error', () => this.abort());
+      this.process.on('exit', () => { if (!this.dead) this.abort(); });
+
+      // Child descriptors must not survive in the Node parent after spawn.
+      while (inherited.length) this.addon.close(inherited.pop());
+
+      this.loadWorker = new Worker(
+        options.testingWorkerScript ?? path.join(__dirname, 'load-worker.cjs'),
+        { workerData: { fd: this.loadFd, addon: addonFile } },
+      );
+      this.loadWorker.on('message', message => this.onLoadReply(message));
+      this.loadWorker.on('error', () => this.abort());
+      this.loadWorker.on('exit', () => { if (!this.dead) this.abort(); });
+
       this.eventSocket = new net.Socket({
-        fd: eventParent, readable: true, writable: false,
+        fd: this.eventFd, readable: true, writable: false,
       });
+      this.eventFd = null; // Ownership moved to the Node socket wrapper.
       this.eventSocket.on('data', bytes => this.onEventChunk(bytes));
       this.eventSocket.on('error', () => this.abort());
       this.eventSocket.on('close', () => { if (!this.dead) this.abort(); });
     } catch (error) {
       this.abort();
       throw error;
+    } finally {
+      // The same rollback is required even when the third pair or spawn fails.
+      for (const descriptor of inherited) {
+        try { this.addon.close(descriptor); } catch {}
+      }
     }
   }
   request(operation, window = 0, generation = 0, payload = {}) {
@@ -191,18 +207,52 @@ class NativeHost extends EventEmitter {
     }
     this.pendingAsync.clear();
   }
+  disposeTransports(code) {
+    this.rejectPending(code);
+    this.gate.close();
+    for (const key of ['fd', 'loadFd']) {
+      const descriptor = this[key];
+      this[key] = null;
+      if (Number.isInteger(descriptor)) {
+        try { this.addon.close(descriptor); } catch {}
+      }
+    }
+    if (this.loadWorker) {
+      const worker = this.loadWorker;
+      this.loadWorker = null;
+      worker.terminate().catch(() => {});
+    }
+    if (this.eventSocket) {
+      const socket = this.eventSocket;
+      this.eventSocket = null;
+      socket.destroy();
+    } else if (Number.isInteger(this.eventFd)) {
+      const descriptor = this.eventFd;
+      this.eventFd = null;
+      try { this.addon.close(descriptor); } catch {}
+    }
+  }
+  ensureChildExit() {
+    const child = this.process;
+    if (!child || !Number.isInteger(child.pid) ||
+        child.exitCode !== null || child.signalCode !== null) return;
+    // SIGTERM is best effort. Bound orphan lifetime if the host fails to quit.
+    const timer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+      }
+    }, 3000);
+    timer.unref();
+    child.once('exit', () => clearTimeout(timer));
+  }
   abort() {
     if (this.dead) return;
     this.dead = true;
-    this.rejectPending('ELECTRON_MBT_TRANSPORT_CLOSED');
-    this.gate.close();
-    this.addon.close(this.fd);
-    this.addon.close(this.loadFd);
-    if (this.loadWorker) this.loadWorker.terminate().catch(() => {});
-    if (this.eventSocket) this.eventSocket.destroy();
-    else if (this.eventFd != null) this.addon.close(this.eventFd);
-    if (this.process && this.process.exitCode === null && this.process.signalCode === null) {
+    this.disposeTransports('ELECTRON_MBT_TRANSPORT_CLOSED');
+    if (this.process && Number.isInteger(this.process.pid) &&
+        this.process.exitCode === null && this.process.signalCode === null) {
       this.process.kill('SIGTERM');
+      this.ensureChildExit();
     }
   }
   close() {
@@ -210,22 +260,10 @@ class NativeHost extends EventEmitter {
     try { this.request('shutdown'); }
     catch (error) { this.abort(); throw error; }
     this.dead = true;
-    this.rejectPending('ELECTRON_MBT_CANCELLED');
-    this.gate.close();
-    this.addon.close(this.fd);
-    this.addon.close(this.loadFd);
-    if (this.loadWorker) this.loadWorker.terminate().catch(() => {});
-    if (this.eventSocket) this.eventSocket.destroy();
-    else if (this.eventFd != null) this.addon.close(this.eventFd);
-    // A successful shutdown should let the native host exit voluntarily;
-    // force-kill only if the child fails to terminate after its ACK.
-    const timeout = setTimeout(() => {
-      if (this.process.exitCode === null && this.process.signalCode === null) {
-        this.process.kill('SIGKILL');
-      }
-    }, 3000);
-    timeout.unref();
-    this.process.once('exit', () => clearTimeout(timeout));
+    this.disposeTransports('ELECTRON_MBT_CANCELLED');
+    // A successful shutdown should let the native host exit voluntarily.
+    // Only the expiry of this cleanup watchdog sends SIGKILL.
+    this.ensureChildExit();
   }
 }
 module.exports = { NativeHost };

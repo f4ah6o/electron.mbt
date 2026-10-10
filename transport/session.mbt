@@ -3,6 +3,7 @@ struct PendingControl {
   window : Int64
   generation : Int64
   operation : String
+  title : String
   bytes : Int
 }
 
@@ -47,7 +48,7 @@ pub fn Session::register(self : Session, raw : String) -> Result[Unit, String] {
     }
     self.pending[envelope.request] = {
       window: envelope.window, generation: envelope.generation,
-      operation: envelope.operation, bytes: envelope.bytes,
+      operation: envelope.operation, title: envelope.title, bytes: envelope.bytes,
     }
     self.queued_bytes += envelope.bytes
     self.last_issued = envelope.request
@@ -66,6 +67,10 @@ pub fn Session::accept(self : Session, raw : String) -> Result[Unit, String] {
     }
     if envelope.window != expected.window || envelope.generation != expected.generation || envelope.operation != expected.operation {
       raise BadProtocol("Stale or mismatched completion")
+    }
+    if envelope.success && expected.operation == "set-window-title" &&
+       envelope.title != expected.title {
+      raise BadProtocol("Native title acknowledgement mismatch")
     }
     self.pending.remove(envelope.request)
     self.queued_bytes -= expected.bytes

@@ -330,25 +330,42 @@ class ExperimentalRuntime {
     if (this.terminated || this.quitting) return;
     this.quitting = true;
     let begunQuit = false;
+    const hostAlive = () => {
+      if (this.terminated) return false;
+      if (this.host.dead) {
+        this.invalidateHost();
+        return false;
+      }
+      return true;
+    };
     try {
       let prevented = false;
       this.app.emit('before-quit', { preventDefault() { prevented = true; } });
-      if (prevented) return;
+      if (!hostAlive() || prevented) return;
       checked(this.core.dispatch(this.runtime, 'begin-quit'));
       begunQuit = true;
       // Do not call destroy(): app.quit() must offer every window a
       // cancellable close before the native host is shut down.
       for (const window of Array.from(this.windows.values())) {
+        if (!hostAlive()) return;
         window.close();
-        if (!window.isDestroyed()) return;
+        // Host loss also marks windows destroyed, but is not proof of
+        // successful native close acknowledgements.
+        if (!hostAlive() || !window.isDestroyed()) return;
       }
+      if (!hostAlive()) return;
       prevented = false;
       this.app.emit('will-quit', { preventDefault() { prevented = true; } });
-      if (prevented) return;
+      if (!hostAlive() || prevented) return;
       this.host.close();
+      // A successful shutdown sets host.dead; only unexpected invalidation
+      // (not that normal close flag) can prevent the final quit event.
+      if (this.terminated) return;
       checked(this.core.dispatch(this.runtime, 'stop'));
       this.terminated = true;
-      this.app.emit('quit');
+      // Native shutdown already happened; the final quit event is informational
+      // and cannot prevent the exit, though Electron passes an Event object.
+      this.app.emit('quit', { preventDefault() {} }, 0);
     } finally {
       if (begunQuit && !this.terminated) {
         if (this.host.dead) {

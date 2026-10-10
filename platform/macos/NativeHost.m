@@ -65,6 +65,8 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
 @property(nonatomic) long long generation;
 @property(nonatomic) BOOL permittedClose;
+@property(nonatomic) BOOL allowNextNavigation;
+@property(nonatomic) BOOL contentAlive;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible;
 - (void)tearDown;
@@ -92,6 +94,8 @@ static NSString *canonicalPath(NSString *path) {
     self.native.contentView = self.web;
     self.native.title = title;
     self.generation = 0;
+    self.contentAlive = YES;
+    self.allowNextNavigation = NO;
     if (visible) [self.native orderFront:nil];
   }
   return self;
@@ -111,8 +115,12 @@ static NSString *canonicalPath(NSString *path) {
   (void)webView;
   NSURL *url = action.request.URL;
   NSString *canonical = url.isFileURL ? canonicalPath(url.path) : nil;
-  BOOL allowed = action.targetFrame.isMainFrame && self.loadedFile != nil &&
+  BOOL allowed = self.allowNextNavigation && self.contentAlive &&
+                 action.targetFrame.isMainFrame && self.loadedFile != nil &&
                  [canonical isEqualToString:self.loadedFile];
+  // An unrequested reload creates a new document without MoonBit generation
+  // revocation. Reject it instead of allowing stale callback authority.
+  if (allowed) self.allowNextNavigation = NO;
   decisionHandler(allowed ? WKNavigationActionPolicyAllow : WKNavigationActionPolicyCancel);
 }
 - (nullable WKWebView *)webView:(WKWebView *)webView
@@ -143,6 +151,8 @@ static NSString *canonicalPath(NSString *path) {
 }
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
   (void)webView;
+  self.contentAlive = NO;
+  self.allowNextNavigation = NO;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
 }
 - (void)tearDown {
@@ -216,11 +226,28 @@ static NSString *canonicalPath(NSString *path) {
   }
   MBTWindow *window = self.windows[windowID];
   if (!window) { done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_UNKNOWN"}); return; }
+  if ([operation isEqualToString:@"begin-load"]) {
+    if (!window.contentAlive || generation.longLongValue <= window.generation ||
+        generation.longLongValue <= 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    // A synchronous reservation only changes generation and invalidates the
+    // previous document. WK navigation itself runs on the asynchronous lane.
+    window.generation = generation.longLongValue;
+    window.allowNextNavigation = NO;
+    window.loadedFile = nil;
+    [window.web stopLoading];
+    [window completeLoad:NO reason:@"ELECTRON_MBT_STALE_DOCUMENT"];
+    done(@"success", @{@"generation": generation});
+    return;
+  }
   if ([operation isEqualToString:@"load-file"]) {
     NSString *file = payload[@"file"];
     NSString *canonical = canonicalPath(file);
     if (![file isKindOfClass:[NSString class]] || !canonical || ![window withinRoot:canonical] ||
-        generation.longLongValue <= window.generation || window.loadDone != nil) {
+        generation.longLongValue != window.generation || window.loadDone != nil ||
+        !window.contentAlive) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
       return;
     }
@@ -229,8 +256,8 @@ static NSString *canonicalPath(NSString *path) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
       return;
     }
-    window.generation = generation.longLongValue;
     window.loadedFile = canonical;
+    window.allowNextNavigation = YES;
     window.loadDone = ^(BOOL ok, NSString *reason) {
       if (ok) done(@"success", @{@"didFinishLoad": @YES,
         @"url": [NSURL fileURLWithPath:canonical].absoluteString});
@@ -245,6 +272,10 @@ static NSString *canonicalPath(NSString *path) {
     return;
   }
   if ([operation isEqualToString:@"show-window"]) {
+    if (!window.contentAlive) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_WEB_PROCESS_TERMINATED"});
+      return;
+    }
     [window.native orderFront:nil];
     done(@"success", @{@"visible": @YES});
     return;

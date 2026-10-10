@@ -25,6 +25,8 @@ assert.equal(observed.nativeTitleRoundTrip, true);
 assert.equal(observed.destroyedTitleRejected, true);
 assert.equal(observed.invalidSurrogateKeepsHost, true);
 assert.equal(observed.nativeWebContentsURL, true);
+assert.equal(observed.nativeWebContentsTitle, true);
+assert.equal(observed.destroyedWebContentsTitleRejected, true);
 assert.equal(observed.destroyedWebContentsURLRejected, true);
 assert.equal(observed.quitCloseCancellation, true);
 assert.equal(observed.willQuitCancellation, true);

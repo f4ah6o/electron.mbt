@@ -10,16 +10,19 @@ class FakeNativeHost extends EventEmitter {
     super();
     this.dead = false;
     this.urls = new Map();
+    this.titles = new Map();
+    this.malformedTitle = false;
     this.malformedURL = false;
   }
   request(operation, window = 0, generation = 0, payload = {}) {
     if (this.dead) throw Object.assign(new Error('Host closed'), { code: 'ELECTRON_MBT_TRANSPORT_CLOSED' });
     switch (operation) {
       case 'hello': case 'ready': return {};
-      case 'create-window': this.urls.set(window, ''); return { webViewAttached: true };
-      case 'begin-load': this.urls.set(window, ''); return { generation };
+      case 'create-window': this.urls.set(window, ''); this.titles.set(window, ''); return { webViewAttached: true };
+      case 'begin-load': this.urls.set(window, ''); this.titles.set(window, ''); return { generation };
       case 'get-web-contents-url': return { url: this.malformedURL ? { forged: true } : this.urls.get(window) };
-      case 'close-window': case 'destroy-window': this.urls.delete(window); return { destroyed: true };
+      case 'get-web-contents-title': return { title: this.malformedTitle ? 123 : this.titles.get(window) };
+      case 'close-window': case 'destroy-window': this.urls.delete(window); this.titles.delete(window); return { destroyed: true };
       case 'cancel-close': return { cancelledNativeRequest: 0 };
       case 'shutdown': return {};
       default: throw new Error('Unexpected operation: ' + operation);
@@ -28,6 +31,7 @@ class FakeNativeHost extends EventEmitter {
   requestAsync(operation, window, generation, payload) {
     if (operation !== 'load-file') return Promise.reject(new Error('Unexpected async operation'));
     this.urls.set(window, pathToFileURL(payload.file).href);
+    this.titles.set(window, 'Experimental M1 CJS app');
     return Promise.resolve({ didFinishLoad: true });
   }
   close() { this.dead = true; }
@@ -63,14 +67,18 @@ test('What: webContents.getURL synchronously reads native state and rejects dest
   const runtime = await readyRuntime();
   const win = new runtime.BrowserWindow({ show: false });
   assert.equal(win.webContents.getURL(), '');
+  assert.equal(win.webContents.getTitle(), '');
   await win.loadFile('index.html');
   assert.equal(win.webContents.getURL(),
     pathToFileURL(path.resolve(__dirname, '../fixtures/m1-app/index.html')).href);
+  assert.equal(win.webContents.getTitle(), 'Experimental M1 CJS app');
   win.once('closed', () => {
     assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   });
   win.destroy();
   assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   runtime.app.quit();
   assert.equal(runtime.terminated, true);
 });
@@ -85,11 +93,22 @@ test('What: malformed native URL success fails closed instead of exposing forged
   assert.equal(win.isDestroyed(), true);
 });
 
+test('What: malformed native page title cannot escape the typed host protocol', async () => {
+  const runtime = await readyRuntime();
+  const win = new runtime.BrowserWindow({ show: false });
+  runtime.host.malformedTitle = true;
+  assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_PROTOCOL' });
+  assert.equal(runtime.host.dead, true);
+  assert.equal(runtime.terminated, true);
+  assert.equal(win.isDestroyed(), true);
+});
+
 test('What: terminated WebKit content cannot be reported as a live URL', async () => {
   const runtime = await readyRuntime();
   const win = new runtime.BrowserWindow({ show: false });
   win._renderProcessGone = true;
   assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WEB_PROCESS_TERMINATED' });
+  assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WEB_PROCESS_TERMINATED' });
   assert.equal(runtime.host.dead, false);
   win.destroy();
   runtime.app.quit();

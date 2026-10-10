@@ -114,6 +114,19 @@ class ExperimentalRuntime {
           }
           return acknowledgement.url;
         };
+        this.webContents.getTitle = () => {
+          if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+          if (this._renderProcessGone) {
+            fail('ELECTRON_MBT_WEB_PROCESS_TERMINATED', 'WebKit content process terminated');
+          }
+          const acknowledgement = runtime.host.request('get-web-contents-title', this.id, this._generation);
+          if (typeof acknowledgement.title !== 'string' || acknowledgement.title.length > 4096 ||
+              !acknowledgement.title.isWellFormed()) {
+            runtime.abort();
+            fail('ELECTRON_MBT_PROTOCOL', 'Malformed native web contents title acknowledgement');
+          }
+          return acknowledgement.title;
+        };
         this._generation = 0;
         this._loading = false;
         this._renderProcessGone = false;

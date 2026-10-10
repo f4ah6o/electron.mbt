@@ -160,3 +160,21 @@ test('What: native URL reads accept only bounded URL strings in successful ACKs'
   gate.accept(raw({ ...request, payload: { url: 'file:///app/index.html' }, terminal: 'success' }));
   assert.equal(gate.pendingCount(), 0);
 });
+
+test('What: native page title replies reject missing, malformed, oversized or extra members', () => {
+  const request = envelope({ operation: 'get-web-contents-title', payload: {} });
+  for (const badPayload of [{}, { title: null }, { title: 1 }, { title: [] },
+    { title: 'safe', extra: true }, { title: 'x'.repeat(4097) }]) {
+    const gate = createSessionGate(session);
+    gate.register(request);
+    assert.throws(() => gate.accept(raw({ ...request, terminal: 'success', payload: badPayload })), error);
+    assert.equal(gate.pendingCount(), 1);
+    gate.accept(raw({ ...request, terminal: 'success', payload: { title: 'real 😀' } }));
+    assert.equal(gate.pendingCount(), 0);
+  }
+  assert.throws(() => encodeEnvelope({ ...request, payload: { injected: true } }), error);
+  const gate = createSessionGate(session);
+  gate.register(request);
+  gate.accept(raw({ ...request, terminal: 'success', payload: { title: '' } }));
+  assert.equal(gate.pendingCount(), 0);
+});

@@ -413,6 +413,23 @@ static NSString *canonicalPath(NSString *path) {
     done(@"success", @{@"url": url});
     return;
   }
+  if ([operation isEqualToString:@"get-web-contents-title"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_WEB_PROCESS_TERMINATED"});
+      return;
+    }
+    NSString *title = window.web.title ?: @"";
+    if (title.length > 4096) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
+      return;
+    }
+    done(@"success", @{@"title": title});
+    return;
+  }
   if ([operation isEqualToString:@"get-window-title"]) {
     if (payload.count != 0) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});

@@ -229,3 +229,33 @@ test "What: native web contents URL requires an empty request and bounded one-fi
   assert_true(empty.register(request) is Ok(_))
   assert_true(empty.accept(visibility_wire("get-web-contents-url", "{\"url\":\"\"}", ",\"terminal\":\"success\"")) is Ok(_))
 }
+
+///|
+test "What: web contents title requests and success ACKs are shape and length checked" {
+  let request = visibility_wire("get-web-contents-title", "{}", "")
+  let session = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(session.register(request) is Ok(_))
+  for bad_payload in [
+    "{}", "{\"title\":null}", "{\"title\":99}",
+    "{\"title\":\"M1\",\"extra\":true}",
+  ] {
+    let bad = visibility_wire("get-web-contents-title", bad_payload, ",\"terminal\":\"success\"")
+    assert_true(validate(bad) is Err(_))
+    assert_true(session.accept(bad) is Err(_))
+    assert_eq(session.pending_count(), 1)
+  }
+  assert_true(validate(visibility_wire("get-web-contents-title", "{\"extra\":true}", "")) is Err(_))
+  let mut long_title = ""
+  for i = 0; i < 4097; i = i + 1 { long_title = long_title + "x" }
+  let excessive = visibility_wire("get-web-contents-title", "{\"title\":\"" + long_title + "\"}", ",\"terminal\":\"success\"")
+  assert_true(validate(excessive) is Err(_))
+  assert_true(session.accept(excessive) is Err(_))
+  assert_eq(session.pending_count(), 1)
+  let valid = visibility_wire("get-web-contents-title", "{\"title\":\"日本語 😀\"}", ",\"terminal\":\"success\"")
+  assert_true(session.accept(valid) is Ok(_))
+  assert_eq(session.pending_count(), 0)
+  assert_true(session.accept(valid) is Err(_))
+  let empty = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(empty.register(request) is Ok(_))
+  assert_true(empty.accept(visibility_wire("get-web-contents-title", "{\"title\":\"\"}", ",\"terminal\":\"success\"")) is Ok(_))
+}

@@ -244,7 +244,8 @@
       "BrowserWindow.isDestroyed",
       "BrowserWindow.getAllWindows",
       "webContents.did-finish-load",
-      "webContents.getURL"
+      "webContents.getURL",
+      "webContents.getTitle"
     ],
     "caveats": [
       "synchronous isolated contextBridge unsupported",
@@ -261,6 +262,7 @@
       "native close cancel ACK carries monotonic event identity, stale queued close notifications are ignored",
       "native NSWindow-backed visibility is implemented; Electron show/hide events, focus and Page Visibility API parity are unverified",
       "webContents.getURL synchronously reads the WKWebView URL with strict native ACK validation, but full Electron navigation semantics are unverified",
+      "webContents.getTitle reads the actual WKWebView document title independently of NSWindow.title; full Electron document-title event semantics are unverified",
       "app.quit respects native-backed close, before-quit and will-quit cancellation, supplies (event, exitCode=0), and suppresses normal quit after host loss; renderer beforeunload/unload is not implemented"
     ],
     "experimentalSignals": [

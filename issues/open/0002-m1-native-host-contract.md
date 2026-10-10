@@ -46,3 +46,7 @@ The experimental CJS app.quit lifecycle now uses cancellable native-backed windo
 ## Additional experimental main-process read surface
 
 `webContents.getURL()` synchronously obtains the actual WKWebView URL over the short private native control lane. The MoonBit transport accepts only empty requests and a single bounded string success payload. Native generation mismatch, destroyed windows and terminated WebKit content remain denied; the URL is not cached in Node. The macOS lifecycle and unchanged CommonJS fixture now exercise before-load, after-load and stale/destroyed behavior. This is not a renderer IPC channel or proof of Electron navigation compatibility.
+
+## Experimental page title read
+
+The experimental CommonJS `webContents.getTitle()` synchronously reads WKWebView's document `title` (distinct from NSWindow `title`). The bounded MoonBit `get-web-contents-title` wire contract requires an empty request and a sole string title field on successful replies (max 4096 UTF-16 code units). The macOS native host validates live WebKit state before replying. Portable tests and actual AppKit/WKWebView CI cover initial empty title, HTML title after navigation, stale-generation and destroyed-window denial, malformed acknowledgements and window-title independence. This adds no renderer privilege or synchronous cross-world `contextBridge`; full Electron compatibility remains open.

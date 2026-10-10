@@ -32,6 +32,7 @@ async function main() {
     assert.equal(created.visible, false);
     assert.equal(host.request('get-window-title', 1, 0).title, 'electron.mbt M1 native smoke');
     assert.equal(host.request('get-web-contents-url', 1, 0).url, '');
+    assert.equal(host.request('get-web-contents-title', 1, 0).title, '');
     assert.equal(host.request('set-window-title', 1, 0, { title: 'Native title 日本語' }).title, 'Native title 日本語');
     assert.equal(host.request('get-window-title', 1, 0).title, 'Native title 日本語');
     assert.equal(host.request('is-window-visible', 1, 0).visible, false);
@@ -60,6 +61,8 @@ async function main() {
     assert.equal(loaded.didFinishLoad, true);
     assert.match(loaded.url, /^file:\/\//);
     assert.equal(host.request('get-web-contents-url', 1, 1).url, loaded.url);
+    assert.equal(host.request('get-web-contents-title', 1, 1).title, 'M1 native host smoke');
+    assert.equal(host.request('get-window-title', 1, 1).title, 'Native title 日本語');
     await assert.rejects(host.requestAsync('load-file', 1, 1, {
       file: path.join(root, 'index.html'),
     }), { code: 'ELECTRON_MBT_FILE_OR_GENERATION_DENIED' });
@@ -76,6 +79,9 @@ async function main() {
     assert.throws(() => host.request('get-web-contents-url', 1, 1), {
       code: 'ELECTRON_MBT_STALE_DOCUMENT',
     });
+    assert.throws(() => host.request('get-web-contents-title', 1, 1), {
+      code: 'ELECTRON_MBT_STALE_DOCUMENT',
+    });
     await assert.rejects(host.requestAsync('load-file', 1, 2, {
       file: path.resolve(root, '../oracle/index.html'),
     }), { code: 'ELECTRON_MBT_FILE_OR_GENERATION_DENIED' });
@@ -87,6 +93,9 @@ async function main() {
       code: 'ELECTRON_MBT_WINDOW_UNKNOWN',
     });
     assert.throws(() => host.request('get-web-contents-url', 1, 2), {
+      code: 'ELECTRON_MBT_WINDOW_UNKNOWN',
+    });
+    assert.throws(() => host.request('get-web-contents-title', 1, 2), {
       code: 'ELECTRON_MBT_WINDOW_UNKNOWN',
     });
     host.close();
@@ -102,7 +111,8 @@ async function main() {
       sourceHashPreserved: true, nodeEventLoopResponsive: true, childExitedCleanly: true,
       nativeVisibilityRoundTrip: true, staleVisibilityDenied: true,
       nativeTitleRoundTrip: true, staleTitleDenied: true,
-      nativeWebContentsURL: true, staleWebContentsURLDenied: true, compatible: false,
+      nativeWebContentsURL: true, staleWebContentsURLDenied: true,
+      nativeWebContentsTitle: true, staleWebContentsTitleDenied: true, compatible: false,
     }));
   } finally {
     if (!closed) host.abort();

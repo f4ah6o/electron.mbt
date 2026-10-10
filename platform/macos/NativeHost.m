@@ -12,13 +12,14 @@
 #import <errno.h>
 
 static const uint32_t kMaxFrame = 1048576;
-static int kChannel = 3;
+static const int kControlChannel = 3;
+static const int kLoadChannel = 4;
 
-static BOOL transferBytes(void *buffer, size_t size, BOOL writing) {
+static BOOL transferBytes(int fd, void *buffer, size_t size, BOOL writing) {
   size_t offset = 0;
   while (offset < size) {
-    ssize_t n = writing ? write(kChannel, (const char *)buffer + offset, size - offset)
-                        : read(kChannel, (char *)buffer + offset, size - offset);
+    ssize_t n = writing ? write(fd, (const char *)buffer + offset, size - offset)
+                        : read(fd, (char *)buffer + offset, size - offset);
     if (n < 0 && errno == EINTR) continue;
     if (n <= 0) return NO;
     offset += (size_t)n;
@@ -26,27 +27,27 @@ static BOOL transferBytes(void *buffer, size_t size, BOOL writing) {
   return YES;
 }
 
-static NSData *readFrame(void) {
+static NSData *readFrame(int fd) {
   unsigned char header[4];
-  if (!transferBytes(header, 4, NO)) return nil;
+  if (!transferBytes(fd, header, 4, NO)) return nil;
   uint32_t length = ((uint32_t)header[0] << 24) | ((uint32_t)header[1] << 16) |
                     ((uint32_t)header[2] << 8) | (uint32_t)header[3];
   if (length == 0 || length > kMaxFrame) return nil;
   void *buffer = malloc(length);
   if (!buffer) return nil;
-  BOOL ok = transferBytes(buffer, length, NO);
+  BOOL ok = transferBytes(fd, buffer, length, NO);
   if (!ok) { free(buffer); return nil; }
   return [NSData dataWithBytesNoCopy:buffer length:length freeWhenDone:YES];
 }
 
-static BOOL writeFrame(NSDictionary *message) {
+static BOOL writeFrame(int fd, NSDictionary *message) {
   NSError *error = nil;
   NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:&error];
   if (error || !data || data.length > kMaxFrame) return NO;
   uint32_t length = (uint32_t)data.length;
   unsigned char header[4] = {(unsigned char)(length >> 24), (unsigned char)(length >> 16),
                              (unsigned char)(length >> 8), (unsigned char)length};
-  return transferBytes(header, 4, YES) && transferBytes((void *)data.bytes, length, YES);
+  return transferBytes(fd, header, 4, YES) && transferBytes(fd, (void *)data.bytes, length, YES);
 }
 
 static NSString *canonicalPath(NSString *path) {
@@ -273,7 +274,8 @@ static BOOL checkRequest(NSDictionary *request, NSString *session) {
 
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
-    if (argc != 2 || fcntl(kChannel, F_GETFD) < 0) return 64;
+    if (argc != 2 || fcntl(kControlChannel, F_GETFD) < 0 ||
+        fcntl(kLoadChannel, F_GETFD) < 0) return 64;
     const char *secret = getenv("ELECTRON_MBT_HOST_SESSION");
     if (!secret || strlen(secret) != 32) return 64;
     NSString *root = canonicalPath([NSString stringWithUTF8String:argv[1]]);
@@ -286,10 +288,11 @@ int main(int argc, const char *argv[]) {
     MBTHost *host = [[MBTHost alloc] init];
     host.root = root;
     host.session = session;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-      @autoreleasepool {
-        for (;;) {
-          NSData *frame = readFrame();
+    for (int fd = kControlChannel; fd <= kLoadChannel; fd++) {
+      dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        @autoreleasepool {
+          for (;;) {
+            NSData *frame = readFrame(fd);
           if (!frame) break;
           NSError *error = nil;
           NSDictionary *request = [NSJSONSerialization JSONObjectWithData:frame
@@ -297,6 +300,8 @@ int main(int argc, const char *argv[]) {
           // Only the inherited private descriptor is accepted; malformed or
           // session-mismatched frames terminate it without a dispatch attempt.
           if (error || !checkRequest(request, session)) break;
+          BOOL isLoad = [request[@"operation"] isEqualToString:@"load-file"];
+          if ((fd == kLoadChannel) != isLoad) break;
           dispatch_semaphore_t finished = dispatch_semaphore_create(0);
           __block NSDictionary *reply = nil;
           dispatch_async(dispatch_get_main_queue(), ^{
@@ -310,15 +315,16 @@ int main(int argc, const char *argv[]) {
           });
           if (dispatch_semaphore_wait(finished,
               dispatch_time(DISPATCH_TIME_NOW, (int64_t)15 * NSEC_PER_SEC)) != 0 || !reply) break;
-          if (!writeFrame(reply)) break;
+          if (!writeFrame(fd, reply)) break;
           if ([request[@"operation"] isEqual:@"shutdown"]) break;
         }
-        close(kChannel);
-        // Exit rather than leave a detached privileged WebView process behind
-        // when the parent channel closes or its watchdog expires.
-        _exit(0);
-      }
-    });
+          // Closing either inherited peer channel aborts the entire session;
+          // a partial session must not keep a detached privileged host alive.
+          close(fd);
+          _exit(0);
+        }
+      });
+    }
     [NSApp run];
   }
   return 1;

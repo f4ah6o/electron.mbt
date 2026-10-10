@@ -53,6 +53,21 @@ static BOOL writeFrame(int fd, NSDictionary *message) {
   return transferBytes(fd, header, 4, YES) && transferBytes(fd, (void *)data.bytes, length, YES);
 }
 
+static NSDictionary *readWindowBounds(NSWindow *native, NSScreen *primary) {
+  if (!native || !primary) return nil;
+  NSRect frame = native.frame;
+  NSRect display = primary.frame;
+  double x = round(NSMinX(frame) - NSMinX(display));
+  double y = round(NSMaxY(display) - NSMaxY(frame));
+  double width = round(NSWidth(frame));
+  double height = round(NSHeight(frame));
+  if (!isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height) ||
+      fabs(x) > 1048576.0 || fabs(y) > 1048576.0 ||
+      width <= 0.0 || width > 32768.0 || height <= 0.0 || height > 32768.0) return nil;
+  return @{@"x": @(llround(x)), @"y": @(llround(y)),
+           @"width": @(llround(width)), @"height": @(llround(height))};
+}
+
 static NSString *canonicalPath(NSString *path) {
   if (![path isKindOfClass:[NSString class]] || ![path isAbsolutePath]) return nil;
   char resolved[PATH_MAX];
@@ -430,32 +445,53 @@ static NSString *canonicalPath(NSString *path) {
     done(@"success", @{@"title": title});
     return;
   }
-  if ([operation isEqualToString:@"get-window-bounds"]) {
-    if (payload.count != 0) {
+  if ([operation isEqualToString:@"get-window-bounds"] ||
+      [operation isEqualToString:@"set-window-bounds"]) {
+    BOOL changing = [operation isEqualToString:@"set-window-bounds"];
+    if ((!changing && payload.count != 0) || (changing && payload.count > 4)) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
       return;
     }
-    // NSScreen.mainScreen follows active focus, so it cannot anchor stable
-    // primary-display coordinates when the native window is unfocused.
+    // NSScreen.mainScreen depends on focus; the primary display is a stable
+    // anchor for both native reads and partial updates of hidden windows.
     NSScreen *primary = [NSScreen screens].firstObject;
-    if (!primary) {
+    NSDictionary *current = readWindowBounds(window.native, primary);
+    if (!current) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
       return;
     }
-    NSRect frame = window.native.frame;
-    NSRect display = primary.frame;
-    double x = round(NSMinX(frame) - NSMinX(display));
-    double y = round(NSMaxY(display) - NSMaxY(frame));
-    double width = round(NSWidth(frame));
-    double height = round(NSHeight(frame));
-    if (!isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height) ||
-        fabs(x) > 1048576.0 || fabs(y) > 1048576.0 ||
-        width <= 0.0 || width > 32768.0 || height <= 0.0 || height > 32768.0) {
+    if (changing) {
+      for (NSString *key in payload) {
+        BOOL position = [key isEqualToString:@"x"] || [key isEqualToString:@"y"];
+        BOOL dimension = [key isEqualToString:@"width"] || [key isEqualToString:@"height"];
+        id value = payload[key];
+        if ((!position && !dimension) || ![value isKindOfClass:[NSNumber class]] ||
+            CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+          return;
+        }
+        double number = [value doubleValue];
+        if (!isfinite(number) || floor(number) != number ||
+            (position && fabs(number) > 1048576.0) ||
+            (dimension && (number < 100.0 || number > 4096.0))) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+          return;
+        }
+      }
+      double x = payload[@"x"] ? [payload[@"x"] doubleValue] : [current[@"x"] doubleValue];
+      double y = payload[@"y"] ? [payload[@"y"] doubleValue] : [current[@"y"] doubleValue];
+      double width = payload[@"width"] ? [payload[@"width"] doubleValue] : [current[@"width"] doubleValue];
+      double height = payload[@"height"] ? [payload[@"height"] doubleValue] : [current[@"height"] doubleValue];
+      NSRect screen = primary.frame;
+      NSRect next = NSMakeRect(NSMinX(screen) + x, NSMaxY(screen) - y - height, width, height);
+      [window.native setFrame:next display:NO];
+    }
+    NSDictionary *observed = readWindowBounds(window.native, primary);
+    if (!observed) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
       return;
     }
-    done(@"success", @{@"x": @(llround(x)), @"y": @(llround(y)),
-                        @"width": @(llround(width)), @"height": @(llround(height))});
+    done(@"success", observed);
     return;
   }
   if ([operation isEqualToString:@"get-window-title"]) {

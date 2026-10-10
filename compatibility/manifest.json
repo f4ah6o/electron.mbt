@@ -241,6 +241,7 @@
       "BrowserWindow.hide",
       "BrowserWindow.isVisible",
       "BrowserWindow.getBounds",
+      "BrowserWindow.setBounds (partial nonanimated subset)",
       "BrowserWindow.close cancellable",
       "BrowserWindow.destroy",
       "BrowserWindow.isDestroyed",
@@ -266,6 +267,7 @@
       "webContents.getURL synchronously reads the WKWebView URL with strict native ACK validation, but full Electron navigation semantics are unverified",
       "webContents.getTitle reads the actual WKWebView document title independently of NSWindow.title; full Electron document-title event semantics are unverified",
       "BrowserWindow.getBounds reads actual NSWindow.frame as bounded integer coordinates relative to the primary screen top-left; multi-display and geometry-change event parity are unverified",
+      "BrowserWindow.setBounds changes the real NSWindow frame with conservative partial integer inputs; animated changes, arbitrary manual move/resize events, tray clamping and multi-display Electron parity are unverified",
       "app.quit respects native-backed close, before-quit and will-quit cancellation, supplies (event, exitCode=0), and suppresses normal quit after host loss; renderer beforeunload/unload is not implemented"
     ],
     "experimentalSignals": [

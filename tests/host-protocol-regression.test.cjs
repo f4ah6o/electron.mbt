@@ -203,3 +203,27 @@ test('What: native get-window-bounds success requires exact bounded integer geom
   failed.accept(raw({ ...request, payload: { code: 'ELECTRON_MBT_WINDOW_UNKNOWN' }, terminal: 'failure' }));
   assert.equal(failed.pendingCount(), 0);
 });
+
+test('What: set-window-bounds rejects unsafe partial requests and malformed native completions', () => {
+  const requested = envelope({ operation: 'set-window-bounds', payload: { width: 700 } });
+  for (const payload of [{ x: 1.5 }, { x: -0 }, { x: 1048577 }, { y: false },
+    { width: 99 }, { height: 4097 }, { nonsense: 3 }, { width: 640, height: 480, x: 0, y: 0, extra: true }]) {
+    assert.throws(() => encodeEnvelope({ ...requested, payload }), error);
+  }
+  assert.doesNotThrow(() => encodeEnvelope(requested));
+  assert.doesNotThrow(() => encodeEnvelope({ ...requested, payload: {} }));
+  for (const bad of [{}, { x: 3, y: 4, width: 700 },
+    { x: 3, y: 4, width: 700, height: 500, extra: 1 },
+    { x: 3, y: 4, width: 700, height: 0 }]) {
+    const gate = createSessionGate(session);
+    gate.register(requested);
+    assert.throws(() => gate.accept(raw({ ...requested, terminal: 'success', payload: bad })), error);
+    assert.equal(gate.pendingCount(), 1);
+    gate.accept(raw({ ...requested, terminal: 'success', payload: { x: -20, y: 50, width: 700, height: 504 } }));
+    assert.equal(gate.pendingCount(), 0);
+  }
+  const gate = createSessionGate(session);
+  gate.register(requested);
+  gate.accept(raw({ ...requested, terminal: 'failure', payload: { code: 'ELECTRON_MBT_STALE_DOCUMENT' } }));
+  assert.equal(gate.pendingCount(), 0);
+});

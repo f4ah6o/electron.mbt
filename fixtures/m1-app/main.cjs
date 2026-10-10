@@ -21,6 +21,16 @@ app.whenReady().then(async () => {
   assert.equal(initialBounds.width, 640);
   assert.ok(initialBounds.height >= 480 && initialBounds.height <= 640);
   assert.ok(Number.isSafeInteger(initialBounds.x) && Number.isSafeInteger(initialBounds.y));
+  assert.equal(win.setBounds({ width: initialBounds.width + 32 }, false), undefined);
+  assert.equal(win.getBounds().width, initialBounds.width + 32);
+  assert.equal(win.isVisible(), false);
+  assert.equal(win.setBounds({ width: initialBounds.width }), undefined);
+  assert.equal(win.getBounds().width, initialBounds.width);
+  assert.equal(win.setBounds({}), undefined);
+  assert.deepEqual(win.getBounds(), initialBounds);
+  assert.throws(() => win.setBounds({ width: 700 }, true), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
+  assert.throws(() => win.setBounds({ width: 20 }), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
+  assert.deepEqual(win.getBounds(), initialBounds);
   assert.equal(win.isVisible(), false);
   assert.equal(win.hide(), undefined);
   assert.equal(win.isVisible(), false);
@@ -111,6 +121,7 @@ app.whenReady().then(async () => {
     assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    assert.throws(() => win.setBounds({ width: 700 }), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     visibilityRejectedInsideClosed = true;
   });
   win.destroy();
@@ -119,6 +130,7 @@ app.whenReady().then(async () => {
   assert.throws(() => win.isVisible(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.setBounds({ x: 20 }), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.setTitle('forbidden'), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
@@ -212,6 +224,7 @@ app.whenReady().then(async () => {
     nativeWebContentsURL: true, destroyedWebContentsURLRejected: true,
     nativeWebContentsTitle: true, destroyedWebContentsTitleRejected: true,
     nativeWindowBounds: true, destroyedWindowBoundsRejected: true,
+    nativeSetBoundsRoundTrip: true, destroyedSetBoundsRejected: true,
     unsafeOptionsRejected: true, quitCancellationAndReentry: true,
     quitCloseCancellation: true, willQuitCancellation: true,
     quitEventOrder: true, quitEventArguments: true,

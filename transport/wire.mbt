@@ -228,6 +228,16 @@ fn bounds_value(value : Json, dimension : Bool) -> Bool {
 }
 
 ///|
+fn writable_bounds_value(value : Json, dimension : Bool) -> Bool {
+  if !bounds_value(value, dimension) { return false }
+  if !dimension { return true }
+  match value {
+    Number(number, ..) => number >= 100.0 && number <= 4096.0
+    _ => false
+  }
+}
+
+///|
 priv struct Envelope {
   session : String
   request : Int64
@@ -269,7 +279,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "get-web-contents-url" | "get-web-contents-title" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-web-contents-url" | "get-web-contents-title" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -299,11 +309,24 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       }
     }
   }
-  if operation == "get-window-bounds" {
+  if operation == "get-window-bounds" || operation == "set-window-bounds" {
     if !terminal {
       match payload {
-        Object(values) if values.length() == 0 => ()
-        _ => raise BadProtocol("Invalid get-window-bounds request")
+        Object(values) if operation == "get-window-bounds" && values.length() == 0 => ()
+        Object(values) if operation == "set-window-bounds" && values.length() <= 4 => {
+          for key, value in values {
+            match key {
+              "x" | "y" => {
+                if !writable_bounds_value(value, false) { raise BadProtocol("Invalid window position") }
+              }
+              "width" | "height" => {
+                if !writable_bounds_value(value, true) { raise BadProtocol("Invalid window dimension") }
+              }
+              _ => raise BadProtocol("Unknown window bounds field")
+            }
+          }
+        }
+        _ => raise BadProtocol("Invalid window bounds request")
       }
     } else if success {
       match payload {

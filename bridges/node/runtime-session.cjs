@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
+const { types } = require('node:util');
 const { NativeHost } = require('./native-host.cjs');
 const { runtimeError } = require('./errors.cjs');
 
@@ -14,6 +15,47 @@ function checked(json) {
 }
 function supportedTitle(value) {
   return typeof value === 'string' && value.length <= 256 && value.isWellFormed();
+}
+function validBoundsCoordinate(value) {
+  return Number.isSafeInteger(value) && !Object.is(value, -0) && Math.abs(value) <= 1048576;
+}
+function validBoundsDimension(value, writable = false) {
+  return Number.isSafeInteger(value) && value >= (writable ? 100 : 1) &&
+    value <= (writable ? 4096 : 32768);
+}
+function checkedBounds(runtime, bounds) {
+  const keys = bounds && typeof bounds === 'object' && !Array.isArray(bounds) ?
+    Object.keys(bounds).sort() : [];
+  if (keys.join(',') !== 'height,width,x,y' ||
+      !validBoundsCoordinate(bounds.x) || !validBoundsCoordinate(bounds.y) ||
+      !validBoundsDimension(bounds.width) || !validBoundsDimension(bounds.height)) {
+    runtime.abort();
+    fail('ELECTRON_MBT_PROTOCOL', 'Malformed native window bounds acknowledgement');
+  }
+  return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+}
+function normalizedPartialBounds(bounds, animate) {
+  if (animate !== undefined && animate !== false) {
+    fail('ELECTRON_MBT_UNSUPPORTED_API', 'Animated bounds changes are not supported in M1');
+  }
+  if (!bounds || typeof bounds !== 'object' || Array.isArray(bounds) || types.isProxy(bounds) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(bounds))) {
+    fail('ELECTRON_MBT_INVALID_ARGUMENT', 'Expected plain bounds object');
+  }
+  const input = Object.getOwnPropertyDescriptors(bounds);
+  const copy = {};
+  for (const key of Reflect.ownKeys(input)) {
+    const field = input[key];
+    if (typeof key !== 'string' || !['x', 'y', 'width', 'height'].includes(key) ||
+        !field.enumerable || !Object.hasOwn(field, 'value')) {
+      fail('ELECTRON_MBT_INVALID_ARGUMENT', 'Invalid bounds property');
+    }
+    const valid = key === 'x' || key === 'y' ?
+      validBoundsCoordinate(field.value) : validBoundsDimension(field.value, true);
+    if (!valid) fail('ELECTRON_MBT_INVALID_ARGUMENT', 'Out-of-range bounds property');
+    copy[key] = field.value;
+  }
+  return copy;
 }
 function supportedOptions(options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) {
@@ -316,19 +358,12 @@ class ExperimentalRuntime {
       }
       getBounds() {
         if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
-        const bounds = runtime.host.request('get-window-bounds', this.id, this._generation);
-        const keys = bounds && typeof bounds === 'object' && !Array.isArray(bounds) ?
-          Object.keys(bounds).sort() : [];
-        const coordinate = value => Number.isSafeInteger(value) && !Object.is(value, -0) &&
-          Math.abs(value) <= 1048576;
-        const dimension = value => Number.isSafeInteger(value) && value > 0 && value <= 32768;
-        if (keys.join(',') !== 'height,width,x,y' ||
-            !coordinate(bounds.x) || !coordinate(bounds.y) ||
-            !dimension(bounds.width) || !dimension(bounds.height)) {
-          runtime.abort();
-          fail('ELECTRON_MBT_PROTOCOL', 'Malformed native window bounds acknowledgement');
-        }
-        return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+        return checkedBounds(runtime, runtime.host.request('get-window-bounds', this.id, this._generation));
+      }
+      setBounds(bounds, animate = false) {
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        const partial = normalizedPartialBounds(bounds, animate);
+        checkedBounds(runtime, runtime.host.request('set-window-bounds', this.id, this._generation, partial));
       }
     };
     this.host.on('native-close-request', details => {

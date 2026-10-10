@@ -289,3 +289,37 @@ test "What: get-window-bounds has empty requests and exact integer native ACKs" 
   assert_true(failed.register(request) is Ok(_))
   assert_true(failed.accept(visibility_wire("get-window-bounds", "{\"code\":\"ELECTRON_MBT_STALE_DOCUMENT\"}", ",\"terminal\":\"failure\"")) is Ok(_))
 }
+
+///|
+test "What: set-window-bounds validates safe partial geometry and native success ACK" {
+  let prefix = visibility_wire("set-window-bounds", "{}", "")
+  assert_true(validate(prefix) is Ok(_))
+  assert_true(validate(visibility_wire("set-window-bounds", "{\"width\":640}", "")) is Ok(_))
+  assert_true(validate(visibility_wire("set-window-bounds", "{\"x\":-30,\"y\":45,\"width\":720,\"height\":540}", "")) is Ok(_))
+  for bad in [
+    "{\"extra\":20}", "{\"width\":99}", "{\"height\":4097}",
+    "{\"x\":1048577}", "{\"y\":-1048577}", "{\"width\":640.5}",
+    "{\"height\":true}", "{\"x\":null}", "{\"x\":-0}",
+    "{\"width\":640,\"height\":480,\"x\":0,\"y\":0,\"extra\":1}",
+  ] {
+    assert_true(validate(visibility_wire("set-window-bounds", bad, "")) is Err(_))
+  }
+  let gate = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(gate.register(visibility_wire("set-window-bounds", "{\"width\":700}", "")) is Ok(_))
+  for bad in [
+    "{}", "{\"x\":1,\"y\":2,\"width\":700}",
+    "{\"x\":1,\"y\":2,\"width\":700,\"height\":500,\"extra\":true}",
+    "{\"x\":1,\"y\":2,\"width\":700.5,\"height\":500}",
+  ] {
+    let response = visibility_wire("set-window-bounds", bad, ",\"terminal\":\"success\"")
+    assert_true(gate.accept(response) is Err(_))
+    assert_eq(gate.pending_count(), 1)
+  }
+  let valid = visibility_wire("set-window-bounds", "{\"x\":1,\"y\":2,\"width\":700,\"height\":500}", ",\"terminal\":\"success\"")
+  assert_true(gate.accept(valid) is Ok(_))
+  assert_eq(gate.pending_count(), 0)
+  assert_true(gate.accept(valid) is Err(_))
+  let failure = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(failure.register(prefix) is Ok(_))
+  assert_true(failure.accept(visibility_wire("set-window-bounds", "{\"code\":\"ELECTRON_MBT_WINDOW_UNKNOWN\"}", ",\"terminal\":\"failure\"")) is Ok(_))
+}

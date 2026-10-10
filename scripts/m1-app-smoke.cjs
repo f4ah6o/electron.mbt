@@ -27,6 +27,8 @@ assert.equal(observed.invalidSurrogateKeepsHost, true);
 assert.equal(observed.nativeWebContentsURL, true);
 assert.equal(observed.nativeWebContentsTitle, true);
 assert.equal(observed.nativeWindowBounds, true);
+assert.equal(observed.nativeSetBoundsRoundTrip, true);
+assert.equal(observed.destroyedSetBoundsRejected, true);
 assert.equal(observed.destroyedWindowBoundsRejected, true);
 assert.equal(observed.destroyedWebContentsTitleRejected, true);
 assert.equal(observed.destroyedWebContentsURLRejected, true);

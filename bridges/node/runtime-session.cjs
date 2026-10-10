@@ -261,7 +261,7 @@ class ExperimentalRuntime {
         runtime.core.window_destroy(runtime.runtime, this.id);
         runtime.windows.delete(this.id);
         this.emit('closed');
-        if (runtime.windows.size === 0 && !runtime.terminated) {
+        if (runtime.windows.size === 0 && !runtime.terminated && !runtime.quitting) {
           runtime.app.emit('window-all-closed');
         }
       }
@@ -329,27 +329,36 @@ class ExperimentalRuntime {
   quit() {
     if (this.terminated || this.quitting) return;
     this.quitting = true;
-    let prevented = false;
+    let begunQuit = false;
     try {
+      let prevented = false;
       this.app.emit('before-quit', { preventDefault() { prevented = true; } });
-      if (prevented) { this.quitting = false; return; }
+      if (prevented) return;
       checked(this.core.dispatch(this.runtime, 'begin-quit'));
-    } catch (error) {
-      this.quitting = false;
-      throw error;
-    }
-    let graceful = false;
-    try {
-      for (const window of Array.from(this.windows.values())) window.destroy();
-      this.app.emit('will-quit');
+      begunQuit = true;
+      // Do not call destroy(): app.quit() must offer every window a
+      // cancellable close before the native host is shut down.
+      for (const window of Array.from(this.windows.values())) {
+        window.close();
+        if (!window.isDestroyed()) return;
+      }
+      prevented = false;
+      this.app.emit('will-quit', { preventDefault() { prevented = true; } });
+      if (prevented) return;
       this.host.close();
-      graceful = true;
-    } finally {
-      if (!graceful) this.host.abort();
-      this.core.dispatch(this.runtime, 'stop');
+      checked(this.core.dispatch(this.runtime, 'stop'));
       this.terminated = true;
-      if (graceful) this.app.emit('quit');
-      else this.invalidateWindows();
+      this.app.emit('quit');
+    } finally {
+      if (begunQuit && !this.terminated) {
+        if (this.host.dead) {
+          this.invalidateHost();
+        } else {
+          try { checked(this.core.dispatch(this.runtime, 'cancel-quit')); }
+          catch (error) { this.invalidateHost(error); }
+        }
+      }
+      this.quitting = false;
     }
   }
   invalidateWindows() {

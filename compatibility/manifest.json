@@ -91,10 +91,11 @@
         "scripts/m1-load-event-chain.cjs",
         "scripts/m1-load-deadline.cjs",
         "scripts/m1-begin-load-failure.cjs",
-        "scripts/m1-native-close.cjs"
+        "scripts/m1-native-close.cjs",
+        "scripts/m1-native-close-race.cjs"
       ],
       "evidence": [],
-      "gap": "Native BrowserWindow subset including AppKit delegate-driven close cancellation/retry is tested in a simulated native performClose action. Physical UI and full Electron event ordering, focus/IME/accessibility, production sender attestation and complete synchronous semantics remain unverified."
+      "gap": "Native AppKit close gestures are mediated by cancellable main events and exact native cancellation tokens; queued stale notifications are ignored in deterministic macOS tests. Human physical UI and complete Electron event ordering remain unverified."
     },
     {
       "id": "C",
@@ -220,7 +221,8 @@
       "scripts/m1-load-deadline.cjs",
       "scripts/m1-begin-load-failure.cjs",
       "scripts/m1-host-loss.cjs",
-      "scripts/m1-native-close.cjs"
+      "scripts/m1-native-close.cjs",
+      "scripts/m1-native-close-race.cjs"
     ],
     "exposed": [
       "app.whenReady",
@@ -249,7 +251,8 @@
       "concurrent loadFile is fail-closed with ELECTRON_MBT_NAVIGATION_IN_PROGRESS",
       "WebKit delegate termination simulated in CI; real WebKit process crash E2E not run",
       "one serialized native load worker, with a per-request monotonic deadline from enqueue",
-      "worker and native host process cleanup tested for injected faults, not full process-tree verification"
+      "worker and native host process cleanup tested for injected faults, not full process-tree verification",
+      "native close cancel ACK carries monotonic event identity, stale queued close notifications are ignored"
     ],
     "experimentalSignals": [
       "runtime-web-content-gone (not an Electron render-process-gone event)",

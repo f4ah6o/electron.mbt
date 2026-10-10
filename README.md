@@ -60,6 +60,7 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
    node scripts/m1-host-loss.cjs
    node scripts/build-macos-host.cjs --simulate-native-close
    node scripts/m1-native-close.cjs
+   node scripts/m1-native-close-race.cjs
    node scripts/build-macos-host.cjs --simulate-webkit-termination
    node scripts/m1-renderer-delegate-sim.cjs
    node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1

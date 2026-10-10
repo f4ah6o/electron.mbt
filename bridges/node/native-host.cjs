@@ -63,11 +63,20 @@ class NativeHost extends EventEmitter {
           controlChild, loadChild, eventChild],
         env: { ...process.env, ELECTRON_MBT_HOST_SESSION: this.session },
       });
+      // spawn() can return a ChildProcess with pid === undefined. Its error
+      // and close events are asynchronous, and may arrive after construction.
+      // Install handlers before any user test hook or pid validation so a
+      // post-constructor spawn error cannot become an unhandled Node error.
+      this.process.on('error', error => this.abort(error));
+      this.process.on('exit', () => { if (!this.dead) this.abort(); });
+      this.process.on('close', () => { if (!this.dead) this.abort(); });
+      if (!Number.isSafeInteger(this.process.pid) || this.process.pid <= 0) {
+        throw runtimeError('ELECTRON_MBT_TRANSPORT_SPAWN',
+          'Cannot launch native host executable');
+      }
       // Test-only hooks are never exposed to an application's Electron facade.
       if (typeof options.testingOnSpawn === 'function') options.testingOnSpawn(this.process);
       this.process.stderr?.resume();
-      this.process.on('error', () => this.abort());
-      this.process.on('exit', () => { if (!this.dead) this.abort(); });
 
       // Child descriptors must not survive in the Node parent after spawn.
       while (inherited.length) this.addon.close(inherited.pop());
@@ -301,7 +310,7 @@ class NativeHost extends EventEmitter {
     timer.unref();
     child.once('exit', () => clearTimeout(timer));
   }
-  abort() {
+  abort(cause) {
     if (this.dead) return;
     this.dead = true;
     this.disposeTransports('ELECTRON_MBT_TRANSPORT_CLOSED');
@@ -310,6 +319,11 @@ class NativeHost extends EventEmitter {
       this.process.kill('SIGTERM');
       this.ensureChildExit();
     }
+    // This is deliberately not the EventEmitter 'error' event: consumers
+    // must be able to observe process loss without creating an unhandled
+    // error exception. The session is already revoked when this fires.
+    this.emit('lost', cause || runtimeError('ELECTRON_MBT_TRANSPORT_CLOSED',
+      'Native host process or channel was lost'));
   }
   close() {
     if (this.dead) return;

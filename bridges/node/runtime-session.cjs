@@ -69,7 +69,14 @@ class ExperimentalRuntime {
       this.host.request('hello');
       this.host.request('ready');
     } catch (error) { this.host.abort(); throw error; }
-    this.readyPromise = new Promise(resolve => { this.resolveReady = resolve; });
+    this.readyPromise = new Promise((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
+    // A runtime may fail before its app main attaches a whenReady handler.
+    // The observable promise must reject, but must not trigger an unhandled
+    // rejection simply because no user code had an opportunity to subscribe.
+    this.readyPromise.catch(() => {});
     const app = new EventEmitter();
     app.whenReady = () => this.readyPromise;
     app.isReady = () => this.ready;
@@ -232,13 +239,18 @@ class ExperimentalRuntime {
       window.webContents.emit('runtime-web-content-gone');
       this.app.emit('runtime-web-content-gone', window);
     });
-    this.host.process.once('exit', () => {
-      if (!this.terminated) this.invalidateHost();
-    });
+    // ChildProcess 'error' is not guaranteed to be followed by 'exit'
+    // (failed spawn emits 'close'). The host emits a single post-revocation
+    // loss signal for error, exit, close and transport failures.
+    this.host.on('lost', error => this.invalidateHost(error));
   }
   start() {
+    if (this.host.dead) { this.invalidateHost(); return; }
     queueMicrotask(() => {
-      if (this.terminated) return;
+      if (this.terminated || this.host.dead) {
+        if (!this.terminated) this.invalidateHost();
+        return;
+      }
       try {
         checked(this.core.dispatch(this.runtime, 'ready'));
         this.ready = true;
@@ -282,14 +294,19 @@ class ExperimentalRuntime {
     for (const window of this.windows.values()) window._destroyed = true;
     this.windows.clear();
   }
-  invalidateHost() {
+  invalidateHost(cause) {
     if (this.terminated) return;
     this.terminated = true;
+    const wasReady = this.ready;
     this.ready = false;
     this.host.abort();
     this.core.dispatch(this.runtime, 'stop');
     this.invalidateWindows();
-    this.app.emit('runtime-host-gone');
+    if (!wasReady && this.rejectReady) {
+      this.rejectReady(cause || runtimeError('ELECTRON_MBT_TRANSPORT_CLOSED',
+        'Native host terminated before app ready'));
+    }
+    this.app.emit('runtime-host-gone', cause);
   }
   abort() { this.invalidateHost(); }
 }

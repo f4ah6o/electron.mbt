@@ -23,6 +23,11 @@ app.whenReady().then(async () => {
   assert.equal(win.isVisible(), true);
   assert.equal(win.hide(), undefined);
   assert.equal(win.isVisible(), false);
+  assert.equal(win.getTitle(), 'M1 CJS fixture');
+  assert.equal(win.setTitle('M1 title 日本語'), undefined);
+  assert.equal(win.getTitle(), 'M1 title 日本語');
+  assert.throws(() => win.setTitle(12), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
+  assert.equal(win.getTitle(), 'M1 title 日本語');
   assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   assert.throws(() => win.webContents.send('danger'), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   assert.throws(() => new BrowserWindow({ webPreferences: { sandbox: false } }),
@@ -84,6 +89,8 @@ app.whenReady().then(async () => {
   assert.equal(win.isDestroyed(), true);
   assert.equal(visibilityRejectedInsideClosed, true);
   assert.throws(() => win.isVisible(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.setTitle('forbidden'), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.hide(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   const rapid = new BrowserWindow({ show: false });
   const inflight = rapid.loadFile('index.html');
@@ -169,6 +176,7 @@ app.whenReady().then(async () => {
     eventChainedLoad: true, listenerFailureNotNativeFailure: true,
     destroyForced: true, nativeVisibilityRoundTrip: true,
     destroyedVisibilityRejected: true, closedListenerVisibilityRejected: true,
+    nativeTitleRoundTrip: true, destroyedTitleRejected: true,
     unsafeOptionsRejected: true, quitCancellationAndReentry: true,
     quitCloseCancellation: true, willQuitCancellation: true,
     quitEventOrder: true, quitEventArguments: true,

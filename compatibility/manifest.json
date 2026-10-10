@@ -90,10 +90,11 @@
         "scripts/m1-slow-load.cjs",
         "scripts/m1-load-event-chain.cjs",
         "scripts/m1-load-deadline.cjs",
-        "scripts/m1-begin-load-failure.cjs"
+        "scripts/m1-begin-load-failure.cjs",
+        "scripts/m1-native-close.cjs"
       ],
       "evidence": [],
-      "gap": "Native synchronous BrowserWindow subset and worker-backed load, queue-inclusive deadlines, reentrant load events, and quit cancellation tested. Full Electron event ordering, native OS close negotiation and production sender attestation remain open."
+      "gap": "Native BrowserWindow subset including AppKit delegate-driven close cancellation/retry is tested in a simulated native performClose action. Physical UI and full Electron event ordering, focus/IME/accessibility, production sender attestation and complete synchronous semantics remain unverified."
     },
     {
       "id": "C",
@@ -151,10 +152,11 @@
         "scripts/m1-macos-smoke.cjs",
         "scripts/m1-renderer-delegate-sim.cjs",
         "scripts/m1-host-init-fault.cjs",
-        "scripts/m1-load-deadline.cjs"
+        "scripts/m1-load-deadline.cjs",
+        "scripts/m1-host-loss.cjs"
       ],
       "evidence": [],
-      "gap": "Three-descriptor constructor rollback, post-spawn Worker creation failure, native child reaping, and worker poll interruption tested. Full WebView/GPU process-tree accounting and genuine WebKit renderer process termination E2E remain unverified."
+      "gap": "Native child failed spawn, asynchronous host loss, worker/thread and descriptor cleanup, and process reaping tested. Full WebView/GPU process-tree accounting and genuine WebKit renderer crash E2E remain unverified."
     },
     {
       "id": "I",
@@ -216,7 +218,9 @@
       "scripts/m1-host-init-fault.cjs",
       "scripts/m1-load-event-chain.cjs",
       "scripts/m1-load-deadline.cjs",
-      "scripts/m1-begin-load-failure.cjs"
+      "scripts/m1-begin-load-failure.cjs",
+      "scripts/m1-host-loss.cjs",
+      "scripts/m1-native-close.cjs"
     ],
     "exposed": [
       "app.whenReady",
@@ -237,7 +241,7 @@
     "caveats": [
       "synchronous isolated contextBridge unsupported",
       "no renderer IPC or privileged preload",
-      "macOS native-close control disabled",
+      "native AppKit close requests are cancellable in a performClose CI simulation; physical UI and full Electron ordering are not verified",
       "loadFile is worker-backed and tested against a slow WebKit page; full Electron event ordering remains unverified",
       "no gpui.mbt integration or native sender attestation",
       "no third-party Electron app acceptance",
@@ -248,7 +252,8 @@
       "worker and native host process cleanup tested for injected faults, not full process-tree verification"
     ],
     "experimentalSignals": [
-      "runtime-web-content-gone (not an Electron render-process-gone event)"
+      "runtime-web-content-gone (not an Electron render-process-gone event)",
+      "native-close-request (private OS-to-Node signal; distinct from the standard window close event)"
     ],
     "watchdog": {
       "defaultMs": 12000,

@@ -11,7 +11,7 @@ MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/o
 | `core/` | MoonBit lifecycle, monotonic handles, native-ack state, close/quit cancellation, document generations, grants, bounded requests, exactly-once terminal bookkeeping | Complete Electron event ordering, native sender authentication or a fully compatible desktop host |
 | `bridge/` | Compiled MoonBit CJS exports, state and diagnostic contracts | A replacement of MoonBit lifecycle with handwritten JavaScript |
 | `bridges/node/` | Real Node CJS module identity probe, bounded tiny-tree codec, source inventory, real private synchronous socketpair control calls | Full Electron BrowserWindow, general Structured Clone, preload or renderer IPC; experimental M1 uses a bounded private real macOS host |
-| `platform/macos/` | An AppKit/WKWebView isolation probe and a standalone real-window host with create/load/show/destroy acknowledgements and a bounded renderer-liveness signal | A synchronous function-proxy bridge, full sandbox audit, IME or accessibility acceptance |
+| `platform/macos/` | An AppKit/WKWebView isolation probe and a standalone real-window host with create/load/show/destroy ACKs, cancellable native AppKit close events and bounded renderer-liveness signals | A synchronous function-proxy bridge, full sandbox audit, IME or accessibility acceptance |
 | `fixtures/oracle/` | Unchanged main/preload/renderer fixture for a separately installed pinned Electron oracle | A matching electron.mbt execution or size improvement |
 | `cmd/` | `snapshot`, MoonBit-backed `doctor` and static `compat-check` diagnostics | General Electron-compatible `run` or `pack`; explicit experimental M1 macOS run is separate |
 
@@ -57,6 +57,9 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
    node scripts/m1-host-init-fault.cjs
    node scripts/m1-begin-load-failure.cjs
    node scripts/m1-load-deadline.cjs
+   node scripts/m1-host-loss.cjs
+   node scripts/build-macos-host.cjs --simulate-native-close
+   node scripts/m1-native-close.cjs
    node scripts/build-macos-host.cjs --simulate-webkit-termination
    node scripts/m1-renderer-delegate-sim.cjs
    node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1

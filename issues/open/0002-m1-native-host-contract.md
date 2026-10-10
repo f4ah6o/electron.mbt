@@ -1,6 +1,6 @@
 # M1 native host contract and fail-closed launch gate
 
-Status: proposed implementation increment. Parent: `issues/open/0001-electron-compatible-lightweight-runtime.md`.
+Status: **partial experimental M1 implemented on Draft PR #2**; real macOS host and optional CommonJS runner verified by CI, complete Electron compatibility remains unverified. Parent: `issues/open/0001-electron-compatible-lightweight-runtime.md`.
 
 ## Goal
 
@@ -32,3 +32,11 @@ M2 synchronous isolated contextBridge, production IPC, file dialogs, signed pack
 ## Review
 
 Request an independent code review after implementation. Resolve P1/P2 findings and confirm CI before considering merge. This PR is a draft until then.
+
+## Current partial implementation (2026-10-10)
+
+The real AppKit/WKWebView host is connected to a MoonBit-owned versioned session ledger and a restricted CommonJS facade. The experimental opt-in runner can create/show/load/destroy windows; a native NSWindow close request is now forwarded to Node so the cancellable `close` event decides whether AppKit is allowed to proceed. The test-only host invokes `performClose` twice: cancellation followed by an acknowledged close. Source rewriting is not required for the fixture or dependency.
+
+CI [#38049569680](https://github.com/f4ah6o/electron.mbt/actions/runs/38049569680) passed both Linux and macOS jobs, including the native close delegate test, subprocess launch failure and existing MoonBit/Node contracts. This is not human UI acceptance or proof of the full Electron lifecycle.
+
+**Still open:** complete E2E of OS focus/IME/accessibility and multi-display, sender attestation and renderer permissions, cross-world synchronous `contextBridge`, production gpui integration, true third-party app differential, packing/signing and Windows/Linux. Keep Draft and no general `run` enablement until the relevant gates are independently verified.

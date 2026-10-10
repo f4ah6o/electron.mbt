@@ -13,11 +13,11 @@ Status: M0 in progress. This document does not replace or close `issues/open/000
 
 | Area | Owner now | Remaining production connection |
 | --- | --- | --- |
-| Lifecycle, logical handles, document generations, grants, request ledger | MoonBit `core` | Experimental native host acknowledgements connected; complete Electron event ordering, OS close and sender identity remain open |
+| Lifecycle, logical handles, document generations, grants, request ledger | MoonBit `core` | Experimental native host acknowledgements connected; complete Electron event ordering, physical OS close UI acceptance and sender identity remain open |
 | Diagnostic decisions | MoonBit `bridge` | Full API inventory and version-bound compatibility evidence |
 | JS object reflection, value rejection and module hooks | Node leaf adapters | Wire to core-owned IPC routing, limits and native-attested document context |
 | Synchronous control I/O | C Node-API leaf probe | MoonBit host session and private framed native socket exist; reentrancy, complete crash/process ownership and OS-attested document sender remain open |
-| OS windows and WebView | Real standalone AppKit/WKWebView host plus separate feasibility probe | gpui/AppKit integration, OS-originated events, complete BrowserWindow options and isolation equivalence remain open |
+| OS windows and WebView | Real standalone AppKit/WKWebView host plus separate feasibility probe | gpui/AppKit integration, physical UI acceptance, complete BrowserWindow options and isolation equivalence remain open; native close request/cancel ACK is experimentally connected |
 | Electron oracle | Separate test fixture | Same fixture executed on electron.mbt, normalization and acceptance comparison |
 
 Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter inputs for unit tests, not proof of an authenticated sender. The production adapter must derive them from native frame/document/session state and cannot accept renderer claims. Document grants and pending cancellations do not by themselves secure a disconnected renderer.
@@ -26,7 +26,7 @@ Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter in
 
 The standalone native macOS host and a thin Node runner are now implemented on PR #2. Private control/navigation/event socketpairs pass bounded envelopes through compiled MoonBit session gates, with native AppKit windows and WKWebView navigation on the main thread. Navigation waits run off the Node main thread; a separate event channel invalidates MoonBit document grants when native WebKit reports content termination. The experiment exposes a small CJS app/BrowserWindow subset under the explicit --experimental-m1 flag only; unflagged run still rejects. The same test app main and dependency resolve one Electron facade without rewrites. See [M1 boundaries](0002-native-host.md).
 
-Actual WKWebView create/load/show/destroy and a CJS main fixture were tested in macOS CI. Slow HTML, native wire identity rejection, reentrant quit, crash cleanup and simulated WKWebView termination callback are also covered. The tests do not prove synchronous contextBridge, Electron's complete event ordering, a real WebKit renderer crash, renderer-origin attestation, interactive IME/accessibility, or a real third-party app. No acceptance row becomes verified.
+Actual WKWebView create/load/show/destroy and a CJS main fixture were tested in macOS CI. Slow HTML, native wire identity rejection, reentrant quit, async spawn failure and host loss, two AppKit delegate-triggered close actions (cancel then accept), crash cleanup and simulated WKWebView termination callback are also covered. The tests do not prove synchronous contextBridge, Electron's complete event ordering, a real WebKit renderer crash, renderer-origin attestation, interactive IME/accessibility, or a real third-party app. No acceptance row becomes verified.
 
 ## Open milestone gates
 

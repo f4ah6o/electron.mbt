@@ -223,6 +223,8 @@ priv struct Envelope {
   generation : Int64
   operation : String
   terminal : Bool
+  success : Bool
+  title : String
   bytes : Int
 }
 
@@ -255,7 +257,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -265,6 +267,26 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
     raise BadProtocol("Unsupported or excessive payload")
   }
   let terminal = fields.contains("terminal")
+  let success = field("terminal") is String("success")
+  let mut title = ""
+  if operation == "get-window-title" || operation == "set-window-title" {
+    if !terminal && operation == "get-window-title" {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid get-window-title request")
+      }
+    } else if !terminal || success {
+      title = match payload {
+        Object(values) if values.length() == 1 => {
+          match values.get("title") {
+            Some(String(value)) if value.length() <= 256 => value
+            _ => raise BadProtocol("Invalid native window title")
+          }
+        }
+        _ => raise BadProtocol("Invalid native window title")
+      }
+    }
+  }
   if terminal {
     match field("terminal") {
       String("success") => {
@@ -292,7 +314,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       _ => raise BadProtocol("Invalid terminal result")
     }
   }
-  { session, request, window, generation, operation, terminal, bytes }
+  { session, request, window, generation, operation, terminal, success, title, bytes }
 }
 
 ///|

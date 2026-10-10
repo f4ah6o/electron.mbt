@@ -159,6 +159,7 @@ class NativeHost extends EventEmitter {
           throw runtimeError('ELECTRON_MBT_PROTOCOL', 'Unauthenticated or unexpected native event');
         }
         this.emit(envelope.operation, {
+          request: envelope.request,
           window: envelope.window, generation: envelope.generation,
         });
       } catch (error) { this.abort(); return; }

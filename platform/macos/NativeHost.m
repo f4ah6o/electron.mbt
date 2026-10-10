@@ -67,8 +67,9 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic, copy) NSString *loadedFile;
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
 @property(nonatomic, copy) void (^contentGone)(long long);
-@property(nonatomic, copy) void (^closeRequested)(long long);
+@property(nonatomic, copy) long long (^closeRequested)(long long);
 @property(nonatomic) BOOL closeRequestOutstanding;
+@property(nonatomic) long long closeRequestEventID;
 @property(nonatomic) long long generation;
 @property(nonatomic) long long loadedGeneration;
 @property(nonatomic) BOOL permittedClose;
@@ -105,6 +106,7 @@ static NSString *canonicalPath(NSString *path) {
     self.contentAlive = YES;
     self.allowNextNavigation = NO;
     self.closeRequestOutstanding = NO;
+    self.closeRequestEventID = 0;
     if (visible) [self.native orderFront:nil];
   }
   return self;
@@ -121,7 +123,9 @@ static NSString *canonicalPath(NSString *path) {
   // consult a Node event handler from here (which could deadlock the host).
   if (!self.closeRequestOutstanding) {
     self.closeRequestOutstanding = YES;
-    if (self.closeRequested) self.closeRequested(self.generation);
+    // Retain the exact monotonic native event token even if the notification
+    // is still queued when Node independently cancels the same close.
+    if (self.closeRequested) self.closeRequestEventID = self.closeRequested(self.generation);
   }
   return NO;
 }
@@ -188,6 +192,7 @@ static NSString *canonicalPath(NSString *path) {
 - (void)tearDown {
   self.contentAlive = NO;
   self.closeRequestOutstanding = NO;
+  self.closeRequestEventID = 0;
   self.closeRequested = nil;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   self.web.navigationDelegate = nil;
@@ -206,8 +211,8 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic, strong) dispatch_queue_t notificationQueue;
 @property(nonatomic) long long nextEvent;
 - (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation;
-- (void)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation;
-- (void)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID generation:(long long)generation;
+- (long long)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation;
+- (long long)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID generation:(long long)generation;
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done;
 @end
 
@@ -221,7 +226,7 @@ static NSString *canonicalPath(NSString *path) {
   }
   return self;
 }
-- (void)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID
+- (long long)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID
                 generation:(long long)generation {
   if (self.nextEvent == 9007199254740991LL) _exit(2);
   NSNumber *eventID = @(++self.nextEvent);
@@ -235,12 +240,13 @@ static NSString *canonicalPath(NSString *path) {
   dispatch_async(self.notificationQueue, ^{
     if (!writeFrame(kEventChannel, notice)) _exit(2);
   });
+  return eventID.longLongValue;
 }
 - (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation {
   [self publishNativeEvent:@"web-content-gone" windowID:windowID generation:generation];
 }
-- (void)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation {
-  [self publishNativeEvent:@"native-close-request" windowID:windowID generation:generation];
+- (long long)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation {
+  return [self publishNativeEvent:@"native-close-request" windowID:windowID generation:generation];
 }
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done {
   if (![NSThread isMainThread]) { done(@"failure", @{@"code": @"ELECTRON_MBT_THREAD"}); return; }
@@ -286,8 +292,8 @@ static NSString *canonicalPath(NSString *path) {
     window.contentGone = ^(long long eventGeneration) {
       [weakHost publishContentGone:windowID generation:eventGeneration];
     };
-    window.closeRequested = ^(long long eventGeneration) {
-      [weakHost publishCloseRequested:windowID generation:eventGeneration];
+    window.closeRequested = ^long long(long long eventGeneration) {
+      return [weakHost publishCloseRequested:windowID generation:eventGeneration];
     };
     self.windows[windowID] = window;
 #if defined(ELECTRON_MBT_TEST_NATIVE_CLOSE)
@@ -361,8 +367,15 @@ static NSString *canonicalPath(NSString *path) {
     return;
   }
   if ([operation isEqualToString:@"cancel-close"]) {
+    // A queued event cannot be withdrawn from the serial notification queue.
+    // Returning its exact ID lets Node ignore only that already-cancelled
+    // native attempt without discarding a newer physical close gesture.
+    long long cancelledID = window.closeRequestOutstanding ?
+      window.closeRequestEventID : 0;
     window.closeRequestOutstanding = NO;
-    done(@"success", @{@"cancelled": @YES});
+    window.closeRequestEventID = 0;
+    done(@"success", @{@"cancelled": @YES,
+                       @"cancelledNativeRequest": @(cancelledID)});
     return;
   }
   if ([operation isEqualToString:@"show-window"]) {

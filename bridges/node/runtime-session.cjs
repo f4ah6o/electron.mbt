@@ -103,6 +103,7 @@ class ExperimentalRuntime {
         this._renderProcessGone = false;
         this._destroyed = false;
         this._closing = false;
+        this._cancelledNativeCloseThrough = 0;
         try {
           const created = runtime.host.request('create-window', id, 0, normalized);
           if (created.webViewAttached !== true) {
@@ -172,6 +173,16 @@ class ExperimentalRuntime {
         if (this._renderProcessGone) fail('ELECTRON_MBT_WEB_PROCESS_TERMINATED', 'WebKit content process terminated');
         runtime.host.request('show-window', this.id, this._generation);
       }
+      _ackCancelledClose() {
+        const acknowledgement = runtime.host.request('cancel-close', this.id, this._generation);
+        const requestID = acknowledgement.cancelledNativeRequest;
+        if (!Number.isSafeInteger(requestID) || requestID < 0) {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Malformed native close cancellation acknowledgement');
+        }
+        this._cancelledNativeCloseThrough =
+          Math.max(this._cancelledNativeCloseThrough, requestID);
+      }
       close() {
         if (this._destroyed || this._closing) return;
         this._closing = true;
@@ -186,7 +197,7 @@ class ExperimentalRuntime {
           if (event.defaultPrevented) {
             // OS close gestures are not dispatched again until native ACKs
             // that main has restored the window to its Live state.
-            runtime.host.request('cancel-close', this.id, this._generation);
+            this._ackCancelledClose();
             checked(runtime.core.window_cancel_close(runtime.runtime, this.id));
             beganClose = false;
             return;
@@ -200,7 +211,7 @@ class ExperimentalRuntime {
             runtime.abort();
           } else if (beganClose && !this._destroyed) {
             try {
-              runtime.host.request('cancel-close', this.id, this._generation);
+              this._ackCancelledClose();
               checked(runtime.core.window_cancel_close(runtime.runtime, this.id));
             } catch (cleanupError) {
               runtime.abort();
@@ -241,11 +252,15 @@ class ExperimentalRuntime {
       if (this.terminated || this.quitting) return;
       const window = this.windows.get(details.window);
       if (!window || window._destroyed) return;
+      // A programmatic close may have cancelled this OS gesture *before*
+      // the serial native notification was consumed. Never dispatch that
+      // same physical gesture a second time.
+      if (details.request <= window._cancelledNativeCloseThrough) return;
       if (window._generation !== details.generation) {
         // The physical gesture belonged to an older document. Unlock the
         // native close request instead of dispatching stale UI authority.
         try {
-          this.host.request('cancel-close', window.id, window._generation);
+          window._ackCancelledClose();
         } catch (error) { this.invalidateHost(error); }
         return;
       }

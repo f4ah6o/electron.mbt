@@ -10,12 +10,16 @@
   const originalMap = Array.prototype.map;
   let requests = 0;
   let callbackAttempts = 0;
+  let nativePageRequestCount = 0;
+  let nativePageReplySettled = false;
   const state = {
     isolatedMarker: true,
     nativeReplyPromise: false,
     nativeReplySettled: false,
     get requests() { return requests; },
     get callbackAttempts() { return callbackAttempts; },
+    get nativePageRequestCount() { return nativePageRequestCount; },
+    get nativePageReplySettled() { return nativePageReplySettled; },
     get primordialIntact() { return Array.prototype.map === originalMap; },
   };
   globalThis.electronMbtM0IsolatedOnly = state;
@@ -32,6 +36,18 @@
         result = input.value[0] + input.value[1];
       } else if (input.operation === 'raise') {
         throw new TypeError('isolated synchronous error');
+      } else if (input.operation === 'page-trigger-native' && input.value === null) {
+        // Why not: the native sender is this isolated world, but the initiating
+        // page event remains untrusted; this is a test-only no-privilege echo.
+        nativePageRequestCount += 1;
+        const replyPromise = window.webkit.messageHandlers.electronMbtM0NativeReply
+          .postMessage({ probe: 'm0', source: 'dom-triggered' });
+        if (!replyPromise || typeof replyPromise.then !== 'function') {
+          throw new TypeError('native reply is not a Promise');
+        }
+        replyPromise.then(value => { nativePageReplySettled = value === 'native-ack'; },
+          () => { nativePageReplySettled = false; });
+        result = 'native-pending';
       } else if (input.operation === 'callback' && input.value &&
           typeof input.value.id === 'string' &&
           Number.isSafeInteger(input.value.amount)) {
@@ -54,7 +70,9 @@
       }));
     }
   });
-  const reply = window.webkit.messageHandlers.electronMbtM0NativeReply.postMessage({ probe: 'm0' });
+  const reply = window.webkit.messageHandlers.electronMbtM0NativeReply.postMessage({
+    probe: 'm0', source: 'document-start',
+  });
   state.nativeReplyPromise = !!reply && typeof reply.then === 'function';
   if (state.nativeReplyPromise) {
     reply.then(value => {

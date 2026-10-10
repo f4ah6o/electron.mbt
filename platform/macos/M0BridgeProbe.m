@@ -28,6 +28,8 @@ static NSDictionary *decodeObject(id value) {
 @property(nonatomic, strong) NSDictionary *initialIsolated;
 @property(nonatomic) NSUInteger navigations;
 @property(nonatomic) NSUInteger nativeReplyCount;
+@property(nonatomic) NSUInteger documentStartNativeMessageCount;
+@property(nonatomic) NSUInteger pageInducedNativeMessageCount;
 @property(nonatomic) BOOL rejectedUnexpectedSender;
 - (void)start;
 @end
@@ -71,16 +73,26 @@ static NSDictionary *decodeObject(id value) {
       didReceiveScriptMessage:(WKScriptMessage *)message
                  replyHandler:(void (^)(id _Nullable, NSString * _Nullable))replyHandler {
   (void)controller;
+  NSString *claimedSource = [message.body isKindOfClass:[NSDictionary class]] ?
+    message.body[@"source"] : nil;
+  BOOL knownSource = [claimedSource isKindOfClass:[NSString class]] &&
+    ([claimedSource isEqualToString:@"document-start"] ||
+     [claimedSource isEqualToString:@"dom-triggered"]);
   BOOL valid = message.webView == self.webView && message.frameInfo.isMainFrame &&
     [message.name isEqualToString:@"electronMbtM0NativeReply"] &&
     [message.body isKindOfClass:[NSDictionary class]] &&
-    [message.body[@"probe"] isEqual:@"m0"];
+    [message.body[@"probe"] isEqual:@"m0"] && knownSource;
   if (!valid) {
     self.rejectedUnexpectedSender = YES;
     replyHandler(nil, @"ELECTRON_MBT_UNEXPECTED_M0_SENDER");
     return;
   }
   self.nativeReplyCount += 1;
+  // Why not: claimedSource labels a diagnostic route, not the initiating realm.
+  if ([claimedSource isEqualToString:@"dom-triggered"])
+    self.pageInducedNativeMessageCount += 1;
+  else
+    self.documentStartNativeMessageCount += 1;
   replyHandler(@"native-ack", nil);
 }
 
@@ -127,6 +139,13 @@ static NSDictionary *decodeObject(id value) {
   BOOL replayReset = [firstIsolated[@"requests"] integerValue] ==
                        [isolated[@"requests"] integerValue] &&
                      [firstIsolated[@"requests"] integerValue] > 0;
+  BOOL pageInducedNative = [firstPage[@"pageTriggeredNativeMessage"] isEqual:@YES] &&
+    [page[@"pageTriggeredNativeMessage"] isEqual:@YES] &&
+    [firstIsolated[@"nativePageRequestCount"] integerValue] == 1 &&
+    [isolated[@"nativePageRequestCount"] integerValue] == 1 &&
+    [firstIsolated[@"nativePageReplySettled"] isEqual:@YES] &&
+    [isolated[@"nativePageReplySettled"] isEqual:@YES] &&
+    self.pageInducedNativeMessageCount == 2;
   // Why not: a forged DOM response and ID-only callbacks cannot certify
   // contextBridge authority, cross-realm Function identity or frozen copies.
   NSDictionary *candidate = @{
@@ -136,6 +155,8 @@ static NSDictionary *decodeObject(id value) {
     @"synchronousThrowObserved": @([firstPage[@"synchronousThrow"] isEqual:@YES]),
     @"callbackByIdOnlyObserved": @([firstPage[@"callbackByPageId"] isEqual:@YES]),
     @"pageCanForgeResponse": @([firstPage[@"pageCanForgeDOMReply"] isEqual:@YES]),
+    @"pageCanInduceNativeMessage": @(pageInducedNative),
+    @"pageInitiatorAuthenticated": @NO,
     @"privilegedSenderAttested": @NO,
     @"secureContextBridgeVerified": @NO,
     @"realCallbackIdentityVerified": @NO,
@@ -149,6 +170,8 @@ static NSDictionary *decodeObject(id value) {
     @"contextBridge": @"NOT_IMPLEMENTED",
     @"compatibilityGate": @"OPEN",
     @"nativeReplyCount": @(self.nativeReplyCount),
+    @"documentStartNativeMessageCount": @(self.documentStartNativeMessageCount),
+    @"pageInducedNativeMessageCount": @(self.pageInducedNativeMessageCount),
     @"withReplyReturnedPromise": @([firstIsolated[@"nativeReplyPromise"] isEqual:@YES]),
     @"nativeReplySettled": @([firstIsolated[@"nativeReplySettled"] isEqual:@YES]),
     @"documentLoads": @(self.navigations),
@@ -190,7 +213,9 @@ static NSDictionary *decodeObject(id value) {
         @"callbackAttempts:globalThis.electronMbtM0IsolatedOnly?.callbackAttempts ?? -1,"
         @"primordialIntact:globalThis.electronMbtM0IsolatedOnly?.primordialIntact === true,"
         @"nativeReplyPromise:globalThis.electronMbtM0IsolatedOnly?.nativeReplyPromise === true,"
-        @"nativeReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativeReplySettled === true"
+        @"nativeReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativeReplySettled === true,"
+        @"nativePageRequestCount:globalThis.electronMbtM0IsolatedOnly?.nativePageRequestCount ?? -1,"
+        @"nativePageReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativePageReplySettled === true"
         @"})";
       [probe.webView evaluateJavaScript:script inFrame:nil
         inContentWorld:probe.isolatedWorld

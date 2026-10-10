@@ -12,23 +12,27 @@ function sample() {
     synchronousThrow: true,
     callbackByPageId: true,
     pageCanForgeDOMReply: true,
+    pageTriggeredNativeMessage: true,
   };
   const isolated = {
     isolatedMarker: true, primordialIntact: true,
-    requests: 6, callbackAttempts: 3,
+    requests: 7, callbackAttempts: 3,
+    nativePageRequestCount: 1, nativePageReplySettled: true,
     nativeReplyPromise: true, nativeReplySettled: true,
   };
   return {
     probe: 'm0-isolated-sync-feasibility', status: 'PASS',
     compatible: false, contextBridge: 'NOT_IMPLEMENTED', compatibilityGate: 'OPEN',
-    documentLoads: 2, nativeReplyCount: 2,
+    documentLoads: 2, nativeReplyCount: 4,
+    documentStartNativeMessageCount: 2, pageInducedNativeMessageCount: 2,
     withReplyReturnedPromise: true, nativeReplySettled: true,
     newDocumentScriptReinitialized: true,
     candidate: {
       transport: 'shared-page-mutable-DOM-event',
       pageAuthoredProxy: true, synchronousPrimitiveObserved: true,
       synchronousThrowObserved: true, callbackByIdOnlyObserved: true,
-      pageCanForgeResponse: true, privilegedSenderAttested: false,
+      pageCanForgeResponse: true, pageCanInduceNativeMessage: true,
+      pageInitiatorAuthenticated: false, privilegedSenderAttested: false,
       secureContextBridgeVerified: false, realCallbackIdentityVerified: false,
       promiseProxyVerified: false, frozenCrossRealmCopyVerified: false,
     },
@@ -42,6 +46,8 @@ test('What: an observed sync DOM candidate must keep the M0 compatibility gate o
   const observed = validateM0Evidence(sample());
   assert.equal(observed.candidate.synchronousPrimitiveObserved, true);
   assert.equal(observed.candidate.secureContextBridgeVerified, false);
+  assert.equal(observed.candidate.pageCanInduceNativeMessage, true);
+  assert.equal(observed.candidate.pageInitiatorAuthenticated, false);
   assert.equal(observed.compatibilityGate, 'OPEN');
 });
 
@@ -49,8 +55,6 @@ test('What: candidate failure remains a valid measured outcome rather than a fak
   const report = sample();
   report.candidate.synchronousPrimitiveObserved = false;
   report.firstDocument.page.synchronousValue = false;
-  report.firstDocument.isolated.requests = 0;
-  report.newDocumentScriptReinitialized = false;
   assert.doesNotThrow(() => validateM0Evidence(report));
 });
 
@@ -61,6 +65,7 @@ test('What: missing observations and compatibility elevation are rejected', () =
     r => { r.contextBridge = 'IMPLEMENTED'; },
     r => { r.candidate.secureContextBridgeVerified = true; },
     r => { r.candidate.privilegedSenderAttested = true; },
+    r => { r.candidate.pageInitiatorAuthenticated = true; },
     r => { r.candidate.realCallbackIdentityVerified = true; },
     r => { r.candidate.pageAuthoredProxy = false; },
     r => { r.firstDocument.page.privateGlobalHidden = false; },
@@ -70,10 +75,44 @@ test('What: missing observations and compatibility elevation are rejected', () =
     r => { r.documentLoads = 1; },
     r => { delete r.candidate.pageCanForgeResponse; },
     r => { delete r.firstDocument.page.synchronousThrow; },
+    r => { delete r.firstDocument.page.pageTriggeredNativeMessage; },
     r => { r.withReplyReturnedPromise = null; },
   ]) {
     const report = sample();
     mutate(report);
     assert.throws(() => validateM0Evidence(report));
   }
+});
+
+test('What: inconsistent M0 aggregate claims cannot pass as measured native evidence', () => {
+  for (const mutate of [
+    r => { r.candidate.synchronousPrimitiveObserved = false; },
+    r => { r.newDocumentScriptReinitialized = false; },
+    r => { r.firstDocument.isolated.requests = 0; },
+    r => { r.pageInducedNativeMessageCount = 1; },
+    r => { r.documentStartNativeMessageCount = 1; },
+    r => { r.nativeReplyCount = 3; },
+    r => { r.candidate.pageCanInduceNativeMessage = false; },
+    r => { r.firstDocument.page.pageTriggeredNativeMessage = false; },
+    r => { r.secondDocument.isolated.nativePageRequestCount = 0; },
+    r => { r.firstDocument.isolated.nativePageReplySettled = false; },
+    r => { r.nativeReplySettled = false; },
+  ]) {
+    const report = sample();
+    mutate(report);
+    assert.throws(() => validateM0Evidence(report));
+  }
+});
+
+test('What: a failed page-induced native echo remains an explicit negative observation', () => {
+  const report = sample();
+  report.candidate.pageCanInduceNativeMessage = false;
+  report.pageInducedNativeMessageCount = 0;
+  report.nativeReplyCount = 2;
+  for (const document of [report.firstDocument, report.secondDocument]) {
+    document.page.pageTriggeredNativeMessage = false;
+    document.isolated.nativePageRequestCount = 0;
+    document.isolated.nativePageReplySettled = false;
+  }
+  assert.doesNotThrow(() => validateM0Evidence(report));
 });

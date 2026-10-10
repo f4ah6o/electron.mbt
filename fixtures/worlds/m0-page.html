@@ -64,6 +64,15 @@
     root.setAttribute(replyAttr, JSON.stringify({ ok: true, value: 9001 }));
   }, { once: true });
   const forgedValue = request('add', [1, 2]);
+  // Why not: a DOM event initiated by the page is not a native-attested sender.
+  root.removeAttribute(replyAttr);
+  root.setAttribute(requestAttr, JSON.stringify({
+    operation: 'page-trigger-native', value: null,
+  }));
+  document.dispatchEvent(new Event(requestEvent));
+  const inducedReply = JSON.parse(root.getAttribute(replyAttr) || 'null');
+  const pageTriggeredNativeMessage = inducedReply?.ok === true &&
+    inducedReply.value === 'native-pending';
   Array.prototype.map = function pageChangedMap() { return 'page-owned'; };
   globalThis.m0PageFirstScript = Object.freeze({
     firstScriptAttempted: true,
@@ -74,6 +83,7 @@
     callbackByPageId: callbackIdentityLocal && callbackValue === 12 &&
       secondCallbackValue === 15 && callbackInvocations === 2 && removedCallbackDenied,
     pageCanForgeDOMReply: forgedValue === 9001,
+    pageTriggeredNativeMessage,
   });
 })();
 </script>

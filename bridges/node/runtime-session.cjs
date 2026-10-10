@@ -144,14 +144,21 @@ class ExperimentalRuntime {
         this._loading = true;
         // A worker owns the blocking socket wait, not the Node main thread.
         // The Promise settles on the genuine native didFinishNavigation ACK.
-        return runtime.host.requestAsync('load-file', this.id, generation, { file: real }).then(() => {
-          if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed while loading');
-          if (this._generation !== generation) fail('ELECTRON_MBT_STALE_DOCUMENT', 'A later navigation revoked this load');
-          this.webContents.emit('did-finish-load');
-        }).catch(error => {
-          this.webContents.emit('did-fail-load', error);
-          throw error;
-        }).finally(() => { this._loading = false; });
+        return runtime.host.requestAsync('load-file', this.id, generation, { file: real }).then(
+          () => {
+            // Native completion is terminal before a listener can navigate again.
+            // A listener exception must not be misreported as a native load failure.
+            this._loading = false;
+            if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed while loading');
+            if (this._generation !== generation) fail('ELECTRON_MBT_STALE_DOCUMENT', 'A later navigation revoked this load');
+            this.webContents.emit('did-finish-load');
+          },
+          error => {
+            this._loading = false;
+            if (!this._destroyed) this.webContents.emit('did-fail-load', error);
+            throw error;
+          },
+        );
       }
       show() {
         if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');

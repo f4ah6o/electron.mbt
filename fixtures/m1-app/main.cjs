@@ -37,6 +37,23 @@ app.whenReady().then(async () => {
   await overlapRejected;
   await promise;
   assert.equal(loaded, 1);
+  // A native terminal ACK must clear the loading guard *before* invoking
+  // listeners. Both the second load and its completion use real WKWebView.
+  let chained;
+  win.webContents.once('did-finish-load', () => {
+    chained = win.loadFile('index.html');
+  });
+  await win.loadFile('index.html');
+  assert.ok(chained && typeof chained.then === 'function');
+  await chained;
+  assert.equal(loaded, 3);
+
+  let loadFailures = 0;
+  win.webContents.on('did-fail-load', () => { loadFailures++; });
+  const listenerFailure = new Error('test listener exception');
+  win.webContents.once('did-finish-load', () => { throw listenerFailure; });
+  await assert.rejects(win.loadFile('index.html'), error => error === listenerFailure);
+  assert.equal(loadFailures, 0);
   win.show();
   let cancelled = false;
   win.once('close', event => { event.preventDefault(); cancelled = true; });
@@ -61,6 +78,7 @@ app.whenReady().then(async () => {
     fixture: 'm1-cjs', status: 'PASS', readyOrder: true,
     synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, overlappingLoadRejected: true, nodeEventLoopResponsive: true, immediateShowSafe: true,
     nativeDestroyErrorPreserved: true, inflightDestroySafe: true, closeCancelled: true,
+    eventChainedLoad: true, listenerFailureNotNativeFailure: true,
     destroyForced: true, unsafeOptionsRejected: true, quitCancellationAndReentry: true, compatible: false,
   }));
   let cancelledQuit = 0;

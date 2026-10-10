@@ -101,6 +101,6 @@ async function main() {
     crashedChildDetected: true, noOrphanChild: true, compatible: false }));
 }
 main().catch((error) => {
-  console.error(error.code || error.message);
+  console.error(error.stack || error.message);
   process.exitCode = 1;
 });

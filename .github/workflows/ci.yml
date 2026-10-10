@@ -46,6 +46,10 @@ jobs:
       - name: Test complete Node boundary
         shell: bash
         run: npm test 2>&1 | tee evidence/node-tests.log
+      - name: Verify queue-inclusive load deadlines and worker interrupt on Linux
+        shell: bash
+        run: |
+          node scripts/m1-load-deadline.cjs 2>&1 | tee evidence/m1-load-deadline.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: compiled-core
@@ -74,13 +78,67 @@ jobs:
           path: dist/
       - name: Build macOS native control channel
         run: node scripts/build-native.cjs
+      - name: Build standalone macOS AppKit WebView host
+        run: node scripts/build-macos-host.cjs
       - name: Test complete Node boundary on macOS
         shell: bash
         run: |
           mkdir -p evidence
           npm test 2>&1 | tee evidence/node-tests.log
+      - name: Verify queue-inclusive load deadlines and worker interrupt on macOS
+        shell: bash
+        run: |
+          node scripts/m1-load-deadline.cjs 2>&1 | tee evidence/m1-load-deadline.log
       - name: Probe actual WKContentWorld observations
         run: node scripts/macos-probe.cjs
+      - name: Smoke-test real AppKit WKWebView host lifecycle
+        shell: bash
+        run: |
+          node scripts/m1-macos-smoke.cjs 2>&1 | tee evidence/native-host-smoke.log
+      - name: Reject malformed raw native control IDs before dispatch
+        shell: bash
+        run: |
+          node scripts/m1-invalid-wire.cjs 2>&1 | tee evidence/m1-invalid-wire.log
+      - name: Exercise experimental unchanged CJS Electron app
+        shell: bash
+        run: |
+          node scripts/m1-app-smoke.cjs 2>&1 | tee evidence/m1-cjs-app.log
+      - name: Verify native constructor rollback and orphan-free worker fault
+        shell: bash
+        run: |
+          node scripts/m1-host-init-fault.cjs 2>&1 | tee evidence/m1-host-init-fault.log
+      - name: Verify asynchronous spawn errors and host-loss propagation
+        shell: bash
+        run: |
+          node scripts/m1-host-loss.cjs 2>&1 | tee evidence/m1-host-loss.log
+      - name: Verify load event reentrancy and failure retry
+        shell: bash
+        run: |
+          node scripts/m1-load-event-chain.cjs 2>&1 | tee evidence/m1-load-event-chain.log
+      - name: Fail closed on native begin-load generation divergence
+        shell: bash
+        run: |
+          node scripts/m1-begin-load-failure.cjs 2>&1 | tee evidence/m1-begin-load-failure.log
+      - name: Confirm slow HTML does not block the Node event loop
+        shell: bash
+        run: |
+          node scripts/m1-slow-load.cjs 2>&1 | tee evidence/m1-slow-load.log
+      - name: Build test-only WebKit termination-callback simulator
+        run: node scripts/build-macos-host.cjs --simulate-webkit-termination
+      - name: Validate simulated WebKit termination notification and MoonBit revocation
+        shell: bash
+        run: |
+          node scripts/m1-renderer-delegate-sim.cjs 2>&1 | tee evidence/m1-renderer-delegate-sim.log
+      - name: Build test-only native AppKit close-gesture simulator
+        run: node scripts/build-macos-host.cjs --simulate-native-close
+      - name: Validate OS close cancellation and native ACK
+        shell: bash
+        run: |
+          node scripts/m1-native-close.cjs 2>&1 | tee evidence/m1-native-close.log
+      - name: Verify queued native close cannot fire after programmatic cancellation
+        shell: bash
+        run: |
+          node scripts/m1-native-close-race.cjs 2>&1 | tee evidence/m1-native-close-race.log
       - name: Install the separate pinned test oracle
         shell: bash
         run: |

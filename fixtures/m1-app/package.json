@@ -1,0 +1,6 @@
+{
+  "name": "electron-mbt-m1-fixture",
+  "version": "1.0.0",
+  "main": "main.cjs",
+  "private": true
+}

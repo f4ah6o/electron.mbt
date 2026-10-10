@@ -76,3 +76,19 @@ test "What: safe integer exhaustion and invalid session construction fail closed
   assert_true(session.register(wire("9007199254740992", "{}", "")) is Err(_))
   assert_true(Session::new("invalid").status() is Err(_))
 }
+
+
+///|
+test "What: native renderer-death events are correlated to the session and cannot replay" {
+  let session = Session::new("0123456789abcdef0123456789abcdef")
+  let event = "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":2,\"generation\":3,\"operation\":\"web-content-gone\",\"payload\":{}}"
+  assert_true(session.observe(event) is Ok(_))
+  assert_true(session.observe(event) is Err(_))
+  let stale = "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":2,\"generation\":4,\"operation\":\"web-content-gone\",\"payload\":{}}"
+  assert_true(session.observe(stale) is Err(_))
+  let next = "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":2,\"window\":2,\"generation\":4,\"operation\":\"web-content-gone\",\"payload\":{}}"
+  assert_true(session.observe(next) is Ok(_))
+  assert_true(session.observe(wire("3", "{}", "")) is Err(_))
+  assert_eq(session.close().length(), 0)
+  assert_true(session.observe(next) is Err(_))
+}

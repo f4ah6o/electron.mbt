@@ -118,3 +118,9 @@ pub fn window_navigate(runtime : @core.Runtime, id : Int) -> String {
 pub fn window_destroy(runtime : @core.Runtime, id : Int) -> Bool {
   runtime.destroy_window(id)
 }
+
+
+///|
+pub fn window_invalidate(runtime : @core.Runtime, id : Int, generation : Int) -> String {
+  code_result(runtime.invalidate_document(id, generation))
+}

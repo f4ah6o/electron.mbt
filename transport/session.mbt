@@ -11,13 +11,14 @@ pub struct Session {
   expected : String
   pending : Map[Int64, PendingControl]
   mut last_issued : Int64
+  mut last_event : Int64
   mut queued_bytes : Int
   mut closed : Bool
 }
 
 ///|
 pub fn Session::new(expected : String) -> Session {
-  { expected, pending: {}, last_issued: 0L, queued_bytes: 0, closed: !session_valid(expected) }
+  { expected, pending: {}, last_issued: 0L, last_event: 0L, queued_bytes: 0, closed: !session_valid(expected) }
 }
 
 ///|
@@ -99,4 +100,20 @@ pub fn Session::close(self : Session) -> Array[Int64] {
   self.pending.clear()
   self.queued_bytes = 0
   cancelled
+}
+
+
+///|
+pub fn Session::observe(self : Session, raw : String) -> Result[Unit, String] {
+  try {
+    let envelope = self.read(raw)
+    if envelope.operation != "web-content-gone" || envelope.terminal ||
+        envelope.window <= 0L || envelope.request <= self.last_event {
+      raise BadProtocol("Invalid or replayed native event")
+    }
+    // Event IDs are a separate monotonic sequence from outgoing requests.
+    // It is not safe to reuse either sequence after a document or host restart.
+    self.last_event = envelope.request
+    Ok(())
+  } catch { BadProtocol(message) => Err(message) }
 }

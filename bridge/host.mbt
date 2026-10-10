@@ -48,3 +48,9 @@ pub fn host_close(session : @transport.Session) -> String {
   let ids = session.close().map(fn(id) { id.to_double().to_json() })
   ids.to_json().stringify()
 }
+
+
+///|
+pub fn host_observe(session : @transport.Session, raw : String) -> String {
+  host_result(session.observe(raw))
+}

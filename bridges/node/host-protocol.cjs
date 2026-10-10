@@ -47,6 +47,11 @@ function createSessionGate(expectedSession) {
       checked(core.host_accept(session, raw));
       return JSON.parse(raw);
     },
+    observe(bytes) {
+      const raw = wire(bytes);
+      checked(core.host_observe(session, raw));
+      return JSON.parse(raw);
+    },
     cancel(request) {
       if (typeof request !== 'number') fail('Expected numeric request ID');
       return checked(core.host_cancel(session, request));

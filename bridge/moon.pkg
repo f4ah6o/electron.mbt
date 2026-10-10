@@ -6,7 +6,7 @@ import {
 options(
   link: {
     "js": {
-      "exports": ["new_runtime", "dispatch", "diagnose", "host_limits", "host_validate", "host_new", "host_status", "host_register", "host_accept", "host_cancel", "host_pending", "host_close", "window_reserve", "window_confirm", "window_begin_close", "window_cancel_close", "window_navigate", "window_destroy"],
+      "exports": ["new_runtime", "dispatch", "diagnose", "host_limits", "host_validate", "host_new", "host_status", "host_register", "host_accept", "host_cancel", "host_pending", "host_close", "host_observe", "window_reserve", "window_confirm", "window_begin_close", "window_cancel_close", "window_navigate", "window_destroy", "window_invalidate"],
       "format": "cjs",
     },
   },

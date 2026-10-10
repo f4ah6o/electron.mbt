@@ -82,7 +82,7 @@ class ExperimentalRuntime {
     this.BrowserWindow = class BrowserWindow extends EventEmitter {
       constructor(options) {
         super();
-        if (!runtime.ready || runtime.terminated) {
+        if (!runtime.ready || runtime.terminated || runtime.quitting) {
           fail('ELECTRON_MBT_INVALID_STATE', 'Window cannot be created before ready');
         }
         const normalized = supportedOptions(options);
@@ -155,7 +155,13 @@ class ExperimentalRuntime {
           runtime.host.request('close-window', this.id, this._generation);
           this._finishDestroy();
         } catch (error) {
-          if (!this._destroyed) runtime.core.window_cancel_close(runtime.runtime, this.id);
+          if (runtime.host.dead) {
+            // An ambiguous native close must invalidate the whole session,
+            // not pretend the WKWebView is known to be live again.
+            runtime.abort();
+          } else if (!this._destroyed) {
+            runtime.core.window_cancel_close(runtime.runtime, this.id);
+          }
           throw error;
         } finally { this._closing = false; }
       }
@@ -205,11 +211,16 @@ class ExperimentalRuntime {
   }
   quit() {
     if (this.terminated || this.quitting) return;
-    let prevented = false;
-    this.app.emit('before-quit', { preventDefault() { prevented = true; } });
-    if (prevented) return;
-    checked(this.core.dispatch(this.runtime, 'begin-quit'));
     this.quitting = true;
+    let prevented = false;
+    try {
+      this.app.emit('before-quit', { preventDefault() { prevented = true; } });
+      if (prevented) { this.quitting = false; return; }
+      checked(this.core.dispatch(this.runtime, 'begin-quit'));
+    } catch (error) {
+      this.quitting = false;
+      throw error;
+    }
     let graceful = false;
     try {
       for (const window of Array.from(this.windows.values())) window.destroy();

@@ -255,7 +255,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "load-file" | "close-window" | "destroy-window" | "shutdown" => op
+      "hello" | "ready" | "create-window" | "show-window" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")

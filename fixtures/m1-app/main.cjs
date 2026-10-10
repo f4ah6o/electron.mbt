@@ -19,8 +19,10 @@ app.whenReady().then(async () => {
     { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   let loaded = 0;
   win.webContents.on('did-finish-load', () => { loaded++; });
+  const superseded = win.loadFile('index.html');
   const promise = win.loadFile('index.html');
   assert.equal(typeof promise.then, 'function');
+  await assert.rejects(superseded, { code: 'ELECTRON_MBT_STALE_DOCUMENT' });
   await promise;
   assert.equal(loaded, 1);
   win.show();
@@ -34,7 +36,7 @@ app.whenReady().then(async () => {
   assert.equal(BrowserWindow.getAllWindows().length, 0);
   console.log(JSON.stringify({
     fixture: 'm1-cjs', status: 'PASS', readyOrder: true,
-    synchronousConstructor: true, realWebViewLoaded: true, closeCancelled: true,
+    synchronousConstructor: true, realWebViewLoaded: true, staleLoadCancelled: true, closeCancelled: true,
     destroyForced: true, unsafeOptionsRejected: true, compatible: false,
   }));
   app.quit();

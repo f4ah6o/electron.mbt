@@ -202,3 +202,30 @@ test "What: native window titles require bounded values and matching success ACK
   assert_true(failed.register(set_request) is Ok(_))
   assert_true(failed.accept(visibility_wire("set-window-title", "{\"code\":\"ELECTRON_MBT_WINDOW_OPTIONS\"}", ",\"terminal\":\"failure\"")) is Ok(_))
 }
+
+///|
+test "What: native web contents URL requires an empty request and bounded one-field success" {
+  let request = visibility_wire("get-web-contents-url", "{}", "")
+  let gate = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(gate.register(request) is Ok(_))
+  for invalid in [
+    "{}", "{\"url\":null}", "{\"url\":7}", "{\"url\":[]}",
+    "{\"url\":\"file:///index.html\",\"extra\":true}",
+  ] {
+    let reply = visibility_wire("get-web-contents-url", invalid, ",\"terminal\":\"success\"")
+    assert_true(validate(reply) is Err(_))
+    assert_true(gate.accept(reply) is Err(_))
+    assert_eq(gate.pending_count(), 1)
+  }
+  let good = visibility_wire("get-web-contents-url", "{\"url\":\"file:///app/index.html\"}", ",\"terminal\":\"success\"")
+  assert_true(gate.accept(good) is Ok(_))
+  assert_eq(gate.pending_count(), 0)
+  assert_true(gate.accept(good) is Err(_))
+  assert_true(validate(visibility_wire("get-web-contents-url", "{\"injected\":true}", "")) is Err(_))
+  let mut long_url = ""
+  for i = 0; i < 8193; i = i + 1 { long_url = long_url + "x" }
+  assert_true(validate(visibility_wire("get-web-contents-url", "{\"url\":\"" + long_url + "\"}", ",\"terminal\":\"success\"")) is Err(_))
+  let empty = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(empty.register(request) is Ok(_))
+  assert_true(empty.accept(visibility_wire("get-web-contents-url", "{\"url\":\"\"}", ",\"terminal\":\"success\"")) is Ok(_))
+}

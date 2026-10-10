@@ -257,7 +257,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-web-contents-url" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -284,6 +284,24 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Invalid native window title")
+      }
+    }
+  }
+  if operation == "get-web-contents-url" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid get-web-contents-url request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 1 => {
+          match values.get("url") {
+            Some(String(value)) if value.length() <= 8192 => ()
+            _ => raise BadProtocol("Invalid native web contents URL")
+          }
+        }
+        _ => raise BadProtocol("Invalid native web contents URL")
       }
     }
   }

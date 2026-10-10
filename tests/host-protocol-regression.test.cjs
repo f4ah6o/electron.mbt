@@ -143,3 +143,20 @@ test('What: MoonBit validates title envelopes and correlates the exact native ti
   assert.throws(() => encodeEnvelope({ ...set, payload: { title: 0 } }), error);
   assert.throws(() => encodeEnvelope({ ...get, payload: { title: 'injected' } }), error);
 });
+
+test('What: native URL reads accept only bounded URL strings in successful ACKs', () => {
+  const request = envelope({ operation: 'get-web-contents-url', payload: {} });
+  for (const badPayload of [{}, { url: 42 }, { url: null }, { url: [] },
+    { url: 'file:///index.html', extra: true }, { url: 'x'.repeat(8193) }]) {
+    const gate = createSessionGate(session);
+    gate.register(request);
+    assert.throws(() => gate.accept(raw({ ...request, payload: badPayload, terminal: 'success' })), error);
+    assert.equal(gate.pendingCount(), 1);
+    gate.accept(raw({ ...request, payload: { url: '' }, terminal: 'success' }));
+  }
+  assert.throws(() => encodeEnvelope({ ...request, payload: { forged: true } }), error);
+  const gate = createSessionGate(session);
+  gate.register(request);
+  gate.accept(raw({ ...request, payload: { url: 'file:///app/index.html' }, terminal: 'success' }));
+  assert.equal(gate.pendingCount(), 0);
+});

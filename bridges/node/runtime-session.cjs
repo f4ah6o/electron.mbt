@@ -101,6 +101,19 @@ class ExperimentalRuntime {
         this.webContents = new EventEmitter();
         this.webContents.id = id;
         this.webContents.send = () => fail('ELECTRON_MBT_UNSUPPORTED_API', 'Renderer IPC is not available in M1');
+        this.webContents.getURL = () => {
+          if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+          if (this._renderProcessGone) {
+            fail('ELECTRON_MBT_WEB_PROCESS_TERMINATED', 'WebKit content process terminated');
+          }
+          const acknowledgement = runtime.host.request('get-web-contents-url', this.id, this._generation);
+          if (typeof acknowledgement.url !== 'string' || acknowledgement.url.length > 8192 ||
+              !acknowledgement.url.isWellFormed()) {
+            runtime.abort();
+            fail('ELECTRON_MBT_PROTOCOL', 'Malformed native web contents URL acknowledgement');
+          }
+          return acknowledgement.url;
+        };
         this._generation = 0;
         this._loading = false;
         this._renderProcessGone = false;

@@ -24,6 +24,7 @@ app.whenReady().then(async () => {
   assert.equal(win.hide(), undefined);
   assert.equal(win.isVisible(), false);
   assert.equal(win.getTitle(), 'M1 CJS fixture');
+  assert.equal(win.webContents.getURL(), '');
   assert.equal(win.setTitle('M1 title 日本語'), undefined);
   assert.equal(win.getTitle(), 'M1 title 日本語');
   assert.throws(() => win.setTitle(12), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
@@ -63,6 +64,7 @@ app.whenReady().then(async () => {
   await overlapRejected;
   await promise;
   assert.equal(loaded, 1);
+  assert.match(win.webContents.getURL(), /^file:\/\/.*\/index\.html$/);
   // A native terminal ACK must clear the loading guard *before* invoking
   // listeners. Both the second load and its completion use real WKWebView.
   let chained;
@@ -96,6 +98,7 @@ app.whenReady().then(async () => {
   win.once('closed', () => {
     assert.equal(win.isDestroyed(), true);
     assert.throws(() => win.isVisible(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     visibilityRejectedInsideClosed = true;
   });
   win.destroy();
@@ -103,6 +106,7 @@ app.whenReady().then(async () => {
   assert.equal(visibilityRejectedInsideClosed, true);
   assert.throws(() => win.isVisible(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.setTitle('forbidden'), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.hide(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   const rapid = new BrowserWindow({ show: false });
@@ -191,6 +195,7 @@ app.whenReady().then(async () => {
     destroyedVisibilityRejected: true, closedListenerVisibilityRejected: true,
     nativeTitleRoundTrip: true, destroyedTitleRejected: true,
     invalidSurrogateKeepsHost: true,
+    nativeWebContentsURL: true, destroyedWebContentsURLRejected: true,
     unsafeOptionsRejected: true, quitCancellationAndReentry: true,
     quitCloseCancellation: true, willQuitCancellation: true,
     quitEventOrder: true, quitEventArguments: true,

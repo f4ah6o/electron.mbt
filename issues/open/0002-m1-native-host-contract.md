@@ -42,3 +42,7 @@ CI [#38050130860](https://github.com/f4ah6o/electron.mbt/actions/runs/3805013086
 The experimental CJS app.quit lifecycle now uses cancellable native-backed window close operations, honors before-quit and will-quit cancellation, suppresses window-all-closed during quit, and restores MoonBit Ready after cancellation. Portable MoonBit-backed Node tests and the real macOS CJS fixture cover these transitions, including `(event, exitCode=0)` on the terminal quit event; fail-closed injected native host loss prevents `will-quit`/`quit` after interrupted close. Renderer beforeunload/unload remains unsupported.
 
 **Still open:** complete E2E of OS focus/IME/accessibility and multi-display, sender attestation and renderer permissions, cross-world synchronous `contextBridge`, production gpui integration, true third-party app differential, packing/signing and Windows/Linux. Keep Draft and no general `run` enablement until the relevant gates are independently verified.
+
+## Additional experimental main-process read surface
+
+`webContents.getURL()` synchronously obtains the actual WKWebView URL over the short private native control lane. The MoonBit transport accepts only empty requests and a single bounded string success payload. Native generation mismatch, destroyed windows and terminated WebKit content remain denied; the URL is not cached in Node. The macOS lifecycle and unchanged CommonJS fixture now exercise before-load, after-load and stale/destroyed behavior. This is not a renderer IPC channel or proof of Electron navigation compatibility.

@@ -95,7 +95,8 @@
         "scripts/m1-native-close-race.cjs",
         "tests/runtime-quit.test.cjs",
         "tests/runtime-title.test.cjs",
-        "tests/runtime-webcontents-url.test.cjs"
+        "tests/runtime-webcontents-url.test.cjs",
+        "tests/runtime-bounds.test.cjs"
       ],
       "evidence": [],
       "gap": "Native AppKit close gestures and app.quit before-quit/close/will-quit cancellation are mediated by native ACKs and MoonBit state. Queued stale notifications are ignored in deterministic tests. Host-loss fault injection prevents false normal-quit events; real macOS CJS tests validate quit event arguments. Renderer beforeunload/unload, human physical UI and complete Electron event ordering remain unverified."
@@ -239,6 +240,7 @@
       "BrowserWindow.show",
       "BrowserWindow.hide",
       "BrowserWindow.isVisible",
+      "BrowserWindow.getBounds",
       "BrowserWindow.close cancellable",
       "BrowserWindow.destroy",
       "BrowserWindow.isDestroyed",
@@ -263,6 +265,7 @@
       "native NSWindow-backed visibility is implemented; Electron show/hide events, focus and Page Visibility API parity are unverified",
       "webContents.getURL synchronously reads the WKWebView URL with strict native ACK validation, but full Electron navigation semantics are unverified",
       "webContents.getTitle reads the actual WKWebView document title independently of NSWindow.title; full Electron document-title event semantics are unverified",
+      "BrowserWindow.getBounds reads actual NSWindow.frame as bounded integer coordinates relative to the primary screen top-left; multi-display and geometry-change event parity are unverified",
       "app.quit respects native-backed close, before-quit and will-quit cancellation, supplies (event, exitCode=0), and suppresses normal quit after host loss; renderer beforeunload/unload is not implemented"
     ],
     "experimentalSignals": [

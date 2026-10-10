@@ -178,3 +178,28 @@ test('What: native page title replies reject missing, malformed, oversized or ex
   gate.accept(raw({ ...request, terminal: 'success', payload: { title: '' } }));
   assert.equal(gate.pendingCount(), 0);
 });
+
+test('What: native get-window-bounds success requires exact bounded integer geometry', () => {
+  const request = envelope({ operation: 'get-window-bounds', payload: {} });
+  for (const bad of [
+    {}, { x: 1, y: 2, width: 640 }, { x: 1, y: 2, width: 640, height: 480, extra: 1 },
+    { x: null, y: 2, width: 640, height: 480 },
+    { x: 1.5, y: 2, width: 640, height: 480 },
+    { x: 1, y: 2, width: 0, height: 480 },
+    { x: 1, y: 2, width: 640, height: -1 },
+    { x: 1048577, y: 2, width: 640, height: 480 },
+    { x: 1, y: 2, width: 32769, height: 480 },
+  ]) {
+    const gate = createSessionGate(session);
+    gate.register(request);
+    assert.throws(() => gate.accept(raw({ ...request, payload: bad, terminal: 'success' })), error);
+    assert.equal(gate.pendingCount(), 1);
+    gate.accept(raw({ ...request, payload: { x: -35, y: 25, width: 640, height: 504 }, terminal: 'success' }));
+    assert.equal(gate.pendingCount(), 0);
+  }
+  assert.throws(() => encodeEnvelope({ ...request, payload: { injected: true } }), error);
+  const failed = createSessionGate(session);
+  failed.register(request);
+  failed.accept(raw({ ...request, payload: { code: 'ELECTRON_MBT_WINDOW_UNKNOWN' }, terminal: 'failure' }));
+  assert.equal(failed.pendingCount(), 0);
+});

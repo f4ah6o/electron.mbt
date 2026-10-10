@@ -30,6 +30,11 @@ async function main() {
     });
     assert.equal(created.webViewAttached, true);
     assert.equal(created.visible, false);
+    const initialBounds = host.request('get-window-bounds', 1, 0);
+    assert.deepEqual(Object.keys(initialBounds).sort(), ['height', 'width', 'x', 'y']);
+    assert.equal(initialBounds.width, 640);
+    assert.ok(initialBounds.height >= 480 && initialBounds.height <= 640);
+    assert.ok(Number.isSafeInteger(initialBounds.x) && Number.isSafeInteger(initialBounds.y));
     assert.equal(host.request('get-window-title', 1, 0).title, 'electron.mbt M1 native smoke');
     assert.equal(host.request('get-web-contents-url', 1, 0).url, '');
     assert.equal(host.request('get-web-contents-title', 1, 0).title, '');
@@ -49,6 +54,7 @@ async function main() {
     assert.equal(host.request('hide-window', 1, 1).visible, false);
     assert.equal(host.request('is-window-visible', 1, 1).visible, false);
     assert.equal(host.request('show-window', 1, 1).visible, true);
+    assert.deepEqual(host.request('get-window-bounds', 1, 1), initialBounds);
     // If Node's main event loop is blocked during WK navigation, even an
     // immediate callback cannot execute before the load's response.
     let mainThreadProgress = false;
@@ -82,6 +88,9 @@ async function main() {
     assert.throws(() => host.request('get-web-contents-title', 1, 1), {
       code: 'ELECTRON_MBT_STALE_DOCUMENT',
     });
+    assert.throws(() => host.request('get-window-bounds', 1, 1), {
+      code: 'ELECTRON_MBT_STALE_DOCUMENT',
+    });
     await assert.rejects(host.requestAsync('load-file', 1, 2, {
       file: path.resolve(root, '../oracle/index.html'),
     }), { code: 'ELECTRON_MBT_FILE_OR_GENERATION_DENIED' });
@@ -98,6 +107,9 @@ async function main() {
     assert.throws(() => host.request('get-web-contents-title', 1, 2), {
       code: 'ELECTRON_MBT_WINDOW_UNKNOWN',
     });
+    assert.throws(() => host.request('get-window-bounds', 1, 2), {
+      code: 'ELECTRON_MBT_WINDOW_UNKNOWN',
+    });
     host.close();
     closed = true;
     await waitForExit(host.process);
@@ -112,7 +124,8 @@ async function main() {
       nativeVisibilityRoundTrip: true, staleVisibilityDenied: true,
       nativeTitleRoundTrip: true, staleTitleDenied: true,
       nativeWebContentsURL: true, staleWebContentsURLDenied: true,
-      nativeWebContentsTitle: true, staleWebContentsTitleDenied: true, compatible: false,
+      nativeWebContentsTitle: true, staleWebContentsTitleDenied: true,
+      nativeWindowBounds: true, staleWindowBoundsDenied: true, compatible: false,
     }));
   } finally {
     if (!closed) host.abort();

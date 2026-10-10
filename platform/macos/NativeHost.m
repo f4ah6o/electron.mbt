@@ -430,6 +430,34 @@ static NSString *canonicalPath(NSString *path) {
     done(@"success", @{@"title": title});
     return;
   }
+  if ([operation isEqualToString:@"get-window-bounds"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    // NSScreen.mainScreen follows active focus, so it cannot anchor stable
+    // primary-display coordinates when the native window is unfocused.
+    NSScreen *primary = [NSScreen screens].firstObject;
+    if (!primary) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
+      return;
+    }
+    NSRect frame = window.native.frame;
+    NSRect display = primary.frame;
+    double x = round(NSMinX(frame) - NSMinX(display));
+    double y = round(NSMaxY(display) - NSMaxY(frame));
+    double width = round(NSWidth(frame));
+    double height = round(NSHeight(frame));
+    if (!isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height) ||
+        fabs(x) > 1048576.0 || fabs(y) > 1048576.0 ||
+        width <= 0.0 || width > 32768.0 || height <= 0.0 || height > 32768.0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
+      return;
+    }
+    done(@"success", @{@"x": @(llround(x)), @"y": @(llround(y)),
+                        @"width": @(llround(width)), @"height": @(llround(height))});
+    return;
+  }
   if ([operation isEqualToString:@"get-window-title"]) {
     if (payload.count != 0) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});

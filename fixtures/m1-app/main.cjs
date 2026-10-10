@@ -16,6 +16,11 @@ app.whenReady().then(async () => {
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   });
   assert.equal(BrowserWindow.getAllWindows()[0], win);
+  const initialBounds = win.getBounds();
+  assert.deepEqual(Object.keys(initialBounds).sort(), ['height', 'width', 'x', 'y']);
+  assert.equal(initialBounds.width, 640);
+  assert.ok(initialBounds.height >= 480 && initialBounds.height <= 640);
+  assert.ok(Number.isSafeInteger(initialBounds.x) && Number.isSafeInteger(initialBounds.y));
   assert.equal(win.isVisible(), false);
   assert.equal(win.hide(), undefined);
   assert.equal(win.isVisible(), false);
@@ -23,6 +28,7 @@ app.whenReady().then(async () => {
   assert.equal(win.isVisible(), true);
   assert.equal(win.hide(), undefined);
   assert.equal(win.isVisible(), false);
+  assert.deepEqual(win.getBounds(), initialBounds);
   assert.equal(win.getTitle(), 'M1 CJS fixture');
   assert.equal(win.webContents.getURL(), '');
   assert.equal(win.webContents.getTitle(), '');
@@ -65,6 +71,7 @@ app.whenReady().then(async () => {
   await overlapRejected;
   await promise;
   assert.equal(loaded, 1);
+  assert.deepEqual(win.getBounds(), initialBounds);
   assert.match(win.webContents.getURL(), /^file:\/\/.*\/index\.html$/);
   assert.equal(win.webContents.getTitle(), 'Experimental M1 CJS app');
   assert.equal(win.getTitle(), 'M1 title 日本語');
@@ -103,6 +110,7 @@ app.whenReady().then(async () => {
     assert.throws(() => win.isVisible(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
     visibilityRejectedInsideClosed = true;
   });
   win.destroy();
@@ -110,6 +118,7 @@ app.whenReady().then(async () => {
   assert.equal(visibilityRejectedInsideClosed, true);
   assert.throws(() => win.isVisible(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+  assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.webContents.getURL(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.webContents.getTitle(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.setTitle('forbidden'), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
@@ -202,6 +211,7 @@ app.whenReady().then(async () => {
     invalidSurrogateKeepsHost: true,
     nativeWebContentsURL: true, destroyedWebContentsURLRejected: true,
     nativeWebContentsTitle: true, destroyedWebContentsTitleRejected: true,
+    nativeWindowBounds: true, destroyedWindowBoundsRejected: true,
     unsafeOptionsRejected: true, quitCancellationAndReentry: true,
     quitCloseCancellation: true, willQuitCancellation: true,
     quitEventOrder: true, quitEventArguments: true,

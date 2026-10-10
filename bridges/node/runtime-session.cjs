@@ -315,7 +315,20 @@ class ExperimentalRuntime {
         }
       }
       getBounds() {
-        fail('ELECTRON_MBT_UNSUPPORTED_API', 'Real native bounds are not exposed by M1');
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        const bounds = runtime.host.request('get-window-bounds', this.id, this._generation);
+        const keys = bounds && typeof bounds === 'object' && !Array.isArray(bounds) ?
+          Object.keys(bounds).sort() : [];
+        const coordinate = value => Number.isSafeInteger(value) && !Object.is(value, -0) &&
+          Math.abs(value) <= 1048576;
+        const dimension = value => Number.isSafeInteger(value) && value > 0 && value <= 32768;
+        if (keys.join(',') !== 'height,width,x,y' ||
+            !coordinate(bounds.x) || !coordinate(bounds.y) ||
+            !dimension(bounds.width) || !dimension(bounds.height)) {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Malformed native window bounds acknowledgement');
+        }
+        return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
       }
     };
     this.host.on('native-close-request', details => {

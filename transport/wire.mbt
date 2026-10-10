@@ -216,6 +216,18 @@ fn session_valid(value : String) -> Bool {
 }
 
 ///|
+fn bounds_value(value : Json, dimension : Bool) -> Bool {
+  match value {
+    Number(number, ..) => {
+      if number.to_int64().to_double() != number { return false }
+      if dimension { number > 0.0 && number <= 32768.0 }
+      else { number >= -1048576.0 && number <= 1048576.0 }
+    }
+    _ => false
+  }
+}
+
+///|
 priv struct Envelope {
   session : String
   request : Int64
@@ -257,7 +269,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-web-contents-url" | "get-web-contents-title" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "get-web-contents-url" | "get-web-contents-title" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -284,6 +296,26 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Invalid native window title")
+      }
+    }
+  }
+  if operation == "get-window-bounds" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid get-window-bounds request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 4 => {
+          if !bounds_value(values.get("x").unwrap_or(null), false) ||
+             !bounds_value(values.get("y").unwrap_or(null), false) ||
+             !bounds_value(values.get("width").unwrap_or(null), true) ||
+             !bounds_value(values.get("height").unwrap_or(null), true) {
+            raise BadProtocol("Invalid native window bounds")
+          }
+        }
+        _ => raise BadProtocol("Invalid native window bounds")
       }
     }
   }

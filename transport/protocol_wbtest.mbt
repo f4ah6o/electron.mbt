@@ -259,3 +259,33 @@ test "What: web contents title requests and success ACKs are shape and length ch
   assert_true(empty.register(request) is Ok(_))
   assert_true(empty.accept(visibility_wire("get-web-contents-title", "{\"title\":\"\"}", ",\"terminal\":\"success\"")) is Ok(_))
 }
+
+///|
+test "What: get-window-bounds has empty requests and exact integer native ACKs" {
+  let request = visibility_wire("get-window-bounds", "{}", "")
+  let gate = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(gate.register(request) is Ok(_))
+  let invalid = [
+    "{}", "{\"x\":0,\"y\":1,\"width\":640}",
+    "{\"x\":0,\"y\":1,\"width\":640,\"height\":480,\"extra\":1}",
+    "{\"x\":0,\"y\":1,\"width\":640.5,\"height\":480}",
+    "{\"x\":0,\"y\":1,\"width\":0,\"height\":480}",
+    "{\"x\":0,\"y\":1,\"width\":640,\"height\":-1}",
+    "{\"x\":0,\"y\":true,\"width\":640,\"height\":480}",
+    "{\"x\":1048577,\"y\":1,\"width\":640,\"height\":480}",
+  ]
+  for bad in invalid {
+    let response = visibility_wire("get-window-bounds", bad, ",\"terminal\":\"success\"")
+    assert_true(validate(response) is Err(_))
+    assert_true(gate.accept(response) is Err(_))
+    assert_eq(gate.pending_count(), 1)
+  }
+  assert_true(validate(visibility_wire("get-window-bounds", "{\"x\":0}", "")) is Err(_))
+  let valid = visibility_wire("get-window-bounds", "{\"x\":-20,\"y\":50,\"width\":640,\"height\":504}", ",\"terminal\":\"success\"")
+  assert_true(gate.accept(valid) is Ok(_))
+  assert_eq(gate.pending_count(), 0)
+  assert_true(gate.accept(valid) is Err(_))
+  let failed = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(failed.register(request) is Ok(_))
+  assert_true(failed.accept(visibility_wire("get-window-bounds", "{\"code\":\"ELECTRON_MBT_STALE_DOCUMENT\"}", ",\"terminal\":\"failure\"")) is Ok(_))
+}

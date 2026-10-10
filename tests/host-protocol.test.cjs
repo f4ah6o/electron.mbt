@@ -53,3 +53,21 @@ test('What: unsafe keys, excessive depth and invalid UTF-8 are rejected', () => 
   assert.throws(() => encodeEnvelope(envelope({ payload: deep })), { code: 'ELECTRON_MBT_PROTOCOL' });
   assert.throws(() => decodeEnvelope(Buffer.from([0xff])), { code: 'ELECTRON_MBT_PROTOCOL' });
 });
+
+test('What: completed request IDs cannot be reused by late responses', () => {
+  const gate = createSessionGate(session);
+  gate.register(envelope({ request: 10 }));
+  gate.accept(encodeEnvelope(envelope({ request: 10, terminal: 'success' })));
+  assert.throws(() => gate.register(envelope({ request: 10 })), { code: 'ELECTRON_MBT_PROTOCOL' });
+  assert.throws(() => gate.accept(encodeEnvelope(envelope({ request: 10, terminal: 'success' }))), { code: 'ELECTRON_MBT_PROTOCOL' });
+  gate.register(envelope({ request: 11 }));
+  assert.equal(gate.pendingCount(), 1);
+});
+test('What: cancelled IDs cannot be reused or replayed', () => {
+  const gate = createSessionGate(session);
+  gate.register(envelope({ request: 20 }));
+  assert.equal(gate.cancel(20), true);
+  assert.throws(() => gate.register(envelope({ request: 20 })), { code: 'ELECTRON_MBT_PROTOCOL' });
+  assert.throws(() => gate.accept(encodeEnvelope(envelope({ request: 20, terminal: 'success' }))), { code: 'ELECTRON_MBT_PROTOCOL' });
+  assert.throws(() => gate.register(envelope({ request: 19 })), { code: 'ELECTRON_MBT_PROTOCOL' });
+});

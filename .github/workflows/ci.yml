@@ -87,10 +87,18 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-macos-smoke.cjs 2>&1 | tee evidence/native-host-smoke.log
+      - name: Reject malformed raw native control IDs before dispatch
+        shell: bash
+        run: |
+          node scripts/m1-invalid-wire.cjs 2>&1 | tee evidence/m1-invalid-wire.log
       - name: Exercise experimental unchanged CJS Electron app
         shell: bash
         run: |
           node scripts/m1-app-smoke.cjs 2>&1 | tee evidence/m1-cjs-app.log
+      - name: Confirm slow HTML does not block the Node event loop
+        shell: bash
+        run: |
+          node scripts/m1-slow-load.cjs 2>&1 | tee evidence/m1-slow-load.log
       - name: Build test-only WebKit termination-callback simulator
         run: node scripts/build-macos-host.cjs --simulate-webkit-termination
       - name: Validate simulated WebKit termination notification and MoonBit revocation

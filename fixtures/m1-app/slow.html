@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Slow WKWebView HTML</title></head>
+<body>
+  <h1>Slow script holds only the WebKit content process</h1>
+  <script>
+    const end = performance.now() + 750;
+    while (performance.now() < end) {}
+    window.m1SlowPageLoaded = true;
+  </script>
+</body>
+</html>

@@ -61,9 +61,22 @@ app.whenReady().then(async () => {
     fixture: 'm1-cjs', status: 'PASS', readyOrder: true,
     synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, overlappingLoadRejected: true, nodeEventLoopResponsive: true, immediateShowSafe: true,
     nativeDestroyErrorPreserved: true, inflightDestroySafe: true, closeCancelled: true,
-    destroyForced: true, unsafeOptionsRejected: true, compatible: false,
+    destroyForced: true, unsafeOptionsRejected: true, quitCancellationAndReentry: true, compatible: false,
   }));
+  let cancelledQuit = 0;
+  app.once('before-quit', event => { cancelledQuit++; event.preventDefault(); });
   app.quit();
+  assert.equal(cancelledQuit, 1);
+  assert.equal(app.isReady(), true);
+  let reentrantQuit = 0;
+  app.on('before-quit', () => {
+    reentrantQuit++;
+    app.quit();
+    assert.throws(() => new BrowserWindow({ show: false }),
+      { code: 'ELECTRON_MBT_INVALID_STATE' });
+  });
+  app.quit();
+  assert.equal(reentrantQuit, 1);
 }).catch(error => {
   console.error(error.stack || error.message);
   process.exitCode = 1;

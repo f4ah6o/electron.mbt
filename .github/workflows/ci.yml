@@ -87,6 +87,10 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-macos-smoke.cjs 2>&1 | tee evidence/native-host-smoke.log
+      - name: Exercise experimental unchanged CJS Electron app
+        shell: bash
+        run: |
+          node scripts/m1-app-smoke.cjs 2>&1 | tee evidence/m1-cjs-app.log
       - name: Install the separate pinned test oracle
         shell: bash
         run: |

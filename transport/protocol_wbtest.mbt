@@ -323,3 +323,48 @@ test "What: set-window-bounds validates safe partial geometry and native success
   assert_true(failure.register(prefix) is Ok(_))
   assert_true(failure.accept(visibility_wire("set-window-bounds", "{\"code\":\"ELECTRON_MBT_WINDOW_UNKNOWN\"}", ",\"terminal\":\"failure\"")) is Ok(_))
 }
+
+
+///|
+test "What: rounded fractional bounds tokens cannot complete pending native geometry" {
+  let request = visibility_wire("get-window-bounds", "{}", "")
+  let gate = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(gate.register(request) is Ok(_))
+  for payload in [
+    "{\"x\":1.00000000000000001,\"y\":2,\"width\":640,\"height\":480}",
+    "{\"x\":-1.00000000000000001,\"y\":2,\"width\":640,\"height\":480}",
+    "{\"x\":0.99999999999999999,\"y\":2,\"width\":640,\"height\":480}",
+    "{\"x\":1,\"y\":2.00000000000000001,\"width\":640,\"height\":480}",
+    "{\"x\":1,\"y\":2,\"width\":639.99999999999999999,\"height\":480}",
+    "{\"x\":1,\"y\":2,\"width\":640,\"height\":4.80000000000000000001e2}",
+  ] {
+    let invalid = visibility_wire("get-window-bounds", payload, ",\"terminal\":\"success\"")
+    assert_true(validate(invalid) is Err(_))
+    assert_true(gate.accept(invalid) is Err(_))
+    assert_eq(gate.pending_count(), 1)
+  }
+  let valid = visibility_wire("get-window-bounds",
+    "{\"x\":-2.0e1,\"y\":5e1,\"width\":6.4e2,\"height\":4.8e2}",
+    ",\"terminal\":\"success\"")
+  assert_true(gate.accept(valid) is Ok(_))
+  assert_eq(gate.pending_count(), 0)
+}
+
+///|
+test "What: rounded fractional setBounds requests are invalid before registration" {
+  for payload in [
+    "{\"x\":1.00000000000000001}",
+    "{\"x\":-1.00000000000000001}",
+    "{\"y\":-0.99999999999999999}",
+    "{\"width\":639.99999999999999999}",
+    "{\"height\":4.80000000000000000001e2}",
+  ] {
+    let invalid = visibility_wire("set-window-bounds", payload, "")
+    assert_true(validate(invalid) is Err(_))
+    let pending = Session::new("0123456789abcdef0123456789abcdef")
+    assert_true(pending.register(invalid) is Err(_))
+    assert_eq(pending.pending_count(), 0)
+  }
+  assert_true(validate(visibility_wire("set-window-bounds",
+    "{\"x\":-2.0e1,\"y\":5e1,\"width\":6.4e2,\"height\":4.8e2}", "")) is Ok(_))
+}

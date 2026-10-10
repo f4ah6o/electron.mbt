@@ -156,6 +156,10 @@ jobs:
         run: |
           ORACLE="$(node -e 'process.stdout.write(require(process.argv[1]))' "$RUNNER_TEMP/electron-oracle/node_modules/electron")"
           node scripts/oracle.cjs "$ORACLE"
+      - name: Compare initial native outer frame against the pinned Electron oracle
+        shell: bash
+        run: |
+          node scripts/m1-bounds-oracle.cjs 2>&1 | tee evidence/m1-bounds-oracle.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

@@ -16,7 +16,7 @@ class FakeNativeHost extends EventEmitter {
     switch (operation) {
       case 'hello': case 'ready': return {};
       case 'create-window':
-        this.bounds.set(window, { x: -12, y: 33, width: payload.width, height: payload.height + 24 });
+        this.bounds.set(window, { x: -12, y: 33, width: payload.width, height: payload.height });
         return { webViewAttached: true };
       case 'get-window-bounds': return this.badAck ?? { ...this.bounds.get(window) };
       case 'set-window-bounds':
@@ -62,9 +62,9 @@ async function readyRuntime() {
 test('What: getBounds synchronously reflects native frame changes and denies destroyed windows', async () => {
   const runtime = await readyRuntime();
   const win = new runtime.BrowserWindow({ width: 640, height: 480, show: false });
-  assert.deepEqual(win.getBounds(), { x: -12, y: 33, width: 640, height: 504 });
+  assert.deepEqual(win.getBounds(), { x: -12, y: 33, width: 640, height: 480 });
   runtime.host.bounds.get(win.id).x = 120;
-  assert.deepEqual(win.getBounds(), { x: 120, y: 33, width: 640, height: 504 });
+  assert.deepEqual(win.getBounds(), { x: 120, y: 33, width: 640, height: 480 });
   win.once('closed', () => {
     assert.throws(() => win.getBounds(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   });
@@ -94,7 +94,7 @@ test('What: partial setBounds updates native-owned geometry and returns undefine
   const runtime = await readyRuntime();
   const win = new runtime.BrowserWindow({ width: 640, height: 480, show: false });
   assert.equal(win.setBounds({ width: 800 }), undefined);
-  assert.deepEqual(win.getBounds(), { x: -12, y: 33, width: 800, height: 504 });
+  assert.deepEqual(win.getBounds(), { x: -12, y: 33, width: 800, height: 480 });
   assert.equal(win.setBounds({ x: 100, y: 120, height: 540 }, false), undefined);
   assert.deepEqual(win.getBounds(), { x: 100, y: 120, width: 800, height: 540 });
   assert.equal(win.setBounds({}), undefined);
@@ -129,7 +129,7 @@ test('What: unsafe or invalid setBounds arguments do not invalidate otherwise he
   assert.equal(accessorCalls, 0);
   assert.throws(() => win.setBounds({ width: 750 }, true), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   assert.throws(() => win.setBounds({ width: 750 }, 1), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
-  assert.deepEqual(win.getBounds(), { x: -12, y: 33, width: 640, height: 504 });
+  assert.deepEqual(win.getBounds(), { x: -12, y: 33, width: 640, height: 480 });
   assert.equal(win.setBounds({ width: 750 }), undefined);
   assert.equal(win.getBounds().width, 750);
   win.destroy();

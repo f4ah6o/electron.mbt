@@ -227,3 +227,42 @@ test('What: set-window-bounds rejects unsafe partial requests and malformed nati
   gate.accept(raw({ ...requested, terminal: 'failure', payload: { code: 'ELECTRON_MBT_STALE_DOCUMENT' } }));
   assert.equal(gate.pendingCount(), 0);
 });
+
+
+test('What: raw rounded fractional bounds lexemes are rejected before Node number coercion', () => {
+  const request = envelope({ operation: 'get-window-bounds', payload: {} });
+  const validAck = JSON.stringify({ ...request, terminal: 'success',
+    payload: { x: -20, y: 50, width: 640, height: 480 } });
+  const substitutions = [
+    ['"x":-20', '"x":-20.00000000000000001'],
+    ['"x":-20', '"x":-19.99999999999999999'],
+    ['"y":50', '"y":50.00000000000000001'],
+    ['"width":640', '"width":639.99999999999999999'],
+    ['"height":480', '"height":4.80000000000000000001e2'],
+  ];
+  const gate = createSessionGate(session);
+  gate.register(request);
+  for (const [original, replacement] of substitutions) {
+    assert.ok(validAck.includes(original));
+    const invalidAck = validAck.replace(original, replacement);
+    assert.equal(JSON.parse(core.host_validate(invalidAck)).ok, false);
+    assert.throws(() => gate.accept(Buffer.from(invalidAck)), error);
+    assert.equal(gate.pendingCount(), 1);
+  }
+  const integerAck = validAck.replace('"x":-20', '"x":-2.0e1')
+    .replace('"width":640', '"width":6.4e2');
+  assert.equal(gate.accept(Buffer.from(integerAck)).operation, 'get-window-bounds');
+  assert.equal(gate.pendingCount(), 0);
+
+  const set = envelope({ operation: 'set-window-bounds',
+    payload: { x: -20, y: 50, width: 640, height: 480 } });
+  const validSet = JSON.stringify(set);
+  for (const [original, replacement] of substitutions) {
+    const invalidSet = validSet.replace(original, replacement);
+    assert.equal(JSON.parse(core.host_validate(invalidSet)).ok, false);
+    const rawSession = core.host_new(session);
+    assert.equal(JSON.parse(core.host_register(rawSession, invalidSet)).ok, false);
+    assert.equal(core.host_pending(rawSession), 0);
+  }
+  assert.equal(JSON.parse(core.host_validate(validSet.replace('"width":640', '"width":6.4e2'))).ok, true);
+});

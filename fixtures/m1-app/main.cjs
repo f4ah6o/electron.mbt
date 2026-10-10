@@ -30,7 +30,7 @@ app.whenReady().then(async () => {
   const initialBounds = win.getBounds();
   assert.deepEqual(Object.keys(initialBounds).sort(), ['height', 'width', 'x', 'y']);
   assert.equal(initialBounds.width, 640);
-  assert.ok(initialBounds.height >= 480 && initialBounds.height <= 640);
+  assert.equal(initialBounds.height, 480);
   assert.ok(Number.isSafeInteger(initialBounds.x) && Number.isSafeInteger(initialBounds.y));
   assert.equal(win.setBounds({ width: initialBounds.width + 32 }, false), undefined);
   assert.equal(win.getBounds().width, initialBounds.width + 32);

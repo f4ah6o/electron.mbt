@@ -131,15 +131,21 @@ static NSString *canonicalPath(NSString *path) {
     self.root = root;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
-    self.web = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, width, height)
-                                  configuration:config];
+    NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
+      NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;
+    // Do not pass Electron's outer width/height directly as content dimensions:
+    // the titled NSWindow frame would then grow by its title-bar height.
+    NSRect contentRect = [NSWindow contentRectForFrameRect:
+      NSMakeRect(0, 0, width, height) styleMask:styleMask];
+    self.web = [[WKWebView alloc] initWithFrame:
+      NSMakeRect(0, 0, NSWidth(contentRect), NSHeight(contentRect))
+      configuration:config];
     self.web.navigationDelegate = self;
     self.web.UIDelegate = self;
     // The native close button never destroys the window without a matching
     // MoonBit/Node main-process cancellation decision and native close ACK.
-    self.native = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, width, height)
-      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
-      backing:NSBackingStoreBuffered defer:NO];
+    self.native = [[NSWindow alloc] initWithContentRect:contentRect
+      styleMask:styleMask backing:NSBackingStoreBuffered defer:NO];
     self.native.releasedWhenClosed = NO;
     self.native.delegate = self;
     self.native.contentView = self.web;

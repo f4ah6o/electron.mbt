@@ -218,10 +218,29 @@ fn session_valid(value : String) -> Bool {
 ///|
 fn bounds_value(value : Json, dimension : Bool) -> Bool {
   match value {
-    Number(number, ..) => {
-      if number.to_int64().to_double() != number { return false }
-      if dimension { number > 0.0 && number <= 32768.0 }
-      else { number >= -1048576.0 && number <= 1048576.0 }
+    Number(number, repr~) => {
+      if number - number != 0.0 || (number == 0.0 && 1.0 / number < 0.0) {
+        return false
+      }
+      let exact = match repr {
+        Some(token) => {
+          if token.length() > 0 && token[0].to_int() == 45 {
+            let magnitude = exact_identifier(token[1:token.length()]) catch {
+              _ => return false
+            }
+            0L - magnitude
+          } else {
+            exact_identifier(token) catch { _ => return false }
+          }
+        }
+        None => {
+          if number < -1048576.0 || number > 1048576.0 ||
+             number.to_int64().to_double() != number { return false }
+          number.to_int64()
+        }
+      }
+      if dimension { exact > 0L && exact <= 32768L }
+      else { exact >= -1048576L && exact <= 1048576L }
     }
     _ => false
   }

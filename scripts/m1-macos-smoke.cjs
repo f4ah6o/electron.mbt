@@ -34,7 +34,7 @@ async function main() {
     const initialBounds = host.request('get-window-bounds', 1, 0);
     assert.deepEqual(Object.keys(initialBounds).sort(), ['height', 'width', 'x', 'y']);
     assert.equal(initialBounds.width, 640);
-    assert.ok(initialBounds.height >= 480 && initialBounds.height <= 640);
+    assert.equal(initialBounds.height, 480);
     assert.ok(Number.isSafeInteger(initialBounds.x) && Number.isSafeInteger(initialBounds.y));
     const enlargedWidth = initialBounds.width + 32;
     const resizedBounds = host.request('set-window-bounds', 1, 0, { width: enlargedWidth });
@@ -143,6 +143,7 @@ async function main() {
       nativeWebContentsURL: true, staleWebContentsURLDenied: true,
       nativeWebContentsTitle: true, staleWebContentsTitleDenied: true,
       nativeWindowBounds: true, staleWindowBoundsDenied: true,
+      initialOuterBounds: { width: initialBounds.width, height: initialBounds.height },
       nativeSetBoundsRoundTrip: true, staleSetBoundsDenied: true, compatible: false,
     }));
   } finally {

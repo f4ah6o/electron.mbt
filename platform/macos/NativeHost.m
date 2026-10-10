@@ -64,6 +64,7 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic, copy) NSString *loadedFile;
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
 @property(nonatomic) long long generation;
+@property(nonatomic) long long loadedGeneration;
 @property(nonatomic) BOOL permittedClose;
 @property(nonatomic) BOOL allowNextNavigation;
 @property(nonatomic) BOOL contentAlive;
@@ -94,6 +95,7 @@ static NSString *canonicalPath(NSString *path) {
     self.native.contentView = self.web;
     self.native.title = title;
     self.generation = 0;
+    self.loadedGeneration = 0;
     self.contentAlive = YES;
     self.allowNextNavigation = NO;
     if (visible) [self.native orderFront:nil];
@@ -246,8 +248,9 @@ static NSString *canonicalPath(NSString *path) {
     NSString *file = payload[@"file"];
     NSString *canonical = canonicalPath(file);
     if (![file isKindOfClass:[NSString class]] || !canonical || ![window withinRoot:canonical] ||
-        generation.longLongValue != window.generation || window.loadDone != nil ||
-        !window.contentAlive) {
+        generation.longLongValue != window.generation ||
+        generation.longLongValue <= window.loadedGeneration ||
+        window.loadDone != nil || !window.contentAlive) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
       return;
     }
@@ -256,6 +259,7 @@ static NSString *canonicalPath(NSString *path) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
       return;
     }
+    window.loadedGeneration = generation.longLongValue;
     window.loadedFile = canonical;
     window.allowNextNavigation = YES;
     window.loadDone = ^(BOOL ok, NSString *reason) {

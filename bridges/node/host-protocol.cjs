@@ -70,6 +70,7 @@ function createSessionGate(expectedSession) {
   if (typeof expectedSession !== 'string' || !/^[a-f0-9]{32}$/.test(expectedSession)) fail('Invalid trusted session');
   const pending = new Map();
   let closed = false;
+  let lastIssued = 0;
   function ensureOpen() { if (closed) fail('Session closed'); }
   function authenticate(value) {
     if (value.session !== expectedSession) fail('Unauthenticated session');
@@ -80,7 +81,8 @@ function createSessionGate(expectedSession) {
       const request = decodeEnvelope(encodeEnvelope(value));
       authenticate(request);
       if (request.terminal !== undefined) fail('Cannot register a completion');
-      if (pending.size >= MAX_PENDING || pending.has(request.request)) fail('Duplicate or excessive pending request');
+      if (pending.size >= MAX_PENDING || request.request <= lastIssued) fail('Reused, out-of-order or excessive pending request');
+      lastIssued = request.request;
       pending.set(request.request, { window: request.window, generation: request.generation, operation: request.operation });
       return request;
     },

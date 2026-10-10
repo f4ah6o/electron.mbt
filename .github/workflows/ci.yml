@@ -95,6 +95,14 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-app-smoke.cjs 2>&1 | tee evidence/m1-cjs-app.log
+      - name: Verify native constructor rollback and orphan-free worker fault
+        shell: bash
+        run: |
+          node scripts/m1-host-init-fault.cjs 2>&1 | tee evidence/m1-host-init-fault.log
+      - name: Verify load event reentrancy and failure retry
+        shell: bash
+        run: |
+          node scripts/m1-load-event-chain.cjs 2>&1 | tee evidence/m1-load-event-chain.log
       - name: Fail closed on native begin-load generation divergence
         shell: bash
         run: |

@@ -13,14 +13,17 @@ const simulateTermination = process.argv.length === 3 &&
   process.argv[2] === '--simulate-webkit-termination';
 const simulateNativeClose = process.argv.length === 3 &&
   process.argv[2] === '--simulate-native-close';
+const killRealWebKitProcess = process.argv.length === 3 &&
+  process.argv[2] === '--kill-real-webkit-process';
 if (process.argv.length > 3 ||
-    (process.argv.length === 3 && !simulateTermination && !simulateNativeClose)) {
-  console.error('ELECTRON_MBT_USAGE: build-macos-host.cjs [--simulate-webkit-termination|--simulate-native-close]');
+    (process.argv.length === 3 && !simulateTermination && !simulateNativeClose && !killRealWebKitProcess)) {
+  console.error('ELECTRON_MBT_USAGE: build-macos-host.cjs [--simulate-webkit-termination|--simulate-native-close|--kill-real-webkit-process]');
   process.exit(1);
 }
 const output = path.join(root, 'dist',
   simulateTermination ? 'electron-mbt-native-host-termination-sim' :
   simulateNativeClose ? 'electron-mbt-native-host-close-sim' :
+  killRealWebKitProcess ? 'electron-mbt-native-host-webkit-kill-test' :
   'electron-mbt-native-host');
 fs.mkdirSync(path.dirname(output), { recursive: true });
 const args = [
@@ -28,6 +31,7 @@ const args = [
   '-mmacosx-version-min=12.0',
   ...(simulateTermination ? ['-DELECTRON_MBT_TEST_TERMINATION_CALLBACK'] : []),
   ...(simulateNativeClose ? ['-DELECTRON_MBT_TEST_NATIVE_CLOSE'] : []),
+  ...(killRealWebKitProcess ? ['-DELECTRON_MBT_TEST_REAL_WEBKIT_KILL'] : []),
   source, '-framework', 'AppKit',
   '-framework', 'WebKit', '-o', output,
 ];

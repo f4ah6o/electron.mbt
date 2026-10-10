@@ -129,6 +129,12 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-renderer-delegate-sim.cjs 2>&1 | tee evidence/m1-renderer-delegate-sim.log
+      - name: Build isolated test-only real WebKit process termination host
+        run: node scripts/build-macos-host.cjs --kill-real-webkit-process
+      - name: Verify real WebKit content process termination and MoonBit revocation
+        shell: bash
+        run: |
+          node scripts/m1-webkit-process-kill.cjs 2>&1 | tee evidence/m1-webkit-process-kill.log
       - name: Build test-only native AppKit close-gesture simulator
         run: node scripts/build-macos-host.cjs --simulate-native-close
       - name: Validate OS close cancellation and native ACK

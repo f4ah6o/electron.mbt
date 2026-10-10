@@ -135,10 +135,11 @@
       "tests": [
         "core/runtime_wbtest.mbt",
         "scripts/m1-renderer-delegate-sim.cjs",
+        "scripts/m1-webkit-process-kill.cjs",
         "scripts/m1-invalid-wire.cjs"
       ],
       "evidence": [],
-      "gap": "Private native events revoke MoonBit document grants and malformed native identity frames fail closed; real WebKit crash injection, native sender attestation and complete renderer/frame origin policy remain open."
+      "gap": "Private native events revoke MoonBit document grants and malformed native identity frames fail closed; a separate test-only WebKit private selector now triggers genuine content-process termination and public delegate delivery on macOS. Unassisted renderer crashes, native sender attestation and complete renderer/frame origin policy remain open."
     },
     {
       "id": "G",
@@ -156,12 +157,13 @@
         "tests/transport.test.cjs",
         "scripts/m1-macos-smoke.cjs",
         "scripts/m1-renderer-delegate-sim.cjs",
+        "scripts/m1-webkit-process-kill.cjs",
         "scripts/m1-host-init-fault.cjs",
         "scripts/m1-load-deadline.cjs",
         "scripts/m1-host-loss.cjs"
       ],
       "evidence": [],
-      "gap": "Native child failed spawn, asynchronous host loss, worker/thread and descriptor cleanup, and process reaping tested. Full WebView/GPU process-tree accounting and genuine WebKit renderer crash E2E remain unverified."
+      "gap": "Native spawn/host loss, worker/FD cleanup and test-triggered real WebKit content-process termination via a private selector were exercised. Unassisted process crashes, external OS SIGKILL, GPU/multiprocess tree accounting, and long-run recovery acceptance remain unverified."
     },
     {
       "id": "I",
@@ -220,6 +222,7 @@
       "scripts/m1-invalid-wire.cjs",
       "scripts/m1-slow-load.cjs",
       "scripts/m1-renderer-delegate-sim.cjs",
+      "scripts/m1-webkit-process-kill.cjs",
       "scripts/m1-host-init-fault.cjs",
       "scripts/m1-load-event-chain.cjs",
       "scripts/m1-load-deadline.cjs",
@@ -259,7 +262,7 @@
       "no third-party Electron app acceptance",
       "no full security/release/size evidence",
       "concurrent loadFile is fail-closed with ELECTRON_MBT_NAVIGATION_IN_PROGRESS",
-      "WebKit delegate termination simulated in CI; real WebKit process crash E2E not run",
+      "test-only native WebKit private selector drives a real content-process termination in CI; spontaneous crash and process-tree kill acceptance remain open",
       "one serialized native load worker, with a per-request monotonic deadline from enqueue",
       "worker and native host process cleanup tested for injected faults, not full process-tree verification",
       "native close cancel ACK carries monotonic event identity, stale queued close notifications are ignored",

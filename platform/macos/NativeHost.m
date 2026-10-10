@@ -12,6 +12,34 @@
 #import <errno.h>
 #import <math.h>
 
+#if defined(ELECTRON_MBT_TEST_REAL_WEBKIT_KILL)
+// Do not include private WebKit SPI in the production host: this selector is
+// exclusively for the CI-only subprocess termination acceptance binary.
+static BOOL didRequestRealWebKitKill = NO;
+static void requestRealWebKitKill(WKWebView *web) {
+  SEL pidSelector = NSSelectorFromString(@"_webProcessIdentifier");
+  SEL killSelector = NSSelectorFromString(@"_killWebContentProcess");
+  if (![web respondsToSelector:pidSelector] || ![web respondsToSelector:killSelector]) {
+    fprintf(stderr, "ELECTRON_MBT_TEST_WEBKIT_SPI_UNAVAILABLE\n");
+    fflush(stderr);
+    _exit(78);
+  }
+  pid_t (*processPID)(id, SEL) = (pid_t (*)(id, SEL))[web methodForSelector:pidSelector];
+  void (*terminate)(id, SEL) = (void (*)(id, SEL))[web methodForSelector:killSelector];
+  pid_t pid = processPID(web, pidSelector);
+  if (pid <= 1 || pid == getpid()) {
+    fprintf(stderr, "ELECTRON_MBT_TEST_WEBKIT_PID_INVALID\n");
+    fflush(stderr);
+    _exit(78);
+  }
+  // Log the actual OS process ID before requesting WebKit's test-only kill;
+  // the public navigation delegate, not this function, must emit the event.
+  fprintf(stderr, "ELECTRON_MBT_TEST_WEBKIT_KILL_REQUESTED pid=%ld\n", (long)pid);
+  fflush(stderr);
+  terminate(web, killSelector);
+}
+#endif
+
 
 static const uint32_t kMaxFrame = 1048576;
 static const int kControlChannel = 3;
@@ -184,6 +212,17 @@ static NSString *canonicalPath(NSString *path) {
       [window webViewWebContentProcessDidTerminate:window.web];
     }
   });
+#endif
+#if defined(ELECTRON_MBT_TEST_REAL_WEBKIT_KILL)
+  if (!didRequestRealWebKitKill) {
+    didRequestRealWebKitKill = YES;
+    __weak MBTWindow *weakWindow = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 700 * NSEC_PER_MSEC),
+                   dispatch_get_main_queue(), ^{
+      MBTWindow *window = weakWindow;
+      if (window && window.contentAlive) requestRealWebKitKill(window.web);
+    });
+  }
 #endif
 }
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation

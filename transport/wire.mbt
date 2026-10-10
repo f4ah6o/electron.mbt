@@ -225,7 +225,7 @@ fn bounds_value(value : Json, dimension : Bool) -> Bool {
       let exact = match repr {
         Some(token) => {
           if token.length() > 0 && token[0].to_int() == 45 {
-            let magnitude = exact_identifier(token[1:token.length()]) catch {
+            let magnitude = exact_identifier(token[1:token.length()].to_owned()) catch {
               _ => return false
             }
             0L - magnitude

@@ -146,8 +146,16 @@ app.whenReady().then(async () => {
   finalWindow.on('close', () => order.push('close'));
   finalWindow.on('closed', () => order.push('closed'));
   app.once('will-quit', () => order.push('will-quit'));
-  app.once('quit', () => order.push('quit'));
+  let quitEventArguments = false;
+  app.once('quit', (event, exitCode) => {
+    assert.equal(typeof event, 'object');
+    assert.equal(typeof event.preventDefault, 'function');
+    assert.equal(exitCode, 0);
+    quitEventArguments = true;
+    order.push('quit');
+  });
   app.quit();
+  assert.equal(quitEventArguments, true);
   assert.deepEqual(order, ['before-quit', 'close', 'closed', 'will-quit', 'quit']);
   assert.equal(reentrantQuit, 1);
   assert.equal(willQuit, 2);
@@ -163,8 +171,8 @@ app.whenReady().then(async () => {
     destroyedVisibilityRejected: true, closedListenerVisibilityRejected: true,
     unsafeOptionsRejected: true, quitCancellationAndReentry: true,
     quitCloseCancellation: true, willQuitCancellation: true,
-    quitEventOrder: true, noWindowAllClosedDuringQuit: true,
-    compatible: false,
+    quitEventOrder: true, quitEventArguments: true,
+    noWindowAllClosedDuringQuit: true, compatible: false,
   }));
 }).catch(error => {
   console.error(error.stack || error.message);

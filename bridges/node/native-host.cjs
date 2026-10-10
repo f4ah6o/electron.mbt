@@ -46,7 +46,7 @@ class NativeHost {
     // The private socketpair is the only control ingress. stderr is never
     // parsed as a privileged message or granted a reply channel.
     this.process.stderr.resume();
-    this.process.on('error', () => { this.dead = true; });
+    this.process.on('error', () => { this.abort(); });
   }
   request(operation, window = 0, generation = 0, payload = {}) {
     if (this.dead) throw runtimeError('ELECTRON_MBT_TRANSPORT_CLOSED', 'Native host has stopped');
@@ -89,7 +89,20 @@ class NativeHost {
   }
   close() {
     if (this.dead) return;
-    try { this.request('shutdown'); } finally { this.abort(); }
+    try { this.request('shutdown'); }
+    catch (error) { this.abort(); throw error; }
+    this.dead = true;
+    this.gate.close();
+    this.addon.close(this.fd);
+    // A successful shutdown should let the native host exit voluntarily;
+    // force-kill only if the child fails to terminate after its ACK.
+    const timeout = setTimeout(() => {
+      if (this.process.exitCode === null && this.process.signalCode === null) {
+        this.process.kill('SIGKILL');
+      }
+    }, 3000);
+    timeout.unref();
+    this.process.once('exit', () => clearTimeout(timeout));
   }
 }
 module.exports = { NativeHost };

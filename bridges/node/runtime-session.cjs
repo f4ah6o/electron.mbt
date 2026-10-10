@@ -116,17 +116,19 @@ class ExperimentalRuntime {
         try {
           real = fileWithin(runtime.appInfo.root, file);
           generation = checked(runtime.core.window_navigate(runtime.runtime, this.id)).generation;
+          // Reserve this navigation on the short native control lane before
+          // show/close/destroy can observe the new MoonBit document generation.
+          runtime.host.request('begin-load', this.id, generation);
           this._generation = generation;
-        } catch (error) { return Promise.reject(error); }
-        // A Promise surface does not imply that the synchronous native call
-        // provides Electron-equivalent rendering/event-loop scheduling.
-        return Promise.resolve().then(() => {
-          if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed before loading');
-          if (this._generation !== generation) {
-            fail('ELECTRON_MBT_STALE_DOCUMENT', 'A newer load invalidated this document generation');
-          }
-          runtime.host.request('load-file', this.id, generation, { file: real });
+        } catch (error) {
+          if (runtime.host.dead) runtime.abort();
+          return Promise.reject(error);
+        }
+        // A worker owns the blocking socket wait, not the Node main thread.
+        // The Promise settles on the genuine native didFinishNavigation ACK.
+        return runtime.host.requestAsync('load-file', this.id, generation, { file: real }).then(() => {
           if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed while loading');
+          if (this._generation !== generation) fail('ELECTRON_MBT_STALE_DOCUMENT', 'A later navigation revoked this load');
           this.webContents.emit('did-finish-load');
         }).catch(error => {
           this.webContents.emit('did-fail-load', error);
@@ -159,8 +161,15 @@ class ExperimentalRuntime {
       }
       destroy() {
         if (this._destroyed) return;
-        try { runtime.host.request('destroy-window', this.id, this._generation); }
-        finally { this._finishDestroy(); }
+        try {
+          runtime.host.request('destroy-window', this.id, this._generation);
+          // A failed native ACK must not emit a misleading closed event or
+          // release the MoonBit window while its real WKWebView is still live.
+          this._finishDestroy();
+        } catch (error) {
+          if (runtime.host.dead) runtime.abort();
+          throw error;
+        }
       }
       _finishDestroy() {
         if (this._destroyed) return;
@@ -177,11 +186,7 @@ class ExperimentalRuntime {
       }
     };
     this.host.process.once('exit', () => {
-      if (!this.terminated) {
-        this.terminated = true;
-        for (const window of Array.from(this.windows.values())) window._finishDestroy();
-        this.app.emit('runtime-host-gone');
-      }
+      if (!this.terminated) this.invalidateHost();
     });
   }
   start() {
@@ -205,22 +210,36 @@ class ExperimentalRuntime {
     if (prevented) return;
     checked(this.core.dispatch(this.runtime, 'begin-quit'));
     this.quitting = true;
+    let graceful = false;
     try {
       for (const window of Array.from(this.windows.values())) window.destroy();
       this.app.emit('will-quit');
       this.host.close();
+      graceful = true;
     } finally {
+      if (!graceful) this.host.abort();
       this.core.dispatch(this.runtime, 'stop');
       this.terminated = true;
-      this.app.emit('quit');
+      if (graceful) this.app.emit('quit');
+      else this.invalidateWindows();
     }
   }
-  abort() {
+  invalidateWindows() {
+    // Host loss is not a normal close acknowledgment; do not forge the
+    // public "closed" event for a window that may have crashed.
+    for (const window of this.windows.values()) window._destroyed = true;
+    this.windows.clear();
+  }
+  invalidateHost() {
     if (this.terminated) return;
     this.terminated = true;
+    this.ready = false;
     this.host.abort();
     this.core.dispatch(this.runtime, 'stop');
+    this.invalidateWindows();
+    this.app.emit('runtime-host-gone');
   }
+  abort() { this.invalidateHost(); }
 }
 function attach(session) {
   if (active) fail('ELECTRON_MBT_INVALID_STATE', 'Runtime session already active');

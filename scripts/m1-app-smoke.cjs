@@ -24,6 +24,7 @@ assert.equal(observed.nativeVisibilityRoundTrip, true);
 assert.equal(observed.quitCloseCancellation, true);
 assert.equal(observed.willQuitCancellation, true);
 assert.equal(observed.quitEventOrder, true);
+assert.equal(observed.quitEventArguments, true);
 assert.equal(observed.noWindowAllClosedDuringQuit, true);
 assert.equal(snapshot(root).sha256, before);
 console.log(JSON.stringify({

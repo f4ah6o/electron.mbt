@@ -135,6 +135,10 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-native-close.cjs 2>&1 | tee evidence/m1-native-close.log
+      - name: Verify queued native close cannot fire after programmatic cancellation
+        shell: bash
+        run: |
+          node scripts/m1-native-close-race.cjs 2>&1 | tee evidence/m1-native-close-race.log
       - name: Install the separate pinned test oracle
         shell: bash
         run: |

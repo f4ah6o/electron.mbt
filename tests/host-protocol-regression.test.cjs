@@ -123,3 +123,23 @@ test('What: Node uses the actual compiled MoonBit limits and not local policy co
   assert.equal(JSON.parse(core.host_status(core.host_new('invalid'))).ok, false);
   assert.throws(() => createSessionGate('invalid'), error);
 });
+
+test('What: MoonBit validates title envelopes and correlates the exact native title', () => {
+  const get = envelope({ operation: 'get-window-title', payload: {} });
+  const gate = createSessionGate(session);
+  gate.register(get);
+  assert.throws(() => gate.accept(raw({ ...get, payload: { title: 4 }, terminal: 'success' })), error);
+  assert.equal(gate.pendingCount(), 1);
+  gate.accept(raw({ ...get, payload: { title: '日本語' }, terminal: 'success' }));
+  assert.equal(gate.pendingCount(), 0);
+
+  const set = envelope({ operation: 'set-window-title', payload: { title: 'before' } });
+  const titleGate = createSessionGate(session);
+  titleGate.register(set);
+  assert.throws(() => titleGate.accept(raw({ ...set, payload: { title: 'after' }, terminal: 'success' })), error);
+  assert.equal(titleGate.pendingCount(), 1);
+  titleGate.accept(raw({ ...set, terminal: 'success' }));
+  assert.equal(titleGate.pendingCount(), 0);
+  assert.throws(() => encodeEnvelope({ ...set, payload: { title: 0 } }), error);
+  assert.throws(() => encodeEnvelope({ ...get, payload: { title: 'injected' } }), error);
+});

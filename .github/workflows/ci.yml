@@ -46,6 +46,10 @@ jobs:
       - name: Test complete Node boundary
         shell: bash
         run: npm test 2>&1 | tee evidence/node-tests.log
+      - name: Verify queue-inclusive load deadlines and worker interrupt on Linux
+        shell: bash
+        run: |
+          node scripts/m1-load-deadline.cjs 2>&1 | tee evidence/m1-load-deadline.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: compiled-core
@@ -81,6 +85,10 @@ jobs:
         run: |
           mkdir -p evidence
           npm test 2>&1 | tee evidence/node-tests.log
+      - name: Verify queue-inclusive load deadlines and worker interrupt on macOS
+        shell: bash
+        run: |
+          node scripts/m1-load-deadline.cjs 2>&1 | tee evidence/m1-load-deadline.log
       - name: Probe actual WKContentWorld observations
         run: node scripts/macos-probe.cjs
       - name: Smoke-test real AppKit WKWebView host lifecycle

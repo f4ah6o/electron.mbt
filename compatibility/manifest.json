@@ -87,10 +87,13 @@
         "tests/transport.test.cjs",
         "scripts/m1-app-smoke.cjs",
         "scripts/m1-macos-smoke.cjs",
-        "scripts/m1-slow-load.cjs"
+        "scripts/m1-slow-load.cjs",
+        "scripts/m1-load-event-chain.cjs",
+        "scripts/m1-load-deadline.cjs",
+        "scripts/m1-begin-load-failure.cjs"
       ],
       "evidence": [],
-      "gap": "Native BrowserWindow subset, cancelable close, reentrant quit, and worker-backed slow-load demonstrated; OS close negotiation, complete event ordering and all Electron async scheduling remain unverified."
+      "gap": "Native synchronous BrowserWindow subset and worker-backed load, queue-inclusive deadlines, reentrant load events, and quit cancellation tested. Full Electron event ordering, native OS close negotiation and production sender attestation remain open."
     },
     {
       "id": "C",
@@ -146,10 +149,12 @@
       "tests": [
         "tests/transport.test.cjs",
         "scripts/m1-macos-smoke.cjs",
-        "scripts/m1-renderer-delegate-sim.cjs"
+        "scripts/m1-renderer-delegate-sim.cjs",
+        "scripts/m1-host-init-fault.cjs",
+        "scripts/m1-load-deadline.cjs"
       ],
       "evidence": [],
-      "gap": "Native child failure and cleanup, load cancellation, and simulated WKWebView termination callback tested; real WebKit crash and complete host/renderer/GPU process-tree accounting not verified."
+      "gap": "Three-descriptor constructor rollback, post-spawn Worker creation failure, native child reaping, and worker poll interruption tested. Full WebView/GPU process-tree accounting and genuine WebKit renderer process termination E2E remain unverified."
     },
     {
       "id": "I",
@@ -207,7 +212,11 @@
       "scripts/m1-app-smoke.cjs",
       "scripts/m1-invalid-wire.cjs",
       "scripts/m1-slow-load.cjs",
-      "scripts/m1-renderer-delegate-sim.cjs"
+      "scripts/m1-renderer-delegate-sim.cjs",
+      "scripts/m1-host-init-fault.cjs",
+      "scripts/m1-load-event-chain.cjs",
+      "scripts/m1-load-deadline.cjs",
+      "scripts/m1-begin-load-failure.cjs"
     ],
     "exposed": [
       "app.whenReady",
@@ -234,10 +243,20 @@
       "no third-party Electron app acceptance",
       "no full security/release/size evidence",
       "concurrent loadFile is fail-closed with ELECTRON_MBT_NAVIGATION_IN_PROGRESS",
-      "WebKit delegate termination simulated in CI; real WebKit process crash E2E not run"
+      "WebKit delegate termination simulated in CI; real WebKit process crash E2E not run",
+      "one serialized native load worker, with a per-request monotonic deadline from enqueue",
+      "worker and native host process cleanup tested for injected faults, not full process-tree verification"
     ],
     "experimentalSignals": [
       "runtime-web-content-gone (not an Electron render-process-gone event)"
-    ]
+    ],
+    "watchdog": {
+      "defaultMs": 12000,
+      "maximumMs": 60000,
+      "queueTimeIncluded": true,
+      "sessionAbortedOnTimeout": true,
+      "workerInterruptedBeforeFdRelease": true,
+      "evidence": "scripts/m1-load-deadline.cjs"
+    }
   }
 }

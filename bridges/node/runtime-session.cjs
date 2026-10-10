@@ -93,6 +93,7 @@ class ExperimentalRuntime {
         this.webContents.send = () => fail('ELECTRON_MBT_UNSUPPORTED_API', 'Renderer IPC is not available in M1');
         this._generation = 0;
         this._loading = false;
+        this._renderProcessGone = false;
         this._destroyed = false;
         this._closing = false;
         try {
@@ -112,6 +113,10 @@ class ExperimentalRuntime {
       loadFile(file) {
         if (this._destroyed) {
           return Promise.reject(runtimeError('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed'));
+        }
+        if (this._renderProcessGone) {
+          return Promise.reject(runtimeError('ELECTRON_MBT_WEB_PROCESS_TERMINATED',
+            'WebKit content process terminated'));
         }
         if (this._loading) {
           // Overlapping navigations need native cancellation acknowledgements
@@ -145,6 +150,7 @@ class ExperimentalRuntime {
       }
       show() {
         if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        if (this._renderProcessGone) fail('ELECTRON_MBT_WEB_PROCESS_TERMINATED', 'WebKit content process terminated');
         runtime.host.request('show-window', this.id, this._generation);
       }
       close() {
@@ -199,6 +205,21 @@ class ExperimentalRuntime {
         fail('ELECTRON_MBT_UNSUPPORTED_API', 'Real native bounds are not exposed by M1');
       }
     };
+    this.host.on('web-content-gone', details => {
+      const window = this.windows.get(details.window);
+      if (!window || window._destroyed || window._generation !== details.generation) return;
+      try {
+        checked(this.core.window_invalidate(this.runtime, details.window, details.generation));
+      } catch (error) {
+        this.invalidateHost();
+        return;
+      }
+      window._renderProcessGone = true;
+      // This experimental signal does not fabricate Electron's
+      // render-process-gone classification or exit code.
+      window.webContents.emit('runtime-web-content-gone');
+      this.app.emit('runtime-web-content-gone', window);
+    });
     this.host.process.once('exit', () => {
       if (!this.terminated) this.invalidateHost();
     });

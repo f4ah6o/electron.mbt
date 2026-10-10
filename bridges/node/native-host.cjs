@@ -3,17 +3,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { Worker } = require('node:worker_threads');
+const { EventEmitter } = require('node:events');
+const net = require('node:net');
 const { randomBytes } = require('node:crypto');
 const { TextDecoder } = require('node:util');
 const { runtimeError } = require('./errors.cjs');
-const { createSessionGate, encodeEnvelope } = require('./host-protocol.cjs');
+const { createSessionGate, encodeEnvelope, MAX_BYTES } = require('./host-protocol.cjs');
 
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const addonFile = path.resolve(__dirname, '../../dist/sync_channel.node');
 const nativeBinary = path.resolve(__dirname, '../../dist/electron-mbt-native-host');
 
-class NativeHost {
+class NativeHost extends EventEmitter {
   constructor(appDir, options = {}) {
+    super();
     if (process.platform !== 'darwin' && !options.testingExecutable) {
       throw runtimeError('ELECTRON_MBT_UNSUPPORTED_PLATFORM', 'Native host is macOS-only');
     }
@@ -33,21 +36,26 @@ class NativeHost {
     }
     const [parent, child] = this.addon.pair();
     const [loadParent, loadChild] = this.addon.pair();
+    const [eventParent, eventChild] = this.addon.pair();
     this.fd = parent;
     this.loadFd = loadParent;
     this.pendingAsync = new Map();
+    this.eventFd = eventParent;
+    this.eventBytes = Buffer.alloc(0);
     try {
       this.process = spawn(binary, options.testingArgs || [this.root], {
-        stdio: ['ignore', 'ignore', 'pipe', child, loadChild],
+        stdio: ['ignore', 'ignore', 'pipe', child, loadChild, eventChild],
         env: { ...process.env, ELECTRON_MBT_HOST_SESSION: this.session },
       });
     } catch (error) {
       this.addon.close(parent);
       this.addon.close(loadParent);
+      this.addon.close(eventParent);
       throw error;
     } finally {
       this.addon.close(child);
       this.addon.close(loadChild);
+      this.addon.close(eventChild);
     }
     // The private socketpair is the only control ingress. stderr is never
     // parsed as a privileged message or granted a reply channel.
@@ -60,6 +68,17 @@ class NativeHost {
     this.loadWorker.on('message', message => this.onLoadReply(message));
     this.loadWorker.on('error', () => this.abort());
     this.loadWorker.on('exit', () => { if (!this.dead) this.abort(); });
+    try {
+      this.eventSocket = new net.Socket({
+        fd: eventParent, readable: true, writable: false,
+      });
+      this.eventSocket.on('data', bytes => this.onEventChunk(bytes));
+      this.eventSocket.on('error', () => this.abort());
+      this.eventSocket.on('close', () => { if (!this.dead) this.abort(); });
+    } catch (error) {
+      this.abort();
+      throw error;
+    }
   }
   request(operation, window = 0, generation = 0, payload = {}) {
     if (this.dead) throw runtimeError('ELECTRON_MBT_TRANSPORT_CLOSED', 'Native host has stopped');
@@ -89,6 +108,31 @@ class NativeHost {
           error.code === 'ELECTRON_MBT_LIMIT') this.abort();
       else this.gate.cancel(request.request);
       throw error;
+    }
+  }
+  onEventChunk(chunk) {
+    if (this.dead) return;
+    if (chunk.length + this.eventBytes.length > MAX_BYTES + 4) {
+      this.abort();
+      return;
+    }
+    this.eventBytes = Buffer.concat([this.eventBytes, chunk]);
+    while (this.eventBytes.length >= 4) {
+      const length = this.eventBytes.readUInt32BE(0);
+      if (length === 0 || length > MAX_BYTES) { this.abort(); return; }
+      if (this.eventBytes.length < length + 4) return;
+      const bytes = this.eventBytes.subarray(4, length + 4);
+      this.eventBytes = this.eventBytes.subarray(length + 4);
+      try {
+        const envelope = this.gate.observe(bytes);
+        if (envelope.session !== this.session ||
+            envelope.operation !== 'web-content-gone') {
+          throw runtimeError('ELECTRON_MBT_PROTOCOL', 'Unauthenticated or unexpected native event');
+        }
+        this.emit('web-content-gone', {
+          window: envelope.window, generation: envelope.generation,
+        });
+      } catch (error) { this.abort(); return; }
     }
   }
   requestAsync(operation, window = 0, generation = 0, payload = {}) {
@@ -155,6 +199,8 @@ class NativeHost {
     this.addon.close(this.fd);
     this.addon.close(this.loadFd);
     if (this.loadWorker) this.loadWorker.terminate().catch(() => {});
+    if (this.eventSocket) this.eventSocket.destroy();
+    else if (this.eventFd != null) this.addon.close(this.eventFd);
     if (this.process && this.process.exitCode === null && this.process.signalCode === null) {
       this.process.kill('SIGTERM');
     }
@@ -169,6 +215,8 @@ class NativeHost {
     this.addon.close(this.fd);
     this.addon.close(this.loadFd);
     if (this.loadWorker) this.loadWorker.terminate().catch(() => {});
+    if (this.eventSocket) this.eventSocket.destroy();
+    else if (this.eventFd != null) this.addon.close(this.eventFd);
     // A successful shutdown should let the native host exit voluntarily;
     // force-kill only if the child fails to terminate after its ACK.
     const timeout = setTimeout(() => {

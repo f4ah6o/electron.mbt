@@ -15,6 +15,7 @@
 static const uint32_t kMaxFrame = 1048576;
 static const int kControlChannel = 3;
 static const int kLoadChannel = 4;
+static const int kEventChannel = 5;
 
 static BOOL transferBytes(int fd, void *buffer, size_t size, BOOL writing) {
   size_t offset = 0;
@@ -64,6 +65,7 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *loadedFile;
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
+@property(nonatomic, copy) void (^contentGone)(long long);
 @property(nonatomic) long long generation;
 @property(nonatomic) long long loadedGeneration;
 @property(nonatomic) BOOL permittedClose;
@@ -154,9 +156,11 @@ static NSString *canonicalPath(NSString *path) {
 }
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
   (void)webView;
+  BOOL newlyTerminated = self.contentAlive;
   self.contentAlive = NO;
   self.allowNextNavigation = NO;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
+  if (newlyTerminated && self.contentGone) self.contentGone(self.generation);
 }
 - (void)tearDown {
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
@@ -173,14 +177,34 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *session;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, MBTWindow *> *windows;
+@property(nonatomic, strong) dispatch_queue_t notificationQueue;
+@property(nonatomic) long long nextEvent;
+- (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation;
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done;
 @end
 
 @implementation MBTHost
 - (instancetype)init {
   self = [super init];
-  if (self) self.windows = [NSMutableDictionary dictionary];
+  if (self) {
+    self.windows = [NSMutableDictionary dictionary];
+    self.notificationQueue = dispatch_queue_create("electron.mbt.content.events", DISPATCH_QUEUE_SERIAL);
+    self.nextEvent = 0;
+  }
   return self;
+}
+- (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation {
+  if (self.nextEvent == 9007199254740991LL) _exit(2);
+  NSNumber *eventID = @(++self.nextEvent);
+  NSDictionary *notice = @{
+    @"version": @1, @"session": self.session, @"request": eventID,
+    @"window": windowID, @"generation": @(generation),
+    @"operation": @"web-content-gone", @"payload": @{}
+  };
+  // The WKWebView delegate runs on the UI thread. Never block it on socket I/O.
+  dispatch_async(self.notificationQueue, ^{
+    if (!writeFrame(kEventChannel, notice)) _exit(2);
+  });
 }
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done {
   if (![NSThread isMainThread]) { done(@"failure", @{@"code": @"ELECTRON_MBT_THREAD"}); return; }
@@ -222,6 +246,10 @@ static NSString *canonicalPath(NSString *path) {
     MBTWindow *window = [[MBTWindow alloc] initWithRoot:self.root
       width:width.integerValue height:height.integerValue title:title
       visible:visible.boolValue];
+    __weak MBTHost *weakHost = self;
+    window.contentGone = ^(long long eventGeneration) {
+      [weakHost publishContentGone:windowID generation:eventGeneration];
+    };
     self.windows[windowID] = window;
     done(@"success", @{@"webViewAttached": @YES,
       @"visible": visible, @"width": width, @"height": height});
@@ -367,7 +395,8 @@ static BOOL checkRequest(NSDictionary *request, NSString *session) {
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
     if (argc != 2 || fcntl(kControlChannel, F_GETFD) < 0 ||
-        fcntl(kLoadChannel, F_GETFD) < 0) return 64;
+        fcntl(kLoadChannel, F_GETFD) < 0 ||
+        fcntl(kEventChannel, F_GETFD) < 0) return 64;
     const char *secret = getenv("ELECTRON_MBT_HOST_SESSION");
     if (!secret || strlen(secret) != 32) return 64;
     NSString *root = canonicalPath([NSString stringWithUTF8String:argv[1]]);

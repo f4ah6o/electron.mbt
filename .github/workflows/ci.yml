@@ -129,6 +129,12 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-renderer-delegate-sim.cjs 2>&1 | tee evidence/m1-renderer-delegate-sim.log
+      - name: Build test-only native AppKit close-gesture simulator
+        run: node scripts/build-macos-host.cjs --simulate-native-close
+      - name: Validate OS close cancellation and native ACK
+        shell: bash
+        run: |
+          node scripts/m1-native-close.cjs 2>&1 | tee evidence/m1-native-close.log
       - name: Install the separate pinned test oracle
         shell: bash
         run: |

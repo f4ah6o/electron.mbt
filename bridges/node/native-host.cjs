@@ -41,6 +41,7 @@ class NativeHost extends EventEmitter {
     this.eventFd = null;
     this.eventSocket = null;
     this.loadWorker = null;
+    this.loadWorkerExited = false;
     this.process = null;
     this.pendingAsync = new Map();
     this.eventBytes = Buffer.alloc(0);
@@ -77,7 +78,10 @@ class NativeHost extends EventEmitter {
       );
       this.loadWorker.on('message', message => this.onLoadReply(message));
       this.loadWorker.on('error', () => this.abort());
-      this.loadWorker.on('exit', () => { if (!this.dead) this.abort(); });
+      this.loadWorker.on('exit', () => {
+        this.loadWorkerExited = true;
+        if (!this.dead) this.abort();
+      });
 
       this.eventSocket = new net.Socket({
         fd: this.eventFd, readable: true, writable: false,
@@ -152,6 +156,7 @@ class NativeHost extends EventEmitter {
     }
   }
   requestAsync(operation, window = 0, generation = 0, payload = {}) {
+    const startedNs = process.hrtime.bigint();
     if (this.dead) {
       return Promise.reject(runtimeError('ELECTRON_MBT_TRANSPORT_CLOSED', 'Native host has stopped'));
     }
@@ -171,17 +176,45 @@ class NativeHost extends EventEmitter {
       if (error.code === 'ELECTRON_MBT_PROTOCOL') this.abort();
       return Promise.reject(error);
     }
+    const deadlineNs = startedNs + BigInt(this.watchdogMs) * 1000000n;
+    const remainingNs = deadlineNs - process.hrtime.bigint();
+    if (remainingNs <= 0n) {
+      const error = runtimeError('ELECTRON_MBT_TRANSPORT_TIMEOUT',
+        'Native load deadline expired before enqueue');
+      this.gate.cancel(request.request);
+      this.abort();
+      return Promise.reject(error);
+    }
     return new Promise((resolve, reject) => {
-      this.pendingAsync.set(request.request, { resolve, reject });
-      this.loadWorker.postMessage({
-        request: request.request, raw, timeout: this.watchdogMs,
-      });
+      const remainingMs = Math.max(1, Number((remainingNs + 999999n) / 1000000n));
+      const timer = setTimeout(() => {
+        const pending = this.pendingAsync.get(request.request);
+        if (!pending) return;
+        this.pendingAsync.delete(request.request);
+        pending.reject(runtimeError('ELECTRON_MBT_TRANSPORT_TIMEOUT',
+          'Native load watchdog expired including queue time'));
+        this.abort();
+      }, remainingMs);
+      timer.unref();
+      this.pendingAsync.set(request.request, { resolve, reject, timer });
+      try {
+        this.loadWorker.postMessage({
+          request: request.request, raw, deadlineNs, timeout: this.watchdogMs,
+        });
+      } catch (error) {
+        clearTimeout(timer);
+        this.pendingAsync.delete(request.request);
+        this.gate.cancel(request.request);
+        reject(error);
+        this.abort();
+      }
     });
   }
   onLoadReply(message) {
     const pending = this.pendingAsync.get(message.request);
     if (!pending) return;
     this.pendingAsync.delete(message.request);
+    clearTimeout(pending.timer);
     if (message.code) {
       this.gate.cancel(message.request);
       const error = runtimeError(message.code, message.detail || 'Native load request failed');
@@ -203,6 +236,7 @@ class NativeHost extends EventEmitter {
   }
   rejectPending(code) {
     for (const pending of this.pendingAsync.values()) {
+      clearTimeout(pending.timer);
       pending.reject(runtimeError(code, 'Native load session ended'));
     }
     this.pendingAsync.clear();
@@ -210,17 +244,39 @@ class NativeHost extends EventEmitter {
   disposeTransports(code) {
     this.rejectPending(code);
     this.gate.close();
-    for (const key of ['fd', 'loadFd']) {
-      const descriptor = this[key];
-      this[key] = null;
-      if (Number.isInteger(descriptor)) {
-        try { this.addon.close(descriptor); } catch {}
-      }
+    const control = this.fd;
+    this.fd = null;
+    if (Number.isInteger(control)) {
+      try { this.addon.close(control); } catch {}
     }
-    if (this.loadWorker) {
-      const worker = this.loadWorker;
-      this.loadWorker = null;
-      worker.terminate().catch(() => {});
+
+    const load = this.loadFd;
+    this.loadFd = null;
+    if (Number.isInteger(load)) {
+      // The fd table is process-wide. Wake the worker first and defer close
+      // until its native request has left poll()/recv(), preventing fd reuse.
+      try { this.addon.interrupt(load); } catch {}
+    }
+    const worker = this.loadWorker;
+    this.loadWorker = null;
+    if (worker) {
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        if (Number.isInteger(load)) {
+          try { this.addon.close(load); } catch {}
+        }
+      };
+      if (this.loadWorkerExited) {
+        release();
+      } else {
+        worker.once('exit', release);
+        // If terminate rejects, keep ownership until the actual exit event.
+        worker.terminate().then(release, () => {});
+      }
+    } else if (Number.isInteger(load)) {
+      try { this.addon.close(load); } catch {}
     }
     if (this.eventSocket) {
       const socket = this.eventSocket;

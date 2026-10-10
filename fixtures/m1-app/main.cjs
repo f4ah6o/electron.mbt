@@ -24,6 +24,7 @@ app.whenReady().then(async () => {
   win.webContents.on('did-finish-load', () => { loaded++; });
   const promise = win.loadFile('index.html');
   const overlapping = win.loadFile('index.html');
+  const overlapRejected = assert.rejects(overlapping, { code: 'ELECTRON_MBT_NAVIGATION_IN_PROGRESS' });
   assert.equal(typeof promise.then, 'function');
   // An immediate public sync operation must not race with queued WebKit loads.
   win.show();
@@ -33,7 +34,7 @@ app.whenReady().then(async () => {
     resolve();
   }));
   assert.equal(nodeTurnRan, true);
-  await assert.rejects(overlapping, { code: 'ELECTRON_MBT_NAVIGATION_IN_PROGRESS' });
+  await overlapRejected;
   await promise;
   assert.equal(loaded, 1);
   win.show();

@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { app, BrowserWindow } = require('electron');
-const dependencyFacade = require('./dependency');
+const dependencyFacade = require('./dependency/index.cjs');
 assert.equal(dependencyFacade.app, app);
 assert.equal(dependencyFacade.BrowserWindow, BrowserWindow);
 assert.equal(app.isReady(), false);

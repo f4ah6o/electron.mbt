@@ -219,7 +219,7 @@ static NSString *canonicalPath(NSString *path) {
     NSString *file = payload[@"file"];
     NSString *canonical = canonicalPath(file);
     if (![file isKindOfClass:[NSString class]] || !canonical || ![window withinRoot:canonical] ||
-        generation.longLongValue != window.generation + 1 || window.loadDone != nil) {
+        generation.longLongValue <= window.generation || window.loadDone != nil) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
       return;
     }

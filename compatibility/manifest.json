@@ -92,10 +92,11 @@
         "scripts/m1-load-deadline.cjs",
         "scripts/m1-begin-load-failure.cjs",
         "scripts/m1-native-close.cjs",
-        "scripts/m1-native-close-race.cjs"
+        "scripts/m1-native-close-race.cjs",
+        "tests/runtime-quit.test.cjs"
       ],
       "evidence": [],
-      "gap": "Native AppKit close gestures are mediated by cancellable main events and exact native cancellation tokens; queued stale notifications are ignored in deterministic macOS tests. Human physical UI and complete Electron event ordering remain unverified."
+      "gap": "Native AppKit close gestures and app.quit before-quit/close/will-quit cancellation are mediated by native ACKs and MoonBit state. Queued stale notifications are ignored in deterministic tests. Renderer beforeunload/unload, human physical UI and complete Electron event ordering remain unverified."
     },
     {
       "id": "C",
@@ -255,7 +256,8 @@
       "one serialized native load worker, with a per-request monotonic deadline from enqueue",
       "worker and native host process cleanup tested for injected faults, not full process-tree verification",
       "native close cancel ACK carries monotonic event identity, stale queued close notifications are ignored",
-      "native NSWindow-backed visibility is implemented; Electron show/hide events, focus and Page Visibility API parity are unverified"
+      "native NSWindow-backed visibility is implemented; Electron show/hide events, focus and Page Visibility API parity are unverified",
+      "app.quit respects native-backed close, before-quit and will-quit cancellation; renderer beforeunload/unload is not implemented"
     ],
     "experimentalSignals": [
       "runtime-web-content-gone (not an Electron render-process-gone event)",

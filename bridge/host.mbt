@@ -42,4 +42,9 @@ pub fn host_cancel(session : @transport.Session, id : Double) -> String {
 pub fn host_pending(session : @transport.Session) -> Int { session.pending_count() }
 
 ///|
-pub fn host_close(session : @transport.Session) -> String { session.close().to_json().stringify() }
+pub fn host_close(session : @transport.Session) -> String {
+  // Generic Int64 JSON uses strings. IDs were constrained to the JS safe-integer
+  // range at registration, so Double conversion is exact and preserves the wire type.
+  let ids = session.close().map(fn(id) { id.to_double().to_json() })
+  ids.to_json().stringify()
+}

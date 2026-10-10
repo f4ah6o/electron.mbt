@@ -267,7 +267,28 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let terminal = fields.contains("terminal")
   if terminal {
     match field("terminal") {
-      String("success" | "failure" | "cancelled") => ()
+      String("success") => {
+        match operation {
+          "show-window" | "hide-window" | "is-window-visible" => {
+            let visible = match payload {
+              Object(values) if values.length() == 1 => {
+                match values.get("visible") {
+                  Some(True) => true
+                  Some(False) => false
+                  _ => raise BadProtocol("Invalid native visibility acknowledgement")
+                }
+              }
+              _ => raise BadProtocol("Invalid native visibility acknowledgement")
+            }
+            if (operation == "show-window" && !visible) ||
+               (operation == "hide-window" && visible) {
+              raise BadProtocol("Native visibility acknowledgement mismatch")
+            }
+          }
+          _ => ()
+        }
+      }
+      String("failure" | "cancelled") => ()
       _ => raise BadProtocol("Invalid terminal result")
     }
   }

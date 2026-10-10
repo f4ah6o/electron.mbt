@@ -6,7 +6,7 @@ const { encodeEnvelope, decodeEnvelope, createSessionGate, MAX_BYTES, MAX_DEPTH,
 const session = '0123456789abcdef0123456789abcdef';
 const error = { code: 'ELECTRON_MBT_PROTOCOL' };
 const envelope = (changes = {}) => ({ version: 1, session, request: 1, window: 2, generation: 3, operation: 'show-window', payload: {}, ...changes });
-const response = (changes = {}) => envelope({ terminal: 'success', ...changes });
+const response = (changes = {}) => envelope({ terminal: 'success', payload: { visible: true }, ...changes });
 const raw = (value) => Buffer.from(JSON.stringify(value));
 
 for (const [name, payload] of [
@@ -38,7 +38,7 @@ test('What: literal, escaped and nested duplicate JSON names never consume pendi
   const duplicates = [
     valid.replace('"operation":"show-window"', '"operation":"close-window","operation":"show-window"'),
     valid.replace('"operation":"show-window"', '"operation":"show-window","\\u006fperation":"show-window"'),
-    valid.replace('"payload":{}', '"payload":{"nested":{"a":1,"\\u0061":2}}'),
+    valid.replace('"payload":{"visible":true}', '"payload":{"visible":true,"nested":{"a":1,"\\u0061":2}}'),
     valid.replace('"session":', '"session":"ffffffffffffffffffffffffffffffff","session":'),
   ];
   for (const text of duplicates) {

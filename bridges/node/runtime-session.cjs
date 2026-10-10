@@ -186,7 +186,7 @@ class ExperimentalRuntime {
         }
       }
       isVisible() {
-        if (this._destroyed) return false;
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
         const acknowledgement = runtime.host.request('is-window-visible', this.id, this._generation);
         if (typeof acknowledgement.visible !== 'boolean') {
           runtime.abort();

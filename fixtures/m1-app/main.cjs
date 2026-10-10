@@ -74,9 +74,16 @@ app.whenReady().then(async () => {
   assert.throws(() => win.destroy(), { code: 'ELECTRON_MBT_STALE_DOCUMENT' });
   assert.equal(win.isDestroyed(), false);
   win._generation = validGeneration;
+  let visibilityRejectedInsideClosed = false;
+  win.once('closed', () => {
+    assert.equal(win.isDestroyed(), true);
+    assert.throws(() => win.isVisible(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
+    visibilityRejectedInsideClosed = true;
+  });
   win.destroy();
   assert.equal(win.isDestroyed(), true);
-  assert.equal(win.isVisible(), false);
+  assert.equal(visibilityRejectedInsideClosed, true);
+  assert.throws(() => win.isVisible(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   assert.throws(() => win.hide(), { code: 'ELECTRON_MBT_WINDOW_DESTROYED' });
   const rapid = new BrowserWindow({ show: false });
   const inflight = rapid.loadFile('index.html');
@@ -90,6 +97,7 @@ app.whenReady().then(async () => {
     nativeDestroyErrorPreserved: true, inflightDestroySafe: true, closeCancelled: true,
     eventChainedLoad: true, listenerFailureNotNativeFailure: true,
     destroyForced: true, nativeVisibilityRoundTrip: true,
+    destroyedVisibilityRejected: true, closedListenerVisibilityRejected: true,
     unsafeOptionsRejected: true, quitCancellationAndReentry: true, compatible: false,
   }));
   let cancelledQuit = 0;

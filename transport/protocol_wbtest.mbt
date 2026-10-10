@@ -6,7 +6,7 @@ fn wire(id : String, payload : String, suffix : String) -> String {
 ///|
 test "What: the MoonBit parser validates unchanged Unicode envelopes" {
   assert_true(validate(wire("1", "{\"text\":\"日本語😀\",\"items\":[true,null,1.5]}", "")) is Ok(_))
-  assert_true(validate(wire("1", "{}", ",\"terminal\":\"success\"")) is Ok(_))
+  assert_true(validate(wire("1", "{\"visible\":true}", ",\"terminal\":\"success\"")) is Ok(_))
 }
 
 ///|
@@ -41,7 +41,7 @@ test "What: sessions retain pending work on invalid or unknown completions" {
   assert_true(session.accept(wire("2", "{}", ",\"terminal\":\"success\"")) is Err(_))
   assert_true(session.accept(wire("1", "{}", ",\"operation\":\"show-window\",\"terminal\":\"success\"")) is Err(_))
   assert_eq(session.pending_count(), 1)
-  assert_true(session.accept(wire("1", "{}", ",\"terminal\":\"success\"")) is Ok(_))
+  assert_true(session.accept(wire("1", "{\"visible\":true}", ",\"terminal\":\"success\"")) is Ok(_))
   assert_eq(session.pending_count(), 0)
 }
 
@@ -49,7 +49,7 @@ test "What: sessions retain pending work on invalid or unknown completions" {
 test "What: completion and cancellation never release an issued ID for reuse" {
   let session = Session::new("0123456789abcdef0123456789abcdef")
   assert_true(session.register(wire("1", "{}", "")) is Ok(_))
-  assert_true(session.accept(wire("1", "{}", ",\"terminal\":\"success\"")) is Ok(_))
+  assert_true(session.accept(wire("1", "{\"visible\":true}", ",\"terminal\":\"success\"")) is Ok(_))
   assert_true(session.register(wire("1", "{}", "")) is Err(_))
   assert_true(session.register(wire("2", "{}", "")) is Ok(_))
   assert_true(session.cancel(2.0) is Ok(true))
@@ -114,8 +114,58 @@ test "What: MoonBit gates native visibility commands and their correlation" {
     assert_true(validate(raw) is Ok(_))
     let session = Session::new("0123456789abcdef0123456789abcdef")
     assert_true(session.register(raw) is Ok(_))
-    let completed = prefix + operation + "\",\"payload\":{\"visible\":true},\"terminal\":\"success\"}"
+    let actual = if operation == "hide-window" { "false" } else { "true" }
+    let completed = prefix + operation + "\",\"payload\":{\"visible\":" + actual + "},\"terminal\":\"success\"}"
     assert_true(session.accept(completed) is Ok(_))
   }
   assert_true(validate(prefix + "toggle-visibility\",\"payload\":{}}") is Err(_))
+}
+
+///|
+fn visibility_wire(operation : String, payload : String, terminal : String) -> String {
+  "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":2,\"generation\":0,\"operation\":\"" + operation + "\",\"payload\":" + payload + terminal + "}"
+}
+
+///|
+test "What: invalid visibility successes never consume pending work" {
+  for operation in ["show-window", "hide-window", "is-window-visible"] {
+    let session = Session::new("0123456789abcdef0123456789abcdef")
+    assert_true(session.register(visibility_wire(operation, "{}", "")) is Ok(_))
+    for invalid in [
+      "{}", "{\"visible\":null}", "{\"visible\":\"true\"}", "{\"visible\":1}",
+      "{\"visible\":[]}", "{\"visible\":true,\"extra\":1}",
+    ] {
+      let bad = visibility_wire(operation, invalid, ",\"terminal\":\"success\"")
+      assert_true(validate(bad) is Err(_))
+      assert_true(session.accept(bad) is Err(_))
+      assert_eq(session.pending_count(), 1)
+    }
+    if operation != "is-window-visible" {
+      let reversed = if operation == "show-window" { "false" } else { "true" }
+      let bad = visibility_wire(operation, "{\"visible\":" + reversed + "}", ",\"terminal\":\"success\"")
+      assert_true(validate(bad) is Err(_))
+      assert_true(session.accept(bad) is Err(_))
+      assert_eq(session.pending_count(), 1)
+    }
+    let expected = if operation == "hide-window" { "false" } else { "true" }
+    let good = visibility_wire(operation, "{\"visible\":" + expected + "}", ",\"terminal\":\"success\"")
+    assert_true(validate(good) is Ok(_))
+    assert_true(session.accept(good) is Ok(_))
+    assert_eq(session.pending_count(), 0)
+    assert_true(session.accept(good) is Err(_))
+  }
+  assert_true(validate(visibility_wire("is-window-visible", "{\"visible\":false}", ",\"terminal\":\"success\"")) is Ok(_))
+}
+
+///|
+test "What: failed visibility terminals are not success ACKs" {
+  for terminal in ["failure", "cancelled"] {
+    let session = Session::new("0123456789abcdef0123456789abcdef")
+    assert_true(session.register(visibility_wire("show-window", "{}", "")) is Ok(_))
+    let reply = visibility_wire("show-window", "{\"code\":\"ELECTRON_MBT_STALE_DOCUMENT\"}",
+      ",\"terminal\":\"" + terminal + "\"")
+    assert_true(validate(reply) is Ok(_))
+    assert_true(session.accept(reply) is Ok(_))
+    assert_eq(session.pending_count(), 0)
+  }
 }

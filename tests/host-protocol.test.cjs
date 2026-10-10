@@ -22,18 +22,44 @@ test('What: spoofed session and duplicate terminal completion are rejected', () 
   assert.equal(gate.accept(done).terminal, 'success');
   assert.throws(() => gate.accept(done), { code: 'ELECTRON_MBT_PROTOCOL' });
 });
-test('What: native visibility commands remain MoonBit-gated and correlate their ACKs', () => {
-  for (const operation of ['show-window', 'hide-window', 'is-window-visible']) {
-    const message = envelope({ operation, window: 3, generation: 2 });
+test('What: MoonBit validates visibility successes before releasing correlated work', () => {
+  const cases = [
+    ['show-window', true], ['hide-window', false],
+    ['is-window-visible', true], ['is-window-visible', false],
+  ];
+  for (const [operation, expected] of cases) {
+    const request = envelope({ operation, window: 3, generation: 2 });
     const gate = createSessionGate(session);
-    assert.deepEqual(decodeEnvelope(encodeEnvelope(message)), message);
-    gate.register(message);
-    assert.equal(gate.accept(encodeEnvelope({ ...message, payload: { visible: false },
-      terminal: 'success' })).operation, operation);
+    assert.deepEqual(decodeEnvelope(encodeEnvelope(request)), request);
+    gate.register(request);
+    const invalid = [{}, { visible: null }, { visible: 'true' }, { visible: 1 },
+      { visible: [] }, { visible: expected, extra: true }];
+    if (operation !== 'is-window-visible') invalid.push({ visible: !expected });
+    for (const payload of invalid) {
+      const frame = { ...request, terminal: 'success', payload };
+      assert.throws(() => encodeEnvelope(frame), { code: 'ELECTRON_MBT_PROTOCOL' });
+      assert.throws(() => gate.accept(Buffer.from(JSON.stringify(frame))),
+        { code: 'ELECTRON_MBT_PROTOCOL' });
+      assert.equal(gate.pendingCount(), 1);
+    }
+    const completed = { ...request, terminal: 'success', payload: { visible: expected } };
+    assert.equal(gate.accept(encodeEnvelope(completed)).operation, operation);
     assert.equal(gate.pendingCount(), 0);
+    assert.throws(() => gate.accept(encodeEnvelope(completed)),
+      { code: 'ELECTRON_MBT_PROTOCOL' });
   }
   assert.throws(() => encodeEnvelope(envelope({ operation: 'toggle-visibility' })),
     { code: 'ELECTRON_MBT_PROTOCOL' });
+});
+test('What: visibility failures and cancellations correlate without success fields', () => {
+  for (const terminal of ['failure', 'cancelled']) {
+    const gate = createSessionGate(session);
+    const request = envelope({ operation: 'show-window', window: 3 });
+    gate.register(request);
+    const completion = { ...request, payload: { code: 'ELECTRON_MBT_STALE_DOCUMENT' }, terminal };
+    assert.equal(gate.accept(encodeEnvelope(completion)).terminal, terminal);
+    assert.equal(gate.pendingCount(), 0);
+  }
 });
 test('What: closed sessions reject subsequent messages', () => {
   const gate = createSessionGate(session);

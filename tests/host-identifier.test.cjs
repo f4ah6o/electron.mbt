@@ -6,7 +6,7 @@ const { decodeEnvelope, createSessionGate } = require('../bridges/node/host-prot
 const session = '0123456789abcdef0123456789abcdef';
 const error = { code: 'ELECTRON_MBT_PROTOCOL' };
 const envelope = (changes = {}) => ({ version: 1, session, request: 1, window: 2, generation: 3, operation: 'show-window', payload: {}, ...changes });
-const response = (changes = {}) => envelope({ terminal: 'success', ...changes });
+const response = (changes = {}) => envelope({ terminal: 'success', payload: { visible: true }, ...changes });
 
 test('What: fractional lexemes cannot round into valid correlated identities', () => {
   const valid = JSON.stringify(response());

@@ -34,22 +34,198 @@
   },
   "valueProfile": {
     "name": "tiny-json-tree-v1",
-    "supported": ["null", "boolean", "string", "finite-number-except-negative-zero", "dense-array", "plain-enumerable-data-record"],
-    "rejected": ["undefined", "negative-zero", "nonfinite-number", "bigint", "symbol", "function", "accessor", "proxy", "sparse-array", "extra-array-properties", "nonenumerable-property", "custom-prototype", "Date", "Map", "Set", "ArrayBuffer", "typed-array", "Error", "cycle", "repeated-object-reference"],
+    "supported": [
+      "null",
+      "boolean",
+      "string",
+      "finite-number-except-negative-zero",
+      "dense-array",
+      "plain-enumerable-data-record"
+    ],
+    "rejected": [
+      "undefined",
+      "negative-zero",
+      "nonfinite-number",
+      "bigint",
+      "symbol",
+      "function",
+      "accessor",
+      "proxy",
+      "sparse-array",
+      "extra-array-properties",
+      "nonenumerable-property",
+      "custom-prototype",
+      "Date",
+      "Map",
+      "Set",
+      "ArrayBuffer",
+      "typed-array",
+      "Error",
+      "cycle",
+      "repeated-object-reference"
+    ],
     "structuredCloneCompatible": false
   },
   "rows": [
-    {"id":"A","scope":"CJS resolution and immutable source inventory","status":"partial","tests":["tests/loader.test.cjs"],"evidence":[],"gap":"Sentinel module only; not an Electron facade or real app run."},
-    {"id":"B","scope":"lifecycle and synchronous main API","status":"partial","tests":["core/runtime_wbtest.mbt","tests/transport.test.cjs"],"evidence":[],"gap":"Pure state machine and real socketpair probe; no BrowserWindow API/event-order oracle."},
-    {"id":"C","scope":"isolated preload and synchronous contextBridge","status":"planned","tests":[],"evidence":[],"gap":"WKContentWorld probe is not a function-proxy bridge. Synchronous bridge remains unresolved."},
-    {"id":"D","scope":"application IPC","status":"partial","tests":["tests/clone.test.cjs","core/runtime_wbtest.mbt"],"evidence":[],"gap":"Bounded tree codec and request ledger, not ipcRenderer/ipcMain implementations."},
-    {"id":"E","scope":"dialog files clipboard","status":"planned","tests":[],"evidence":[],"gap":"OS service adapters not implemented."},
-    {"id":"F","scope":"sender and document authority","status":"partial","tests":["core/runtime_wbtest.mbt"],"evidence":[],"gap":"No native sender-attestation adapter; caller-supplied metadata is not authentication."},
-    {"id":"G","scope":"IME focus accessibility DPI","status":"planned","tests":[],"evidence":[],"gap":"Requires interactive native WebView acceptance."},
-    {"id":"H","scope":"process crash and cleanup","status":"partial","tests":["tests/transport.test.cjs"],"evidence":[],"gap":"Child probe only; full host/Node/WebView process ledger remains open."},
-    {"id":"I","scope":"release size and cold/warm metrics","status":"planned","tests":[],"evidence":[],"gap":"No release bundle, fixed Node payload, signing or comparable measurements."},
-    {"id":"J","scope":"unchanged real Electron application","status":"planned","tests":[],"evidence":[],"gap":"No real application selected or executed."}
+    {
+      "id": "A",
+      "scope": "CJS resolution and immutable source inventory",
+      "status": "partial",
+      "tests": [
+        "tests/loader.test.cjs",
+        "scripts/m1-app-smoke.cjs"
+      ],
+      "evidence": [],
+      "gap": "Real CJS main and dependency share the facade in a macOS fixture; broad dependency graphs and arbitrary apps are not yet accepted."
+    },
+    {
+      "id": "B",
+      "scope": "lifecycle and synchronous main API",
+      "status": "partial",
+      "tests": [
+        "core/runtime_wbtest.mbt",
+        "tests/transport.test.cjs",
+        "scripts/m1-app-smoke.cjs",
+        "scripts/m1-macos-smoke.cjs"
+      ],
+      "evidence": [],
+      "gap": "Native AppKit BrowserWindow subset exercised; OS-originated close, full synchronous semantics, reentrancy and Electron event-order differential remain open."
+    },
+    {
+      "id": "C",
+      "scope": "isolated preload and synchronous contextBridge",
+      "status": "planned",
+      "tests": [],
+      "evidence": [],
+      "gap": "WKContentWorld probe is not a function-proxy bridge. Synchronous bridge remains unresolved."
+    },
+    {
+      "id": "D",
+      "scope": "application IPC",
+      "status": "partial",
+      "tests": [
+        "tests/clone.test.cjs",
+        "core/runtime_wbtest.mbt"
+      ],
+      "evidence": [],
+      "gap": "Bounded tree codec and request ledger, not ipcRenderer/ipcMain implementations."
+    },
+    {
+      "id": "E",
+      "scope": "dialog files clipboard",
+      "status": "planned",
+      "tests": [],
+      "evidence": [],
+      "gap": "OS service adapters not implemented."
+    },
+    {
+      "id": "F",
+      "scope": "sender and document authority",
+      "status": "partial",
+      "tests": [
+        "core/runtime_wbtest.mbt"
+      ],
+      "evidence": [],
+      "gap": "No native sender-attestation adapter; caller-supplied metadata is not authentication."
+    },
+    {
+      "id": "G",
+      "scope": "IME focus accessibility DPI",
+      "status": "planned",
+      "tests": [],
+      "evidence": [],
+      "gap": "Requires interactive native WebView acceptance."
+    },
+    {
+      "id": "H",
+      "scope": "process crash and cleanup",
+      "status": "partial",
+      "tests": [
+        "tests/transport.test.cjs",
+        "scripts/m1-macos-smoke.cjs"
+      ],
+      "evidence": [],
+      "gap": "Native child shutdown/crash and private transport tested; complete WebView/GPU process-tree accounting and fault injection remain open."
+    },
+    {
+      "id": "I",
+      "scope": "release size and cold/warm metrics",
+      "status": "planned",
+      "tests": [],
+      "evidence": [],
+      "gap": "No release bundle, fixed Node payload, signing or comparable measurements."
+    },
+    {
+      "id": "J",
+      "scope": "unchanged real Electron application",
+      "status": "planned",
+      "tests": [],
+      "evidence": [],
+      "gap": "No real application selected or executed."
+    }
   ],
-  "unsupported": ["run", "pack", "BrowserWindow", "contextBridge", "ipcMain", "ipcRenderer", "ESM electron imports", "electron subpaths", "nodeIntegration:true", "contextIsolation:false", "sandbox:false", "webSecurity:false", "sendSync", "ASAR", "native addon ABI", "autoUpdater", "Windows backend", "Linux backend"],
-  "gates": {"versions":"open","syncMainApi":"open","syncIsolatedContextBridge":"open","electronDifferential":"open","nativeAcceptance":"open","releaseMeasurement":"open"}
+  "unsupported": [
+    "run without --experimental-m1",
+    "pack",
+    "complete BrowserWindow contract",
+    "contextBridge",
+    "ipcMain",
+    "ipcRenderer",
+    "ESM electron imports",
+    "electron subpaths",
+    "nodeIntegration:true",
+    "contextIsolation:false",
+    "sandbox:false",
+    "webSecurity:false",
+    "sendSync",
+    "ASAR",
+    "native addon ABI",
+    "autoUpdater",
+    "Windows backend",
+    "Linux backend"
+  ],
+  "gates": {
+    "versions": "open",
+    "syncMainApi": "open",
+    "syncIsolatedContextBridge": "open",
+    "electronDifferential": "open",
+    "nativeAcceptance": "open",
+    "releaseMeasurement": "open"
+  },
+  "experimentalM1": {
+    "status": "partial",
+    "platform": "darwin",
+    "invocation": "electron-mbt run <app-dir> --experimental-m1",
+    "compatible": false,
+    "engine": "AppKit/WKWebView system engine",
+    "tests": [
+      "scripts/m1-macos-smoke.cjs",
+      "scripts/m1-app-smoke.cjs"
+    ],
+    "exposed": [
+      "app.whenReady",
+      "app.isReady",
+      "app.quit",
+      "app.getName",
+      "app.getVersion",
+      "app.getAppPath",
+      "BrowserWindow synchronous constructor",
+      "BrowserWindow.loadFile",
+      "BrowserWindow.show",
+      "BrowserWindow.close cancellable",
+      "BrowserWindow.destroy",
+      "BrowserWindow.isDestroyed",
+      "BrowserWindow.getAllWindows",
+      "webContents.did-finish-load"
+    ],
+    "caveats": [
+      "synchronous isolated contextBridge unsupported",
+      "no renderer IPC or privileged preload",
+      "macOS native-close control disabled",
+      "loadFile Promise does not imply Electron-equivalent Node event scheduling",
+      "no gpui.mbt integration or native sender attestation",
+      "no third-party Electron app acceptance",
+      "no full security/release/size evidence"
+    ]
+  }
 }

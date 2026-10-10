@@ -25,6 +25,14 @@ app.whenReady().then(async () => {
   const superseded = win.loadFile('index.html');
   const promise = win.loadFile('index.html');
   assert.equal(typeof promise.then, 'function');
+  // An immediate public sync operation must not race with queued WebKit loads.
+  win.show();
+  let nodeTurnRan = false;
+  await new Promise(resolve => setImmediate(() => {
+    nodeTurnRan = true;
+    resolve();
+  }));
+  assert.equal(nodeTurnRan, true);
   await assert.rejects(superseded, { code: 'ELECTRON_MBT_STALE_DOCUMENT' });
   await promise;
   assert.equal(loaded, 1);
@@ -34,12 +42,24 @@ app.whenReady().then(async () => {
   win.close();
   assert.equal(cancelled, true);
   assert.equal(win.isDestroyed(), false);
+  // Native failure must never fabricate a successful closed transition.
+  const validGeneration = win._generation;
+  win._generation = 0;
+  assert.throws(() => win.destroy(), { code: 'ELECTRON_MBT_STALE_DOCUMENT' });
+  assert.equal(win.isDestroyed(), false);
+  win._generation = validGeneration;
   win.destroy();
   assert.equal(win.isDestroyed(), true);
+  const rapid = new BrowserWindow({ show: false });
+  const inflight = rapid.loadFile('index.html');
+  rapid.destroy();
+  await assert.rejects(inflight);
+  assert.equal(rapid.isDestroyed(), true);
   assert.equal(BrowserWindow.getAllWindows().length, 0);
   console.log(JSON.stringify({
     fixture: 'm1-cjs', status: 'PASS', readyOrder: true,
-    synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, staleLoadCancelled: true, closeCancelled: true,
+    synchronousConstructor: true, dependencyFacadeIdentity: true, realWebViewLoaded: true, staleLoadCancelled: true, nodeEventLoopResponsive: true, immediateShowSafe: true,
+    nativeDestroyErrorPreserved: true, inflightDestroySafe: true, closeCancelled: true,
     destroyForced: true, unsafeOptionsRejected: true, compatible: false,
   }));
   app.quit();

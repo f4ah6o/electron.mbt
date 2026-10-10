@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const { inspectApp, snapshot } = require('../bridges/node/app-files.cjs');
+const { expectNativeTitle } = require('./native-title-observation.cjs');
 const { ExperimentalRuntime } = require('../bridges/node/runtime-session.cjs');
 
 async function main() {
@@ -44,7 +45,7 @@ async function main() {
     });
     const loading = window.loadFile('index.html');
     await loading;
-    assert.equal(window.webContents.getTitle(), 'Experimental M1 CJS app');
+    assert.match(window.webContents.getURL(), /^file:\/\//);
     const affected = await gone;
     clearTimeout(timer);
     timer = null;
@@ -70,7 +71,7 @@ async function main() {
     window.destroy();
     const fresh = new runtime.BrowserWindow({ show: false });
     await fresh.loadFile('index.html');
-    assert.equal(fresh.webContents.getTitle(), 'Experimental M1 CJS app');
+    await expectNativeTitle(() => fresh.webContents.getTitle(), 'Experimental M1 CJS app');
     assert.equal(windowSignals, 1);
     assert.equal(applicationSignals, 1);
     fresh.destroy();

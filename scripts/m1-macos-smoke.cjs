@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { NativeHost } = require('../bridges/node/native-host.cjs');
 const { snapshot } = require('../bridges/node/app-files.cjs');
+const { expectNativeTitle } = require('./native-title-observation.cjs');
 
 async function waitForExit(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
@@ -77,7 +78,7 @@ async function main() {
     assert.equal(loaded.didFinishLoad, true);
     assert.match(loaded.url, /^file:\/\//);
     assert.equal(host.request('get-web-contents-url', 1, 1).url, loaded.url);
-    assert.equal(host.request('get-web-contents-title', 1, 1).title, 'M1 native host smoke');
+    await expectNativeTitle(() => host.request('get-web-contents-title', 1, 1).title, 'M1 native host smoke');
     assert.equal(host.request('get-window-title', 1, 1).title, 'Native title 日本語');
     await assert.rejects(host.requestAsync('load-file', 1, 1, {
       file: path.join(root, 'index.html'),

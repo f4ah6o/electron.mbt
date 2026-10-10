@@ -2,6 +2,17 @@
 const assert = require('node:assert/strict');
 const { app, BrowserWindow } = require('electron');
 const dependencyFacade = require('./dependency/index.cjs');
+async function expectNativeTitle(readTitle, expected) {
+  const deadline = Date.now() + 3000;
+  let observed;
+  do {
+    observed = readTitle();
+    if (observed === expected) return;
+    if (Date.now() >= deadline) break;
+    await new Promise(resolve => setTimeout(resolve, 30));
+  } while (true);
+  assert.equal(observed, expected, 'Actual native WebKit title did not become observable');
+}
 assert.equal(dependencyFacade.app, app);
 assert.equal(dependencyFacade.BrowserWindow, BrowserWindow);
 assert.equal(app.isReady(), false);
@@ -83,7 +94,7 @@ app.whenReady().then(async () => {
   assert.equal(loaded, 1);
   assert.deepEqual(win.getBounds(), initialBounds);
   assert.match(win.webContents.getURL(), /^file:\/\/.*\/index\.html$/);
-  assert.equal(win.webContents.getTitle(), 'Experimental M1 CJS app');
+  await expectNativeTitle(() => win.webContents.getTitle(), 'Experimental M1 CJS app');
   assert.equal(win.getTitle(), 'M1 title 日本語');
   // A native terminal ACK must clear the loading guard *before* invoking
   // listeners. Both the second load and its completion use real WKWebView.

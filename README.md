@@ -66,7 +66,7 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
    node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1
    ```
 
-   See [experimental M1 native runner](docs/0002-native-host.md) for its exact supported and unsupported APIs, OS-close limitations, secure boundaries and evidence. This is a deliberately partial profile.
+   See [experimental M1 native runner](docs/0002-native-host.md) for its exact supported and unsupported APIs, OS-close limitations, secure boundaries and evidence. This is a deliberately partial profile. The separate `node scripts/m0-bridge-probe.cjs` diagnostic measures isolated-world native Promise replies and a deliberately **untrusted** DOM-event synchronous candidate over two real WKWebView documents. It does not enable `contextBridge`; see [M0 feasibility evidence](docs/0003-m0-contextbridge-feasibility.md).
 
 6. To collect a reference baseline, install Electron **44.7.0** separately, then pass its actual executable path:
 

@@ -342,3 +342,9 @@ issues/open/            設計と未解決課題
 - [S12: WebKitGTK](https://webkitgtk.org/) — Linux WebView backend 候補。
 - [S13: gpui.mbt status](https://github.com/gpui-mbt/gpui.mbt/blob/008b3c73d50108d6ed1e6c02ad9e12e930e843ec/docs/status.md) — migration 基盤と未実証の範囲。
 - [S14: gpui.mbt architecture](https://github.com/gpui-mbt/gpui.mbt/blob/008b3c73d50108d6ed1e6c02ad9e12e930e843ec/docs/architecture.md) — host_services / native handle / dependency の境界。
+
+## 2026-10-11 M0 public WebKit synchronous-bridge feasibility increment (PR #2)
+
+A separate macOS-only, test-only `WKContentWorld` harness has been added to compare a synchronous shared-DOM `dispatchEvent` candidate with `WKScriptMessageHandlerWithReply`'s Promise behavior. The page's first script and isolated world are observed independently, with an explicit page-side DOM response tampering attempt and real document reload. A successful harness run is **not** `contextBridge` acceptance. Its security-critical negative case makes clear that page-owned DOM attributes, callback IDs and CustomEvents do not authenticate a native sender or trusted reply.
+
+Evidence is written to `evidence/m0-bridge-feasibility.json` in the macOS CI artifact. See `docs/0003-m0-contextbridge-feasibility.md` for each of the six unchanged Electron fixture requirements versus measured and still-missing contracts. Until an actual sandboxed preload with synchronous function proxies, native-attested frame/document authority, callback identity, Promise/rejection behavior, frozen copies and stale generation revocation works, M0 remains OPEN; the experimental M1 runner remains opt-in, `compatible:false`, and normal `run`/`pack` fail closed.

@@ -105,9 +105,13 @@
       "id": "C",
       "scope": "isolated preload and synchronous contextBridge",
       "status": "planned",
-      "tests": [],
+      "tests": [
+        "scripts/macos-probe.cjs",
+        "scripts/m0-bridge-probe.cjs",
+        "tests/m0-bridge-evidence.test.cjs"
+      ],
       "evidence": [],
-      "gap": "WKContentWorld probe is not a function-proxy bridge. Synchronous bridge remains unresolved."
+      "gap": "Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open."
     },
     {
       "id": "D",

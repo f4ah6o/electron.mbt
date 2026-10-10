@@ -91,6 +91,11 @@ jobs:
           node scripts/m1-load-deadline.cjs 2>&1 | tee evidence/m1-load-deadline.log
       - name: Probe actual WKContentWorld observations
         run: node scripts/macos-probe.cjs
+      - name: Measure M0 isolated-world synchronous bridge feasibility without claiming compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/m0-bridge-probe.cjs 2>&1 | tee evidence/m0-bridge-probe.log
       - name: Smoke-test real AppKit WKWebView host lifecycle
         shell: bash
         run: |

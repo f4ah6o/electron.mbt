@@ -11,7 +11,12 @@ sandboxed CommonJS preload (`sandbox:true`, `contextIsolation:true`,
 return/throw, asynchronous Promise return/fulfillment/rejection, copied/frozen
 nested data, callback observations, explicit subscription-disposer behavior,
 and realm primordial isolation instead of checking only the runtime version
-and process completion. Portable negative tests are in
+and process completion. It also records synchronous-throw and Promise-rejection
+Error names, JavaScript value types, object tags, and whether each rejection
+is an `instanceof Error` in the page realm. The validator rejects missing
+or non-Error evidence, but deliberately treats the page-realm `instanceof`
+result as an observed boolean until a real pinned Electron run establishes
+its value; an arbitrary assumed realm identity is not an M0 acceptance gate. Portable negative tests are in
 `tests/m0-electron-oracle-evidence.test.cjs`; the real observation is collected
 by the pinned-Electron macOS CI step.
 

@@ -132,14 +132,15 @@ Issue 0001 と `AGENTS.md` の現行実装方針は「実 Node.js を使う」�
 4. 開発時の bundler、既存 Node adapter の回帰試験、別配置の Electron oracle は Node を使用してよい。製品の実行時依存と区別し、Node-less な build toolchain は初期必須にしない。
 5. 未対応 API は診断または利用時に明示的に拒否する。Node fallback、ソースの書き換え、同期 API の Promise 化、隔離の無効化で成功を装わない。
 
-#### 公開する二つの成果
+#### 公開する三つの区別されたプロファイル
 
 | 提案プロファイル | 対象 | 表示してよい成果 |
 | --- | --- | --- |
 | `moonbit-native-v1` | main を MoonBit で書く新規アプリ | Node-less desktop runtime。これだけでは Electron source-compatible と呼ばない |
-| `electron-nodeless-v1` | 対応範囲内の既存 CJS、ビルド済み JS、ビルド時変換する TS/TSX | 入力モードと変換有無を明示し、固定 Electron / app revision / OS / engine / API 集合に対する限定互換 |
+| `electron-nodeless-v1` | 任意の同期 `contextBridge` を含む厳密なElectron互換 | 初版 **blocked** / `compatible:false`。安全な同期cross-world proxyの実証前には公開しない |
+| `electron-nodeless-adapted-v1` | 元JS/TS Main と、監査済みPromise IPCの**生成preload adapter**を使う既存Renderer | 未実装・予定。原本renderer/assets・build差分を明示し、`App Scenario Supported (adapted)` のみ判定する |
 
-名称は提案であり、現行 manifest の `desktop-core-v1` を変更しない。直接 CJS 実行の「配布アセット無変更」の判定では main/preload と renderer 配布アセットのハッシュ一致を要求する。一方、TypeScript ビルド時変換では入力ソースのハッシュ一致と生成 JS のハッシュを別々に記録し、「原本ソース無改変」と「配布アセット無変更」を混同しない。launcher / 設定の変更は別記する。再bundleしたアプリを既存配布物の「無改修起動」とは呼ばない。
+現行manifest `desktop-core-v1` は変更しない。**adapted profileは元preloadの任意closureを実行する厳密互換ではない。** 原本source、prepared JS、renderer配布asset、生成されたpreload surrogateを別々にハッシュ化し、`source unchanged` と `distribution unchanged` と `adapted preload` を混同しない。
 
 #### JS/TS の入力モードと build-only 方針
 
@@ -147,8 +148,8 @@ Issue 0001 と `AGENTS.md` の現行実装方針は「実 Node.js を使う」�
 
 | モード | 入力 | Node-less runtime の挙動 | 成果表示 |
 | --- | --- | --- | --- |
-| A: Direct CJS | 既存 `main.cjs` / `preload.cjs` / pure JS 依存 | 組み込み engine の CJS loader がそのまま評価 | 原本・既存 renderer アセットの hash が一致した範囲の無改変実行 |
-| B: Prepared JS | 既存アプリに同梱済みのビルド成果物（TS 製アプリを含む） | 成果物 JS を A と同じ engine で評価 | 既存 JS 配布アセットの無変更実行。元 TS の解釈とは称しない |
+| A: Direct CJS | 既存 `main.cjs` と pure JS 依存（preloadは別ゲート） | 組み込み engine の CJS loader がMainを評価 | Main source hashが一致。adaptedではpreload surrogate使用を別記、preload strict一致を主張しない |
+| B: Prepared JS | 既存アプリに同梱済みのビルド成果物（TS製を含む） | 成果物 JS を同じ engineで評価 | 既存成果物 hash 一致。preload surrogateは差分に含め、元TSの実行互換とは称しない |
 | C: TS build | `.ts` / `.cts` / `.tsx` 等 | ビルド時に型構文除去・transpile / 必要な場合 bundle した JS を評価 | 入力ソースの無改変と生成アセットの変更をそれぞれ記録 |
 
 C の build-time 変換器は pin した esbuild 等を候補とし、本番パッケージには同梱しない。ビルド時に Node を使用することは許容するが、利用者の環境に Node executable / libnode / Node-API を要求しない。`tsc --noEmit` 等の型チェックと transpilation は別工程で別判定とする。[S7] `tsconfig` の path alias・JSX・decorators・`.mts`・動的 import / require・bundler の external 処理は機能ごとに対応/拒否を定義する。未実装 Node built-in を external として残しただけの成功を互換扱いしない。
@@ -218,12 +219,12 @@ MoonBit native main ────────────────────
 #### N0 — 方針承認・対象アプリと契約の固定
 
 - [ ] `docs/adr/` に Node-less プロファイルの境界と既存 Node 版との関係を記し、承認後に実装ガイドを整合させる。
-- [ ] 実在する小規模 Electron アプリを最低1つ、revision・利用許諾・代表操作付きで選ぶ。対象外 API を試験から隠して「全機能互換」としない。
+- [x] Moji v1.0.5（commit `b7b1d585...`、MIT、M1〜M3）とjmd v0.2.3（`f875fc61...`、MIT、J1）を[ADR](../../docs/adr/0001-nodeless-macos-runtime-decisions.md)で選定。実機受入は未実行。
 - [ ] main/preload の依存と動的 require / Node globals / Electron API を棚卸しし、fixture と symbol 単位の対応表を作る。
 - [ ] A/B/C の入力モードと `tsconfig`、変換 toolchain、原本/成果物 hash の差を固定し、最低1件の限定 TS fixture を選ぶ。
 - [ ] Electron oracle / source commit、MoonBit toolchain、engine、OS/SDK/WebView を固定する。既存 manifest の pin は出発点であり今回の実行証跡ではない。
 
-**出口:** Node-less の定義、API/値型の初期集合、対象アプリ、許容設定差、unsupported 診断がレビュー可能。既存 main を改修しないと成立しないアプリしかなければ、その事実と移植版の別目標を明示する。
+**出口:** Node-lessの定義・実アプリ・engine・strict/adapted boundaryはADRで固定。残る使用symbol/値型inventoryとfixture/transformer/tool hashを完成し、unsupportedをレビュー可能にする。原本Mainを改修する必要が生じたら移植版と別表記する。
 
 #### N1 — 最大リスクを先に潰す feasibility probes
 
@@ -232,7 +233,7 @@ MoonBit native main ────────────────────
 - [ ] private transport の同期 window 操作で return/throw、nested callback、再入、UI thread deadlock、runner crash / timeout を検証する。
 - [ ] adapted profileではWKWebViewのpageWorld document-start APIをnative `WKScriptMessageHandlerWithReply`経由のPromise-only allowlistへ接続し、strict同期proxyとは独立の負例試験を行う。[S2][S3]
 - [ ] callback の登録/解除、Promise rejection、prototype 汚染、navigation/reload 後の古い handle、外部 frame の呼び出しを含む positive/negative test を用意する。
-- [ ] QuickJS と代替候補、プロセス構成、WebView adapter の採否を ADR に記す。外部ライブラリの hello-world サイズを製品サイズとして使わない。
+- [ ] QuickJS 2026-06-04 のvendor checksum、C ABI、プロセス構成、WebView adapterの安全性・配布サイズをN1aで実測し、ADRへの証拠追加を行う。初期engine選定自体は済んでいる。
 
 **出口:** adaptedの非同期grant/送信元認証が実機負例までPASSすること。単純なasync応答だけでは不可。DOM event、page可読nonce、private WebKit APIは認証に使わない。strict同期`contextBridge`のgateは依然blocked。
 
@@ -255,7 +256,7 @@ MoonBit native main ────────────────────
 - [ ] source/asset hash、module identity、同期戻り値、例外、必要なイベント順序を、同一 fixture の Electron oracle と差分比較する。
 - [ ] TS build-only adapter を production packaging 前の段階に接続し、typecheck と transpile の証拠、変換 source map、unsupported diagnostics を分離する。
 
-**出口:** N0 の fixture がソース・アセット無変更で動作し、対応 matrix の各行に証跡がある。新規 `compatibility/nodeless-manifest.json` 等で既存 Node profile と証跡を分離する。
+**出口:** A/B/C入力の原本・生成物hashとpreload差分が追跡でき、adaptedで許可された範囲だけが動作し、unsupported時には停止する。新規Node-less manifestに証拠を記録し、既存Node profileとは分離する。
 
 #### N4 — 実アプリ受入・権限と寿命の堅牢化
 
@@ -295,14 +296,14 @@ native addon、完全 Node 互換、Chromium 固有 API は「あとで必ず対
 2. **N1a: embedded JS + event loop + sync main transport probe** — engine/FFI/process の判定。
 3. **N1b-adapted: page-world async bridge + native sender grants** — adaptedをGoにする安全性のblocking gate。strict同期bridgeは初版blockedとし、別途ADRを要する。
 4. **N2: native host/launcher vertical slice** — 実 window の作成・操作・終了。
-5. **N3: source-preserving CJS facade + preload/IPC** — 必要最小限の shim と oracle 差分試験。
+5. **N3: source-preserving JS main + adapted preload/IPC** — 必要なshimと原本/生成物/adapter差分を試験。strict互換とは表示しない。
 6. **N4/N5: real-app acceptance + distribution audit** — 実操作・Node 不在・署名・測定。
 
 各子 Issue は依存 milestone、対象 symbol/設定/値型、変更場所、negative case、実行環境、PASS/FAIL/NOT RUN の出口条件を必須とする。N1 の結果前に大量の API stub を生成しない。
 
 ### 8. 完了条件と証跡の扱い
 
-本設計タスクの完了は本 Markdown の追加と内容レビューまで。runtime 実装、engine 採用、native E2E、互換性、軽量化の実証は**未実施**。Markdown の検査結果と runtime の合格を混ぜない。
+本設計タスクで**engineと実アプリの採用決定は完了**。runtimeへのQuickJS接続、native E2E、adapted IPCの安全性、互換性、軽量化の実証は**未実施**。MarkdownのPASSをruntimeの合格と混ぜない。
 
 Roadmap の runtime 完了は N0〜N5 の出口条件、実アプリ1件以上の限定適合、Node 非依存 artifact と再現可能な証跡が揃った時点。N6 は継続的拡張であり、全 Electron/npm 互換を親 Issue の完了条件にしない。検証状態は `planned` / `partial` / `verified` / `unsupported` で管理し、blocked gate と NOT RUN を明示する。
 

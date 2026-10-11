@@ -128,6 +128,12 @@ jobs:
         shell: bash
         run: |
           node scripts/m1-slow-load.cjs 2>&1 | tee evidence/m1-slow-load.log
+      - name: Build test-only retired WKNavigation callback host
+        run: node scripts/build-macos-host.cjs --simulate-stale-navigation-callback
+      - name: Reject retired navigation callbacks after document-generation change
+        shell: bash
+        run: |
+          node scripts/m1-navigation-generation.cjs 2>&1 | tee evidence/m1-navigation-generation.log
       - name: Build test-only WebKit termination-callback simulator
         run: node scripts/build-macos-host.cjs --simulate-webkit-termination
       - name: Validate simulated WebKit termination notification and MoonBit revocation

@@ -115,6 +115,13 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic) long long closeRequestEventID;
 @property(nonatomic) long long generation;
 @property(nonatomic) long long loadedGeneration;
+@property(nonatomic, strong) WKNavigation *loadingNavigation;
+@property(nonatomic) long long loadingNavigationGeneration;
+#if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
+@property(nonatomic, strong) WKNavigation *testingRetiredNavigation;
+@property(nonatomic) BOOL testingStaleNavigationCallbackScheduled;
+@property(nonatomic) NSUInteger testingStaleNavigationCallbackCount;
+#endif
 @property(nonatomic) BOOL permittedClose;
 @property(nonatomic) BOOL allowNextNavigation;
 @property(nonatomic) BOOL contentAlive;
@@ -152,6 +159,7 @@ static NSString *canonicalPath(NSString *path) {
     self.native.title = title;
     self.generation = 0;
     self.loadedGeneration = 0;
+    self.loadingNavigationGeneration = 0;
     self.contentAlive = YES;
     self.allowNextNavigation = NO;
     self.closeRequestOutstanding = NO;
@@ -202,11 +210,29 @@ static NSString *canonicalPath(NSString *path) {
 - (void)completeLoad:(BOOL)ok reason:(NSString *)reason {
   void (^done)(BOOL, NSString *) = self.loadDone;
   self.loadDone = nil;
+  self.loadingNavigation = nil;
+  self.loadingNavigationGeneration = 0;
   if (done) done(ok, reason);
 }
+- (BOOL)isCurrentLoadNavigation:(WKNavigation *)navigation {
+  return navigation != nil && navigation == self.loadingNavigation &&
+         self.loadingNavigationGeneration > 0 &&
+         self.loadingNavigationGeneration == self.generation &&
+         self.loadedGeneration == self.generation &&
+         self.contentAlive && self.loadDone != nil;
+}
+- (void)completeLoad:(BOOL)ok reason:(NSString *)reason
+      forNavigation:(WKNavigation *)navigation {
+  if (![self isCurrentLoadNavigation:navigation]) return;
+  [self completeLoad:ok reason:reason];
+}
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-  (void)webView; (void)navigation;
-  [self completeLoad:YES reason:@""];
+  (void)webView;
+  if (![self isCurrentLoadNavigation:navigation]) return;
+#if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
+  if (!self.testingRetiredNavigation) self.testingRetiredNavigation = navigation;
+#endif
+  [self completeLoad:YES reason:@"" forNavigation:navigation];
 #if defined(ELECTRON_MBT_TEST_TERMINATION_CALLBACK)
   // A separate CI-only binary invokes the public delegate callback, not
   // a real WebKit subprocess kill. It tests event/revocation plumbing only.
@@ -233,13 +259,13 @@ static NSString *canonicalPath(NSString *path) {
 }
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation
       withError:(NSError *)error {
-  (void)webView; (void)navigation; (void)error;
-  [self completeLoad:NO reason:@"ELECTRON_MBT_LOAD_FAILED"];
+  (void)webView; (void)error;
+  [self completeLoad:NO reason:@"ELECTRON_MBT_LOAD_FAILED" forNavigation:navigation];
 }
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation
       withError:(NSError *)error {
-  (void)webView; (void)navigation; (void)error;
-  [self completeLoad:NO reason:@"ELECTRON_MBT_LOAD_FAILED"];
+  (void)webView; (void)error;
+  [self completeLoad:NO reason:@"ELECTRON_MBT_LOAD_FAILED" forNavigation:navigation];
 }
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
   (void)webView;
@@ -390,8 +416,10 @@ static NSString *canonicalPath(NSString *path) {
     window.generation = generation.longLongValue;
     window.allowNextNavigation = NO;
     window.loadedFile = nil;
-    [window.web stopLoading];
+    // Drop the old delegate token and settle its request before stopLoading
+    // can deliver a late failure callback against a later generation.
     [window completeLoad:NO reason:@"ELECTRON_MBT_STALE_DOCUMENT"];
+    [window.web stopLoading];
     done(@"success", @{@"generation": generation});
     return;
   }
@@ -413,13 +441,53 @@ static NSString *canonicalPath(NSString *path) {
     window.loadedGeneration = generation.longLongValue;
     window.loadedFile = canonical;
     window.allowNextNavigation = YES;
+#if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
+    __weak MBTWindow *weakWindow = window;
+#endif
     window.loadDone = ^(BOOL ok, NSString *reason) {
-      if (ok) done(@"success", @{@"didFinishLoad": @YES,
-        @"url": [NSURL fileURLWithPath:canonical].absoluteString});
-      else done(@"failure", @{@"code": reason});
+      if (ok) {
+#if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
+        MBTWindow *candidate = weakWindow;
+        done(@"success", @{@"didFinishLoad": @YES,
+          @"url": [NSURL fileURLWithPath:canonical].absoluteString,
+          @"testRetiredNavigationCallbackCount": @(candidate ? candidate.testingStaleNavigationCallbackCount : 0)});
+#else
+        done(@"success", @{@"didFinishLoad": @YES,
+          @"url": [NSURL fileURLWithPath:canonical].absoluteString});
+#endif
+      } else done(@"failure", @{@"code": reason});
     };
-    [window.web loadFileURL:[NSURL fileURLWithPath:canonical]
+    window.loadingNavigationGeneration = generation.longLongValue;
+    window.loadingNavigation = [window.web loadFileURL:[NSURL fileURLWithPath:canonical]
         allowingReadAccessToURL:[NSURL fileURLWithPath:self.root isDirectory:YES]];
+    if (!window.loadingNavigation) {
+      window.allowNextNavigation = NO;
+      [window completeLoad:NO reason:@"ELECTRON_MBT_LOAD_FAILED"];
+      return;
+    }
+#if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
+    if (generation.longLongValue > 1 && window.testingRetiredNavigation &&
+        !window.testingStaleNavigationCallbackScheduled) {
+      window.testingStaleNavigationCallbackScheduled = YES;
+      WKNavigation *retiredNavigation = window.testingRetiredNavigation;
+      NSError *retiredError = [NSError errorWithDomain:@"ELECTRON_MBT_TEST_STALE_NAVIGATION"
+                                                   code:1 userInfo:nil];
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC),
+                     dispatch_get_main_queue(), ^{
+        MBTWindow *candidate = weakWindow;
+        if (candidate && candidate.contentAlive) {
+          candidate.testingStaleNavigationCallbackCount++;
+          [candidate webView:candidate.web didFinishNavigation:retiredNavigation];
+          candidate.testingStaleNavigationCallbackCount++;
+          [candidate webView:candidate.web didFailNavigation:retiredNavigation
+                   withError:retiredError];
+          candidate.testingStaleNavigationCallbackCount++;
+          [candidate webView:candidate.web didFailProvisionalNavigation:retiredNavigation
+                   withError:retiredError];
+        }
+      });
+    }
+#endif
     return;
   }
   if (generation.longLongValue != window.generation) {

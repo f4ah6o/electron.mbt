@@ -15,16 +15,18 @@ Install the pinned MoonBit toolchain and Node 24.21.0 with matching Node-API hea
 7. node scripts/m1-host-init-fault.cjs
 8. node scripts/m1-begin-load-failure.cjs
 9. node scripts/m1-slow-load.cjs
-10. node scripts/m1-load-deadline.cjs
-11. node scripts/build-macos-host.cjs --simulate-webkit-termination
-12. node scripts/m1-renderer-delegate-sim.cjs
-13. node scripts/build-macos-host.cjs --kill-real-webkit-process
-14. node scripts/m1-webkit-process-kill.cjs
-15. node scripts/m1-host-loss.cjs
-16. node scripts/build-macos-host.cjs --simulate-native-close
-17. node scripts/m1-native-close.cjs
-18. node scripts/m1-native-close-race.cjs
-19. node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1
+10. node scripts/build-macos-host.cjs --simulate-stale-navigation-callback
+11. node scripts/m1-navigation-generation.cjs
+12. node scripts/m1-load-deadline.cjs
+13. node scripts/build-macos-host.cjs --simulate-webkit-termination
+14. node scripts/m1-renderer-delegate-sim.cjs
+15. node scripts/build-macos-host.cjs --kill-real-webkit-process
+16. node scripts/m1-webkit-process-kill.cjs
+17. node scripts/m1-host-loss.cjs
+18. node scripts/build-macos-host.cjs --simulate-native-close
+19. node scripts/m1-native-close.cjs
+20. node scripts/m1-native-close-race.cjs
+21. node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1
 
 Ordinary run and pack still fail closed. The explicit --experimental-m1 switch opts into a narrow test profile, **not** compatibility certification. The CJS fixture and dependency both import electron without rewriting app source.
 
@@ -48,7 +50,15 @@ Explicitly unsupported: preload, contextBridge, ipcMain, ipcRenderer, nodeIntegr
 
 ## Unfinished acceptance and security
 
-- Short control operations still block Node synchronously, but the Promise-returning loadFile operation uses a separate worker/channel. CI verifies Node timers stay responsive during deliberately slow WebKit documents, four queued requests enforce a common start-of-queue deadline, and abort interrupts a Worker stuck in a 10-second native poll without holding the fd open indefinitely. The Worker is still a serialized load lane, and arbitrary Electron reentrancy/event ordering and true multi-navigation cancellation remain unverified.
+### Document-generation callback lifetime
+
+MoonBit continues to allocate each monotonic document generation and reserve it through `begin-load`. The native macOS leaf stores the exact `WKNavigation` returned for that load alongside the generation. A finish or failure callback settles the pending request only when its `WKNavigation` identity is still current, its generation matches the reserved and loaded generation, and the WebKit content process remains alive. A new `begin-load` clears that identity and rejects the prior request as stale before calling `stopLoading`, so a late delegate callback from the old navigation cannot settle the next request.
+
+macOS CI builds a separate test-only host that replays the retired navigation's `didFinishNavigation`, `didFailNavigation`, and `didFailProvisionalNavigation` callbacks while generation 2's deliberately slow page is loading. The regression asserts that all three callbacks ran, that generation 2 emits no early `did-finish-load`, and that its promise waits for the actual WebKit completion. The injected callback count is present only in this test binary's load reply; ordinary host builds and responses do not include it. This macOS compile/integration test is **NOT RUN** in the current Linux workspace; the macOS CI result is required runtime evidence.
+
+This narrows native load-completion and callback-lifetime bookkeeping. It does not cancel arbitrary JavaScript already running in a retired document, authenticate a page or frame that indirectly triggers isolated code, add renderer IPC or contextBridge, or close M0. Overlapping application `loadFile` calls remain unsupported.
+
+- Short control operations still block Node synchronously, but the Promise-returning loadFile operation uses a separate worker/channel. CI verifies Node timers stay responsive during deliberately slow WebKit documents, four queued requests enforce a common start-of-queue deadline, and abort interrupts a Worker stuck in a 10-second native poll without holding the fd open indefinitely. The Worker is still a serialized load lane, overlapping application navigations are rejected, and arbitrary Electron reentrancy/event ordering remain unverified.
 - CI proves real WKWebView and an unchanged CJS fixture, but not a real third-party app or the same complete Electron oracle. WKContentWorld observations do not demonstrate a synchronous cross-realm function proxy.
 - Renderer-to-host IPC does not exist. A random session value over a private inherited socket is not OS-level sender/frame/document attestation. Main remains a trusted Node process.
 - Main-frame navigation checks and document revocation are implemented; native frames with fractional/rounded identifiers are rejected before dispatch. CI covers both a simulated public WKWebView termination delegate callback and an isolated **real WebKit content-process termination** test. Only the separately compiled test host dynamically invokes WebKit's private `_killWebContentProcess` selector after a successful real navigation; it records the OS WebContent PID and waits for the public WKNavigationDelegate termination callback to revoke MoonBit/Node document authority. The normal native host build contains no private WebKit termination selector or kill path. This is a deterministic test-triggered process termination, **not** proof of unassisted crashes, out-of-process OS SIGKILL, all crash classes, multi-process accounting or production private API support. Remote subresource traffic, storage origin, popup handling, IME/focus/accessibility, process isolation and permission equivalence have not been fully audited or accepted.
@@ -56,6 +66,6 @@ Explicitly unsupported: preload, contextBridge, ipcMain, ipcRenderer, nodeIntegr
 
 The portable Node suite exercises before-quit, window close and will-quit cancellation, event ordering, quit event arguments, reentrant quit and recovery after throwing close listeners against the compiled MoonBit core and a fake native-process leaf. Injected native transport failure during close (caught by app code), before-quit, will-quit and shutdown checks that `runtime-host-gone` cannot be misreported as a normal `quit`. The macOS unchanged-CJS smoke exercises the same quit sequence with a real AppKit host; these tests do not simulate renderer beforeunload/unload.
 
-The macOS CI also runs regression tests for early native-generation failure, reentrant load completion/failure callbacks, third socketpair acquisition failure, Worker constructor failure after native child spawn, non-executable host, unexpected host process death, child PID/FD recovery, queue-wide timeouts, genuine test-triggered WebKit content-process termination with a surviving host and fresh window, AppKit native close cancel/retry, and a programmatic cancellation preceding a delayed native close notification. These are narrow targeted assertions, not generalized process-tree safety evidence.
+The macOS CI also runs regression tests for early native-generation failure, retired WKNavigation finish/failure callbacks, reentrant load completion/failure callbacks, third socketpair acquisition failure, Worker constructor failure after native child spawn, non-executable host, unexpected host process death, child PID/FD recovery, queue-wide timeouts, genuine test-triggered WebKit content-process termination with a surviving host and fresh window, AppKit native close cancel/retry, and a programmatic cancellation preceding a delayed native close notification. These are narrow targeted assertions, not generalized process-tree safety evidence.
 
 Never treat the CI smoke, old Electron baseline or successful compilation as a verified A-J compatibility row. Preserve test evidence and exact pinned environment versions.

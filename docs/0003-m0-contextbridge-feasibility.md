@@ -47,7 +47,26 @@ Run `node scripts/m0-bridge-probe.cjs` after installing Xcode command-line tools
 
 The diagnostic captures the very first page script, confirms the isolated variable and native reply handler are not exposed in page world, verifies isolated JavaScript primordials are intact after page tampering, and repeats the page in a freshly reloaded document. It also measures a **page-authored raw DOM event** (not the test proxy) which induces the isolated-world listener to call the native no-privilege echo handler: native `WKScriptMessage.frameInfo.isMainFrame` describes the immediate isolated-world caller, **not** the untrusted page that initiated the shared-DOM event. The native diagnostic distinguishes document-start and page-induced messages for measurement only; the self-declared source label is not a security credential. A separate **test-only document grant** is minted by the native navigation policy for each allowed main-frame document. It is returned only to the isolated world by `WKScriptMessageHandlerWithReply`, kept in an isolated lexical closure, and checked by a second native echo. A deliberately invalid grant and the prior document's grant (sent to the new isolated document solely for this negative replay fixture) must fail. The actual grant strings are never written to DOM, stdout, or evidence. This establishes only an isolated grant round trip and a narrow native per-navigation replay rejection on the tested WebKit—not a page-initiator identity, an unchanged preload proxy, or production renderer authorization. It separately invokes `WKScriptMessageHandlerWithReply` from the isolated world: `postMessage` returns a **Promise**, not the return value of an arbitrary synchronous JavaScript function. The test-only shared-DOM candidate sends a request through an `EventTarget.dispatchEvent` listener attached by the isolated world and reads its reply from DOM attributes immediately. Native code checks the isolated counter independently so that a page-fabricated reply is not mistaken for a cross-world invocation.
 
-A successful **probe execution** writes `evidence/m0-bridge-feasibility.json` and emits `probe:m0-isolated-sync-feasibility` with `status:PASS`, `contextBridge:NOT_IMPLEMENTED`, `compatibilityGate:OPEN` and `compatible:false`. Candidate results are independent booleans, not implicit success claims. The report includes two real WKWebView document observations, OS/WebKit/SDK/architecture, page-visible and isolated-only state, separately counted document-start and page-induced native replies, independent grant issue/accept/reject counters, a bounded polling interval for asynchronous grant completion, and a bounded source/asset hash check. The Node evidence validator rejects inconsistent derived synchronous/reload/induced-message claims and mismatched native reply totals rather than treating a forged or stale aggregate flag as proof. `node scripts/m0-bridge-probe.cjs --build-only` compiles without claiming runtime acceptance. Running on Linux reports `NOT_RUN` with exit 2. CI records the raw evidence on `macos-15` and retains the full existing MoonBit/Node/macOS acceptance suite.
+A successful **probe execution** writes `evidence/m0-bridge-feasibility.json` and emits `probe:m0-isolated-sync-feasibility` with `status:PASS`, `contextBridge:NOT_IMPLEMENTED`, `compatibilityGate:OPEN` and `compatible:false`. Candidate results are independent booleans, not implicit success claims. The report includes two real WKWebView document observations, OS/WebKit/SDK/architecture, page-visible and isolated-only state, separately counted document-start and page-induced native replies, independent grant issue/accept/reject counters, child-frame denial counts and isolated child Promise observations, a bounded polling interval for asynchronous grant/frame completion, and a bounded source/asset hash check. The Node evidence validator rejects inconsistent derived synchronous/reload/induced-message claims and mismatched native reply totals rather than treating a forged or stale aggregate flag as proof. `node scripts/m0-bridge-probe.cjs --build-only` compiles without claiming runtime acceptance. Running on Linux reports `NOT_RUN` with exit 2. CI records the raw evidence on `macos-15` and retains the full existing MoonBit/Node/macOS acceptance suite.
+
+### Direct subframe native rejection
+
+The test-only M0 probe loads an `m0-frame.html` iframe beside the main
+document and injects a separate isolated script into each frame. The child
+issues a `document-start` native call with the same claimed source as the
+main isolated script. Native checks the actual `WKScriptMessage.frameInfo`
+and frame URL, rejects the direct child request, and counts denials
+independently of accepted main-frame traffic. The native diagnostic evaluates
+the child's isolated Promise result using that exact `WKFrameInfo`, and
+requires both rejection observations on **both** document loads. The child
+never receives a document grant. The page-visible script does not receive
+the native handler.
+
+This is a narrow immediate-frame distinction, **not page-initiator
+authentication**: a page or frame may indirectly induce the authorized main
+isolated handler through page-exposed APIs. Shared-DOM reply forgery remains.
+These additions do not change the production AppKit host or implement a
+privileged renderer API.
 
 ## M0 requirements versus what the candidate actually measures
 

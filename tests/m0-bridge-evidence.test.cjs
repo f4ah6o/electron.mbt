@@ -29,11 +29,13 @@ function sample() {
     documentStartNativeMessageCount: 2, pageInducedNativeMessageCount: 2,
     nativeGrantIssuedCount: 2, nativeGrantAcceptedCount: 2,
     nativeGrantInvalidRejectedCount: 2, nativeGrantStaleRejectedCount: 1,
+    nativeSubframeDeniedCount: 2,
     withReplyReturnedPromise: true, nativeReplySettled: true,
     newDocumentScriptReinitialized: true,
     candidate: {
       transport: 'shared-page-mutable-DOM-event',
       pageAuthoredProxy: true, synchronousPrimitiveObserved: true,
+      directSubframeNativeDenied: true,
       synchronousThrowObserved: true, callbackByIdOnlyObserved: true,
       pageCanForgeResponse: true, pageCanInduceNativeMessage: true,
       pageInitiatorAuthenticated: false,
@@ -43,8 +45,12 @@ function sample() {
       secureContextBridgeVerified: false, realCallbackIdentityVerified: false,
       promiseProxyVerified: false, frozenCrossRealmCopyVerified: false,
     },
-    firstDocument: { page: { ...page }, isolated: { ...isolated } },
-    secondDocument: { page: { ...page }, isolated: { ...isolated, staleGrantRejected: true } },
+    firstDocument: { page: { ...page }, isolated: { ...isolated },
+      subframe: { attempted: true, replyPromise: true, settled: true,
+        denied: true, rejectionCodeObserved: true } },
+    secondDocument: { page: { ...page }, isolated: { ...isolated, staleGrantRejected: true },
+      subframe: { attempted: true, replyPromise: true, settled: true,
+        denied: true, rejectionCodeObserved: true } },
     environment: { os: 'macOS test fixture', webkit: 'test version' },
   };
 }
@@ -57,6 +63,8 @@ test('What: an observed sync DOM candidate must keep the M0 compatibility gate o
   assert.equal(observed.candidate.pageInitiatorAuthenticated, false);
   assert.equal(observed.candidate.staleGrantReplayRejected, true);
   assert.equal(observed.nativeGrantStaleRejectedCount, 1);
+  assert.equal(observed.nativeSubframeDeniedCount, 2);
+  assert.equal(observed.candidate.directSubframeNativeDenied, true);
   assert.equal(observed.compatibilityGate, 'OPEN');
 });
 
@@ -74,6 +82,15 @@ test('What: missing observations and compatibility elevation are rejected', () =
     r => { r.contextBridge = 'IMPLEMENTED'; },
     r => { r.candidate.secureContextBridgeVerified = true; },
     r => { r.candidate.privilegedSenderAttested = true; },
+    r => { r.candidate.directSubframeNativeDenied = false; },
+    r => { delete r.candidate.directSubframeNativeDenied; },
+    r => { r.nativeSubframeDeniedCount = 1; },
+    r => { r.firstDocument.subframe.attempted = false; },
+    r => { r.firstDocument.subframe.replyPromise = false; },
+    r => { r.firstDocument.subframe.settled = false; },
+    r => { r.firstDocument.subframe.denied = false; },
+    r => { r.firstDocument.subframe.rejectionCodeObserved = false; },
+    r => { r.secondDocument.subframe.rejectionCodeObserved = false; },
     r => { r.candidate.pageInitiatorAuthenticated = true; },
     r => { r.nativeGrantIssuedCount = 1; },
     r => { r.firstDocument.isolated.grantProbeSettled = false; },

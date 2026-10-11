@@ -15,6 +15,8 @@ function validateM0Evidence(report) {
     report.pageInducedNativeMessageCount >= 0);
   assert.equal(report.nativeReplyCount,
     report.documentStartNativeMessageCount + report.pageInducedNativeMessageCount);
+  assert.ok(Number.isSafeInteger(report.nativeSubframeDeniedCount));
+  assert.equal(report.nativeSubframeDeniedCount, report.documentLoads);
   for (const name of [
     'nativeGrantIssuedCount', 'nativeGrantAcceptedCount',
     'nativeGrantInvalidRejectedCount', 'nativeGrantStaleRejectedCount',
@@ -40,6 +42,9 @@ function validateM0Evidence(report) {
       'grantProbeSettled', 'grantEchoAccepted', 'invalidGrantRejected', 'staleGrantRejected',
     ]) assert.equal(typeof document.isolated[field], 'boolean', field);
     assert.equal(document.isolated.grantProbeSettled, true);
+    for (const key of [
+      'attempted', 'replyPromise', 'settled', 'denied', 'rejectionCodeObserved',
+    ]) assert.equal(typeof document.subframe?.[key], 'boolean', key);
     for (const property of [
       'synchronousValue', 'synchronousThrow', 'callbackByPageId', 'pageCanForgeDOMReply',
       'pageTriggeredNativeMessage',
@@ -52,6 +57,13 @@ function validateM0Evidence(report) {
   assert.equal(candidate?.transport, 'shared-page-mutable-DOM-event');
   assert.equal(candidate?.pageAuthoredProxy, true);
   assert.equal(candidate?.privilegedSenderAttested, false);
+  // Why not: a verified immediate native frame does not prove who initiated a shared-DOM event.
+  assert.equal(candidate?.directSubframeNativeDenied, true);
+  assert.equal(candidate.directSubframeNativeDenied,
+    report.nativeSubframeDeniedCount === report.documentLoads &&
+    [report.firstDocument, report.secondDocument].every(d =>
+      d.subframe.attempted && d.subframe.replyPromise && d.subframe.settled &&
+      d.subframe.denied && d.subframe.rejectionCodeObserved));
   assert.equal(candidate?.pageInitiatorAuthenticated, false);
   for (const field of [
     'documentGrantRotated', 'isolatedGrantEchoObserved',

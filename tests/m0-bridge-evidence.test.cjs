@@ -97,6 +97,7 @@ test('What: missing observations and compatibility elevation are rejected', () =
     r => { r.secondDocument.subframe.rejectionCodeObserved = false; },
     r => { r.candidate.pageInitiatorAuthenticated = true; },
     r => { r.candidate.pageInducedWithValidIsolatedGrant = false; },
+    r => { r.candidate.pageInducedWithValidIsolatedGrant = 1; },
     r => { delete r.candidate.pageInducedWithValidIsolatedGrant; },
     r => { r.nativeGrantIssuedCount = 1; },
     r => { r.firstDocument.isolated.grantProbeSettled = false; },

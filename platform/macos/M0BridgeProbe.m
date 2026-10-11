@@ -264,6 +264,8 @@ static NSDictionary *decodeObject(id value) {
     [self fail:@"ELECTRON_MBT_M0_SUBFRAME_REJECTION_COUNT"];
     return;
   }
+  BOOL grantedPageInduction = pageInducedNative &&
+    self.nativeGrantDomTriggeredAcceptedCount == 2;
   // Why not: a forged DOM response and ID-only callbacks cannot certify
   // contextBridge authority, cross-realm Function identity or frozen copies.
   NSDictionary *candidate = @{
@@ -274,8 +276,7 @@ static NSDictionary *decodeObject(id value) {
     @"callbackByIdOnlyObserved": @([firstPage[@"callbackByPageId"] isEqual:@YES]),
     @"pageCanForgeResponse": @([firstPage[@"pageCanForgeDOMReply"] isEqual:@YES]),
     @"pageCanInduceNativeMessage": @(pageInducedNative),
-    @"pageInducedWithValidIsolatedGrant":
-      @(pageInducedNative && self.nativeGrantDomTriggeredAcceptedCount == 2),
+    @"pageInducedWithValidIsolatedGrant": @(grantedPageInduction),
     @"pageInitiatorAuthenticated": @NO,
     @"documentGrantRotated": @(grantsRotated),
     @"isolatedGrantEchoObserved": @(grantEcho),

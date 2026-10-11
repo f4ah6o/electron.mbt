@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; frame-src 'self' file:; object-src 'none'; base-uri 'none'">
+<title>electron.mbt M0 test-only world bridge boundary</title>
+<script>
+'use strict';
+(() => {
+  // Why not: this page-authored proxy deliberately cannot certify Electron contextBridge.
+  const root = document.documentElement;
+  const requestEvent = 'electron-mbt-m0-request';
+  const callbackEvent = 'electron-mbt-m0-callback';
+  const requestAttr = 'data-electron-mbt-m0-request';
+  const replyAttr = 'data-electron-mbt-m0-reply';
+  const callbackAttr = 'data-electron-mbt-m0-callback';
+  const callbackReplyAttr = 'data-electron-mbt-m0-callback-reply';
+  const privateGlobalHidden = typeof globalThis.electronMbtM0IsolatedOnly === 'undefined';
+  const nativeReplyHandlerHidden = !window.webkit?.messageHandlers?.electronMbtM0NativeReply;
+  const childRelay = {
+    received: false, sourceMatches: false, opaqueOrigin: false, forwarded: false,
+  };
+  // Why not: parent page forwarding cannot upgrade a sandboxed child into
+  // an authenticated main-frame sender, even if the isolated handler has a grant.
+  window.addEventListener('message', event => {
+    if (event.data?.probe !== 'm0' ||
+        event.data?.kind !== 'sandboxed-child-relay') return;
+    const frame = document.querySelector('iframe[title="M0 untrusted subframe fixture"]');
+    childRelay.received = true;
+    childRelay.sourceMatches = event.source === frame?.contentWindow;
+    childRelay.opaqueOrigin = event.origin === 'null';
+    if (childRelay.sourceMatches && childRelay.opaqueOrigin) {
+      childRelay.forwarded = request('subframe-trigger-native', null) === 'native-pending';
+    }
+  });
+  const callbacks = new Map();
+  let callbackInvocations = 0;
+  const callback = amount => {
+    callbackInvocations += 1;
+    return amount * 3;
+  };
+  callbacks.set('stable-id', callback);
+  document.addEventListener(callbackEvent, () => {
+    const input = JSON.parse(root.getAttribute(callbackAttr));
+    const registered = callbacks.get(input.id);
+    root.setAttribute(callbackReplyAttr, JSON.stringify(registered ?
+      { ok: true, value: registered(input.amount) } : { ok: false }));
+  });
+  function request(operation, value) {
+    root.removeAttribute(replyAttr);
+    root.setAttribute(requestAttr, JSON.stringify({ operation, value }));
+    document.dispatchEvent(new Event(requestEvent));
+    const raw = root.getAttribute(replyAttr);
+    if (raw === null) return undefined;
+    const reply = JSON.parse(raw);
+    if (reply.ok === false) {
+      const error = new Error(reply.message);
+      error.name = reply.name;
+      throw error;
+    }
+    return reply.value;
+  }
+  const syncValue = request('add', [20, 22]);
+  let syncThrow = false;
+  try { request('raise', null); } catch (error) {
+    syncThrow = error instanceof Error && error.name === 'TypeError' &&
+      error.message === 'isolated synchronous error';
+  }
+  const callbackIdentityLocal = callbacks.get('stable-id') === callback;
+  const callbackValue = request('callback', { id: 'stable-id', amount: 4 });
+  const secondCallbackValue = request('callback', { id: 'stable-id', amount: 5 });
+  callbacks.delete('stable-id');
+  let removedCallbackDenied = false;
+  try { request('callback', { id: 'stable-id', amount: 7 }); } catch (error) {
+    removedCallbackDenied = error.message === 'callback missing';
+  }
+  // The page can overwrite a result after the isolated listener has written
+  // it, proving that a shared DOM payload cannot authenticate the responder.
+  document.addEventListener(requestEvent, () => {
+    root.setAttribute(replyAttr, JSON.stringify({ ok: true, value: 9001 }));
+  }, { once: true });
+  const forgedValue = request('add', [1, 2]);
+  // Why not: a DOM event initiated by the page is not a native-attested sender.
+  root.removeAttribute(replyAttr);
+  root.setAttribute(requestAttr, JSON.stringify({
+    operation: 'page-trigger-native', value: null,
+  }));
+  document.dispatchEvent(new Event(requestEvent));
+  const inducedReply = JSON.parse(root.getAttribute(replyAttr) || 'null');
+  const pageTriggeredNativeMessage = inducedReply?.ok === true &&
+    inducedReply.value === 'native-pending';
+  Array.prototype.map = function pageChangedMap() { return 'page-owned'; };
+  globalThis.m0PageFirstScript = Object.freeze({
+    firstScriptAttempted: true,
+    privateGlobalHidden,
+    nativeReplyHandlerHidden,
+    synchronousValue: syncValue === 42,
+    synchronousThrow: syncThrow,
+    callbackByPageId: callbackIdentityLocal && callbackValue === 12 &&
+      secondCallbackValue === 15 && callbackInvocations === 2 && removedCallbackDenied,
+    pageCanForgeDOMReply: forgedValue === 9001,
+    pageTriggeredNativeMessage,
+    childRelay,
+  });
+})();
+</script>
+</head>
+<body><p>M0 diagnostic only; no Electron preload is exposed.</p>
+<iframe sandbox="allow-scripts" src="m0-frame.html" title="M0 untrusted subframe fixture"></iframe></body>
+</html>

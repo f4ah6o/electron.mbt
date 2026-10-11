@@ -11,6 +11,17 @@ contextBridge.exposeInMainWorld('fixture', {
   add: callback => { callbacks.add(callback); },
   remove: callback => { callbacks.delete(callback); },
   fire: value => { for (const callback of callbacks) callback(value); },
+  subscribe: callback => {
+    if (typeof callback !== 'function') throw new TypeError('callback required');
+    const listener = value => callback(value);
+    callbacks.add(listener);
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return false;
+      subscribed = false;
+      return callbacks.delete(listener);
+    };
+  },
   primordialIntact: () => Array.prototype.map === originalMap,
   report: value => { ipcRenderer.send('fixture:report', value); },
 });

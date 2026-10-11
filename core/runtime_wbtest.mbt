@@ -204,3 +204,22 @@ test "negative zero is rejected instead of losing its sign" {
   assert_false(validate_json(@json.parse("-0")))
   assert_true(validate_json(@json.parse("0")))
 }
+
+
+///|
+test "What: native renderer death revokes document grants and pending operations" {
+  let (runtime, id, generation) = live_runtime()
+  let request = match runtime.begin_request(
+    id, generation, "file:///fixture/", true, "read-text", 8,
+  ) {
+    Ok(id) => id
+    Err(_) => abort("request failed")
+  }
+  assert_true(runtime.invalidate_document(id, generation + 1) is Err(StaleDocument))
+  assert_eq(runtime.pending_count(), 1)
+  assert_true(runtime.invalidate_document(id, generation) is Ok(_))
+  assert_eq(runtime.pending_count(), 0)
+  assert_eq(runtime.take_cancellations(), [request])
+  assert_true(runtime.authorize(id, generation, "file:///fixture/", true, "read-text") is Err(InvalidState))
+  assert_true(runtime.invalidate_document(id, generation) is Ok(_))
+}

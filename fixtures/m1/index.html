@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><title>M1 native host smoke</title></head>
+<body>
+  <main id="app">AppKit WKWebView native lifecycle fixture</main>
+  <script>
+    window.m1Observation = {
+      rendered: document.getElementById('app').textContent,
+      nodeAbsent: typeof require === 'undefined' && typeof process === 'undefined'
+    };
+  </script>
+</body>
+</html>

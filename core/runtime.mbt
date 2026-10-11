@@ -423,3 +423,24 @@ pub fn Runtime::take_cancellations(self : Runtime) -> Array[Int] {
   self.cancelled.clear()
   result
 }
+
+
+///|
+pub fn Runtime::invalidate_document(
+  self : Runtime,
+  id : Int,
+  generation : Int,
+) -> Result[Unit, RuntimeError] {
+  match self.windows.get(id) {
+    Some(window) => {
+      if window.state != Live { return Err(InvalidState) }
+      if window.generation != generation { return Err(StaleDocument) }
+      window.active = false
+      window.origin = ""
+      window.grants.clear()
+      self.cancel_window_requests(id)
+      Ok(())
+    }
+    None => Err(UnknownWindow)
+  }
+}

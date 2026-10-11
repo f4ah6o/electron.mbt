@@ -8,9 +8,11 @@ Branch: devin/1791702808-node-less-roadmap
 
 ## 概要
 
-**種別:** Node-less既存JS/TSアプリ実行の実装Issue（N1〜N5を含む親Issue）。**優先度:** N1bの同期`contextBridge`安全性ゲートが最優先、次にN1aのエンジン/FFI検証。**利用者への影響:** 適合が確認された既存Electronアプリを、Node.jsを起動・配布せずに実行できるようにする。ただし現時点で製品・実装・互換性は未確認。
+**種別:** Node-less既存JS/TSアプリ実行の実装親Issue。**優先度:** N1a QuickJS native C FFI、次いでN1b-adaptedのnative security proof。**利用者への影響:** Nodeなしで既存のrenderer/JS mainを動かす計画だが、現時点でNode-less製品は未実装・未検証。
 
-対象は`f4ah6o/electron.mbt`の**macOS/Apple Silicon**版。MoonBit core + native host + OS WebView + 埋め込みJS engineで、指定したAPI/値型・アプリrevisionのElectron互換を目指す。[Roadmap 0002](0002-node-less-electron-compatible-moonbit-roadmap.md)の実装受入基準を、このIssueだけで着手判断できる形にする。
+[ADR-0001](../../docs/adr/0001-nodeless-macos-runtime-decisions.md)で初期方針を決定した。**QuickJS 2026-06-04採用、strict同期`contextBridge`は初版No-Go、監査済み非同期IPCの`electron-nodeless-adapted-v1`を別プロファイルとして設計**。原本preloadを一般的に同一意味で実行できるとは主張しない。`preload adapted`の差分は必ず表示する。
+
+一次実アプリは **Moji v1.0.5**（TypeScript、commit `b7b1d585d61772a0f791f165c8d07a420443b65b`）、二次は **jmd v0.2.3**（CommonJS、commit `f875fc616feb89ea803a0fc140ec770a2ade041e`）。[対象registry](../../compatibility/nodeless-targets.json) に両方のentryと受入シナリオを記録している。N0の**symbol単位依存inventory**は未実行。
 
 ## 背景
 
@@ -23,7 +25,7 @@ Branch: devin/1791702808-node-less-roadmap
 
 1. `main.js`/`main.cjs`はNode module resolver、`process`、`Buffer`、`fs`、イベントループ等に依存することがあり、Nodeを削除するだけでは動作しない。
 2. `.ts`/`.tsx`はJavaScript engineで通常そのまま実行できず、既存のビルド済みJSと、明示的なTypeScript変換を必要とするアプリの互換判定が異なる。
-3. renderer上の隔離`contextBridge`とmain側組み込みJS engineは別課題。公開WKWebView APIで同期関数と元の呼び出し元の認証を両立する方法は未実証。
+3. rendererのstrict同期`contextBridge`とmain側JSエンジンは別課題。public WKWebViewで安全な汎用同期関数proxyは**初版ではunsupportedと決定**。adaptedは非同期APIに限定し、native frame/document/grant検証が未実証。
 4. 依存ライブラリの実行失敗、変換時の`node:` external残存、module identity差異、native addon、frame偽装を診断せずスキップすると危険な「動いた」判定になる。
 
 ## 目標
@@ -31,7 +33,7 @@ Branch: devin/1791702808-node-less-roadmap
 - **A（Direct CJS）:** 原本`main.cjs`/`preload.cjs`とrenderer assetを変更せず、pure-JS dependencyと`require('electron')`を対象サブセットに限って実行する。
 - **B（Prepared JS）:** 既存アプリのビルド成果物`dist/main.js`等をそのまま実行し、元がTypeScript製でも「TypeScriptランタイムが動く」とは称さない。
 - **C（TS build）:** `.ts`/`.cts`/`.tsx`を**ビルド時**にJS/CJSへtranspile/bundleして実行する。元ソースhash、生成JS hash、変換設定、toolchain、sourcemap、typecheckとtranspile結果を別々に記録する。
-- AとCの最低1つずつのfixtureを定義し、N0で選定した実アプリ1件以上について固定Electronと同じ代表操作を比較する。
+- A (jmd v0.2.3 CJS) と C (Moji v1.0.5 TS build) のfixtureを用意する。Mojiでサンプル→編集→dialog open→saveAs→reopen→quitのM1〜M3をElectronと比較し、完全互換ではなくadapted `App Scenario Supported` の判定を行う。
 - Nodeがないclean macOSで署名済み成果物を実行し、Node/link/dependency/process監査およびsize/startup/memory実測までを受入条件に含める。
 
 ## 対象外
@@ -47,41 +49,43 @@ Branch: devin/1791702808-node-less-roadmap
 | --- | --- | --- |
 | N0: inventoryと仕様 | 既存`compatibility/manifest.json`、`fixtures/cjs`、`fixtures/oracle/`、`tests/loader.test.cjs`を参照。新規`compatibility/nodeless-manifest.json`・`fixtures/nodeless/`を検討 | `main/preload/renderer`区分・module format・使用symbolのallowlistとunsupported・source/build hashをmanifest化 |
 | N1a: embedded engine | 新規候補`bridges/embedded-js/` + MoonBit C FFI。既存`bridges/node/cjs-loader.cjs`/`bridges/node/sync_channel.c`はコードでなく契約/fixtureを参照 | engine version固定、CJS module cache/identity/cycle/JSON、Promise microtasks、timers、exceptions、listener lifecycle、GC rooting、sync transportでのtimeout/host loss |
-| N1b: isolated bridge | 既存`platform/macos/WKWorldProbe.m`、`fixtures/worlds`、`fixtures/oracle`を参照し独立macOS native probe（新規） | real preload document-start、sync return/throw、Promise、callback/frozen copy、sender/frame/document認証、reload失効を両立できるか判定 |
+| N1b-adapted: allowlisted async bridge | 既存`platform/macos/WKWorldProbe.m`等を参考に新規WKWebView host / frame-document guard（予定） | `WKUserScript` pageWorld document-startの許可済みPromise API。hostにてframe/origin/document/grant/args検証、reload/iframe/DOM spoof負例を確認。strict同期proxyは初版対象外 |
 | N2: native launcher | 新規native executableと`platform/macos/` adapter、既存`core/runtime.mbt` | Node未起動のnative-only window/AppKit/WKWebView、OS close/quit/cancel、異常終了時のリソース解放 |
 | N3: JS/TS/Electron façade | 新規CJS loader、`node:` symbol allowlist shim、TS build-only adapter、Electron facade/IPC | source identity/URL/stack/error、module resolution/require、限定`app`/`BrowserWindow`/IPC/OS service、fail-closed diagnosticsを一致させる |
 | N4〜N5: app/配布 | 新規差分テスト/packaging。既存`cmd/electron-mbt.cjs`はNode専用として存置 | 対象アプリの実操作/IME/アクセシビリティ/負荷・セキュリティ、NodeがないMacで署名/依存/プロセスツリー/容量/起動時間を確認 |
 
-**本番はNode実行ファイル/libnode/Node-APIをリンク・起動・同梱しない。** 開発時のElectron oracle、typecheck、transpiler、既存Node CIは別プロセス・別証跡なら利用可。QuickJSは第一候補であり採用済みではない。
+**本番はNode実行ファイル/libnode/Node-APIをリンク・起動・同梱しない。** 開発時のElectron oracle、typecheck、transpiler、既存Node CIは別プロセス・別証跡なら利用可。**QuickJS 2026-06-04を選定済み**、ただしFFI実装と互換性は未実証。
 
 **入力判定ルール:** AはCJS entryと依存のsource hashが一致、Bは既存JS成果物のhashが一致、Cはsource hashが一致していても新しい生成JSのhashを公開し`distribution unchanged`とは称さない。`typecheck PASS`を`transpile PASS`の代用にせず、`tsconfig.paths`、JSX、decorators、`.mts`、dynamic import、`package.json.exports`は**N0で選んだ個々の構文だけ対応**し、それ以外は説明可能なエラーで拒否する。
 
-**同期bridgeのNo-Go:** pageが変更可能なDOM response、page可読nonce、単純`postMessage()`、`evaluateJavaScript()`、private WebKit API、同期メソッドのPromise置換は電子アプリ互換の成立証拠にしない。N1b失敗時は`electron-nodeless-v1`をblockedとしてIssueにfailure evidenceを残し、async-onlyは別profile/ADRへ切り分ける。
+**Strict No-Go / adapted Go条件:** 公開WKWebView初版ではstrict `electron-nodeless-v1`は**最初からblocked**。同期return/throw/任意closure proxyをPromiseへ置換してElectron互換と偽らない。別 `electron-nodeless-adapted-v1`はnative側でoperation allowlist・実frame/origin/document/grant/limitを検証し、Promise APIとローカルsync disposerだけを提供する。共有DOM response、page可読nonce、private WebKit APIは認証・回避手段にならない。実機負例に失敗すればadaptedもblocked。
 
 ## 受け入れ条件
 
-- [ ] **J1 Given** 原本`main.cjs`とpure JS dependencyが`require('electron')`する、**when** Aとして起動する、**then** 同じfacade identity、正しい`module.exports`/cache/cycles、原本・renderer asset hash一致を記録できる。
-- [ ] **B1 Given** 既にJSにビルドされたElectronアプリ配布物がある、**when** Bとして起動する、**then** JS配布物を無変更で扱い、原本TypeScriptをランタイム実行したと誤表示しない。
-- [ ] **T1 Given** 入力`.ts` mainとpreload、およびpinned変換tool/設定がある、**when** Cのbuildを実行する、**then** 生成JS/sourcemap/入力hash/出力hash/`tsc --noEmit`結果を別記し、Bと区別できる。
-- [ ] **T2 Given** unsupported decorator、path alias、`.mts`、動的require、`node:` external等の対象外構文/依存がある、**when** build/preflight/runtimeを実行する、**then** 当該経路が判明した時点で識別可能なエラーを返し、非対応機能を黙って成功扱いしない。
-- [ ] **E1 Given** fixed Electron oracleと同じCJS/TS fixtureがある、**when** 埋め込みengineとMoonBitを通して実行する、**then** error identity/stack・Promise job/timer順序・sync getter/window event lifecycleの差分を再現可能なtraceで比較できる。
-- [ ] **S1 Given** pageに悪意あるiframe、DOM listener改変、stale callbackがある、**when** `contextBridge`とIPCを使用する、**then** 原本preloadがdocument-startで隔離され、同期return/throw/Promise/callbackの意味を保持し、元のsender/frame/document以外の特権呼出を拒否できる。
-- [ ] **F1 Given** unsupported `.node`/`node:`/外部navigation/symlink逸脱/巨大payloadがある、**when** 実行・事前診断を行う、**then** 未対応/認証拒否/上限超過の種別と対象位置が示される。
-- [ ] **N1 Given** Node未導入のclean macOSで署名済みpackageがある、**when** 起動し指定操作・終了を試す、**then** libnode/Node実行体/Node-APIがリンク・同梱・動的取得・起動されず、関連プロセスが正常に終了する。
-- [ ] **P1 Given** 同一revision/機能/CPUのElectron版がある、**when** 同条件でrelease測定する、**then** アーカイブ/展開サイズ、初回総取得量、全関連processのメモリ、cold/warm起動median/p95が出力される。改善値の閾値はN0 baseline後に固定する。
-- [ ] **R1 Given** N1bの同期/送信元認証が成立しない、**when** 実装ゲートの報告を行う、**then** `electron-nodeless-v1`はblocked・`compatible:false`のままで、失敗fixtureと代替方針候補をADRに残し、通常run/packを開放しない。
+- [ ] **J1 Given** jmd v0.2.3 の原本`main.js`/CJS dependencyがある、**when** QuickJS loaderで`require('electron')`を評価する、**then** facade/module identity、cache/cycle、original hashを記録し、`jmd-file:` custom privileged protocolは明示的にunsupportedとする。
+- [ ] **B1 Given** Moji v1.0.5のupstream `electron-vite` build済みJSがある、**when** prepared JSとしてhostへ渡す、**then** 入力成果物hashを保存し「preloadの厳密互換」や「元TSをランタイムが直接解釈」と表示しない。
+- [ ] **T1 Given** Moji v1.0.5原本TS/preloadと固定toolがある、**when** build-only `electron-vite build` と別のtypecheckを実行する、**then** original hash、lockfile/tool version、生成JS/renderer hashとtypecheck/emit結果をそれぞれ記録する。
+- [ ] **T2 Given** 非対応decorator/alias/`.mts`/動的require/`node:` external/.node moduleがある、**when** build/preflight/runtimeに到達する、**then** 該当symbolまたは位置付きの認識可能なエラーで停止し、隠れたNode fallbackを使わない。
+- [ ] **E1 Given** QuickJS 2026-06-04とElectron oracle pinがある、**when** CJS/Promise jobs/timers/throw/sync getter/Window eventsを実行する、**then** 対象APIの戻り値とorderを比較可能なtraceで記録でき、GC root / timeout / crashをboundedに扱う。
+- [ ] **S-strict Given** 公開WKWebView初期backend、**when** 厳密同期`contextBridge`を要求する、**then** `electron-nodeless-v1`は `blocked`/`compatible:false` のまま、一般的なpreload同期関数を許可しない。
+- [ ] **S-adapted Given** `WKScriptMessageHandlerWithReply` とpage API allowlistがある、**when** mainframeから認可済みPromise呼出を行う、**then** nativeがframe/doc/origin/grant/argsを確認しPromiseを完了する。同期disposerはpage内だけに閉じ、権限I/Oの同期返却はしない。
+- [ ] **S-negative Given** iframe、page DOM偽装、古いdocument、任意channel、過大payload、非認可file pathがある、**when** 直接native handlerまたはpage wrapperへ要求する、**then**特権処理を実行せず明示エラーを返し、元のdocumentに権限が残らない。
+- [ ] **M1〜M3 Given** Moji v1.0.5のsource hashが固定されている、**when** sample表示→編集→openDialog→saveAs→再オープン→quitを実機で実施する、**then** テストMarkdownのbytesと代表操作のtraceが一致し、`preload adapted`等の差異と除外機能をリスト化できる。認定は `App Scenario Supported` に限る。
+- [ ] **N1 Given** clean macOS arm64に署名済み成果物がある、**when**起動・主要操作・終了を監査する、**then** Node/libnode/Node-API/Electron/CEF/隠れたBun/Denoが同梱・リンク・spawn・自動取得されない。
+- [ ] **P1 Given** 同一revision/CPUのElectron版とNode-less版がある、**when**releaseで比較測定する、**then** compressed/installed bytes、総取得、cold/warm起動median/p95と全関連processのメモリ、終了残存が記録される。
 
 ## テスト計画
 
-| 検証 | 現在存在するコマンドと、追加予定の手段 | 判定 |
+| 検証 | 実行手段 | 判定と未実行の扱い |
 | --- | --- | --- |
-| 既存回帰 | `moon check --target js` / `moon test --target js` / `moon test --target native` / `npm test`（既存、Node profile用） | 実行済みと未実行を別記。Node版の成功をNode-less版の互換証拠に転用しない |
-| module identity / CJS / TS | 既存`tests/loader.test.cjs`をoracle参照し、新規`fixtures/nodeless/`、embedded engine test、TS build fixtureを実装後に実行（新コマンドは**未定**） | J1/B1/T1/T2/E1のpositive/negative、source hash・expected exceptions・結果trace |
-| sync preload / sender | pinned Electron oracle + macOS WKWebView probeの実機比較（既存world分離probeだけでは不可） | S1の同期return/throw、Promise/callback、prototype汚染、iframe、reload/grantsの拒否を実測 |
-| cleanup/security | Node無しclean macOS、symlink/root escape、host/crash/restart、超過payload、記録のredaction | F1/N1: 途中で終了/例外でも特権漏れ・orphan process・誤成功がない |
-| 製品比較 | 同じrevision/CPU/アプリ操作で圧縮/展開サイズ、cold/warm起動、全プロセスメモリ、電池/CPUなど採用した指標 | P1: 実測値/サンプル数/median/p95/環境を記録し、結果を推定で埋めない |
+| 実Node版回帰 | 既存 `moon check --target js` / `moon test --target js` / `moon test --target native` / `npm test` | PR #2 / 現行 profile にのみ有効。Node-lessの証拠ではない |
+| QuickJS N1a | 新規 `bridges/embedded-js/` C FFI、CJS/TS golden/negative fixture（新規コマンドは実装時に固定） | J1/T1/E1。module identity、Promise、GC、event loop/timeout |
+| adapted N1b | WKWebView `atDocumentStart` のpage-world API、`WKScriptMessageHandlerWithReply` native checks のmacOS実機E2E（新規） | S-adapted/S-negative、frame/doc/origin/grantと汚染/リロードを攻撃 |
+| strict の状態 | `compatibility/nodeless-targets.json` と [既存M0 negative probe](https://github.com/f4ah6o/electron.mbt/blob/feat/m1-native-host-contract/docs/0003-m0-contextbridge-feasibility.md) | strictは常に `compatible:false`、証明前にPASSを出さない |
+| 上流アプリ | [Moji v1.0.5](https://github.com/alexishida/Moji/tree/b7b1d585d61772a0f791f165c8d07a420443b65b)、[jmd v0.2.3](https://github.com/jojonki/jmd/tree/f875fc616feb89ea803a0fc140ec770a2ade041e) のタグ+commit fixture | M1〜M3/J1、原本/変換source hash、差分と除外操作 |
+| 配布と性能 | Nodeなし実機、link/bundle/process audit、同一app Electron比較 | N1/P1。未実施をPASSとしない |
 
-**まだ実装されていないもの:** JS engine adapter、TypeScript pipeline、Node-less CLI、preload sync bridge、署名/計測script。コマンド名やPASS数値は作らず、コードを追加した子Issueで具体化する。現在の作業はドキュメント編集のみ。
+**現時点:** 全Node-lessテストは未実行。新コマンド・性能測定結果・互換認定を捏造しない。
 
 ## リスク
 
@@ -96,20 +100,23 @@ Branch: devin/1791702808-node-less-roadmap
 
 - 2026-10-11: Node-less既存JS/TS実行受入のリポジトリ内Issueとして作成。Draft PR #3に添付。
 - 2026-10-11: `polish-issue`の形式へ整理し、A/B/Cモード、変更対象ファイル、Given/When/Then、評価コマンド種別、セキュリティNo-Go、未解決事項を明記。
+- 2026-10-11: ADR-0001でQuickJS採用、strict No-Goとadapted境界、Moji/jmd実アプリpinを固定。受入シナリオを分離。
 
 ## 注記
 
-- **状態:** `open`。N0の実アプリ/API集合・engineが未選定で、N1bの同期bridge安全性が未証明。実装の一括着手が安全と判断できる段階ではない。N0/N1a/N1bを順に独立実装・検証すること自体は可能。
+- **状態:** `open`。engine/実アプリ/strict初版No-Goの設計判断は確定。N0依存symbol inventory、N1a QuickJS FFIとN1b-adaptedの実機security gateは未検証。段階別に着手可能だが製品互換性は未認証。
 - **現在の編集ブランチ:** `devin/1791702808-node-less-roadmap`（Draft PR #3）。将来の実装用候補は`feat/nodeless-engine-probe`、`feat/nodeless-sync-bridge`であり、作成済みではない。
-- **保留理由/再開条件:** N1bがFailなら互換profileをblockedとし、失敗fixtureの実機再現・公開APIによる安全な代替方針のADRが揃ったら検討を再開する。復帰先は現在の`issues/open/0003-nodeless-existing-js-ts-runtime.md`。別の状態ディレクトリはこのリポジトリに未定義。
+- **保留理由/再開条件:** strict profileは設計上blockedのまま。adaptedのnative authorizationがFAILならそちらもblocked。失敗fixtureと修正策のsecurity review後に再開し、当Issueをopenのまま維持する。
 - **既存との差異:** Node版の`npm test`、macOS probe、Electron oracle PASSはこのIssueのN1b・Node-less合格ではない。`main`/PR #2と他リポジトリは今回編集しない。
 
 ## 未解決の質問
 
-1. 公開WKWebViewで同一document/frameの**真のpage initiator**を認証し、sync return/throw/callbackを両立できるか。N1b実機probeの結果がないうちはblocked riskが残る。
-2. 最初の1件の実Electronアプリをどのrevision・操作・ライセンスで評価するか。実アプリ依存のNode shim allowlistとサポートするTS設定はN0で採番・固定する。
-3. QuickJS/JavaScriptCore等のどのmain engineとプロセス配置にするか。FFI・Job queue・保守コスト・配布サイズの比較をN1aで実測してから採否を決める。
-4. JS/TS変換器の正確なバージョン、unsupported configの一覧、出力Module形式、依存bundlingの方針は何か。N0でfixtureと一緒に承認する。
+1. Moji v1.0.5 のbuild outputに残る `electron-updater`、`node:fs` / `path` / `url`、app/IPCの完全な呼出symbolとCJS module解決条件は何か。**N0で実物をinventoryする**。
+2. `WKScriptMessageHandlerWithReply`を使ったadapted APIのnative frame/origin/document/grant検証とclose/reload revokeが攻撃的実機E2Eに合格するか。**未実行**。失敗したらadaptedをblockedとする。
+3. Mojiの初期受入操作が `webUtils.getPathForFile` などの除外した同期関数、保存権限/設定、`electron-updater` import なしに満たせるか。構造的に必要なら明示的に見直し、adapter差異を記録する。
+4. QuickJSソース/ビルドのSHA256、FFI callback/GCと更新責任、実機比較の基準値はN1a/N5で実証する。
+
+**決定済み:** engine QuickJS 2026-06-04、初版strict sync bridge No-Go、adapted profile、Moji v1.0.5 / jmd v0.2.3 は [ADR-0001](../../docs/adr/0001-nodeless-macos-runtime-decisions.md) / [registry](../../compatibility/nodeless-targets.json) で固定。
 
 ## 詳細仕様・受入台帳（元の内容を保持）
 
@@ -117,9 +124,9 @@ Branch: devin/1791702808-node-less-roadmap
 
 既存の JavaScript / TypeScript 製 Electron アプリについて、**ユーザー環境で Node.js を実行・リンク・同梱せず**、対象を明示した Electron API サブセットで起動から代表操作・終了まで実行する。MoonBit は lifecycle / policy / IPC contract / diagnostics を所有し、既存 JS を MoonBit ソースへ変換することを必須にしない。
 
-「Node-less」は **JavaScript-less ではない**。Main の JavaScript 実行には独立した組み込み JS engine（初期評価候補 QuickJS）を使い、renderer は OS WebView を使う。実 Node runner は現在の別 profile に残す。Node API と Electron API の完全互換、V8/Node-API native addon、Chromium の完全互換は目標に含めない。
+「Node-less」は **JavaScript-less ではない**。Main の JavaScript 実行には **QuickJS 2026-06-04（初期採用決定）** を使い、renderer は OS WebView を使う。strict同期bridgeは初版非対応で、許可済みPromise APIのadapted rendererを独立提供する。実 Node runner は現在の別 profile に残す。Node API と Electron API の完全互換、V8/Node-API native addon、Chromium の完全互換は目標に含めない。
 
-本 Issue は Roadmap 0002 の **JS/TS 実アプリ実行に関する実装受入条件**であり、現行 `AGENTS.md` / Issue 0001 の Node 前提を暗黙に上書きしない。N0 ADR が承認されるまでは設計提案。PR #2 の既存作業を破棄・変更しない。
+本 Issue は Roadmap 0002 の **JS/TS 実アプリ実行に関する実装受入条件**であり、現行 `AGENTS.md` / Issue 0001 の Node 前提を上書きしない。Node-less設計判断はADR-0001で固定し、PR #2 の既存作業を破棄・変更しない。実装前にAGENTSのNode-less適用範囲を別差分で承認する。
 
 ### 2. 入口を三つのモードに分離する
 
@@ -140,7 +147,7 @@ original JS/CJS ───────────────┐
 original TS/TSX ─ build adapter ┤  (build only: Node usable; no shipped dependency)
 prepared JS dist ──────────────┤
                                  v
-                    embedded JS main runner (QuickJS candidate)
+                    embedded JS main runner (QuickJS 2026-06-04 selected)
                       CJS loader + Electron facade + Node-shim allowlist
                                  | private, versioned transport
                                  v
@@ -153,12 +160,12 @@ prepared JS dist ──────────────┤
 ```
 
 1. **本番 Node 不在:** launcher、runner、native host、bundle が `node` / `libnode` / Node-API addon に依存せず、Bun / Deno / 埋め込み Node を検出・起動・取得しない。開発用 test/oracle/bundler に Node を使う場合は本番配布から除外して audit する。
-2. **Main JS engine:** QuickJS と JavaScriptCore 等を N1 で同じ fixture で評価し、engine version / license / ABI / CVE 更新を固定する。MoonBit FFI で例外、GC root、callable identity、callback lifetime、thread affinity を検証する。ES 準拠率だけで Node 互換と主張しない。
+2. **Main JS engine:** QuickJS 2026-06-04に初期採用を固定。MoonBit FFIで例外、GC root、callable identity、callback lifetime、thread affinity/資源制限を試験し、vendor SHAをN1aで固定。適合しなければADR改訂。ES準拠率のみでNode互換と主張しない。
 3. **CJS loader:** `require('electron')`、`module.exports`、`exports`、相対解決、`__dirname`/`__filename`、循環参照、cache、module identity、JSON module、`package.json.main` を対応範囲ごとに試験する。`exports`/condition/import/dynamic require の非対応経路は安易に別パッケージへ解決せず診断する。
 4. **Node shim:** `path`、`events`、`process`、必要に応じて `Buffer`、`fs` 等の **使用 symbol 単位**で提供する。filesystem/clipboard/dialog/shell に権限・パス正規化・symlink・origin 対策を設ける。未対応 `node:` built-in、`.node`、`child_process`、`worker_threads`、任意 network/stream を fail-closed にする。
 5. **JS jobs と native loop:** Promise microtasks、host async I/O、timer、`process.nextTick`（もし公開するなら）と event emitter の順序を Electron oracle と差分化。native UI thread で任意 JS を待たない。同期 getter を Promise に置換しない。再入・shutdown・host loss を検証する。
 6. **Preload:** WKWebView の隔離 world と page world は main runner とは別の JS realm。main 用 CJS loader をそのまま preload に渡さない。document-start で実 preload をロードし、renderer に Node globals や無制限 IPC を公開しない。
-7. **同期 `contextBridge` は block gate:** page からの同期関数戻り値/throw、Promise、callback identity/remove、copy/freeze、最初の page script、nested/reentrant call、navigation 後の失効、frame/document/sender の OS 観測値を検証。共有 DOM event / page 管理 nonce / async postMessage / private WebKit API は代替証拠にならない。実現できない場合 `electron-nodeless-v1` は blocked とする。
+7. **Strictとadaptedを区別:** strict同期`contextBridge`は初版No-Goで`electron-nodeless-v1`をblocked。別の`electron-nodeless-adapted-v1`はpageWorldの監査済みPromise APIとpage内disposerに限定し、native frame/origin/document/grant/limitを検証する。共有DOMやpage可読tokenを特権認証にしない。原本preload任意closureの同一実行は主張しない。
 8. **互換状態:** native-only MoonBit デスクトップが動作しても Electron-compatible とは表示しない。`compatibility/nodeless-manifest.json`（提案）に profile とソース hash、engine・OS・WebView・Electron oracle を記録。Node 版の既存 manifest を自動で verified にしない。
 
 ### 4. TypeScript の build-only パイプラインと失敗条件
@@ -172,12 +179,12 @@ prepared JS dist ──────────────┤
 
 ### 5. 実装の順序と出口
 
-- [ ] **N0: ADR + fixture selection** — 対象アプリ revision とライセンス、操作シナリオ、`main`/`preload`/`renderer` 依存の inventory、A/B/C の既存 asset hash、Node/Electron symbol allowlist、pins を承認する。
+- [ ] **N0: pinned targets inventory** — ADRとMoji v1.0.5/jmd v0.2.3のcommitを固定済み。実source/buildの依存symbolとallowlist、原本/生成hash、Electron oracle fixture、adapted差分を確定する。
 - [ ] **N1a: embedded engine probe** — CJS fixture + simple TS transformed fixture、microtask/timers/throw/listener identity、native transport と Sync BrowserWindow の trace を確認する。
-- [ ] **N1b: isolated sync bridge probe** — 現行 M0 の既知の偽装可能性を解消し、実 preload を用いた同期 return/throw・Promise/callback・原本 hash 保持の oracle 差分に合格する。失敗なら既存 Electron profile を成功扱いしない。
+- [ ] **N1b-adapted: native-validated async bridge** — allowlisted Promise calls、document-start page stub、frame/document/origin/grant、DOM/iframe/reload/権限/超過payloadの負例をmacOS実機で評価。strict同期bridgeを成功扱いしない。
 - [ ] **N2: native-only vertical slice** — Node 不在の macOS native launcher で WebView 表示/操作/close/quit と OS cleanup を確認する。
 - [ ] **N3: source-preserving CJS facade** — A/B の `require('electron')`/Node shim と IPC/preload の production wiring、C の TS build pipeline + fail-closed preflight を接続する。
-- [ ] **N4: real app acceptance** — 実アプリ（A/B と C は別証跡）で起動・代表操作・保存・再起動・終了、security/IME/accessibility を試験。`App Compatible` は対象 revision と操作範囲限定。
+- [ ] **N4: real app adapted acceptance** — Moji v1.0.5のM1〜M3操作とjmd J1を実機で検証。表示は`App Scenario Supported (adapted preload)`に限定し、厳密なElectron`App Compatible`と呼ばない。
 - [ ] **N5: shipping proof** — 本番 artifact のリンク依存/ファイル一覧/プロセスツリー/clean OS 動作と署名、Electron 比の配布サイズ・cold/warm 起動・全子プロセスメモリの再現可能な測定を提出する。
 
 **実装開始ゲート:** N0 で `AGENTS.md` と Node 版との共存/置換を ADR に記録してから、コード変更を開始する。これ以前に通常 `run`/`pack` や既存互換 manifest の `compatible` を true にしない。
@@ -195,7 +202,7 @@ prepared JS dist ──────────────┤
 | N1 | Node がない macOS clean machine で packaged app を実行 | Node/libnode/Node-API が起動・リンク・同梱されない証拠 |
 | P1 | 同一 revision と機能の Electron と比較 | installer/展開サイズ、初回取得、起動 median/p95、全 process memory |
 
-各 fixture について **実行コマンド、実行 OS/SDK/CPU、tool/engine/Electron version、PASS/FAIL/未実行、source/hash、出力 evidence** を保存する。macOS 実機試験を Linux unit test で代用しない。N1b が blocked の場合は縮小した別 profile として明示し、Electron 互換を主張しない。
+各 fixture について **実行コマンド、OS/SDK/CPU、tool/engine/Electron version、PASS/FAIL/未実行、source/hash、evidence** を保存する。macOS native E2Eの代わりにLinux unitを使わない。strict profileはblockedのまま。adaptedは独立の安全性testにPASSしなければblocked。
 
 ### 7. 今回の設計 PR と実装着手の線引き
 

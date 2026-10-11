@@ -5,6 +5,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { snapshot } = require('../bridges/node/app-files.cjs');
 const manifest = require('../compatibility/manifest.json');
+const { validateM0ElectronOracleObservation } = require('./m0-electron-oracle-evidence.cjs');
 const root = path.resolve(__dirname, '..');
 const executable = process.argv[2];
 let executableIsFile = false;
@@ -24,6 +25,7 @@ try {
   if (lines.length !== 1) throw new Error('Oracle must emit exactly one result');
   const observed = JSON.parse(lines[0].slice('ELECTRON_MBT_ORACLE='.length));
   if (observed.status !== 'completed' || observed.versions.electron !== manifest.versions.electronOracle || observed.versions.node !== manifest.versions.nodeOracle) throw new Error('Oracle version or completion mismatch');
+  validateM0ElectronOracleObservation(observed.observation);
   const after = snapshot(fixture);
   if (before.sha256 !== after.sha256) throw new Error('Oracle fixture sources changed');
   report = { schema: 1, status: 'baseline-collected', compatible: false, fixtureHash: before.sha256, fileHashes: before.files, observed, note: 'Reference runtime observations only. No electron.mbt differential result or size claim.' };

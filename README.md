@@ -9,8 +9,8 @@ MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/o
 | Path | What works now | What it does not prove |
 | --- | --- | --- |
 | `core/` | MoonBit lifecycle, monotonic handles, native-ack state, close/quit cancellation, document generations, grants, bounded requests, exactly-once terminal bookkeeping | Electron event ordering, native sender authentication or a connected desktop host |
-| `bridge/` | Compiled MoonBit CJS exports, state and diagnostic contracts | A handwritten JS replacement for the core |
-| `bridges/node/` | Real Node CJS module identity probe, bounded tiny-tree codec, source inventory, real private synchronous socketpair control calls | BrowserWindow, general Structured Clone, preload or renderer IPC |
+| `bridge/` | Compiled MoonBit CJS exports, state and diagnostic contracts, structured window/document/request envelopes | A handwritten JS replacement for the core |
+| `bridges/node/` | Real Node CJS module identity probe, runtime-owned `electron` facade declaring the app surface, bounded tiny-tree codec, source inventory, real private synchronous socketpair control calls | BrowserWindow, general Structured Clone, preload or renderer IPC |
 | `platform/macos/` | An AppKit/WKWebView world-isolation probe with a deadline and machine-readable observations | A synchronous function-proxy bridge, full sandbox audit, IME or accessibility acceptance |
 | `fixtures/oracle/` | Unchanged main/preload/renderer fixture for a separately installed pinned Electron oracle | A matching electron.mbt execution or size improvement |
 | `cmd/` | `snapshot`, MoonBit-backed `doctor` and static `compat-check` diagnostics | Successful `run` or `pack` |

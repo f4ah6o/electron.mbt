@@ -4,10 +4,11 @@ Status: M0 in progress. This document does not replace or close `issues/open/000
 
 ## Connected execution paths
 
-1. The CLI obtains filesystem metadata without loading application code, then invokes the compiled MoonBit `diagnose` export. MoonBit always retains the open-M0 diagnostic. `dispatch` delegates lifecycle calls to the same MoonBit core used by deterministic tests.
+1. The CLI obtains filesystem metadata without loading application code, then invokes the compiled MoonBit `diagnose` export. MoonBit always retains the open-M0 diagnostic. `dispatch` delegates lifecycle calls to the same MoonBit core used by deterministic tests, and accepts a JSON envelope carrying the full window/document/grant/request surface so leaf adapters never re-implement core bookkeeping.
 2. The synchronous transport probe uses a real Node-API addon, a private POSIX socketpair, an inherited child descriptor and a separate Node process. Calls use a single absolute monotonic deadline and never pump the Node event loop. Timeout, EOF, truncated or oversized reply closes the usable channel; late replies cannot be reused by a subsequent call. The peer is a fault-injection fixture, not a native desktop host.
 3. The WKWebView probe puts document-start code and its script-message handler in a named non-page `WKContentWorld`. The first page script checks that those globals/handlers are absent and replaces a page primordial. Native code observes the main frame, checks the isolated primordial and verifies that DOM is shared. These are world observations, not an implementation of preload require, contextBridge or native sender capabilities.
 4. The Electron fixture captures first-script bridge availability, synchronous return/throw, promises/rejections, frozen data, callback identity/removal and lifecycle traces without changing its sources. The baseline runner records actual observations rather than inventing an electron.mbt comparison. A baseline collection success is not differential compatibility.
+5. A runtime-owned facade resolves for `require('electron')` inside a launched app process. It drives `app` lifecycle through the compiled core (ready on the first macrotask after evaluation, cancelable quit, declared `getPath`/`setPath` subset) and fails closed with `ELECTRON_MBT_UNSUPPORTED_API` for every unimplemented surface. Per section 11 the default `userData` resolves under a runtime namespace (`<appData>/electron.mbt/<name>`), never the real Electron `<appData>/<name>`; `setPath('userData')` keeps Electron's existing-directory requirement. It is leaf glue, not an Electron compatibility proof.
 
 ## Ownership and unfinished wiring
 
@@ -16,6 +17,7 @@ Status: M0 in progress. This document does not replace or close `issues/open/000
 | Lifecycle, logical handles, document generations, grants, request ledger | MoonBit `core` | Native host, OS event acknowledgements and complete Electron event ordering |
 | Diagnostic decisions | MoonBit `bridge` | Full API inventory and version-bound compatibility evidence |
 | JS object reflection, value rejection and module hooks | Node leaf adapters | Wire to core-owned IPC routing, limits and native-attested document context |
+| `electron` facade and app event names | Runtime-owned JS leaf over the compiled core | Host-driven ready/quit, real windows, IPC modules and an Electron event-order oracle |
 | Synchronous control I/O | C Node-API leaf probe | Typed/negotiated host protocol, correlation, ownership-safe channel wrapper and reentrancy design |
 | OS windows and WebView | Standalone Objective-C feasibility probe | MoonBit-native host and gpui/AppKit boundary; no general BrowserWindow implementation yet |
 | Electron oracle | Separate test fixture | Same fixture executed on electron.mbt, normalization and acceptance comparison |
@@ -24,7 +26,7 @@ Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter in
 
 ## Open milestone gates
 
-1. **M0**: preserve exact Electron source commit, toolchain/core checksums and macOS/SDK/WebView revisions; prove safe synchronous function proxies across isolated worlds, nested/reentrant calls and callback identity; extend unchanged fixtures; choose a real app and collect comparable size/process/cold-warm baselines. The current CI bootstrap downloads the official toolchain installer and checks the observed compiler/build-system versions, but immutable installer/core-distribution checksums remain open. No M0 completion is asserted.
+1. **M0**: preserve exact Electron source commit, toolchain/core checksums and macOS/SDK/WebView revisions; prove safe synchronous function proxies across isolated worlds, nested/reentrant calls and callback identity; extend unchanged fixtures; choose a real app and collect comparable size/process/cold-warm baselines. CI now pins the installer script SHA-256, the versioned toolchain URL and the installed `moon`/`moonc`/`moonrun` SHA-256s; upstream publishes no signed checksums and versioned objects expire (~60 days), so the pin fails loudly and must be re-recorded deliberately. macOS/SDK/WebView revision pins remain open. No M0 completion is asserted.
 2. **M1**: native MoonBit host, gpui integration, real Node runner, `app`, `BrowserWindow`, private negotiated session transport, native events/reentrancy/cancellation, source-preserving launcher and controlled app-origin resource serving.
 3. **M2**: isolated preload loader, synchronous and asynchronous contextBridge, ipcMain/ipcRenderer and listeners, error/clone semantics, dialogs/files/clipboard, sender attestation, navigation revocation, fault injection and all bounded resource ledgers.
 4. **M3**: actual Electron application acceptance, pack with fixed Node and production dependencies, signing/SBOM/license notices, no hidden Chromium, full size/startup/memory/process measurements, distribution and security-update responsibilities.

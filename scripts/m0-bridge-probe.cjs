@@ -43,6 +43,7 @@ if (process.argv[2] === '--build-only') {
 }
 const result = spawnSync(executable, [
   path.join(fixtureRoot, 'm0-page.html'), path.join(fixtureRoot, 'm0-preload.js'),
+  path.join(fixtureRoot, 'm0-subframe.js'),
 ], { encoding: 'utf8', timeout: 20000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 });
 if (result.status !== 0) {
   console.error(result.stdout || result.stderr || result.error?.message || 'ELECTRON_MBT_M0_PROBE_FAILED');

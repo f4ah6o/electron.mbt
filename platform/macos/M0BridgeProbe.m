@@ -23,13 +23,18 @@ static NSDictionary *decodeObject(id value) {
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, strong) WKContentWorld *isolatedWorld;
 @property(nonatomic, strong) NSURL *pageURL;
+@property(nonatomic, strong) NSURL *subframeURL;
+@property(nonatomic, copy) NSString *subframeSource;
+@property(nonatomic, strong) WKFrameInfo *subframeInfo;
 @property(nonatomic, copy) NSString *preloadSource;
 @property(nonatomic, strong) NSDictionary *initialPage;
 @property(nonatomic, strong) NSDictionary *initialIsolated;
+@property(nonatomic, strong) NSDictionary *initialSubframe;
 @property(nonatomic) NSUInteger navigations;
 @property(nonatomic) NSUInteger nativeReplyCount;
 @property(nonatomic) NSUInteger documentStartNativeMessageCount;
 @property(nonatomic) NSUInteger pageInducedNativeMessageCount;
+@property(nonatomic) NSUInteger nativeSubframeDeniedCount;
 @property(nonatomic, copy) NSString *documentGrant;
 @property(nonatomic, copy) NSString *previousDocumentGrant;
 @property(nonatomic) NSUInteger nativeGrantIssuedCount;
@@ -57,6 +62,12 @@ static NSDictionary *decodeObject(id value) {
     injectionTime:WKUserScriptInjectionTimeAtDocumentStart
     forMainFrameOnly:YES inContentWorld:self.isolatedWorld];
   [controller addUserScript:script];
+  // Why not: the main-frame-only preload cannot exercise the child frame.
+  // This separate diagnostic has no privileged renderer operation.
+  WKUserScript *subframeScript = [[WKUserScript alloc] initWithSource:self.subframeSource
+    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+    forMainFrameOnly:NO inContentWorld:self.isolatedWorld];
+  [controller addUserScript:subframeScript];
   self.webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
                                     configuration:config];
   self.webView.navigationDelegate = self;
@@ -80,6 +91,21 @@ static NSDictionary *decodeObject(id value) {
       didReceiveScriptMessage:(WKScriptMessage *)message
                  replyHandler:(void (^)(id _Nullable, NSString * _Nullable))replyHandler {
   (void)controller;
+  // Why not: a child frame's isolated world is not the privileged main frame.
+  // Match WKFrameInfo's real URL rather than trusting a claimed JS source.
+  BOOL directSubframeProbe = message.webView == self.webView &&
+    message.frameInfo != nil && !message.frameInfo.isMainFrame &&
+    [message.frameInfo.request.URL isEqual:self.subframeURL] &&
+    [message.name isEqualToString:@"electronMbtM0NativeReply"] &&
+    [message.body isKindOfClass:[NSDictionary class]] &&
+    [message.body[@"probe"] isEqual:@"m0"] &&
+    [message.body[@"source"] isEqual:@"document-start"];
+  if (directSubframeProbe) {
+    self.nativeSubframeDeniedCount += 1;
+    self.subframeInfo = message.frameInfo;
+    replyHandler(nil, @"ELECTRON_MBT_UNEXPECTED_M0_SENDER");
+    return;
+  }
   NSString *claimedSource = [message.body isKindOfClass:[NSDictionary class]] ?
     message.body[@"source"] : nil;
   BOOL knownSource = [claimedSource isKindOfClass:[NSString class]] &&
@@ -142,9 +168,12 @@ static NSDictionary *decodeObject(id value) {
     decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
   (void)webView;
   // Why not: a page redirect or subframe cannot become a privileged test sender.
-  BOOL allowed = action.targetFrame.isMainFrame &&
+  BOOL mainFrame = action.targetFrame != nil && action.targetFrame.isMainFrame &&
     [action.request.URL isEqual:self.pageURL];
-  if (allowed) {
+  BOOL childFrame = action.targetFrame != nil && !action.targetFrame.isMainFrame &&
+    [action.request.URL isEqual:self.subframeURL];
+  BOOL allowed = mainFrame || childFrame;
+  if (mainFrame) {
     self.previousDocumentGrant = self.documentGrant;
     self.documentGrant = [NSUUID UUID].UUIDString;
     self.nativeGrantIssuedCount += 1;
@@ -153,19 +182,31 @@ static NSDictionary *decodeObject(id value) {
   if (!allowed) [self fail:@"ELECTRON_MBT_M0_NAVIGATION_DENIED"];
 }
 
-- (void)completeStage:(NSUInteger)stage page:(NSDictionary *)page isolated:(NSDictionary *)isolated {
+- (void)completeStage:(NSUInteger)stage page:(NSDictionary *)page
+          isolated:(NSDictionary *)isolated subframe:(NSDictionary *)subframe {
+  if (![subframe[@"attempted"] isEqual:@YES] ||
+      ![subframe[@"replyPromise"] isEqual:@YES] ||
+      ![subframe[@"settled"] isEqual:@YES] ||
+      ![subframe[@"denied"] isEqual:@YES] ||
+      ![subframe[@"rejectionCodeObserved"] isEqual:@YES]) {
+    [self fail:@"ELECTRON_MBT_M0_SUBFRAME_DENIAL_FAILED"];
+    return;
+  }
   if (stage == 1) {
     self.initialPage = page;
     self.initialIsolated = isolated;
+    self.initialSubframe = subframe;
+    self.subframeInfo = nil;
     [self.webView reload];
     return;
   }
-  if (stage != 2 || !self.initialPage || !self.initialIsolated) {
+  if (stage != 2 || !self.initialPage || !self.initialIsolated || !self.initialSubframe) {
     [self fail:@"ELECTRON_MBT_M0_UNEXPECTED_DOCUMENT_STATE"];
     return;
   }
   NSDictionary *firstPage = self.initialPage;
   NSDictionary *firstIsolated = self.initialIsolated;
+  NSDictionary *firstSubframe = self.initialSubframe;
   BOOL isolatedHidden = [firstPage[@"privateGlobalHidden"] isEqual:@YES] &&
     [firstPage[@"nativeReplyHandlerHidden"] isEqual:@YES] &&
     [page[@"privateGlobalHidden"] isEqual:@YES] &&
@@ -204,6 +245,15 @@ static NSDictionary *decodeObject(id value) {
   BOOL staleGrantDenied = grantsRotated &&
     [isolated[@"staleGrantRejected"] isEqual:@YES] &&
     self.nativeGrantStaleRejectedCount == 1;
+  BOOL subframeDenied = self.nativeSubframeDeniedCount == 2 &&
+    [firstSubframe[@"denied"] isEqual:@YES] &&
+    [subframe[@"denied"] isEqual:@YES] &&
+    [firstSubframe[@"rejectionCodeObserved"] isEqual:@YES] &&
+    [subframe[@"rejectionCodeObserved"] isEqual:@YES];
+  if (!subframeDenied) {
+    [self fail:@"ELECTRON_MBT_M0_SUBFRAME_REJECTION_COUNT"];
+    return;
+  }
   // Why not: a forged DOM response and ID-only callbacks cannot certify
   // contextBridge authority, cross-realm Function identity or frozen copies.
   NSDictionary *candidate = @{
@@ -219,6 +269,7 @@ static NSDictionary *decodeObject(id value) {
     @"isolatedGrantEchoObserved": @(grantEcho),
     @"invalidGrantRejected": @(invalidGrantDenied),
     @"staleGrantReplayRejected": @(staleGrantDenied),
+    @"directSubframeNativeDenied": @(subframeDenied),
     @"privilegedSenderAttested": @NO,
     @"secureContextBridgeVerified": @NO,
     @"realCallbackIdentityVerified": @NO,
@@ -234,6 +285,7 @@ static NSDictionary *decodeObject(id value) {
     @"nativeReplyCount": @(self.nativeReplyCount),
     @"documentStartNativeMessageCount": @(self.documentStartNativeMessageCount),
     @"pageInducedNativeMessageCount": @(self.pageInducedNativeMessageCount),
+    @"nativeSubframeDeniedCount": @(self.nativeSubframeDeniedCount),
     @"nativeGrantIssuedCount": @(self.nativeGrantIssuedCount),
     @"nativeGrantAcceptedCount": @(self.nativeGrantAcceptedCount),
     @"nativeGrantInvalidRejectedCount": @(self.nativeGrantInvalidRejectedCount),
@@ -243,8 +295,8 @@ static NSDictionary *decodeObject(id value) {
     @"documentLoads": @(self.navigations),
     @"newDocumentScriptReinitialized": @(replayReset),
     @"candidate": candidate,
-    @"firstDocument": @{@"page": firstPage, @"isolated": firstIsolated},
-    @"secondDocument": @{@"page": page, @"isolated": isolated},
+    @"firstDocument": @{@"page": firstPage, @"isolated": firstIsolated, @"subframe": firstSubframe},
+    @"secondDocument": @{@"page": page, @"isolated": isolated, @"subframe": subframe},
     @"environment": @{
       @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
       @"webkit": [[NSBundle bundleForClass:[WKWebView class]]
@@ -258,6 +310,19 @@ static NSDictionary *decodeObject(id value) {
   [self.webView stopLoading];
   [self.window close];
   finish(result, 0);
+}
+
+- (void)retryStage:(NSUInteger)stage attempt:(NSUInteger)attempt {
+  if (attempt >= 40) {
+    [self fail:@"ELECTRON_MBT_M0_SUBFRAME_OR_GRANT_TIMEOUT"];
+    return;
+  }
+  __weak M0BridgeProbe *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
+    dispatch_get_main_queue(), ^{
+      M0BridgeProbe *probe = weakSelf;
+      if (probe) [probe captureStage:stage attempt:attempt + 1];
+    });
 }
 
 - (void)captureStage:(NSUInteger)stage attempt:(NSUInteger)attempt {
@@ -290,19 +355,30 @@ static NSDictionary *decodeObject(id value) {
           if (!live) return;
           NSDictionary *isolated = isolatedError ? nil : decodeObject(isolatedResult);
           if (!isolated) { [live fail:@"ELECTRON_MBT_M0_ISOLATED_OBSERVATION"]; return; }
-          if (![isolated[@"grantProbeSettled"] isEqual:@YES]) {
-            if (attempt >= 40) {
-              [live fail:@"ELECTRON_MBT_M0_GRANT_PROBE_TIMEOUT"];
-              return;
-            }
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
-              dispatch_get_main_queue(), ^{
-                M0BridgeProbe *retry = weakSelf;
-                if (retry) [retry captureStage:stage attempt:attempt + 1];
-              });
+          if (![isolated[@"grantProbeSettled"] isEqual:@YES] ||
+              !live.subframeInfo || live.nativeSubframeDeniedCount < stage) {
+            [live retryStage:stage attempt:attempt];
             return;
           }
-          [live completeStage:stage page:page isolated:isolated];
+          NSString *subframeScript = @"JSON.stringify({"
+            @"attempted:globalThis.electronMbtM0SubframeOnly?.attempted === true,"
+            @"replyPromise:globalThis.electronMbtM0SubframeOnly?.replyPromise === true,"
+            @"settled:globalThis.electronMbtM0SubframeOnly?.settled === true,"
+            @"denied:globalThis.electronMbtM0SubframeOnly?.denied === true,"
+            @"rejectionCodeObserved:globalThis.electronMbtM0SubframeOnly?.rejectionCodeObserved === true"
+            @"})";
+          [live.webView evaluateJavaScript:subframeScript
+            inFrame:live.subframeInfo inContentWorld:live.isolatedWorld
+            completionHandler:^(id subframeResult, NSError *subframeError) {
+              M0BridgeProbe *latest = weakSelf;
+              if (!latest) return;
+              NSDictionary *subframe = subframeError ? nil : decodeObject(subframeResult);
+              if (!subframe || ![subframe[@"settled"] isEqual:@YES]) {
+                [latest retryStage:stage attempt:attempt];
+                return;
+              }
+              [latest completeStage:stage page:page isolated:isolated subframe:subframe];
+            }];
         }];
     }];
 }
@@ -333,7 +409,7 @@ static NSDictionary *decodeObject(id value) {
 
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
-    if (argc != 3) {
+    if (argc != 4) {
       finish(@{@"probe": @"m0-isolated-sync-feasibility", @"status": @"FAIL",
         @"code": @"ELECTRON_MBT_M0_USAGE"}, 1);
     }
@@ -348,9 +424,19 @@ int main(int argc, const char *argv[]) {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     M0BridgeProbe *probe = [[M0BridgeProbe alloc] init];
+    NSString *subframePath = [NSString stringWithUTF8String:argv[3]];
+    NSString *subframeSource = [NSString stringWithContentsOfFile:subframePath
+      encoding:NSUTF8StringEncoding error:&error];
+    if (!subframeSource || error) {
+      finish(@{@"probe": @"m0-isolated-sync-feasibility", @"status": @"FAIL",
+        @"code": @"ELECTRON_MBT_M0_SUBFRAME_SOURCE"}, 1);
+    }
     probe.pageURL = [NSURL fileURLWithPath:[[NSString stringWithUTF8String:argv[1]]
       stringByResolvingSymlinksInPath]];
+    probe.subframeURL = [probe.pageURL.URLByDeletingLastPathComponent
+      URLByAppendingPathComponent:@"m0-frame.html"];
     probe.preloadSource = source;
+    probe.subframeSource = subframeSource;
     [probe start];
     [NSApp run];
   }

@@ -7,13 +7,13 @@
 | 対象 | `f4ah6o/electron.mbt` |
 | 確認した基点 | `main` / `b6024735bfd5e3d946614295371bc13ff1527397` |
 | 最初の対象 | macOS / Apple Silicon。ほかの OS は個別の適合試験後 |
-| 関連 | [Issue 0001](0001-electron-compatible-lightweight-runtime.md)、[実装台帳](../../docs/0001-progress.md) |
+| 関連 | [Issue 0001](0001-electron-compatible-lightweight-runtime.md)、[JS/TS実装 Issue 0003](0003-nodeless-existing-js-ts-runtime.md)、[実装台帳](../../docs/0001-progress.md) |
 
 ## 1. 結論と既存方針との関係
 
 **MoonBit native host + OS WebView + 小さな組み込み JS engine による、Node.js 非依存の Electron サブセット互換**を目指す。新規アプリ用の MoonBit API と、既存 main/preload を扱う Electron facade は同じ MoonBit core を使う。ただし、MoonBit で新規アプリが書けることと、既存 Electron アプリが無改修で動くことは別の成果とする。
 
-Electron の main は Node.js 環境なので、Node を取り除いただけでは一般の Electron アプリは動かない。[S1] Node API 全体の再実装から始めず、Node 組み込み依存が少ないアプリを選び、必要な API の有限集合を明記して広げる。最初から全 npm / Electron 互換を約束しない。
+Electron の main は Node.js 環境なので、Node を取り除いただけでは一般の Electron アプリは動かない。[S1] Node API 全体の再実装から始めず、Node 組み込み依存が少ないアプリを選び、必要な API の有限集合を明記して広げる。既存 TypeScript は本番ランタイム内で解釈せず、ビルド時に JavaScript へ変換するモードを設ける。最初から全 npm / Electron 互換を約束しない。
 
 Issue 0001 と `AGENTS.md` の現行実装方針は「実 Node.js を使う」である。本 Issue はその**変更候補となる別プロファイルの提案**であり、0001 の残作業を削除・完了扱いにしない。この文書の追加だけでは実装方針を変更しない。実装着手前に N0 の ADR で承認を得て、0001 との共存・置換範囲と `AGENTS.md` の適用範囲を明示的に更新する。Node 版の成功を Node-less 版の実績へ転記しない。
 
@@ -32,9 +32,21 @@ Issue 0001 と `AGENTS.md` の現行実装方針は「実 Node.js を使う」�
 | 提案プロファイル | 対象 | 表示してよい成果 |
 | --- | --- | --- |
 | `moonbit-native-v1` | main を MoonBit で書く新規アプリ | Node-less desktop runtime。これだけでは Electron source-compatible と呼ばない |
-| `electron-nodeless-v1` | 対応範囲内の既存 CJS main/preload と Web assets | 固定 Electron / app revision / OS / engine / API 集合に対する限定互換 |
+| `electron-nodeless-v1` | 対応範囲内の既存 CJS、ビルド済み JS、ビルド時変換する TS/TSX | 入力モードと変換有無を明示し、固定 Electron / app revision / OS / engine / API 集合に対する限定互換 |
 
-名称は提案であり、現行 manifest の `desktop-core-v1` を変更しない。既存ソース互換の判定では main/preload と renderer 配布アセットのハッシュ一致を要求する。launcher / 設定の変更は別記する。移植・再bundleしたアプリは「移植済み」であり「無改修」ではない。
+名称は提案であり、現行 manifest の `desktop-core-v1` を変更しない。直接 CJS 実行の「配布アセット無変更」の判定では main/preload と renderer 配布アセットのハッシュ一致を要求する。一方、TypeScript ビルド時変換では入力ソースのハッシュ一致と生成 JS のハッシュを別々に記録し、「原本ソース無改変」と「配布アセット無変更」を混同しない。launcher / 設定の変更は別記する。再bundleしたアプリを既存配布物の「無改修起動」とは呼ばない。
+
+### JS/TS の入力モードと build-only 方針
+
+[実装 Issue 0003](0003-nodeless-existing-js-ts-runtime.md) で入口と受入条件を固定する。最初から全ての `.ts` / ESM を直接実行できるとは表示しない。
+
+| モード | 入力 | Node-less runtime の挙動 | 成果表示 |
+| --- | --- | --- | --- |
+| A: Direct CJS | 既存 `main.cjs` / `preload.cjs` / pure JS 依存 | 組み込み engine の CJS loader がそのまま評価 | 原本・既存 renderer アセットの hash が一致した範囲の無改変実行 |
+| B: Prepared JS | 既存アプリに同梱済みのビルド成果物（TS 製アプリを含む） | 成果物 JS を A と同じ engine で評価 | 既存 JS 配布アセットの無変更実行。元 TS の解釈とは称しない |
+| C: TS build | `.ts` / `.cts` / `.tsx` 等 | ビルド時に型構文除去・transpile / 必要な場合 bundle した JS を評価 | 入力ソースの無改変と生成アセットの変更をそれぞれ記録 |
+
+C の build-time 変換器は pin した esbuild 等を候補とし、本番パッケージには同梱しない。ビルド時に Node を使用することは許容するが、利用者の環境に Node executable / libnode / Node-API を要求しない。`tsc --noEmit` 等の型チェックと transpilation は別工程で別判定とする。[S7] `tsconfig` の path alias・JSX・decorators・`.mts`・動的 import / require・bundler の external 処理は機能ごとに対応/拒否を定義する。未実装 Node built-in を external として残しただけの成功を互換扱いしない。
 
 ## 3. 現在地と再利用の境界
 
@@ -53,14 +65,16 @@ Issue 0001 と `AGENTS.md` の現行実装方針は「実 Node.js を使う」�
 ## 4. 提案アーキテクチャと先行技術判断
 
 ```text
-MoonBit native main ──────────────────┐
-                                    v
-既存 main.cjs -> embedded JS runner -> MoonBit core / host services
-                CJS + electron       lifecycle / policy / IPC / diagnostics
-                facade                        |
-                                     OS window + system WebView
-                                              |
-                                 isolated preload <-> page / Web UI
+MoonBit native main ───────────────────────────┐
+既存 main.cjs / prepared JS ────────────────────┤
+既存 main.ts / main.tsx -> build-time transform ┤
+                                               v
+          embedded JS runner -> MoonBit core / host services
+          CJS + electron      lifecycle / policy / IPC / diagnostics
+          facade                        |
+                                OS window + system WebView
+                                         |
+                            isolated preload <-> page / Web UI
 ```
 
 - MoonBit が契約・状態・権限・診断を所有する。C/ObjC/C++ は FFI、OS/engine の接続、callback lifetime 管理。手書き JS は JS 関数/listener identity 等の leaf glue に限定する。
@@ -85,6 +99,7 @@ MoonBit native main ──────────────────┐
 | OS services | 非同期 open/save dialog、text clipboard、許可した URL の openExternal | ファイルを読む処理は別の Node shim または MoonBit service。dialog だけで fs 互換としない |
 | CJS main | `require('electron')`、明示したローカル JS/JSON と pure-JS 依存の解決 | cache、cycles、exports/module.exports、相対パス、identity を試験。package exports 等は個別に範囲決定 |
 | Node compatibility island | 実アプリで必要な `path` / `events` の小集合と `process.platform` 等を候補にする | 自動的に「全 path/events/process 対応」としない。CJS の `__dirname` / `__filename` も契約化 |
+| TS build adapter | `.ts` / `.cts` / `.tsx` から engine 対応 JS/CJS への変換、provenance、sourcemap | 型チェックは別判定。ネイティブ addon や未実装 Node built-in、未対応 ESM/TS 設定は fail-closed |
 | Web | OS WebView の HTML/CSS/DOM/ブラウザ JS | Chromium 完全互換は保証しない。origin/CSP/storage の差は公開する |
 
 `fs` / `fs.promises`、Buffer、timers、queueMicrotask 等は必要性を N0 で棚卸しする。最初の fixture に必要な symbol だけ N3 までに実装・比較し、残りは unsupported とする。Node の `process.nextTick` と Promise job / OS event loop の順序をブラウザ timer で近似しない。無制限な Node polyfill の追加を避け、shim を追加するたびに依存・保守・権限のコストを記録する。
@@ -100,6 +115,7 @@ MoonBit native main ──────────────────┐
 - [ ] `docs/adr/` に Node-less プロファイルの境界と既存 Node 版との関係を記し、承認後に実装ガイドを整合させる。
 - [ ] 実在する小規模 Electron アプリを最低1つ、revision・利用許諾・代表操作付きで選ぶ。対象外 API を試験から隠して「全機能互換」としない。
 - [ ] main/preload の依存と動的 require / Node globals / Electron API を棚卸しし、fixture と symbol 単位の対応表を作る。
+- [ ] A/B/C の入力モードと `tsconfig`、変換 toolchain、原本/成果物 hash の差を固定し、最低1件の限定 TS fixture を選ぶ。
 - [ ] Electron oracle / source commit、MoonBit toolchain、engine、OS/SDK/WebView を固定する。既存 manifest の pin は出発点であり今回の実行証跡ではない。
 
 **出口:** Node-less の定義、API/値型の初期集合、対象アプリ、許容設定差、unsupported 診断がレビュー可能。既存 main を改修しないと成立しないアプリしかなければ、その事実と移植版の別目標を明示する。
@@ -107,6 +123,7 @@ MoonBit native main ──────────────────┐
 ### N1 — 最大リスクを先に潰す feasibility probes
 
 - [ ] 組み込み engine で CJS fixture と Promise job / timer / error / listener identity を実行し、native event loop との接続を記録する。
+- [ ] 同一機能の TS fixture を build-only 変換した結果と CJS 直接実行を比較し、unsupported な path alias/変換構文/Node external を明示的に拒否する。
 - [ ] private transport の同期 window 操作で return/throw、nested callback、再入、UI thread deadlock、runner crash / timeout を検証する。
 - [ ] 実 WKWebView の公開 API で、隔離 preload → page の同期 function proxy、copy/freeze、最初の page script より前の公開を検証する。[S2][S3]
 - [ ] callback の登録/解除、Promise rejection、prototype 汚染、navigation/reload 後の古い handle、外部 frame の呼び出しを含む positive/negative test を用意する。
@@ -131,6 +148,7 @@ MoonBit native main ──────────────────┐
 - [ ] app / BrowserWindow / isolated preload / contextBridge / IPC を同じ MoonBit core に接続する。N1 の probe を production 境界の試験へ昇格する。
 - [ ] N0 で必要と判明した shim を明示的な allowlist で実装する。未対応 built-in / addon / import 経路は fail-closed にする。
 - [ ] source/asset hash、module identity、同期戻り値、例外、必要なイベント順序を、同一 fixture の Electron oracle と差分比較する。
+- [ ] TS build-only adapter を production packaging 前の段階に接続し、typecheck と transpile の証拠、変換 source map、unsupported diagnostics を分離する。
 
 **出口:** N0 の fixture がソース・アセット無変更で動作し、対応 matrix の各行に証跡がある。新規 `compatibility/nodeless-manifest.json` 等で既存 Node profile と証跡を分離する。
 
@@ -149,6 +167,7 @@ MoonBit native main ──────────────────┐
 - [ ] package に launcher / MoonBit host / 必要なら JS runner・engine / app / production deps / manifest / license notices を含め、Node/Electron/test oracle を除外する。
 - [ ] SBOM、依存ハッシュ、署名/notarization、更新責任、独立 userData と安全な切り戻し手順を用意する。autoUpdater 互換とは分ける。
 - [ ] Node 未導入の clean machine で起動・主要操作・終了を確認する。PATH を空にするだけでなく、bundle inventory / link dependencies / process tree / 実行監査で libnode 同梱や動的取得がないことを検証する。
+- [ ] TS 変換器、typechecker、Node 製 build tools、Electron oracle が本番 package に混入していないことを検証する。
 - [ ] 同一 app/revision/機能/CPU/release 条件で Electron 版と比較する。Node 版は比較可能な成果物ができている場合だけ別系列で追加する。
 
 測定項目は圧縮/展開サイズ、WebView 不足分を含む初回取得量、全関連 process のメモリ、起動から可視 frame / 入力可能まで、idle/操作 CPU、終了後の残存資源。cold/warm、試行数、median/p95、環境を保存する。engine 単体サイズや Node を除いた差分だけで製品の優位性を主張しない。受入予算は N0/N1 の baseline 後、製品比較の前に合意する。
@@ -165,7 +184,7 @@ native addon、完全 Node 互換、Chromium 固有 API は「あとで必ず対
 
 ## 7. 実装 Issue の切り出し順序
 
-この文書は親 Roadmap として開いたままにし、各段階の開始時に `issues/open/` へ子 Issue を作る。番号は作成時に採番する。
+この文書は親 Roadmap として開いたままにし、各段階の開始時に `issues/open/` へ子 Issue を作る。番号は作成時に採番する。**既存 JS/TS アプリの実行と受入条件は [Issue 0003](0003-nodeless-existing-js-ts-runtime.md) に記載済み**。N1a/N1b 等の実装単位は今後さらに分割する。
 
 1. **N0: Node-less profile ADR + app/API inventory** — docs / fixtures / manifest の設計。方針の承認が実装開始条件。
 2. **N1a: embedded JS + event loop + sync main transport probe** — engine/FFI/process の判定。
@@ -192,3 +211,4 @@ Roadmap の runtime 完了は N0〜N5 の出口条件、実アプリ1件以上�
 - [S4: Electron ESM](https://www.electronjs.org/docs/latest/tutorial/esm) / [Sandbox](https://www.electronjs.org/docs/latest/tutorial/sandbox) — main / preload の異なる loader と限定 Node 環境。
 - [S5: MoonBit FFI](https://docs.moonbitlang.com/en/latest/language/ffi.html) — native C ABI、foreign types、callbacks。
 - [S6: QuickJS](https://bellard.org/quickjs/) — 組み込み可能な JS engine 候補。Node / Electron API 互換を保証するものではない。
+- [S7: esbuild TypeScript](https://esbuild.github.io/content-types/#typescript) — 型チェックなしの変換と `tsconfig` / TypeScript emit の制約。

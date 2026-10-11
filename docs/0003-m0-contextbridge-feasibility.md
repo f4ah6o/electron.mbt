@@ -68,6 +68,27 @@ isolated handler through page-exposed APIs. Shared-DOM reply forgery remains.
 These additions do not change the production AppKit host or implement a
 privileged renderer API.
 
+### Native-grant-checked indirect invocation
+
+The test-only shared-DOM page requests a native no-privilege echo *before* its
+isolated handler has received the current document grant. The isolated world
+queues that request, obtains the grant through the asynchronous native reply,
+and sends a `dom-triggered` native call with the private grant **without
+revealing the grant to the page**. Native checks both the actual main-frame
+`WKFrameInfo` and the current opaque grant; only then does it count and
+acknowledge the invocation. The M0 report separately counts
+`nativeGrantDomTriggeredAcceptedCount`, and the portable validator ties that
+count to the accepted page-induced calls and the derived
+`pageInducedWithValidIsolatedGrant` observation. A reload uses a new grant.
+
+This is a negative security diagnostic, not an API to expose in production.
+Even a native-validated current grant only authenticates the isolated handler
+that possesses it; the page-authored DOM event can still *indirectly* invoke that
+handler. Grant checks protect against direct unauthorized calls and stale-grant
+replay, but do not authenticate the original page/frame that initiated a
+shared-DOM event, and cannot fix page-forgeable synchronous return values.
+No privileged operation is wired to this echo; M0 remains OPEN.
+
 ## M0 requirements versus what the candidate actually measures
 
 | M0 requirement from issue 0001 §6.2 | Tested observation | Still missing |

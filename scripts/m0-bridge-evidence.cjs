@@ -22,6 +22,10 @@ function validateM0Evidence(report) {
     'nativeGrantInvalidRejectedCount', 'nativeGrantStaleRejectedCount',
   ]) assert.ok(Number.isSafeInteger(report[name]) && report[name] >= 0, name);
   assert.equal(report.nativeGrantIssuedCount, report.documentLoads);
+  assert.ok(Number.isSafeInteger(report.nativeGrantDomTriggeredAcceptedCount) &&
+    report.nativeGrantDomTriggeredAcceptedCount >= 0);
+  assert.equal(report.nativeGrantDomTriggeredAcceptedCount,
+    report.pageInducedNativeMessageCount);
   assert.equal(typeof report.withReplyReturnedPromise, 'boolean');
   assert.equal(typeof report.nativeReplySettled, 'boolean');
   assert.equal(typeof report.newDocumentScriptReinitialized, 'boolean');
@@ -93,6 +97,10 @@ function validateM0Evidence(report) {
     report.firstDocument.isolated.nativePageReplySettled &&
     report.secondDocument.isolated.nativePageReplySettled &&
     report.pageInducedNativeMessageCount === 2);
+  // Why not: a native-validated isolated grant cannot attest the page DOM initiator.
+  assert.equal(candidate?.pageInducedWithValidIsolatedGrant,
+    candidate.pageCanInduceNativeMessage &&
+    report.nativeGrantDomTriggeredAcceptedCount === report.documentLoads);
   const first = report.firstDocument.isolated;
   const second = report.secondDocument.isolated;
   assert.equal(first.staleGrantRejected, false);

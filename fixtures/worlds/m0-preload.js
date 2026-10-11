@@ -12,6 +12,8 @@
   let callbackAttempts = 0;
   let nativePageRequestCount = 0;
   let nativePageReplySettled = false;
+  let isolatedDocumentGrant = null;
+  let pageNativeEchoQueued = false;
   const state = {
     isolatedMarker: true,
     nativeReplyPromise: false,
@@ -27,6 +29,16 @@
     get primordialIntact() { return Array.prototype.map === originalMap; },
   };
   globalThis.electronMbtM0IsolatedOnly = state;
+  function sendGrantedPageEcho() {
+    // Why not: possession of the isolated grant authenticates the direct native
+    // caller, not the page which queued this event through the shared DOM.
+    const reply = window.webkit.messageHandlers.electronMbtM0NativeReply.postMessage({
+      probe: 'm0', source: 'dom-triggered', grant: isolatedDocumentGrant,
+    });
+    if (!reply || typeof reply.then !== 'function') return;
+    reply.then(value => { nativePageReplySettled = value === 'native-ack'; },
+      () => { nativePageReplySettled = false; });
+  }
   document.addEventListener(requestEvent, () => {
     requests += 1;
     const root = document.documentElement;
@@ -44,13 +56,11 @@
         // Why not: the native sender is this isolated world, but the initiating
         // page event remains untrusted; this is a test-only no-privilege echo.
         nativePageRequestCount += 1;
-        const replyPromise = window.webkit.messageHandlers.electronMbtM0NativeReply
-          .postMessage({ probe: 'm0', source: 'dom-triggered' });
-        if (!replyPromise || typeof replyPromise.then !== 'function') {
-          throw new TypeError('native reply is not a Promise');
+        pageNativeEchoQueued = true;
+        if (isolatedDocumentGrant !== null) {
+          pageNativeEchoQueued = false;
+          sendGrantedPageEcho();
         }
-        replyPromise.then(value => { nativePageReplySettled = value === 'native-ack'; },
-          () => { nativePageReplySettled = false; });
         result = 'native-pending';
       } else if (input.operation === 'callback' && input.value &&
           typeof input.value.id === 'string' &&
@@ -87,6 +97,11 @@
           !documentGrant || (previousGrant !== null && typeof previousGrant !== 'string')) {
         state.grantProbeSettled = true;
         return;
+      }
+      isolatedDocumentGrant = documentGrant;
+      if (pageNativeEchoQueued) {
+        pageNativeEchoQueued = false;
+        sendGrantedPageEcho();
       }
       const handler = window.webkit.messageHandlers.electronMbtM0NativeReply;
       // Why not: this test-only opaque grant stays in the isolated closure, never

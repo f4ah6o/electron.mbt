@@ -28,6 +28,7 @@ function sample() {
     documentLoads: 2, nativeReplyCount: 4,
     documentStartNativeMessageCount: 2, pageInducedNativeMessageCount: 2,
     nativeGrantIssuedCount: 2, nativeGrantAcceptedCount: 2,
+    nativeGrantDomTriggeredAcceptedCount: 2,
     nativeGrantInvalidRejectedCount: 2, nativeGrantStaleRejectedCount: 1,
     nativeSubframeDeniedCount: 2,
     withReplyReturnedPromise: true, nativeReplySettled: true,
@@ -38,6 +39,7 @@ function sample() {
       directSubframeNativeDenied: true,
       synchronousThrowObserved: true, callbackByIdOnlyObserved: true,
       pageCanForgeResponse: true, pageCanInduceNativeMessage: true,
+      pageInducedWithValidIsolatedGrant: true,
       pageInitiatorAuthenticated: false,
       documentGrantRotated: true, isolatedGrantEchoObserved: true,
       invalidGrantRejected: true, staleGrantReplayRejected: true,
@@ -60,6 +62,8 @@ test('What: an observed sync DOM candidate must keep the M0 compatibility gate o
   assert.equal(observed.candidate.synchronousPrimitiveObserved, true);
   assert.equal(observed.candidate.secureContextBridgeVerified, false);
   assert.equal(observed.candidate.pageCanInduceNativeMessage, true);
+  assert.equal(observed.candidate.pageInducedWithValidIsolatedGrant, true);
+  assert.equal(observed.nativeGrantDomTriggeredAcceptedCount, 2);
   assert.equal(observed.candidate.pageInitiatorAuthenticated, false);
   assert.equal(observed.candidate.staleGrantReplayRejected, true);
   assert.equal(observed.nativeGrantStaleRejectedCount, 1);
@@ -92,6 +96,8 @@ test('What: missing observations and compatibility elevation are rejected', () =
     r => { r.firstDocument.subframe.rejectionCodeObserved = false; },
     r => { r.secondDocument.subframe.rejectionCodeObserved = false; },
     r => { r.candidate.pageInitiatorAuthenticated = true; },
+    r => { r.candidate.pageInducedWithValidIsolatedGrant = false; },
+    r => { delete r.candidate.pageInducedWithValidIsolatedGrant; },
     r => { r.nativeGrantIssuedCount = 1; },
     r => { r.firstDocument.isolated.grantProbeSettled = false; },
     r => { r.firstDocument.isolated.staleGrantRejected = true; },
@@ -127,6 +133,7 @@ test('What: inconsistent M0 aggregate claims cannot pass as measured native evid
     r => { r.firstDocument.isolated.nativePageReplySettled = false; },
     r => { r.nativeReplySettled = false; },
     r => { r.nativeGrantAcceptedCount = 1; },
+    r => { r.nativeGrantDomTriggeredAcceptedCount = 1; },
     r => { r.nativeGrantInvalidRejectedCount = 1; },
     r => { r.nativeGrantStaleRejectedCount = 0; },
     r => { r.candidate.isolatedGrantEchoObserved = false; },
@@ -143,6 +150,8 @@ test('What: a failed page-induced native echo remains an explicit negative obser
   const report = sample();
   report.candidate.pageCanInduceNativeMessage = false;
   report.pageInducedNativeMessageCount = 0;
+  report.nativeGrantDomTriggeredAcceptedCount = 0;
+  report.candidate.pageInducedWithValidIsolatedGrant = false;
   report.nativeReplyCount = 2;
   for (const document of [report.firstDocument, report.secondDocument]) {
     document.page.pageTriggeredNativeMessage = false;

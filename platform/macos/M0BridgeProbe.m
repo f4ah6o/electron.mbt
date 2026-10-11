@@ -39,6 +39,7 @@ static NSDictionary *decodeObject(id value) {
 @property(nonatomic, copy) NSString *previousDocumentGrant;
 @property(nonatomic) NSUInteger nativeGrantIssuedCount;
 @property(nonatomic) NSUInteger nativeGrantAcceptedCount;
+@property(nonatomic) NSUInteger nativeGrantDomTriggeredAcceptedCount;
 @property(nonatomic) NSUInteger nativeGrantInvalidRejectedCount;
 @property(nonatomic) NSUInteger nativeGrantStaleRejectedCount;
 @property(nonatomic) BOOL rejectedUnexpectedSender;
@@ -145,12 +146,21 @@ static NSDictionary *decodeObject(id value) {
     replyHandler(nil, @"ELECTRON_MBT_M0_DOCUMENT_GRANT_DENIED");
     return;
   }
-  self.nativeReplyCount += 1;
   if ([claimedSource isEqualToString:@"dom-triggered"]) {
+    NSString *grant = [message.body[@"grant"] isKindOfClass:[NSString class]] ?
+      message.body[@"grant"] : nil;
+    if (!grant || !self.documentGrant ||
+        ![grant isEqualToString:self.documentGrant]) {
+      replyHandler(nil, @"ELECTRON_MBT_M0_DOCUMENT_GRANT_DENIED");
+      return;
+    }
+    self.nativeGrantDomTriggeredAcceptedCount += 1;
     self.pageInducedNativeMessageCount += 1;
+    self.nativeReplyCount += 1;
     replyHandler(@"native-ack", nil);
     return;
   }
+  self.nativeReplyCount += 1;
   if (!self.documentGrant) {
     replyHandler(nil, @"ELECTRON_MBT_M0_DOCUMENT_NOT_READY");
     return;
@@ -264,6 +274,8 @@ static NSDictionary *decodeObject(id value) {
     @"callbackByIdOnlyObserved": @([firstPage[@"callbackByPageId"] isEqual:@YES]),
     @"pageCanForgeResponse": @([firstPage[@"pageCanForgeDOMReply"] isEqual:@YES]),
     @"pageCanInduceNativeMessage": @(pageInducedNative),
+    @"pageInducedWithValidIsolatedGrant":
+      @(pageInducedNative && self.nativeGrantDomTriggeredAcceptedCount == 2),
     @"pageInitiatorAuthenticated": @NO,
     @"documentGrantRotated": @(grantsRotated),
     @"isolatedGrantEchoObserved": @(grantEcho),
@@ -288,6 +300,7 @@ static NSDictionary *decodeObject(id value) {
     @"nativeSubframeDeniedCount": @(self.nativeSubframeDeniedCount),
     @"nativeGrantIssuedCount": @(self.nativeGrantIssuedCount),
     @"nativeGrantAcceptedCount": @(self.nativeGrantAcceptedCount),
+    @"nativeGrantDomTriggeredAcceptedCount": @(self.nativeGrantDomTriggeredAcceptedCount),
     @"nativeGrantInvalidRejectedCount": @(self.nativeGrantInvalidRejectedCount),
     @"nativeGrantStaleRejectedCount": @(self.nativeGrantStaleRejectedCount),
     @"withReplyReturnedPromise": @([firstIsolated[@"nativeReplyPromise"] isEqual:@YES]),
@@ -356,6 +369,8 @@ static NSDictionary *decodeObject(id value) {
           NSDictionary *isolated = isolatedError ? nil : decodeObject(isolatedResult);
           if (!isolated) { [live fail:@"ELECTRON_MBT_M0_ISOLATED_OBSERVATION"]; return; }
           if (![isolated[@"grantProbeSettled"] isEqual:@YES] ||
+              ![isolated[@"nativePageReplySettled"] isEqual:@YES] ||
+              live.nativeGrantDomTriggeredAcceptedCount < stage ||
               !live.subframeInfo || live.nativeSubframeDeniedCount < stage) {
             [live retryStage:stage attempt:attempt];
             return;

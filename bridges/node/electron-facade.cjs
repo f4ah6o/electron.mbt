@@ -5,12 +5,18 @@
 // silently degrading to an approximation. This file is not compatibility
 // evidence: nothing here proves BrowserWindow, IPC, contextBridge or Electron
 // event ordering.
+const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { runtimeError } = require('./errors.cjs');
 
 const CONTEXT_LIMIT = 65536;
+// Issue 0001 section 11: the default userData must be an independent directory
+// and must never reuse a same-named real Electron app's <appData>/<name>, so
+// the runtime namespaces it. A launcher can still override via context.userData
+// or app.setPath.
+const USERDATA_NAMESPACE = 'electron.mbt';
 
 function loadCore() {
   try {
@@ -95,7 +101,8 @@ function appDataDir() {
 }
 
 app.isReady = () => ['Ready', 'Quitting'].includes(appState());
-app.whenReady = () => (app.isReady() ? Promise.resolve() : new Promise(resolve => app.once('ready', resolve)));
+// Electron delivers (event, launchInfo) for 'ready'; launchInfo is {} off macOS.
+app.whenReady = () => (app.isReady() ? Promise.resolve({}) : new Promise(resolve => app.once('ready', (event, launchInfo) => resolve(launchInfo))));
 app.getName = () => context.name;
 app.setName = name => {
   if (typeof name !== 'string' || name.length === 0) throw runtimeError('ELECTRON_MBT_INVALID_ARGUMENT', 'setName requires a non-empty string');
@@ -113,7 +120,7 @@ app.getPath = name => {
     case 'documents': return path.join(os.homedir(), 'Documents');
     case 'downloads': return path.join(os.homedir(), 'Downloads');
     case 'appData': return appDataDir();
-    case 'userData': return path.join(appDataDir(), app.getName());
+    case 'userData': return path.join(appDataDir(), USERDATA_NAMESPACE, app.getName());
     default: throw runtimeError('ELECTRON_MBT_INVALID_ARGUMENT', `Failed to get '${name}' path`);
   }
 };
@@ -121,6 +128,13 @@ app.setPath = (name, directory) => {
   if (name !== 'userData') throw runtimeError('ELECTRON_MBT_UNSUPPORTED_API', `setPath('${name}') is outside the declared path profile`);
   if (typeof directory !== 'string' || directory.length === 0 || !path.isAbsolute(directory)) {
     throw runtimeError('ELECTRON_MBT_INVALID_ARGUMENT', 'setPath requires an absolute path string');
+  }
+  // Electron's setPath throws when the target does not exist or is not a
+  // directory; the declared subset keeps that synchronous failure contract.
+  let stat;
+  try { stat = fs.statSync(directory); } catch { stat = null; }
+  if (!stat || !stat.isDirectory()) {
+    throw runtimeError('ELECTRON_MBT_INVALID_ARGUMENT', `setPath('${name}') requires an existing directory`);
   }
   pathOverrides.set(name, directory);
 };
@@ -134,7 +148,9 @@ app.quit = () => {
     app.emit('will-quit', { preventDefault: () => { prevented = true; } });
     if (prevented) { call('cancel-quit'); return; }
   }
-  app.emit('quit', 0);
+  // Electron emits 'quit' with (event, exitCode); the event is not
+  // preventDefault-able at this point because quitting is already committed.
+  app.emit('quit', { preventDefault: () => {} }, 0);
   call('stop');
   process.exit(0);
 };
@@ -152,7 +168,7 @@ app.exit = (code = 0) => {
 // synchronous main evaluation. A quit before that point prevents 'ready'.
 setImmediate(() => {
   try {
-    if (appState() === 'Booting' && JSON.parse(core.dispatch(runtime, 'ready')).ok) app.emit('ready');
+    if (appState() === 'Booting' && JSON.parse(core.dispatch(runtime, 'ready')).ok) app.emit('ready', { preventDefault: () => {} }, {});
   } catch { /* a stopped runtime never becomes ready */ }
 });
 

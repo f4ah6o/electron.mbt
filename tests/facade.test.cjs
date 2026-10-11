@@ -56,13 +56,33 @@ test('the facade declares the app surface and fails closed on unimplemented APIs
     ['isPackaged', false],
     ['getAppPath', true],
     ['userData', true],
-    ['whenReady-resolved', true],
+    ['setPath-missing', 'ELECTRON_MBT_INVALID_ARGUMENT'],
+    ['setPath-file', 'ELECTRON_MBT_INVALID_ARGUMENT'],
+    ['setPath-userData', true],
+    ['ready-event', true, true],
+    ['whenReady-resolved', true, true],
     ['before-quit'],
     ['alive-after-cancelled-quit', true],
     ['before-quit'],
     ['will-quit'],
-    ['quit'],
+    ['quit-event', true, 0],
   ]);
+});
+test('userData defaults to the runtime namespace, never the real Electron location', t => {
+  const bootstrap = [
+    `const { installElectronFacade } = require(${JSON.stringify(path.join(root, 'bridges/node/cjs-loader.cjs'))});`,
+    `installElectronFacade(${JSON.stringify(facade)});`,
+    `const { app } = require('electron');`,
+    `process.stdout.write(JSON.stringify({ userData: app.getPath('userData'), appData: app.getPath('appData') }));`,
+  ].join('\n');
+  const env = { ...process.env, ELECTRON_MBT_FACADE_CONTEXT: JSON.stringify({ root, name: 'ns-fixture', version: '0.0.0' }) };
+  const result = spawnSync(process.execPath, ['-e', bootstrap], { cwd: root, env, encoding: 'utf8', timeout: 30000 });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const observed = JSON.parse(result.stdout);
+  // Issue 0001 section 11: an unconfigured launch must not reuse the real
+  // Electron default <appData>/<name>, so it is namespaced under the runtime.
+  assert.equal(observed.userData, path.join(observed.appData, 'electron.mbt', 'ns-fixture'));
+  assert.notEqual(observed.userData, path.join(observed.appData, 'ns-fixture'));
 });
 test('require(\'electron\') fails closed without a launch context', t => {
   const result = runFixture(t, null);

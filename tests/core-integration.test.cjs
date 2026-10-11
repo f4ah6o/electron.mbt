@@ -25,6 +25,9 @@ test('the compiled boundary carries the window/document/request surface', () => 
   const call = op => JSON.parse(core.dispatch(runtime, JSON.stringify(op)));
   JSON.parse(core.dispatch(runtime, 'ready'));
   const window = call({ op: 'window.reserve' }).window;
+  const padded = JSON.parse(core.dispatch(runtime, ` \n\t${JSON.stringify({ op: 'window.reserve' })}`));
+  assert.equal(typeof padded.window, 'number', 'insignificant whitespace must not downgrade an envelope to a bare op');
+  assert.equal(call({ op: 'window.destroy', window: padded.window }).destroyed, true);
   assert.equal(call({ op: 'window.state', window }).state, 'Creating');
   assert.equal(call({ op: 'window.navigate', window }).code, 'InvalidState');
   assert.equal(call({ op: 'window.confirm', window }).ok, true);
@@ -53,6 +56,10 @@ test('malformed envelopes and missing arguments fail with typed diagnostics', ()
   const runtime = core.new_runtime();
   const raw = op => JSON.parse(core.dispatch(runtime, op));
   assert.equal(raw('{').code, 'InvalidPayload');
+  assert.equal(raw(' \n{').code, 'InvalidPayload');
+  assert.equal(raw('   ').code, 'ELECTRON_MBT_UNSUPPORTED_API');
+  assert.equal(raw(' state').code, 'ELECTRON_MBT_UNSUPPORTED_API');
+  assert.equal(raw(`${JSON.stringify({ op: 'pending' })} \n`).ok, true);
   assert.equal(raw(JSON.stringify({ op: 'window.confirm' })).code, 'InvalidPayload');
   assert.equal(raw(JSON.stringify({ op: 'window.confirm', window: 'x' })).code, 'InvalidPayload');
   assert.equal(raw(JSON.stringify({ op: 'window.confirm', window: 1.5 })).code, 'InvalidPayload');

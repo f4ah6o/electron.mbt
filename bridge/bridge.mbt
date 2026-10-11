@@ -184,8 +184,16 @@ fn dispatch_json(runtime : @core.Runtime, raw : String) -> String {
 }
 
 ///|
+// JSON permits insignificant whitespace around a value, so the envelope is
+// classified on the first non-whitespace character; bare string ops keep their
+// exact-match form and are never whitespace-normalized.
+fn is_envelope(raw : String) -> Bool {
+  raw.trim_start(chars=" \t\n\r").has_prefix("{")
+}
+
+///|
 pub fn dispatch(runtime : @core.Runtime, operation : String) -> String {
-  if operation.has_prefix("{") {
+  if is_envelope(operation) {
     return dispatch_json(runtime, operation)
   }
   match operation {

@@ -20,6 +20,46 @@ test('the compiled MoonBit boundary owns lifecycle transitions', () => {
   assert.equal(call('ready').code, 'InvalidState');
   assert.equal(call('missing').code, 'ELECTRON_MBT_UNSUPPORTED_API');
 });
+test('the compiled boundary carries the window/document/request surface', () => {
+  const runtime = core.new_runtime();
+  const call = op => JSON.parse(core.dispatch(runtime, JSON.stringify(op)));
+  JSON.parse(core.dispatch(runtime, 'ready'));
+  const window = call({ op: 'window.reserve' }).window;
+  assert.equal(call({ op: 'window.state', window }).state, 'Creating');
+  assert.equal(call({ op: 'window.navigate', window }).code, 'InvalidState');
+  assert.equal(call({ op: 'window.confirm', window }).ok, true);
+  const generation = call({ op: 'window.navigate', window }).generation;
+  assert.equal(call({ op: 'document.activate', window, generation, host_origin: '' }).code, 'Denied');
+  assert.equal(call({ op: 'document.activate', window, generation, host_origin: 'https://app.local' }).ok, true);
+  assert.equal(call({ op: 'document.activate', window, generation, host_origin: 'https://app.local' }).code, 'InvalidState');
+  assert.equal(call({ op: 'grant', window, generation, channel: 'fixture:read' }).ok, true);
+  assert.equal(call({ op: 'authorize', window, generation, host_origin: 'https://app.local', main_frame: false, channel: 'fixture:read' }).code, 'Denied');
+  assert.equal(call({ op: 'authorize', window, generation, host_origin: 'https://app.local', main_frame: true, channel: 'fixture:read' }).ok, true);
+  const request = call({ op: 'request.begin', window, generation, host_origin: 'https://app.local', main_frame: true, channel: 'fixture:read', payload_bytes: 4 }).request;
+  assert.equal(call({ op: 'pending' }).pending, 1);
+  assert.equal(call({ op: 'queued-bytes' }).bytes, 4);
+  assert.equal(call({ op: 'request.complete', request, window, generation }).ok, true);
+  assert.equal(call({ op: 'request.complete', request, window, generation }).code, 'AlreadyCompleted');
+  assert.equal(call({ op: 'window.begin-close', window }).ok, true);
+  assert.equal(call({ op: 'window.cancel-close', window }).ok, true);
+  const next = call({ op: 'window.navigate', window }).generation;
+  assert.equal(next, generation + 1);
+  assert.equal(call({ op: 'window.destroy', window }).destroyed, true);
+  assert.equal(call({ op: 'window.destroy', window }).destroyed, false);
+  assert.equal(call({ op: 'preferences.validate', node_integration: false, context_isolation: true, sandbox: true, web_security: true }).valid, true);
+  assert.equal(call({ op: 'preferences.validate', node_integration: true, context_isolation: true, sandbox: true, web_security: true }).valid, false);
+});
+test('malformed envelopes and missing arguments fail with typed diagnostics', () => {
+  const runtime = core.new_runtime();
+  const raw = op => JSON.parse(core.dispatch(runtime, op));
+  assert.equal(raw('{').code, 'InvalidPayload');
+  assert.equal(raw(JSON.stringify({ op: 'window.confirm' })).code, 'InvalidPayload');
+  assert.equal(raw(JSON.stringify({ op: 'window.confirm', window: 'x' })).code, 'InvalidPayload');
+  assert.equal(raw(JSON.stringify({ op: 'window.confirm', window: 1.5 })).code, 'InvalidPayload');
+  assert.equal(raw(JSON.stringify({ op: 'window.confirm', window: 4294967296 })).code, 'InvalidPayload');
+  assert.equal(raw(JSON.stringify({ op: 'unknown.op' })).code, 'ELECTRON_MBT_UNSUPPORTED_API');
+  assert.equal(raw(`{"op":"${'x'.repeat(16400)}"}`).code, 'InvalidPayload');
+});
 test('the compiled diagnostic never upgrades incomplete M0 to compatible', () => {
   const output = JSON.parse(core.diagnose(JSON.stringify({ entryType: 'commonjs', nativeAddons: false, platform: 'darwin' })));
   assert.equal(output.compatible, false);

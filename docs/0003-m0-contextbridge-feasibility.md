@@ -2,6 +2,37 @@
 
 Status: **feasibility probe only; M0 OPEN, no production `contextBridge`.** PR #2 remains Draft and `compatibility/manifest.json` keeps `compatible:false` and row C planned. The unchanged Electron 44.7.0 oracle exercises an actual Electron preload; this diagnostic intentionally does **not** implement that preload in electron.mbt.
 
+## Pinned Electron 44.7.0 sandboxed preload reference
+
+The independent `fixtures/oracle` Electron 44.7.0 fixture runs an actual
+sandboxed CommonJS preload (`sandbox:true`, `contextIsolation:true`,
+`nodeIntegration:false`) without changing application source at launch.
+`scripts/oracle.cjs` now validates the recorded first-script synchronous
+return/throw, asynchronous Promise return/fulfillment/rejection, copied/frozen
+nested data, callback observations, explicit subscription-disposer behavior,
+and realm primordial isolation instead of checking only the runtime version
+and process completion. Portable negative tests are in
+`tests/m0-electron-oracle-evidence.test.cjs`; the real observation is collected
+by the pinned-Electron macOS CI step.
+
+Previous Electron #128 evidence recorded
+`callbackValues:["first","second"]`: `Set.delete(callback)` in the isolated
+preload did **not** remove the callback passed again from page world. This is
+a pinned-runtime observation, **not** a guarantee that callback identity is
+maintained across separate `contextBridge` calls. The fixture now tests a
+separate approach: `subscribe(callback)` retains its wrapper in preload
+and returns an idempotent disposer closure to the page. The validator
+requires once-only disposal, and explicitly expects direct removal using
+the original callback to fail in this pinned reference. Real macOS CI
+must establish that the new disposer actually works; unit fixtures alone
+are not runtime evidence.
+
+**Reference only:** an Electron oracle PASS does not prove the WKContentWorld
+candidate implements any bridge operation. Shared-DOM reply forgery and
+page-induced native echo still block M0. Preserve `contextBridge:NOT_IMPLEMENTED`,
+manifest row C `planned`, `compatible:false`, Draft and ordinary
+`run`/`pack` fail-closed.
+
 ## Reproducible real macOS observation
 
 Run `node scripts/m0-bridge-probe.cjs` after installing Xcode command-line tools on a macOS machine with a working WindowServer. The test-only runner compiles `platform/macos/M0BridgeProbe.m` to a distinct `dist/M0BridgeProbe.app` using public AppKit/WebKit API, loads `fixtures/worlds/m0-page.html` and injects `fixtures/worlds/m0-preload.js` only into a named `WKContentWorld` at document start. The production M1 native host, unchanged CJS application and Node loader are **not modified**. No Electron/CEF fallback, private WebKit selector, disabled sandbox or page-world preload is involved.

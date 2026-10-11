@@ -16,6 +16,10 @@
     isolatedMarker: true,
     nativeReplyPromise: false,
     nativeReplySettled: false,
+    grantProbeSettled: false,
+    grantEchoAccepted: false,
+    invalidGrantRejected: false,
+    staleGrantRejected: false,
     get requests() { return requests; },
     get callbackAttempts() { return callbackAttempts; },
     get nativePageRequestCount() { return nativePageRequestCount; },
@@ -76,9 +80,38 @@
   state.nativeReplyPromise = !!reply && typeof reply.then === 'function';
   if (state.nativeReplyPromise) {
     reply.then(value => {
-      state.nativeReplySettled = value === 'native-ack';
+      state.nativeReplySettled = value?.reply === 'native-ack';
+      const documentGrant = value?.documentGrant;
+      const previousGrant = value?.previousGrant;
+      if (!state.nativeReplySettled || typeof documentGrant !== 'string' ||
+          !documentGrant || (previousGrant !== null && typeof previousGrant !== 'string')) {
+        state.grantProbeSettled = true;
+        return;
+      }
+      const handler = window.webkit.messageHandlers.electronMbtM0NativeReply;
+      // Why not: this test-only opaque grant stays in the isolated closure, never
+      // shared DOM. It does NOT authenticate a page event that triggers this world.
+      const positive = handler.postMessage({
+        probe: 'm0', source: 'grant-valid', grant: documentGrant,
+      }).then(result => result === 'grant-ack', () => false);
+      const invalid = handler.postMessage({
+        probe: 'm0', source: 'grant-invalid', grant: 'intentionally-invalid',
+      }).then(() => false, () => true);
+      const stale = previousGrant === null ? Promise.resolve(false) :
+        handler.postMessage({
+          probe: 'm0', source: 'grant-stale', grant: previousGrant,
+        }).then(() => false, () => true);
+      Promise.all([positive, invalid, stale]).then(values => {
+        state.grantEchoAccepted = values[0];
+        state.invalidGrantRejected = values[1];
+        state.staleGrantRejected = values[2];
+        state.grantProbeSettled = true;
+      }, () => { state.grantProbeSettled = true; });
     }, () => {
       state.nativeReplySettled = false;
+      state.grantProbeSettled = true;
     });
+  } else {
+    state.grantProbeSettled = true;
   }
 })();

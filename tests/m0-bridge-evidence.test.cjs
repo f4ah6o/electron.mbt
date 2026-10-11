@@ -19,12 +19,16 @@ function sample() {
     requests: 7, callbackAttempts: 3,
     nativePageRequestCount: 1, nativePageReplySettled: true,
     nativeReplyPromise: true, nativeReplySettled: true,
+    grantProbeSettled: true, grantEchoAccepted: true,
+    invalidGrantRejected: true, staleGrantRejected: false,
   };
   return {
     probe: 'm0-isolated-sync-feasibility', status: 'PASS',
     compatible: false, contextBridge: 'NOT_IMPLEMENTED', compatibilityGate: 'OPEN',
     documentLoads: 2, nativeReplyCount: 4,
     documentStartNativeMessageCount: 2, pageInducedNativeMessageCount: 2,
+    nativeGrantIssuedCount: 2, nativeGrantAcceptedCount: 2,
+    nativeGrantInvalidRejectedCount: 2, nativeGrantStaleRejectedCount: 1,
     withReplyReturnedPromise: true, nativeReplySettled: true,
     newDocumentScriptReinitialized: true,
     candidate: {
@@ -32,12 +36,15 @@ function sample() {
       pageAuthoredProxy: true, synchronousPrimitiveObserved: true,
       synchronousThrowObserved: true, callbackByIdOnlyObserved: true,
       pageCanForgeResponse: true, pageCanInduceNativeMessage: true,
-      pageInitiatorAuthenticated: false, privilegedSenderAttested: false,
+      pageInitiatorAuthenticated: false,
+      documentGrantRotated: true, isolatedGrantEchoObserved: true,
+      invalidGrantRejected: true, staleGrantReplayRejected: true,
+      privilegedSenderAttested: false,
       secureContextBridgeVerified: false, realCallbackIdentityVerified: false,
       promiseProxyVerified: false, frozenCrossRealmCopyVerified: false,
     },
     firstDocument: { page: { ...page }, isolated: { ...isolated } },
-    secondDocument: { page: { ...page }, isolated: { ...isolated } },
+    secondDocument: { page: { ...page }, isolated: { ...isolated, staleGrantRejected: true } },
     environment: { os: 'macOS test fixture', webkit: 'test version' },
   };
 }
@@ -48,6 +55,8 @@ test('What: an observed sync DOM candidate must keep the M0 compatibility gate o
   assert.equal(observed.candidate.secureContextBridgeVerified, false);
   assert.equal(observed.candidate.pageCanInduceNativeMessage, true);
   assert.equal(observed.candidate.pageInitiatorAuthenticated, false);
+  assert.equal(observed.candidate.staleGrantReplayRejected, true);
+  assert.equal(observed.nativeGrantStaleRejectedCount, 1);
   assert.equal(observed.compatibilityGate, 'OPEN');
 });
 
@@ -66,6 +75,9 @@ test('What: missing observations and compatibility elevation are rejected', () =
     r => { r.candidate.secureContextBridgeVerified = true; },
     r => { r.candidate.privilegedSenderAttested = true; },
     r => { r.candidate.pageInitiatorAuthenticated = true; },
+    r => { r.nativeGrantIssuedCount = 1; },
+    r => { r.firstDocument.isolated.grantProbeSettled = false; },
+    r => { r.firstDocument.isolated.staleGrantRejected = true; },
     r => { r.candidate.realCallbackIdentityVerified = true; },
     r => { r.candidate.pageAuthoredProxy = false; },
     r => { r.firstDocument.page.privateGlobalHidden = false; },
@@ -97,6 +109,12 @@ test('What: inconsistent M0 aggregate claims cannot pass as measured native evid
     r => { r.secondDocument.isolated.nativePageRequestCount = 0; },
     r => { r.firstDocument.isolated.nativePageReplySettled = false; },
     r => { r.nativeReplySettled = false; },
+    r => { r.nativeGrantAcceptedCount = 1; },
+    r => { r.nativeGrantInvalidRejectedCount = 1; },
+    r => { r.nativeGrantStaleRejectedCount = 0; },
+    r => { r.candidate.isolatedGrantEchoObserved = false; },
+    r => { r.candidate.invalidGrantRejected = false; },
+    r => { r.candidate.staleGrantReplayRejected = false; },
   ]) {
     const report = sample();
     mutate(report);
@@ -115,4 +133,23 @@ test('What: a failed page-induced native echo remains an explicit negative obser
     document.isolated.nativePageReplySettled = false;
   }
   assert.doesNotThrow(() => validateM0Evidence(report));
+});
+
+test('What: a rejected stale grant is an observed negative, not a fake compatibility PASS', () => {
+  const report = sample();
+  report.candidate.staleGrantReplayRejected = false;
+  report.nativeGrantStaleRejectedCount = 0;
+  report.secondDocument.isolated.staleGrantRejected = false;
+  assert.doesNotThrow(() => validateM0Evidence(report));
+  assert.equal(report.compatibilityGate, 'OPEN');
+});
+
+test('What: document grant rotation never elevates sender attestation', () => {
+  const report = sample();
+  report.candidate.documentGrantRotated = false;
+  report.candidate.staleGrantReplayRejected = false;
+  report.nativeGrantStaleRejectedCount = 0;
+  report.secondDocument.isolated.staleGrantRejected = false;
+  assert.doesNotThrow(() => validateM0Evidence(report));
+  assert.equal(report.candidate.privilegedSenderAttested, false);
 });

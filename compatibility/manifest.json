@@ -111,7 +111,7 @@
         "tests/m0-bridge-evidence.test.cjs"
       ],
       "evidence": [],
-      "gap": "Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open."
+      "gap": "Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, test-only native document-grant issue/rotation/replay denial, native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open."
     },
     {
       "id": "D",

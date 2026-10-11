@@ -30,8 +30,15 @@ static NSDictionary *decodeObject(id value) {
 @property(nonatomic) NSUInteger nativeReplyCount;
 @property(nonatomic) NSUInteger documentStartNativeMessageCount;
 @property(nonatomic) NSUInteger pageInducedNativeMessageCount;
+@property(nonatomic, copy) NSString *documentGrant;
+@property(nonatomic, copy) NSString *previousDocumentGrant;
+@property(nonatomic) NSUInteger nativeGrantIssuedCount;
+@property(nonatomic) NSUInteger nativeGrantAcceptedCount;
+@property(nonatomic) NSUInteger nativeGrantInvalidRejectedCount;
+@property(nonatomic) NSUInteger nativeGrantStaleRejectedCount;
 @property(nonatomic) BOOL rejectedUnexpectedSender;
 - (void)start;
+- (void)captureStage:(NSUInteger)stage attempt:(NSUInteger)attempt;
 @end
 
 @implementation M0BridgeProbe
@@ -77,7 +84,10 @@ static NSDictionary *decodeObject(id value) {
     message.body[@"source"] : nil;
   BOOL knownSource = [claimedSource isKindOfClass:[NSString class]] &&
     ([claimedSource isEqualToString:@"document-start"] ||
-     [claimedSource isEqualToString:@"dom-triggered"]);
+     [claimedSource isEqualToString:@"dom-triggered"] ||
+     [claimedSource isEqualToString:@"grant-valid"] ||
+     [claimedSource isEqualToString:@"grant-invalid"] ||
+     [claimedSource isEqualToString:@"grant-stale"]);
   BOOL valid = message.webView == self.webView && message.frameInfo.isMainFrame &&
     [message.name isEqualToString:@"electronMbtM0NativeReply"] &&
     [message.body isKindOfClass:[NSDictionary class]] &&
@@ -87,13 +97,44 @@ static NSDictionary *decodeObject(id value) {
     replyHandler(nil, @"ELECTRON_MBT_UNEXPECTED_M0_SENDER");
     return;
   }
+  // Why not: a shared-DOM event or a caller-supplied "source" string cannot
+  // attest the page initiator, even when the native frame is the main frame.
+  if ([claimedSource hasPrefix:@"grant-"]) {
+    NSString *grant = [message.body[@"grant"] isKindOfClass:[NSString class]] ?
+      message.body[@"grant"] : nil;
+    BOOL current = grant && self.documentGrant &&
+      [grant isEqualToString:self.documentGrant];
+    if (current) {
+      if ([claimedSource isEqualToString:@"grant-valid"])
+        self.nativeGrantAcceptedCount += 1;
+      replyHandler(@"grant-ack", nil);
+      return;
+    }
+    if ([claimedSource isEqualToString:@"grant-invalid"])
+      self.nativeGrantInvalidRejectedCount += 1;
+    if ([claimedSource isEqualToString:@"grant-stale"] &&
+        self.previousDocumentGrant &&
+        [grant isEqualToString:self.previousDocumentGrant])
+      self.nativeGrantStaleRejectedCount += 1;
+    replyHandler(nil, @"ELECTRON_MBT_M0_DOCUMENT_GRANT_DENIED");
+    return;
+  }
   self.nativeReplyCount += 1;
-  // Why not: claimedSource labels a diagnostic route, not the initiating realm.
-  if ([claimedSource isEqualToString:@"dom-triggered"])
+  if ([claimedSource isEqualToString:@"dom-triggered"]) {
     self.pageInducedNativeMessageCount += 1;
-  else
-    self.documentStartNativeMessageCount += 1;
-  replyHandler(@"native-ack", nil);
+    replyHandler(@"native-ack", nil);
+    return;
+  }
+  if (!self.documentGrant) {
+    replyHandler(nil, @"ELECTRON_MBT_M0_DOCUMENT_NOT_READY");
+    return;
+  }
+  self.documentStartNativeMessageCount += 1;
+  // Why not: previousGrant is exposed only to the isolated test realm to
+  // exercise replay rejection. Neither token is placed in shared DOM/JSON logs.
+  replyHandler(@{@"reply": @"native-ack",
+    @"documentGrant": self.documentGrant,
+    @"previousGrant": self.previousDocumentGrant ?: [NSNull null]}, nil);
 }
 
 - (void)webView:(WKWebView *)webView
@@ -103,6 +144,11 @@ static NSDictionary *decodeObject(id value) {
   // Why not: a page redirect or subframe cannot become a privileged test sender.
   BOOL allowed = action.targetFrame.isMainFrame &&
     [action.request.URL isEqual:self.pageURL];
+  if (allowed) {
+    self.previousDocumentGrant = self.documentGrant;
+    self.documentGrant = [NSUUID UUID].UUIDString;
+    self.nativeGrantIssuedCount += 1;
+  }
   decisionHandler(allowed ? WKNavigationActionPolicyAllow : WKNavigationActionPolicyCancel);
   if (!allowed) [self fail:@"ELECTRON_MBT_M0_NAVIGATION_DENIED"];
 }
@@ -146,6 +192,18 @@ static NSDictionary *decodeObject(id value) {
     [firstIsolated[@"nativePageReplySettled"] isEqual:@YES] &&
     [isolated[@"nativePageReplySettled"] isEqual:@YES] &&
     self.pageInducedNativeMessageCount == 2;
+  BOOL grantsRotated = self.nativeGrantIssuedCount == 2 &&
+    self.previousDocumentGrant != nil &&
+    ![self.previousDocumentGrant isEqualToString:self.documentGrant];
+  BOOL grantEcho = [firstIsolated[@"grantEchoAccepted"] isEqual:@YES] &&
+    [isolated[@"grantEchoAccepted"] isEqual:@YES] &&
+    self.nativeGrantAcceptedCount == 2;
+  BOOL invalidGrantDenied = [firstIsolated[@"invalidGrantRejected"] isEqual:@YES] &&
+    [isolated[@"invalidGrantRejected"] isEqual:@YES] &&
+    self.nativeGrantInvalidRejectedCount == 2;
+  BOOL staleGrantDenied = grantsRotated &&
+    [isolated[@"staleGrantRejected"] isEqual:@YES] &&
+    self.nativeGrantStaleRejectedCount == 1;
   // Why not: a forged DOM response and ID-only callbacks cannot certify
   // contextBridge authority, cross-realm Function identity or frozen copies.
   NSDictionary *candidate = @{
@@ -157,6 +215,10 @@ static NSDictionary *decodeObject(id value) {
     @"pageCanForgeResponse": @([firstPage[@"pageCanForgeDOMReply"] isEqual:@YES]),
     @"pageCanInduceNativeMessage": @(pageInducedNative),
     @"pageInitiatorAuthenticated": @NO,
+    @"documentGrantRotated": @(grantsRotated),
+    @"isolatedGrantEchoObserved": @(grantEcho),
+    @"invalidGrantRejected": @(invalidGrantDenied),
+    @"staleGrantReplayRejected": @(staleGrantDenied),
     @"privilegedSenderAttested": @NO,
     @"secureContextBridgeVerified": @NO,
     @"realCallbackIdentityVerified": @NO,
@@ -172,6 +234,10 @@ static NSDictionary *decodeObject(id value) {
     @"nativeReplyCount": @(self.nativeReplyCount),
     @"documentStartNativeMessageCount": @(self.documentStartNativeMessageCount),
     @"pageInducedNativeMessageCount": @(self.pageInducedNativeMessageCount),
+    @"nativeGrantIssuedCount": @(self.nativeGrantIssuedCount),
+    @"nativeGrantAcceptedCount": @(self.nativeGrantAcceptedCount),
+    @"nativeGrantInvalidRejectedCount": @(self.nativeGrantInvalidRejectedCount),
+    @"nativeGrantStaleRejectedCount": @(self.nativeGrantStaleRejectedCount),
     @"withReplyReturnedPromise": @([firstIsolated[@"nativeReplyPromise"] isEqual:@YES]),
     @"nativeReplySettled": @([firstIsolated[@"nativeReplySettled"] isEqual:@YES]),
     @"documentLoads": @(self.navigations),
@@ -194,13 +260,9 @@ static NSDictionary *decodeObject(id value) {
   finish(result, 0);
 }
 
-- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-  (void)navigation;
-  self.navigations += 1;
-  NSUInteger stage = self.navigations;
-  if (stage > 2) { [self fail:@"ELECTRON_MBT_M0_EXCESS_NAVIGATIONS"]; return; }
+- (void)captureStage:(NSUInteger)stage attempt:(NSUInteger)attempt {
   __weak M0BridgeProbe *weakSelf = self;
-  [webView evaluateJavaScript:@"JSON.stringify(globalThis.m0PageFirstScript)"
+  [self.webView evaluateJavaScript:@"JSON.stringify(globalThis.m0PageFirstScript)"
     inFrame:nil inContentWorld:[WKContentWorld pageWorld]
     completionHandler:^(id pageResult, NSError *pageError) {
       M0BridgeProbe *probe = weakSelf;
@@ -215,7 +277,11 @@ static NSDictionary *decodeObject(id value) {
         @"nativeReplyPromise:globalThis.electronMbtM0IsolatedOnly?.nativeReplyPromise === true,"
         @"nativeReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativeReplySettled === true,"
         @"nativePageRequestCount:globalThis.electronMbtM0IsolatedOnly?.nativePageRequestCount ?? -1,"
-        @"nativePageReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativePageReplySettled === true"
+        @"nativePageReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativePageReplySettled === true,"
+        @"grantProbeSettled:globalThis.electronMbtM0IsolatedOnly?.grantProbeSettled === true,"
+        @"grantEchoAccepted:globalThis.electronMbtM0IsolatedOnly?.grantEchoAccepted === true,"
+        @"invalidGrantRejected:globalThis.electronMbtM0IsolatedOnly?.invalidGrantRejected === true,"
+        @"staleGrantRejected:globalThis.electronMbtM0IsolatedOnly?.staleGrantRejected === true"
         @"})";
       [probe.webView evaluateJavaScript:script inFrame:nil
         inContentWorld:probe.isolatedWorld
@@ -224,10 +290,31 @@ static NSDictionary *decodeObject(id value) {
           if (!live) return;
           NSDictionary *isolated = isolatedError ? nil : decodeObject(isolatedResult);
           if (!isolated) { [live fail:@"ELECTRON_MBT_M0_ISOLATED_OBSERVATION"]; return; }
+          if (![isolated[@"grantProbeSettled"] isEqual:@YES]) {
+            if (attempt >= 40) {
+              [live fail:@"ELECTRON_MBT_M0_GRANT_PROBE_TIMEOUT"];
+              return;
+            }
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
+              dispatch_get_main_queue(), ^{
+                M0BridgeProbe *retry = weakSelf;
+                if (retry) [retry captureStage:stage attempt:attempt + 1];
+              });
+            return;
+          }
           [live completeStage:stage page:page isolated:isolated];
         }];
     }];
 }
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+  (void)webView; (void)navigation;
+  self.navigations += 1;
+  NSUInteger stage = self.navigations;
+  if (stage > 2) { [self fail:@"ELECTRON_MBT_M0_EXCESS_NAVIGATIONS"]; return; }
+  [self captureStage:stage attempt:0];
+}
+
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)nav
       withError:(NSError *)error {
   (void)webView; (void)nav; (void)error;

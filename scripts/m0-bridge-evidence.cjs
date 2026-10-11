@@ -15,6 +15,11 @@ function validateM0Evidence(report) {
     report.pageInducedNativeMessageCount >= 0);
   assert.equal(report.nativeReplyCount,
     report.documentStartNativeMessageCount + report.pageInducedNativeMessageCount);
+  for (const name of [
+    'nativeGrantIssuedCount', 'nativeGrantAcceptedCount',
+    'nativeGrantInvalidRejectedCount', 'nativeGrantStaleRejectedCount',
+  ]) assert.ok(Number.isSafeInteger(report[name]) && report[name] >= 0, name);
+  assert.equal(report.nativeGrantIssuedCount, report.documentLoads);
   assert.equal(typeof report.withReplyReturnedPromise, 'boolean');
   assert.equal(typeof report.nativeReplySettled, 'boolean');
   assert.equal(typeof report.newDocumentScriptReinitialized, 'boolean');
@@ -31,6 +36,10 @@ function validateM0Evidence(report) {
     assert.ok(Number.isSafeInteger(document.isolated.nativePageRequestCount));
     assert.ok(document.isolated.nativePageRequestCount >= 0);
     assert.equal(typeof document.isolated.nativePageReplySettled, 'boolean');
+    for (const field of [
+      'grantProbeSettled', 'grantEchoAccepted', 'invalidGrantRejected', 'staleGrantRejected',
+    ]) assert.equal(typeof document.isolated[field], 'boolean', field);
+    assert.equal(document.isolated.grantProbeSettled, true);
     for (const property of [
       'synchronousValue', 'synchronousThrow', 'callbackByPageId', 'pageCanForgeDOMReply',
       'pageTriggeredNativeMessage',
@@ -44,6 +53,10 @@ function validateM0Evidence(report) {
   assert.equal(candidate?.pageAuthoredProxy, true);
   assert.equal(candidate?.privilegedSenderAttested, false);
   assert.equal(candidate?.pageInitiatorAuthenticated, false);
+  for (const field of [
+    'documentGrantRotated', 'isolatedGrantEchoObserved',
+    'invalidGrantRejected', 'staleGrantReplayRejected',
+  ]) assert.equal(typeof candidate[field], 'boolean', field);
   assert.equal(candidate?.secureContextBridgeVerified, false);
   assert.equal(candidate?.realCallbackIdentityVerified, false);
   assert.equal(candidate?.promiseProxyVerified, false);
@@ -68,6 +81,23 @@ function validateM0Evidence(report) {
     report.firstDocument.isolated.nativePageReplySettled &&
     report.secondDocument.isolated.nativePageReplySettled &&
     report.pageInducedNativeMessageCount === 2);
+  const first = report.firstDocument.isolated;
+  const second = report.secondDocument.isolated;
+  assert.equal(first.staleGrantRejected, false);
+  assert.equal(report.nativeGrantAcceptedCount,
+    Number(first.grantEchoAccepted) + Number(second.grantEchoAccepted));
+  assert.equal(report.nativeGrantInvalidRejectedCount,
+    Number(first.invalidGrantRejected) + Number(second.invalidGrantRejected));
+  assert.equal(report.nativeGrantStaleRejectedCount, Number(second.staleGrantRejected));
+  assert.equal(candidate.isolatedGrantEchoObserved,
+    first.grantEchoAccepted && second.grantEchoAccepted &&
+    report.nativeGrantAcceptedCount === 2);
+  assert.equal(candidate.invalidGrantRejected,
+    first.invalidGrantRejected && second.invalidGrantRejected &&
+    report.nativeGrantInvalidRejectedCount === 2);
+  assert.equal(candidate.staleGrantReplayRejected,
+    candidate.documentGrantRotated && second.staleGrantRejected &&
+    report.nativeGrantStaleRejectedCount === 1);
   assert.equal(candidate.synchronousThrowObserved, report.firstDocument.page.synchronousThrow);
   assert.equal(candidate.callbackByIdOnlyObserved, report.firstDocument.page.callbackByPageId);
   assert.equal(candidate.pageCanForgeResponse, report.firstDocument.page.pageCanForgeDOMReply);

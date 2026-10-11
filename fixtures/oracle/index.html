@@ -24,7 +24,18 @@
   api.fire('first');
   api.remove(callback);
   api.fire('second');
-  observed.callbackValues = received;
+  observed.callbackValues = received.slice();
+  observed.callbackRemovalByOriginalIdentity = !received.includes('second');
+  // Why not: passing the same page callback through two bridge calls does not
+  // guarantee the same preload-side proxy. Keep the removal closure in preload.
+  const subscribed = [];
+  const dispose = api.subscribe(value => { subscribed.push(value); });
+  observed.disposerIsFunction = typeof dispose === 'function';
+  api.fire('sub-first');
+  observed.disposeOnce = dispose();
+  observed.disposeTwice = dispose();
+  api.fire('sub-second');
+  observed.subscriptionValues = subscribed.slice();
   Array.prototype.map = function pageOwnedMap() { return 'page-owned'; };
   observed.primordialIntact = api.primordialIntact();
   api.report(observed);

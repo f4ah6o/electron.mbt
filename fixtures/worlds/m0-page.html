@@ -17,6 +17,22 @@
   const callbackReplyAttr = 'data-electron-mbt-m0-callback-reply';
   const privateGlobalHidden = typeof globalThis.electronMbtM0IsolatedOnly === 'undefined';
   const nativeReplyHandlerHidden = !window.webkit?.messageHandlers?.electronMbtM0NativeReply;
+  const childRelay = {
+    received: false, sourceMatches: false, opaqueOrigin: false, forwarded: false,
+  };
+  // Why not: parent page forwarding cannot upgrade a sandboxed child into
+  // an authenticated main-frame sender, even if the isolated handler has a grant.
+  window.addEventListener('message', event => {
+    if (event.data?.probe !== 'm0' ||
+        event.data?.kind !== 'sandboxed-child-relay') return;
+    const frame = document.querySelector('iframe[title="M0 untrusted subframe fixture"]');
+    childRelay.received = true;
+    childRelay.sourceMatches = event.source === frame?.contentWindow;
+    childRelay.opaqueOrigin = event.origin === 'null';
+    if (childRelay.sourceMatches && childRelay.opaqueOrigin) {
+      childRelay.forwarded = request('subframe-trigger-native', null) === 'native-pending';
+    }
+  });
   const callbacks = new Map();
   let callbackInvocations = 0;
   const callback = amount => {
@@ -84,10 +100,11 @@
       secondCallbackValue === 15 && callbackInvocations === 2 && removedCallbackDenied,
     pageCanForgeDOMReply: forgedValue === 9001,
     pageTriggeredNativeMessage,
+    childRelay,
   });
 })();
 </script>
 </head>
 <body><p>M0 diagnostic only; no Electron preload is exposed.</p>
-<iframe src="m0-frame.html" title="M0 untrusted subframe fixture"></iframe></body>
+<iframe sandbox="allow-scripts" src="m0-frame.html" title="M0 untrusted subframe fixture"></iframe></body>
 </html>

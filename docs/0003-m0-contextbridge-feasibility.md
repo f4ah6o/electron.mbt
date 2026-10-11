@@ -89,6 +89,32 @@ replay, but do not authenticate the original page/frame that initiated a
 shared-DOM event, and cannot fix page-forgeable synchronous return values.
 No privileged operation is wired to this echo; M0 remains OPEN.
 
+### Sandboxed-child indirect call through main-frame handler
+
+The diagnostic now also loads its actual child iframe with `sandbox="allow-scripts"`
+and **without** `allow-same-origin`, giving the child page an opaque origin.
+Its page-world script, which cannot access the isolated native handler, sends a
+`postMessage` to the main page. The parent observes the child frame's
+`MessageEvent.source` and opaque `origin`, then forwards this **untrusted**
+message into the shared DOM request listener. The main isolated world echoes
+through its own still-private, current document grant. Native sees the
+**authorized main-frame isolated caller**, not the child which started the
+communication. A separate native read of the actual child `WKFrameInfo`'s
+*page world* records that the sandboxed child script sent its message while
+the native handler remained hidden. The child-frame's **direct** native call
+continues to be denied by actual `WKScriptMessage.frameInfo`.
+
+The evidence separately records the parent's page-origin/source observations,
+the child page-world observation, isolated page/child-relay echo requests and
+settlements, and the native grant-validated main-frame echo aggregate. The
+parent-provided origin/source labels and DOM operations **are not** elevated to
+native-attested initiator identity; the native caller still cannot distinguish
+the relayed child request. The test-only echo has no privileged effect. Both
+document loads remain source-hash checked, and no grant value is exposed to
+the page or child. The candidate's
+`sandboxedChildCanRelayGrantedNativeEcho` field is a narrowly scoped
+*negative security-boundary observation*, never an implementation claim.
+
 ## M0 requirements versus what the candidate actually measures
 
 | M0 requirement from issue 0001 §6.2 | Tested observation | Still missing |

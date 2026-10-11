@@ -30,6 +30,7 @@ static NSDictionary *decodeObject(id value) {
 @property(nonatomic, strong) NSDictionary *initialPage;
 @property(nonatomic, strong) NSDictionary *initialIsolated;
 @property(nonatomic, strong) NSDictionary *initialSubframe;
+@property(nonatomic, strong) NSDictionary *initialSubframePage;
 @property(nonatomic) NSUInteger navigations;
 @property(nonatomic) NSUInteger nativeReplyCount;
 @property(nonatomic) NSUInteger documentStartNativeMessageCount;
@@ -193,7 +194,8 @@ static NSDictionary *decodeObject(id value) {
 }
 
 - (void)completeStage:(NSUInteger)stage page:(NSDictionary *)page
-          isolated:(NSDictionary *)isolated subframe:(NSDictionary *)subframe {
+          isolated:(NSDictionary *)isolated subframe:(NSDictionary *)subframe
+        subframePage:(NSDictionary *)subframePage {
   if (![subframe[@"attempted"] isEqual:@YES] ||
       ![subframe[@"replyPromise"] isEqual:@YES] ||
       ![subframe[@"settled"] isEqual:@YES] ||
@@ -206,17 +208,20 @@ static NSDictionary *decodeObject(id value) {
     self.initialPage = page;
     self.initialIsolated = isolated;
     self.initialSubframe = subframe;
+    self.initialSubframePage = subframePage;
     self.subframeInfo = nil;
     [self.webView reload];
     return;
   }
-  if (stage != 2 || !self.initialPage || !self.initialIsolated || !self.initialSubframe) {
+  if (stage != 2 || !self.initialPage || !self.initialIsolated ||
+      !self.initialSubframe || !self.initialSubframePage) {
     [self fail:@"ELECTRON_MBT_M0_UNEXPECTED_DOCUMENT_STATE"];
     return;
   }
   NSDictionary *firstPage = self.initialPage;
   NSDictionary *firstIsolated = self.initialIsolated;
   NSDictionary *firstSubframe = self.initialSubframe;
+  NSDictionary *firstSubframePage = self.initialSubframePage;
   BOOL isolatedHidden = [firstPage[@"privateGlobalHidden"] isEqual:@YES] &&
     [firstPage[@"nativeReplyHandlerHidden"] isEqual:@YES] &&
     [page[@"privateGlobalHidden"] isEqual:@YES] &&
@@ -242,7 +247,7 @@ static NSDictionary *decodeObject(id value) {
     [isolated[@"nativePageRequestCount"] integerValue] == 1 &&
     [firstIsolated[@"nativePageReplySettled"] isEqual:@YES] &&
     [isolated[@"nativePageReplySettled"] isEqual:@YES] &&
-    self.pageInducedNativeMessageCount == 2;
+    self.pageInducedNativeMessageCount == 4;
   BOOL grantsRotated = self.nativeGrantIssuedCount == 2 &&
     self.previousDocumentGrant != nil &&
     ![self.previousDocumentGrant isEqualToString:self.documentGrant];
@@ -265,7 +270,29 @@ static NSDictionary *decodeObject(id value) {
     return;
   }
   BOOL grantedPageInduction = pageInducedNative &&
-    self.nativeGrantDomTriggeredAcceptedCount == 2;
+    self.nativeGrantDomTriggeredAcceptedCount == 4;
+  // Why not: these page-owned observations are not native attestation of
+  // child origin. The native side independently counts granted main-frame calls.
+  NSDictionary *firstRelay = firstPage[@"childRelay"];
+  NSDictionary *secondRelay = page[@"childRelay"];
+  BOOL childRelayObserved =
+    [firstRelay[@"received"] isEqual:@YES] &&
+    [firstRelay[@"sourceMatches"] isEqual:@YES] &&
+    [firstRelay[@"opaqueOrigin"] isEqual:@YES] &&
+    [firstRelay[@"forwarded"] isEqual:@YES] &&
+    [secondRelay[@"received"] isEqual:@YES] &&
+    [secondRelay[@"sourceMatches"] isEqual:@YES] &&
+    [secondRelay[@"opaqueOrigin"] isEqual:@YES] &&
+    [secondRelay[@"forwarded"] isEqual:@YES] &&
+    [firstSubframePage[@"postMessageSent"] isEqual:@YES] &&
+    [firstSubframePage[@"nativeReplyHandlerHidden"] isEqual:@YES] &&
+    [subframePage[@"postMessageSent"] isEqual:@YES] &&
+    [subframePage[@"nativeReplyHandlerHidden"] isEqual:@YES] &&
+    [firstIsolated[@"nativeChildRelayRequestCount"] integerValue] == 1 &&
+    [isolated[@"nativeChildRelayRequestCount"] integerValue] == 1 &&
+    [firstIsolated[@"nativeChildRelayReplySettled"] isEqual:@YES] &&
+    [isolated[@"nativeChildRelayReplySettled"] isEqual:@YES] &&
+    self.nativeGrantDomTriggeredAcceptedCount == 4;
   // Why not: a forged DOM response and ID-only callbacks cannot certify
   // contextBridge authority, cross-realm Function identity or frozen copies.
   NSDictionary *candidate = @{
@@ -277,6 +304,7 @@ static NSDictionary *decodeObject(id value) {
     @"pageCanForgeResponse": @([firstPage[@"pageCanForgeDOMReply"] isEqual:@YES]),
     @"pageCanInduceNativeMessage": @(pageInducedNative),
     @"pageInducedWithValidIsolatedGrant": @(grantedPageInduction),
+    @"sandboxedChildCanRelayGrantedNativeEcho": @(childRelayObserved),
     @"pageInitiatorAuthenticated": @NO,
     @"documentGrantRotated": @(grantsRotated),
     @"isolatedGrantEchoObserved": @(grantEcho),
@@ -309,8 +337,10 @@ static NSDictionary *decodeObject(id value) {
     @"documentLoads": @(self.navigations),
     @"newDocumentScriptReinitialized": @(replayReset),
     @"candidate": candidate,
-    @"firstDocument": @{@"page": firstPage, @"isolated": firstIsolated, @"subframe": firstSubframe},
-    @"secondDocument": @{@"page": page, @"isolated": isolated, @"subframe": subframe},
+    @"firstDocument": @{@"page": firstPage, @"isolated": firstIsolated,
+       @"subframe": firstSubframe, @"subframePage": firstSubframePage},
+    @"secondDocument": @{@"page": page, @"isolated": isolated,
+       @"subframe": subframe, @"subframePage": subframePage},
     @"environment": @{
       @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
       @"webkit": [[NSBundle bundleForClass:[WKWebView class]]
@@ -357,6 +387,8 @@ static NSDictionary *decodeObject(id value) {
         @"nativeReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativeReplySettled === true,"
         @"nativePageRequestCount:globalThis.electronMbtM0IsolatedOnly?.nativePageRequestCount ?? -1,"
         @"nativePageReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativePageReplySettled === true,"
+        @"nativeChildRelayRequestCount:globalThis.electronMbtM0IsolatedOnly?.nativeChildRelayRequestCount ?? -1,"
+        @"nativeChildRelayReplySettled:globalThis.electronMbtM0IsolatedOnly?.nativeChildRelayReplySettled === true,"
         @"grantProbeSettled:globalThis.electronMbtM0IsolatedOnly?.grantProbeSettled === true,"
         @"grantEchoAccepted:globalThis.electronMbtM0IsolatedOnly?.grantEchoAccepted === true,"
         @"invalidGrantRejected:globalThis.electronMbtM0IsolatedOnly?.invalidGrantRejected === true,"
@@ -371,7 +403,9 @@ static NSDictionary *decodeObject(id value) {
           if (!isolated) { [live fail:@"ELECTRON_MBT_M0_ISOLATED_OBSERVATION"]; return; }
           if (![isolated[@"grantProbeSettled"] isEqual:@YES] ||
               ![isolated[@"nativePageReplySettled"] isEqual:@YES] ||
-              live.nativeGrantDomTriggeredAcceptedCount < stage ||
+              ![isolated[@"nativeChildRelayReplySettled"] isEqual:@YES] ||
+              live.nativeGrantDomTriggeredAcceptedCount < stage * 2 ||
+              ![page[@"childRelay"][@"forwarded"] isEqual:@YES] ||
               !live.subframeInfo || live.nativeSubframeDeniedCount < stage) {
             [live retryStage:stage attempt:attempt];
             return;
@@ -393,7 +427,20 @@ static NSDictionary *decodeObject(id value) {
                 [latest retryStage:stage attempt:attempt];
                 return;
               }
-              [latest completeStage:stage page:page isolated:isolated subframe:subframe];
+              [latest.webView evaluateJavaScript:
+                @"JSON.stringify(globalThis.m0ChildPageState)"
+                inFrame:latest.subframeInfo inContentWorld:[WKContentWorld pageWorld]
+                completionHandler:^(id childResult, NSError *childError) {
+                  M0BridgeProbe *observed = weakSelf;
+                  if (!observed) return;
+                  NSDictionary *childPage = childError ? nil : decodeObject(childResult);
+                  if (!childPage) {
+                    [observed retryStage:stage attempt:attempt];
+                    return;
+                  }
+                  [observed completeStage:stage page:page isolated:isolated
+                    subframe:subframe subframePage:childPage];
+                }];
             }];
         }];
     }];

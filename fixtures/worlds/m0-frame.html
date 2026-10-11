@@ -1,5 +1,18 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; object-src 'none'; base-uri 'none'">
 <title>M0 untrusted child-frame diagnostic</title>
-<p>Test-only subframe. No privileged API is available to page scripts.</p>
+<p>Test-only sandboxed child frame. The page script has no native handler.</p>
+<script>
+'use strict';
+(() => {
+  const state = {
+    postMessageSent: false,
+    nativeReplyHandlerHidden: !window.webkit?.messageHandlers?.electronMbtM0NativeReply,
+  };
+  globalThis.m0ChildPageState = state;
+  // Why not: a child postMessage is untrusted input even when its origin is opaque.
+  window.parent.postMessage({ probe: 'm0', kind: 'sandboxed-child-relay' }, '*');
+  state.postMessageSent = true;
+})();
+</script>

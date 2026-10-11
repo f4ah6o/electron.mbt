@@ -33,6 +33,12 @@ function validateM0Evidence(report) {
     assert.equal(document?.page?.firstScriptAttempted, true);
     assert.equal(document.page.privateGlobalHidden, true);
     assert.equal(document.page.nativeReplyHandlerHidden, true);
+    for (const name of ['received', 'sourceMatches', 'opaqueOrigin', 'forwarded']) {
+      assert.equal(typeof document.page.childRelay?.[name], 'boolean', name);
+    }
+    // Why not: page-owned message observations do not attest the child to native.
+    assert.equal(document.subframePage?.postMessageSent, true);
+    assert.equal(document.subframePage.nativeReplyHandlerHidden, true);
     assert.equal(document.isolated?.isolatedMarker, true);
     assert.equal(document.isolated.primordialIntact, true);
     assert.ok(Number.isSafeInteger(document.isolated.requests));
@@ -42,6 +48,9 @@ function validateM0Evidence(report) {
     assert.ok(Number.isSafeInteger(document.isolated.nativePageRequestCount));
     assert.ok(document.isolated.nativePageRequestCount >= 0);
     assert.equal(typeof document.isolated.nativePageReplySettled, 'boolean');
+    assert.ok(Number.isSafeInteger(document.isolated.nativeChildRelayRequestCount) &&
+      document.isolated.nativeChildRelayRequestCount >= 0);
+    assert.equal(typeof document.isolated.nativeChildRelayReplySettled, 'boolean');
     for (const field of [
       'grantProbeSettled', 'grantEchoAccepted', 'invalidGrantRejected', 'staleGrantRejected',
     ]) assert.equal(typeof document.isolated[field], 'boolean', field);
@@ -69,6 +78,7 @@ function validateM0Evidence(report) {
       d.subframe.attempted && d.subframe.replyPromise && d.subframe.settled &&
       d.subframe.denied && d.subframe.rejectionCodeObserved));
   assert.equal(candidate?.pageInitiatorAuthenticated, false);
+  assert.equal(typeof candidate?.sandboxedChildCanRelayGrantedNativeEcho, 'boolean');
   for (const field of [
     'documentGrantRotated', 'isolatedGrantEchoObserved',
     'invalidGrantRejected', 'staleGrantReplayRejected',
@@ -96,11 +106,28 @@ function validateM0Evidence(report) {
     report.secondDocument.isolated.nativePageRequestCount === 1 &&
     report.firstDocument.isolated.nativePageReplySettled &&
     report.secondDocument.isolated.nativePageReplySettled &&
-    report.pageInducedNativeMessageCount === 2);
-  // Why not: a native-validated isolated grant cannot attest the page DOM initiator.
+    report.pageInducedNativeMessageCount >= report.documentLoads);
+  const documents = [report.firstDocument, report.secondDocument];
+  const settledGrantedEchoes = documents.reduce((count, document) =>
+    count + Number(document.isolated.nativePageReplySettled) +
+    Number(document.isolated.nativeChildRelayReplySettled), 0);
+  assert.equal(report.pageInducedNativeMessageCount, settledGrantedEchoes);
+  // Why not: native validates the immediate main isolated frame and grant,
+  // not the original frame initiating a page-owned postMessage or DOM event.
   assert.equal(candidate?.pageInducedWithValidIsolatedGrant,
     candidate.pageCanInduceNativeMessage &&
-    report.nativeGrantDomTriggeredAcceptedCount === report.documentLoads);
+    report.nativeGrantDomTriggeredAcceptedCount >= report.documentLoads);
+  assert.equal(candidate.sandboxedChildCanRelayGrantedNativeEcho,
+    documents.every(document =>
+      document.page.childRelay.received &&
+      document.page.childRelay.sourceMatches &&
+      document.page.childRelay.opaqueOrigin &&
+      document.page.childRelay.forwarded &&
+      document.subframePage.postMessageSent &&
+      document.subframePage.nativeReplyHandlerHidden &&
+      document.isolated.nativeChildRelayRequestCount === 1 &&
+      document.isolated.nativeChildRelayReplySettled) &&
+    report.nativeGrantDomTriggeredAcceptedCount >= report.documentLoads);
   const first = report.firstDocument.isolated;
   const second = report.secondDocument.isolated;
   assert.equal(first.staleGrantRejected, false);

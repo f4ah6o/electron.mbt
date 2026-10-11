@@ -12,8 +12,10 @@
   let callbackAttempts = 0;
   let nativePageRequestCount = 0;
   let nativePageReplySettled = false;
+  let nativeChildRelayRequestCount = 0;
+  let nativeChildRelayReplySettled = false;
   let isolatedDocumentGrant = null;
-  let pageNativeEchoQueued = false;
+  const pendingEchoes = [];
   const state = {
     isolatedMarker: true,
     nativeReplyPromise: false,
@@ -26,18 +28,23 @@
     get callbackAttempts() { return callbackAttempts; },
     get nativePageRequestCount() { return nativePageRequestCount; },
     get nativePageReplySettled() { return nativePageReplySettled; },
+    get nativeChildRelayRequestCount() { return nativeChildRelayRequestCount; },
+    get nativeChildRelayReplySettled() { return nativeChildRelayReplySettled; },
     get primordialIntact() { return Array.prototype.map === originalMap; },
   };
   globalThis.electronMbtM0IsolatedOnly = state;
-  function sendGrantedPageEcho() {
-    // Why not: possession of the isolated grant authenticates the direct native
-    // caller, not the page which queued this event through the shared DOM.
+  function sendGrantedPageEcho(channel) {
+    // Why not: the native handler receives the same attested main frame and
+    // isolated grant whether the request began in the page or a sandboxed child.
     const reply = window.webkit.messageHandlers.electronMbtM0NativeReply.postMessage({
       probe: 'm0', source: 'dom-triggered', grant: isolatedDocumentGrant,
     });
-    if (!reply || typeof reply.then !== 'function') return;
-    reply.then(value => { nativePageReplySettled = value === 'native-ack'; },
-      () => { nativePageReplySettled = false; });
+    const settle = accepted => {
+      if (channel === 'child') nativeChildRelayReplySettled = accepted;
+      else nativePageReplySettled = accepted;
+    };
+    if (!reply || typeof reply.then !== 'function') { settle(false); return; }
+    reply.then(value => settle(value === 'native-ack'), () => settle(false));
   }
   document.addEventListener(requestEvent, () => {
     requests += 1;
@@ -52,15 +59,18 @@
         result = input.value[0] + input.value[1];
       } else if (input.operation === 'raise') {
         throw new TypeError('isolated synchronous error');
-      } else if (input.operation === 'page-trigger-native' && input.value === null) {
-        // Why not: the native sender is this isolated world, but the initiating
-        // page event remains untrusted; this is a test-only no-privilege echo.
-        nativePageRequestCount += 1;
-        pageNativeEchoQueued = true;
-        if (isolatedDocumentGrant !== null) {
-          pageNativeEchoQueued = false;
-          sendGrantedPageEcho();
+      } else if ((input.operation === 'page-trigger-native' ||
+                  input.operation === 'subframe-trigger-native') && input.value === null) {
+        // Why not: this is a no-privilege diagnostic; neither the DOM operation
+        // nor the child-page message can prove the original initiator to native.
+        const channel = input.operation === 'subframe-trigger-native' ? 'child' : 'page';
+        if (channel === 'child') nativeChildRelayRequestCount += 1;
+        else nativePageRequestCount += 1;
+        if (nativePageRequestCount > 1 || nativeChildRelayRequestCount > 1) {
+          throw new TypeError('duplicate diagnostic native echo');
         }
+        if (isolatedDocumentGrant === null) pendingEchoes.push(channel);
+        else sendGrantedPageEcho(channel);
         result = 'native-pending';
       } else if (input.operation === 'callback' && input.value &&
           typeof input.value.id === 'string' &&
@@ -99,10 +109,7 @@
         return;
       }
       isolatedDocumentGrant = documentGrant;
-      if (pageNativeEchoQueued) {
-        pageNativeEchoQueued = false;
-        sendGrantedPageEcho();
-      }
+      for (const channel of pendingEchoes.splice(0)) sendGrantedPageEcho(channel);
       const handler = window.webkit.messageHandlers.electronMbtM0NativeReply;
       // Why not: this test-only opaque grant stays in the isolated closure, never
       // shared DOM. It does NOT authenticate a page event that triggers this world.

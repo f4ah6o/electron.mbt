@@ -12,7 +12,7 @@ function sample() {
     returnsPromise: true,
     promiseValue: 43,
     promiseReject: true,
-    promiseRejectError: { name: 'Error', typeofValue: 'object', objectTag: '[object Error]', pageRealmInstance: false },
+    promiseRejectError: { name: 'Error', typeofValue: 'object', objectTag: '[object Error]', pageRealmInstance: true },
     dataFrozen: true,
     dataUnchanged: true,
     callbackValues: ['first', 'second'],
@@ -40,6 +40,8 @@ test('What: a missing, contradictory or inflated bridge observation is rejected'
     o => { o.syncThrowError.typeofValue = 'string'; },
     o => { o.syncThrowError.objectTag = '[object String]'; },
     o => { o.syncThrowError.pageRealmInstance = 'true'; },
+    o => { o.syncThrowError.pageRealmInstance = false; },
+    o => { o.syncThrowError.objectTag = '[object Object]'; },
     o => { o.returnsPromise = false; },
     o => { o.promiseValue = 0; },
     o => { o.promiseReject = false; },
@@ -47,6 +49,8 @@ test('What: a missing, contradictory or inflated bridge observation is rejected'
     o => { o.promiseRejectError.name = undefined; },
     o => { o.promiseRejectError.typeofValue = undefined; },
     o => { o.promiseRejectError.pageRealmInstance = null; },
+    o => { o.promiseRejectError.pageRealmInstance = false; },
+    o => { o.promiseRejectError.objectTag = '[object Object]'; },
     o => { o.dataFrozen = false; },
     o => { o.dataUnchanged = false; },
     o => { o.callbackValues = ['first']; },
@@ -65,12 +69,12 @@ test('What: a missing, contradictory or inflated bridge observation is rejected'
   }
 });
 
-test('What: cross-world Error instanceof observations retain realm differences without converting them to promises of parity', () => {
+test('What: the pinned Electron oracle preserves page-realm Error instances for sync throw and Promise rejection', () => {
   const observed = validateM0ElectronOracleObservation(sample());
   assert.equal(observed.syncThrowError.name, 'Error');
   assert.equal(observed.promiseRejectError.name, 'Error');
   assert.equal(observed.syncThrowError.pageRealmInstance, true);
-  assert.equal(observed.promiseRejectError.pageRealmInstance, false);
+  assert.equal(observed.promiseRejectError.pageRealmInstance, true);
 });
 
 test('What: Electron callback identity observation is not reported as a stable-proxy guarantee', () => {

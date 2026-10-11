@@ -5,10 +5,10 @@ function validateErrorEvidence(record) {
   assert.ok(record && typeof record === 'object' && !Array.isArray(record));
   assert.equal(record.name, 'Error');
   assert.equal(record.typeofValue, 'object');
-  assert.ok(['[object Error]', '[object Object]'].includes(record.objectTag));
-  // Why not: a page-realm instanceof result is an observation, not a
-  // cross-world guarantee; do not make a guessed value a compatibility gate.
-  assert.equal(typeof record.pageRealmInstance, 'boolean');
+  assert.equal(record.objectTag, '[object Error]');
+  // Why not: this measured Electron 44.7.0 page-realm identity is a pinned
+  // oracle value, not a guarantee about another runtime's cross-world proxy.
+  assert.equal(record.pageRealmInstance, true);
 }
 
 function validateM0ElectronOracleObservation(observed) {

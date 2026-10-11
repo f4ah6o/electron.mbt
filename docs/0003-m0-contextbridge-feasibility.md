@@ -13,10 +13,13 @@ nested data, callback observations, explicit subscription-disposer behavior,
 and realm primordial isolation instead of checking only the runtime version
 and process completion. It also records synchronous-throw and Promise-rejection
 Error names, JavaScript value types, object tags, and whether each rejection
-is an `instanceof Error` in the page realm. The validator rejects missing
-or non-Error evidence, but deliberately treats the page-realm `instanceof`
-result as an observed boolean until a real pinned Electron run establishes
-its value; an arbitrary assumed realm identity is not an M0 acceptance gate. Portable negative tests are in
+is an `instanceof Error` in the page realm. The pinned Electron 44.7.0 / Node 24.21.0 / macOS 15 arm64 run
+[Runtime contracts #38108133056](https://github.com/f4ah6o/electron.mbt/actions/runs/38108133056)
+observed both errors with `name:"Error"`, `typeofValue:"object"`,
+`objectTag:"[object Error]"`, and `pageRealmInstance:true`. The validator
+now requires those actual results for this specific oracle version. This
+does **not** assert that WebKit implements the same proxy, or that every
+Electron version guarantees the same cross-realm error representation. Portable negative tests are in
 `tests/m0-electron-oracle-evidence.test.cjs`; the real observation is collected
 by the pinned-Electron macOS CI step.
 

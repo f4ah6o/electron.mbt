@@ -10,17 +10,17 @@
     "electronSourceCommit": "61f55c4ce540416b3e43f75f6c0f125d22e5e908",
     "nodeOracle": "24.21.0",
     "moonbit": {
-      "moonc": "v0.10.14+7d59c7ec9 (2026-09-18)",
-      "moon": "0.1.20260920 (914d7da 2026-09-20)",
-      "installVersion": "0.10.14+7d59c7ec9",
+      "moonc": "v0.10.15+943464bfa (2026-10-12)",
+      "moon": "0.1.20261012 (748b63c 2026-10-12)",
+      "installVersion": "0.10.15+943464bfa",
       "installerSha256": "46495f8cdc0050f79b6cb195d66478d101cb3601d68506568fbe377fcdf2a9fe",
       "binarySha256": {
-        "moon": "6da4919f45f4abf7c6d7f3cf8d9a457de77dca430d6fb811d21b27ae1ac8e11d",
-        "moonc": "d163b2c4c878ca584870764b75e633d73e8b9c178dcc6b00c692f6b2a6b1b2dc",
-        "moonrun": "1b22f489621059b8c22ee4acdaddc5f5d1781f62529d3000a24c03d45032d0e2"
+        "moon": "a31026b83410607909ebae469fa19e46c32201cfe403be6099e1da961a5ebf0f",
+        "moonc": "fb950cbc125168c49523ef554d2649effd66499c596dafcb15c80b561d45fd8c",
+        "moonrun": "ba44070aa78d89c2c6da6524d2aa782e46b18cb4a42dd31cd13bf588107089cf"
       },
-      "moonbitTarballSha256": "9226694de9ff978db1ecf820b7710c4224e84ec7a76b19a222d96f0cd4e31b6a",
-      "coreTarballSha256": "6f18b8fdea18f85e628a75e4a1bd3977c5a5c9c6a836fd8824192b0e6bd91b14",
+      "moonbitTarballSha256": "24b93a5409d2a4fb8e3d1b84b473f27b63476cef4418094764df96cb26b03c09",
+      "coreTarballSha256": "96d30f4dbcc6a9e1736ef26fbdd0e8fb0e97cb01d50e55d2a0072208b8061ae5",
       "note": "Upstream publishes no signed checksums; pins are observed values verified in CI before execution. Versioned objects expire (~60 days), so expiry fails loudly and requires a deliberate re-pin."
     },
     "gpuiSourceCommit": "008b3c73d50108d6ed1e6c02ad9e12e930e843ec",

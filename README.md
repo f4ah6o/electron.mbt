@@ -19,7 +19,7 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
 
 ## Build and test
 
-1. Install the MoonBit toolchain and a real Node installation with matching Node-API headers. CI checks `moonc v0.10.14+7d59c7ec9` and `moon 0.1.20260920`; Node CI uses `24.21.0`. The leaf suite also runs on Node `22.16.0`. No npm dependencies are needed for the implementation.
+1. Install the MoonBit toolchain and a real Node installation with matching Node-API headers. CI checks `moonc v0.10.15+943464bfa` and `moon 0.1.20261012`; Node CI uses `24.21.0`. The leaf suite also runs on Node `22.16.0`. No npm dependencies are needed for the implementation.
 2. Run the core checks and builds:
 
    ```sh

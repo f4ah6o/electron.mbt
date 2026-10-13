@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' mbt:; frame-src 'none'">
+<title>electron.mbt gate probe</title>
+<script>
+'use strict';
+// Same first-script observation as index.html: the world-isolation
+// precondition must hold before gate evidence means anything.
+window.firstScriptObservation = Object.freeze({
+  preloadHidden: typeof globalThis.electronMbtPreloadValue === 'undefined',
+  handlerHidden: !window.webkit?.messageHandlers?.electronMbtProbe,
+});
+Array.prototype.map = function pageOwnedMap() { return 'page-owned'; };
+// Trace sink for Gate B observations. Everything recorded here is
+// DOM-visible state, not OS-level evidence; the native probe says which
+// entries came from real OS input.
+window.__gateTrace = [];
+function recordTrace(kind, detail) {
+  window.__gateTrace.push({ kind: kind, detail: detail || null, t: Date.now() });
+}
+window.addEventListener('focus', function () { recordTrace('window.focus'); });
+window.addEventListener('blur', function () { recordTrace('window.blur'); });
+window.addEventListener('resize', function () {
+  recordTrace('window.resize', String(window.innerWidth) + 'x' + String(window.innerHeight));
+});
+document.addEventListener('visibilitychange', function () {
+  recordTrace('visibility', document.visibilityState);
+});
+window.__dpiMql = window.matchMedia('(resolution: ' + String(window.devicePixelRatio) + 'dppx)');
+if (window.__dpiMql.addEventListener) {
+  window.__dpiMql.addEventListener('change', function () {
+    recordTrace('dpi-change', String(window.devicePixelRatio));
+  });
+}
+document.addEventListener('DOMContentLoaded', function () {
+  var input = document.getElementById('probe-input');
+  ['keydown', 'keypress', 'keyup', 'beforeinput', 'input', 'paste'].forEach(function (type) {
+    input.addEventListener(type, function (e) {
+      recordTrace('input.' + type, JSON.stringify({
+        key: e.key || null,
+        data: e.data || null,
+        trusted: e.isTrusted,
+        types: e.clipboardData ? e.clipboardData.types : null,
+      }));
+    });
+  });
+  document.addEventListener('copy', function () { recordTrace('doc.copy'); });
+});
+</script>
+<p id="shared-dom">shared DOM is not a privilege credential</p>
+<input id="probe-input" type="text" autocomplete="off">

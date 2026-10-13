@@ -11,10 +11,10 @@ let environment_keys : Array[String] = ["versions", "platform", "arch"]
 ///|
 // Bound divergence evidence so a hostile or buggy observation cannot grow the
 // report without limit.
-const REPORT_FIELD_LIMIT : Int = 256
+const REPORT_FIELD_LIMIT : Int32 = 256
 
 ///|
-fn json_equal(left : Json, right : Json, depth : Int) -> Bool {
+fn json_equal(left : Json, right : Json, depth : Int32) -> Bool {
   // Beyond the manifest JSON depth the observation is out of profile, so a
   // deeper pair cannot be reported equal.
   if depth > 64 {
@@ -69,7 +69,7 @@ fn bounded(value : Json) -> Json {
 ///|
 // An absent key reports a marker rather than null so an explicit JSON null on
 // one side stays distinct from a missing field.
-fn bounded_option(value : Option[Json]) -> Json {
+fn bounded_option(value : Json?) -> Json {
   match value {
     Some(inner) => bounded(inner)
     None => Json("<absent>")
@@ -100,7 +100,11 @@ fn trace_verdict(electron : Json, mbt : Json) -> Json {
           } else {
             null
           },
-          "mbt": if prefix < right.length() { bounded(right[prefix]) } else { null },
+          "mbt": if prefix < right.length() {
+            bounded(right[prefix])
+          } else {
+            null
+          },
         }
       }
       {
@@ -204,7 +208,11 @@ pub fn compare_observations(electron : Json, mbt : Json) -> Json {
   }
   {
     "ok": true,
-    "verdict": if equivalent { "equivalent" } else { "diverged" },
+    "verdict": if equivalent {
+      "equivalent"
+    } else {
+      "diverged"
+    },
     // One unchanged fixture can only ever be evidence for a gap, never proof
     // of compatibility.
     "compatible": false,

@@ -1,11 +1,17 @@
 import {
-  "f4ah6o/electron/core" @core,
-  "moonbitlang/core/json" @json,
+  "f4ah6o/electron/core",
+  "moonbitlang/core/json",
 }
+
 options(
   link: {
     "js": {
-      "exports": ["new_runtime", "dispatch", "diagnose", "compare_observations"],
+      "exports": [
+        "new_runtime",
+        "dispatch",
+        "diagnose",
+        "compare_observations",
+      ],
       "format": "cjs",
     },
   },

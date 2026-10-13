@@ -94,6 +94,10 @@ jobs:
           mkdir -p evidence
           npm test 2>&1 | tee evidence/node-tests.log
       - name: Probe actual WKContentWorld observations
+        env:
+          # The runner pasteboard is disposable, so the real Cmd+V/general
+          # pasteboard path is exercised here; local runs stay opt-in gated.
+          ELECTRON_MBT_OS_PASTE_OPT_IN: '1'
         run: node scripts/macos-probe.cjs
       - name: Install the separate pinned test oracle
         shell: bash
@@ -106,6 +110,19 @@ jobs:
         run: |
           ORACLE="$(node -e 'process.stdout.write(require(process.argv[1]))' "$RUNNER_TEMP/electron-oracle/node_modules/electron")"
           node scripts/oracle.cjs "$ORACLE"
+      - name: Compare the electron.mbt observation against the baseline
+        shell: bash
+        run: node scripts/differential.cjs --baseline evidence/electron-baseline.json
+      - name: Record macOS SDK and WebView environment
+        shell: bash
+        run: |
+          {
+            sw_vers
+            xcodebuild -version
+            xcodebuild -sdk macosx -version
+            mdls -name kMDItemVersion /Applications/Safari.app || true
+            uname -a
+          } | tee evidence/macos-environment.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

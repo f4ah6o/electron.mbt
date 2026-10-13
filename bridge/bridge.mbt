@@ -216,6 +216,18 @@ pub fn dispatch(runtime : @core.Runtime, operation : String) -> String {
 }
 
 ///|
+// Leaf adapters gather each runtime's raw observation; the compiled core owns
+// the comparison so no verdict logic is re-implemented in JavaScript.
+pub fn compare_observations(electron : String, mbt : String) -> String {
+  if electron.length() > 16384 || mbt.length() > 16384 {
+    return "{\"ok\":false,\"code\":\"InvalidPayload\"}"
+  }
+  let left = @json.parse(electron) catch { _ => return invalid_payload() }
+  let right = @json.parse(mbt) catch { _ => return invalid_payload() }
+  @core.compare_observations(left, right).stringify()
+}
+
+///|
 pub fn diagnose(raw : String) -> String {
   // This is a bounded leaf-to-core metadata contract, not a renderer IPC codec.
   if raw.length() > 16384 {

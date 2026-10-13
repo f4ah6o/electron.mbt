@@ -105,6 +105,26 @@ test('an emitted observation followed by a nonzero child exit is not trusted', t
   assert.equal(fs.existsSync(result.output), false);
 });
 
+test('a Node error code on stderr is not a recognized facade abort', t => {
+  // MODULE_NOT_FOUND is not an electron-mbt diagnostic; the child still died
+  // before emitting, so the harness must fail rather than synthesize 'aborted'.
+  const dir = fixtureApp(t, `require('__missing__');`);
+  const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, { status: 'aborted' }, { fixtureDir: dir })]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /ELECTRON_MBT_DIFFERENTIAL:.*recognized diagnostic/);
+  assert.equal(fs.existsSync(result.output), false);
+});
+
+test('--electron cannot be combined with a non-oracle fixture', t => {
+  // oracle.cjs always collects fixtures/oracle, so the combination can never
+  // produce same-source evidence and is rejected as a usage error.
+  const dir = fixtureApp(t, ``);
+  const result = run(t, ['--fixture', dir, '--electron', process.execPath]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /ELECTRON_MBT_DIFFERENTIAL:.*do not combine it with --fixture/);
+  assert.equal(fs.existsSync(result.output), false);
+});
+
 test('an unclassified child failure is a harness error, not an abort observation', t => {
   // An unrecognized crash (no facade code/api, no timeout) must not be
   // synthesized into evidence; the harness fails with the stderr detail.

@@ -67,7 +67,9 @@ function runMbt() {
     const lines = (result.stdout || '').split(/\r?\n/).filter(line => line.startsWith('ELECTRON_MBT_ORACLE='));
     if (lines.length > 1) fail('the electron.mbt run emitted more than one observation');
     const stderr = result.stderr || '';
-    const code = /code: '([A-Z_]+)'/.exec(stderr);
+    // Only facade-issued diagnostics count as a reported abort; an arbitrary
+    // Node error code (MODULE_NOT_FOUND, ERR_*) is an unclassified failure.
+    const code = /code: '(ELECTRON_MBT_[A-Z_]+)'/.exec(stderr);
     const api = /^Error: (\S+) is not implemented by electron-mbt/m.exec(stderr);
     const timedOut = result.error && result.error.code === 'ETIMEDOUT';
     if (lines.length === 1) {
@@ -108,14 +110,18 @@ const args = process.argv.slice(2);
 let baselinePath = path.join(root, 'evidence/electron-baseline.json');
 let outputPath = path.join(root, 'evidence/differential.json');
 let executable = null;
+let fixtureOverridden = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--baseline' && args[i + 1]) baselinePath = path.resolve(args[++i]);
   else if (args[i] === '--electron' && args[i + 1]) executable = args[++i];
-  else if (args[i] === '--fixture' && args[i + 1]) fixture = path.resolve(args[++i]);
+  else if (args[i] === '--fixture' && args[i + 1]) { fixture = path.resolve(args[++i]); fixtureOverridden = true; }
   else if (args[i] === '--output' && args[i + 1]) outputPath = path.resolve(args[++i]);
   else fail(`usage: node scripts/differential.cjs [--baseline <file>] [--electron <abs-exe>] [--fixture <dir>] [--output <file>]`);
 }
 if (executable !== null && !path.isAbsolute(executable)) fail('--electron requires an absolute executable path');
+// scripts/oracle.cjs only knows how to collect fixtures/oracle, so a live
+// Electron baseline cannot serve another fixture; use --baseline instead.
+if (executable !== null && fixtureOverridden) fail('--electron always collects the baseline from fixtures/oracle; do not combine it with --fixture');
 
 let before;
 try { before = snapshot(fixture); } catch (error) { fail(`the fixture cannot be inventoried: ${error.message}`); }

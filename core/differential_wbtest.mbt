@@ -78,8 +78,20 @@ test "a key present on only one side is a reported mismatch" {
   assert_true(field(verdict, "verdict") is String("diverged"))
   let abort = field(field(verdict, "fields"), "abort")
   assert_true(field(abort, "match") is False)
-  assert_true(field(abort, "electron") is Null)
+  assert_true(field(abort, "electron") is String("<absent>"))
   assert_true(field(field(abort, "mbt"), "code") is String("ELECTRON_MBT_UNSUPPORTED_API"))
+}
+
+///|
+test "an explicit null is not equal to an absent key" {
+  let electron : Json = { "status": "completed", "extra": null }
+  let mbt : Json = { "status": "completed" }
+  let verdict = compare_observations(electron, mbt)
+  assert_true(field(verdict, "verdict") is String("diverged"))
+  let extra = field(field(verdict, "fields"), "extra")
+  assert_true(field(extra, "match") is False)
+  assert_true(field(extra, "electron") is Null)
+  assert_true(field(extra, "mbt") is String("<absent>"))
 }
 
 ///|

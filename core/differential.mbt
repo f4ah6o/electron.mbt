@@ -67,6 +67,16 @@ fn bounded(value : Json) -> Json {
 }
 
 ///|
+// An absent key reports a marker rather than null so an explicit JSON null on
+// one side stays distinct from a missing field.
+fn bounded_option(value : Option[Json]) -> Json {
+  match value {
+    Some(inner) => bounded(inner)
+    None => Json("<absent>")
+  }
+}
+
+///|
 fn trace_verdict(electron : Json, mbt : Json) -> Json {
   match (electron, mbt) {
     (Array(left), Array(right)) => {
@@ -171,12 +181,21 @@ pub fn compare_observations(electron : Json, mbt : Json) -> Json {
   let fields : Map[String, Json] = Map([])
   let mut equivalent = true
   for key in keys {
-    let left = electron_fields.get(key).unwrap_or(null)
-    let right = mbt_fields.get(key).unwrap_or(null)
-    let verdict = if key == "trace" {
-      trace_verdict(left, right)
-    } else {
-      field_verdict(left, right)
+    let left = electron_fields.get(key)
+    let right = mbt_fields.get(key)
+    let verdict = match (left, right) {
+      (Some(electron_value), Some(mbt_value)) =>
+        if key == "trace" {
+          trace_verdict(electron_value, mbt_value)
+        } else {
+          field_verdict(electron_value, mbt_value)
+        }
+      _ =>
+        {
+          "match": false,
+          "electron": bounded_option(left),
+          "mbt": bounded_option(right),
+        }
     }
     if !matched(verdict) {
       equivalent = false

@@ -106,6 +106,19 @@ jobs:
         run: |
           ORACLE="$(node -e 'process.stdout.write(require(process.argv[1]))' "$RUNNER_TEMP/electron-oracle/node_modules/electron")"
           node scripts/oracle.cjs "$ORACLE"
+      - name: Compare the electron.mbt observation against the baseline
+        shell: bash
+        run: node scripts/differential.cjs --baseline evidence/electron-baseline.json
+      - name: Record macOS SDK and WebView environment
+        shell: bash
+        run: |
+          {
+            sw_vers
+            xcodebuild -version
+            xcodebuild -sdk macosx -version
+            mdls -name kMDItemVersion /Applications/Safari.app || true
+            uname -a
+          } | tee evidence/macos-environment.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

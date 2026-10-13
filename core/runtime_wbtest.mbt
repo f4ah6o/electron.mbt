@@ -1,5 +1,5 @@
 ///|
-fn live_runtime() -> (Runtime, Int, Int) {
+fn live_runtime() -> (Runtime, Int32, Int32) {
   let runtime = Runtime::new()
   runtime.ready() |> ignore
   let id = match runtime.reserve_window() {
@@ -62,16 +62,33 @@ test "destroy is idempotent and identifiers are never reused" {
 ///|
 test "ungranted channels foreign origins and child frames are denied" {
   let (runtime, id, generation) = live_runtime()
-  assert_true(runtime.authorize(id, generation, "file:///fixture/", true, "read-text") is Ok(_))
-  assert_true(runtime.authorize(id, generation, "https://example.invalid", true, "read-text") is Err(Denied))
-  assert_true(runtime.authorize(id, generation, "file:///fixture/", false, "read-text") is Err(Denied))
-  assert_true(runtime.authorize(id, generation, "file:///fixture/", true, "write-text") is Err(Denied))
+  assert_true(
+    runtime.authorize(id, generation, "file:///fixture/", true, "read-text")
+    is Ok(_),
+  )
+  assert_true(
+    runtime.authorize(
+      id, generation, "https://example.invalid", true, "read-text",
+    )
+    is Err(Denied),
+  )
+  assert_true(
+    runtime.authorize(id, generation, "file:///fixture/", false, "read-text")
+    is Err(Denied),
+  )
+  assert_true(
+    runtime.authorize(id, generation, "file:///fixture/", true, "write-text")
+    is Err(Denied),
+  )
 }
 
 ///|
 test "navigation invalidates grants senders and pending requests" {
   let (runtime, id, generation) = live_runtime()
-  let request = match runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 17) {
+  let request = match
+    runtime.begin_request(
+      id, generation, "file:///fixture/", true, "read-text", 17,
+    ) {
     Ok(id) => id
     Err(_) => abort("request failed")
   }
@@ -82,11 +99,22 @@ test "navigation invalidates grants senders and pending requests" {
   assert_true(next > generation)
   assert_eq(runtime.pending_count(), 0)
   assert_eq(runtime.queued_bytes(), 0)
-  assert_true(runtime.activate_document(id, generation, "file:///fixture/") is Err(StaleDocument))
+  assert_true(
+    runtime.activate_document(id, generation, "file:///fixture/")
+    is Err(StaleDocument),
+  )
   assert_true(runtime.activate_document(id, next, "file:///fixture/") is Ok(_))
-  assert_true(runtime.authorize(id, generation, "file:///fixture/", true, "read-text") is Err(StaleDocument))
-  assert_true(runtime.authorize(id, next, "file:///fixture/", true, "read-text") is Err(Denied))
-  assert_true(runtime.complete_request(request, id, generation) is Err(AlreadyCompleted))
+  assert_true(
+    runtime.authorize(id, generation, "file:///fixture/", true, "read-text")
+    is Err(StaleDocument),
+  )
+  assert_true(
+    runtime.authorize(id, next, "file:///fixture/", true, "read-text")
+    is Err(Denied),
+  )
+  assert_true(
+    runtime.complete_request(request, id, generation) is Err(AlreadyCompleted),
+  )
   assert_eq(runtime.take_cancellations(), [request])
   assert_eq(runtime.take_cancellations().length(), 0)
 }
@@ -94,26 +122,53 @@ test "navigation invalidates grants senders and pending requests" {
 ///|
 test "completion is correlated and terminal exactly once" {
   let (runtime, id, generation) = live_runtime()
-  let request = match runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 10) {
+  let request = match
+    runtime.begin_request(
+      id, generation, "file:///fixture/", true, "read-text", 10,
+    ) {
     Ok(id) => id
     Err(_) => abort("request failed")
   }
-  assert_true(runtime.complete_request(request, id + 1, generation) is Err(StaleDocument))
+  assert_true(
+    runtime.complete_request(request, id + 1, generation) is Err(StaleDocument),
+  )
   assert_eq(runtime.pending_count(), 1)
   assert_true(runtime.complete_request(request, id, generation) is Ok(_))
-  assert_true(runtime.complete_request(request, id, generation) is Err(AlreadyCompleted))
+  assert_true(
+    runtime.complete_request(request, id, generation) is Err(AlreadyCompleted),
+  )
   assert_eq(runtime.queued_bytes(), 0)
 }
 
 ///|
 test "queue byte limits are checked before adding pending work" {
   let (runtime, id, generation) = live_runtime()
-  assert_true(runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", -1) is Err(LimitExceeded))
-  assert_true(runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 1048577) is Err(LimitExceeded))
+  assert_true(
+    runtime.begin_request(
+      id, generation, "file:///fixture/", true, "read-text", -1,
+    )
+    is Err(LimitExceeded),
+  )
+  assert_true(
+    runtime.begin_request(
+      id, generation, "file:///fixture/", true, "read-text", 1048577,
+    )
+    is Err(LimitExceeded),
+  )
   for _ in 0..<4 {
-    assert_true(runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 1048576) is Ok(_))
+    assert_true(
+      runtime.begin_request(
+        id, generation, "file:///fixture/", true, "read-text", 1048576,
+      )
+      is Ok(_),
+    )
   }
-  assert_true(runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 1) is Err(LimitExceeded))
+  assert_true(
+    runtime.begin_request(
+      id, generation, "file:///fixture/", true, "read-text", 1,
+    )
+    is Err(LimitExceeded),
+  )
   assert_eq(runtime.queued_bytes(), 4194304)
 }
 
@@ -121,21 +176,54 @@ test "queue byte limits are checked before adding pending work" {
 test "pending and undelivered cancellation counts remain bounded" {
   let (runtime, id, generation) = live_runtime()
   for _ in 0..<256 {
-    assert_true(runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 0) is Ok(_))
+    assert_true(
+      runtime.begin_request(
+        id, generation, "file:///fixture/", true, "read-text", 0,
+      )
+      is Ok(_),
+    )
   }
-  assert_true(runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 0) is Err(LimitExceeded))
+  assert_true(
+    runtime.begin_request(
+      id, generation, "file:///fixture/", true, "read-text", 0,
+    )
+    is Err(LimitExceeded),
+  )
   runtime.navigate(id) |> ignore
   runtime.activate_document(id, generation + 1, "file:///fixture/") |> ignore
   runtime.grant(id, generation + 1, "read-text") |> ignore
-  assert_true(runtime.begin_request(id, generation + 1, "file:///fixture/", true, "read-text", 0) is Err(LimitExceeded))
+  assert_true(
+    runtime.begin_request(
+      id,
+      generation + 1,
+      "file:///fixture/",
+      true,
+      "read-text",
+      0,
+    )
+    is Err(LimitExceeded),
+  )
   assert_eq(runtime.take_cancellations().length(), 256)
-  assert_true(runtime.begin_request(id, generation + 1, "file:///fixture/", true, "read-text", 0) is Ok(_))
+  assert_true(
+    runtime.begin_request(
+      id,
+      generation + 1,
+      "file:///fixture/",
+      true,
+      "read-text",
+      0,
+    )
+    is Ok(_),
+  )
 }
 
 ///|
 test "shutdown cancels outstanding work and cannot be reopened" {
   let (runtime, id, generation) = live_runtime()
-  runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 20) |> ignore
+  runtime.begin_request(
+    id, generation, "file:///fixture/", true, "read-text", 20,
+  )
+  |> ignore
   runtime.stop()
   runtime.stop()
   assert_eq(runtime.pending_count(), 0)
@@ -150,7 +238,9 @@ test "shutdown cancels outstanding work and cannot be reopened" {
 test "creation and identifiers have hard bounds" {
   let runtime = Runtime::new()
   runtime.ready() |> ignore
-  for _ in 0..<64 { assert_true(runtime.reserve_window() is Ok(_)) }
+  for _ in 0..<64 {
+    assert_true(runtime.reserve_window() is Ok(_))
+  }
   assert_true(runtime.reserve_window() is Err(LimitExceeded))
   runtime.destroy_window(1) |> ignore
   runtime.next_window = 2147483647
@@ -160,9 +250,14 @@ test "creation and identifiers have hard bounds" {
 ///|
 test "document activation cannot change an active origins authority" {
   let (runtime, id, generation) = live_runtime()
-  assert_true(runtime.activate_document(id, generation, "https://attacker.invalid") is Err(InvalidState))
+  assert_true(
+    runtime.activate_document(id, generation, "https://attacker.invalid")
+    is Err(InvalidState),
+  )
   runtime.navigate(id) |> ignore
-  assert_true(runtime.activate_document(id, generation + 1, "null") is Err(Denied))
+  assert_true(
+    runtime.activate_document(id, generation + 1, "null") is Err(Denied),
+  )
   assert_true(runtime.activate_document(id, generation + 1, "") is Err(Denied))
 }
 
@@ -177,9 +272,15 @@ test "insecure web preferences never silently downgrade" {
 
 ///|
 test "bounded tiny JSON profile rejects deep values" {
-  assert_true(validate_json(@json.parse("{\"text\":\"日本語\",\"items\":[null,true,1]}")))
+  assert_true(
+    validate_json(
+      @json.parse("{\"text\":\"日本語\",\"items\":[null,true,1]}"),
+    ),
+  )
   let mut value : Json = null
-  for _ in 0..<65 { value = [value].to_json() }
+  for _ in 0..<65 {
+    value = [value].to_json()
+  }
   assert_false(validate_json(value))
 }
 
@@ -187,7 +288,10 @@ test "bounded tiny JSON profile rejects deep values" {
 test "terminal history stays bounded under repeated successful requests" {
   let (runtime, id, generation) = live_runtime()
   for _ in 0..<2048 {
-    let request = match runtime.begin_request(id, generation, "file:///fixture/", true, "read-text", 1) {
+    let request = match
+      runtime.begin_request(
+        id, generation, "file:///fixture/", true, "read-text", 1,
+      ) {
       Ok(id) => id
       Err(_) => abort("request failed")
     }
@@ -196,7 +300,9 @@ test "terminal history stays bounded under repeated successful requests" {
   assert_eq(runtime.terminal.length(), 1024)
   assert_eq(runtime.pending_count(), 0)
   assert_eq(runtime.queued_bytes(), 0)
-  assert_true(runtime.complete_request(1, id, generation) is Err(UnknownRequest))
+  assert_true(
+    runtime.complete_request(1, id, generation) is Err(UnknownRequest),
+  )
 }
 
 ///|

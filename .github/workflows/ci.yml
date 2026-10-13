@@ -25,11 +25,11 @@ jobs:
           # Immutable pins verified before execution; upstream versioned
           # objects expire after ~60 days, so a mismatch fails loudly and the
           # pin must be re-recorded deliberately rather than drifting.
-          MOONBIT_VERSION: '0.10.14+7d59c7ec9'
+          MOONBIT_VERSION: '0.10.15+943464bfa'
           MOONBIT_INSTALLER_SHA256: '46495f8cdc0050f79b6cb195d66478d101cb3601d68506568fbe377fcdf2a9fe'
-          MOON_SHA256: '6da4919f45f4abf7c6d7f3cf8d9a457de77dca430d6fb811d21b27ae1ac8e11d'
-          MOONC_SHA256: 'd163b2c4c878ca584870764b75e633d73e8b9c178dcc6b00c692f6b2a6b1b2dc'
-          MOONRUN_SHA256: '1b22f489621059b8c22ee4acdaddc5f5d1781f62529d3000a24c03d45032d0e2'
+          MOON_SHA256: 'a31026b83410607909ebae469fa19e46c32201cfe403be6099e1da961a5ebf0f'
+          MOONC_SHA256: 'fb950cbc125168c49523ef554d2649effd66499c596dafcb15c80b561d45fd8c'
+          MOONRUN_SHA256: 'ba44070aa78d89c2c6da6524d2aa782e46b18cb4a42dd31cd13bf588107089cf'
         run: |
           set -euo pipefail
           mkdir -p evidence
@@ -43,8 +43,8 @@ jobs:
             echo "$MOONRUN_SHA256  $HOME/.moon/bin/moonrun"
           } | sha256sum --check | tee evidence/toolchain-sha256.txt
           "$HOME/.moon/bin/moon" version --all | tee evidence/moon-version.txt
-          grep -Fq 'moonc v0.10.14+7d59c7ec9 (2026-09-18)' evidence/moon-version.txt
-          grep -Fq 'moon 0.1.20260920 (914d7da 2026-09-20)' evidence/moon-version.txt
+          grep -Fq 'moonc v0.10.15+943464bfa (2026-10-12)' evidence/moon-version.txt
+          grep -Fq 'moon 0.1.20261012 (748b63c 2026-10-12)' evidence/moon-version.txt
           node --version | tee evidence/node-version.txt
           uname -a | tee evidence/environment.txt
       - name: Check MoonBit JS

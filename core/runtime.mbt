@@ -63,7 +63,7 @@ pub fn RuntimeError::code(self : RuntimeError) -> String {
 ///|
 struct Window {
   mut state : WindowState
-  mut generation : Int
+  mut generation : Int32
   mut origin : String
   mut active : Bool
   grants : Map[String, Bool]
@@ -71,21 +71,21 @@ struct Window {
 
 ///|
 struct Pending {
-  window : Int
-  generation : Int
-  bytes : Int
+  window : Int32
+  generation : Int32
+  bytes : Int32
 }
 
 ///|
 pub struct Runtime {
   mut app : AppState
-  windows : Map[Int, Window]
-  pending : Map[Int, Pending]
-  terminal : Array[Int]
-  cancelled : Array[Int]
-  mut next_window : Int
-  mut next_request : Int
-  mut queue_bytes : Int
+  windows : Map[Int32, Window]
+  pending : Map[Int32, Pending]
+  terminal : Array[Int32]
+  cancelled : Array[Int32]
+  mut next_window : Int32
+  mut next_request : Int32
+  mut queue_bytes : Int32
 }
 
 ///|
@@ -109,21 +109,27 @@ pub fn Runtime::app_state(self : Runtime) -> AppState {
 
 ///|
 pub fn Runtime::ready(self : Runtime) -> Result[Unit, RuntimeError] {
-  if self.app != Booting { return Err(InvalidState) }
+  if self.app != Booting {
+    return Err(InvalidState)
+  }
   self.app = Ready
   Ok(())
 }
 
 ///|
 pub fn Runtime::begin_quit(self : Runtime) -> Result[Unit, RuntimeError] {
-  if self.app != Ready { return Err(InvalidState) }
+  if self.app != Ready {
+    return Err(InvalidState)
+  }
   self.app = Quitting
   Ok(())
 }
 
 ///|
 pub fn Runtime::cancel_quit(self : Runtime) -> Result[Unit, RuntimeError] {
-  if self.app != Quitting { return Err(InvalidState) }
+  if self.app != Quitting {
+    return Err(InvalidState)
+  }
   self.app = Ready
   Ok(())
 }
@@ -141,10 +147,16 @@ pub fn Runtime::stop(self : Runtime) -> Unit {
 }
 
 ///|
-pub fn Runtime::reserve_window(self : Runtime) -> Result[Int, RuntimeError] {
-  if self.app != Ready { return Err(InvalidState) }
-  if self.windows.length() >= 64 { return Err(LimitExceeded) }
-  if self.next_window == 2147483647 { return Err(IdExhausted) }
+pub fn Runtime::reserve_window(self : Runtime) -> Result[Int32, RuntimeError] {
+  if self.app != Ready {
+    return Err(InvalidState)
+  }
+  if self.windows.length() >= 64 {
+    return Err(LimitExceeded)
+  }
+  if self.next_window == 2147483647 {
+    return Err(IdExhausted)
+  }
   let id = self.next_window
   self.next_window += 1
   self.windows[id] = {
@@ -160,11 +172,13 @@ pub fn Runtime::reserve_window(self : Runtime) -> Result[Int, RuntimeError] {
 ///|
 pub fn Runtime::confirm_window(
   self : Runtime,
-  id : Int,
+  id : Int32,
 ) -> Result[Unit, RuntimeError] {
   match self.windows.get(id) {
     Some(window) => {
-      if window.state != Creating { return Err(InvalidState) }
+      if window.state != Creating {
+        return Err(InvalidState)
+      }
       window.state = Live
       Ok(())
     }
@@ -175,7 +189,7 @@ pub fn Runtime::confirm_window(
 ///|
 pub fn Runtime::window_state(
   self : Runtime,
-  id : Int,
+  id : Int32,
 ) -> Result[WindowState, RuntimeError] {
   match self.windows.get(id) {
     Some(window) => Ok(window.state)
@@ -186,11 +200,13 @@ pub fn Runtime::window_state(
 ///|
 pub fn Runtime::begin_close(
   self : Runtime,
-  id : Int,
+  id : Int32,
 ) -> Result[Unit, RuntimeError] {
   match self.windows.get(id) {
     Some(window) => {
-      if window.state != Live { return Err(InvalidState) }
+      if window.state != Live {
+        return Err(InvalidState)
+      }
       window.state = Closing
       Ok(())
     }
@@ -201,11 +217,13 @@ pub fn Runtime::begin_close(
 ///|
 pub fn Runtime::cancel_close(
   self : Runtime,
-  id : Int,
+  id : Int32,
 ) -> Result[Unit, RuntimeError] {
   match self.windows.get(id) {
     Some(window) => {
-      if window.state != Closing { return Err(InvalidState) }
+      if window.state != Closing {
+        return Err(InvalidState)
+      }
       window.state = Live
       Ok(())
     }
@@ -214,7 +232,7 @@ pub fn Runtime::cancel_close(
 }
 
 ///|
-fn Runtime::remember_terminal(self : Runtime, id : Int) -> Unit {
+fn Runtime::remember_terminal(self : Runtime, id : Int32) -> Unit {
   // An unbounded completed-request ledger would defeat the pending-work limit.
   if self.terminal.length() == 1024 {
     self.terminal.remove(0) |> ignore
@@ -223,10 +241,12 @@ fn Runtime::remember_terminal(self : Runtime, id : Int) -> Unit {
 }
 
 ///|
-fn Runtime::cancel_window_requests(self : Runtime, window : Int) -> Unit {
-  let ids : Array[Int] = []
+fn Runtime::cancel_window_requests(self : Runtime, window : Int32) -> Unit {
+  let ids : Array[Int32] = []
   for id, pending in self.pending {
-    if pending.window == window { ids.push(id) }
+    if pending.window == window {
+      ids.push(id)
+    }
   }
   for id in ids {
     match self.pending.get(id) {
@@ -242,8 +262,10 @@ fn Runtime::cancel_window_requests(self : Runtime, window : Int) -> Unit {
 }
 
 ///|
-pub fn Runtime::destroy_window(self : Runtime, id : Int) -> Bool {
-  if !self.windows.contains(id) { return false }
+pub fn Runtime::destroy_window(self : Runtime, id : Int32) -> Bool {
+  if !self.windows.contains(id) {
+    return false
+  }
   self.cancel_window_requests(id)
   self.windows.remove(id)
   true
@@ -252,12 +274,16 @@ pub fn Runtime::destroy_window(self : Runtime, id : Int) -> Bool {
 ///|
 pub fn Runtime::navigate(
   self : Runtime,
-  id : Int,
-) -> Result[Int, RuntimeError] {
+  id : Int32,
+) -> Result[Int32, RuntimeError] {
   match self.windows.get(id) {
     Some(window) => {
-      if window.state != Live { return Err(InvalidState) }
-      if window.generation == 2147483647 { return Err(IdExhausted) }
+      if window.state != Live {
+        return Err(InvalidState)
+      }
+      if window.generation == 2147483647 {
+        return Err(IdExhausted)
+      }
       window.generation += 1
       window.active = false
       window.origin = ""
@@ -272,18 +298,24 @@ pub fn Runtime::navigate(
 ///|
 pub fn Runtime::activate_document(
   self : Runtime,
-  id : Int,
-  generation : Int,
+  id : Int32,
+  generation : Int32,
   host_origin : String,
 ) -> Result[Unit, RuntimeError] {
   match self.windows.get(id) {
     Some(window) => {
-      if window.state != Live { return Err(InvalidState) }
+      if window.state != Live {
+        return Err(InvalidState)
+      }
       if generation <= 0 || window.generation != generation {
         return Err(StaleDocument)
       }
-      if window.active { return Err(InvalidState) }
-      if host_origin == "" || host_origin == "null" { return Err(Denied) }
+      if window.active {
+        return Err(InvalidState)
+      }
+      if host_origin == "" || host_origin == "null" {
+        return Err(Denied)
+      }
       window.origin = host_origin
       window.active = true
       Ok(())
@@ -295,8 +327,8 @@ pub fn Runtime::activate_document(
 ///|
 pub fn Runtime::grant(
   self : Runtime,
-  id : Int,
-  generation : Int,
+  id : Int32,
+  generation : Int32,
   channel : String,
 ) -> Result[Unit, RuntimeError] {
   match self.windows.get(id) {
@@ -304,8 +336,12 @@ pub fn Runtime::grant(
       if window.state != Live || !window.active {
         return Err(InvalidState)
       }
-      if window.generation != generation { return Err(StaleDocument) }
-      if channel == "" || channel.length() > 128 { return Err(Denied) }
+      if window.generation != generation {
+        return Err(StaleDocument)
+      }
+      if channel == "" || channel.length() > 128 {
+        return Err(Denied)
+      }
       if window.grants.length() >= 128 && !window.grants.contains(channel) {
         return Err(LimitExceeded)
       }
@@ -319,23 +355,29 @@ pub fn Runtime::grant(
 ///|
 pub fn Runtime::authorize(
   self : Runtime,
-  id : Int,
-  generation : Int,
+  id : Int32,
+  generation : Int32,
   host_origin : String,
   main_frame : Bool,
   channel : String,
 ) -> Result[Unit, RuntimeError] {
-  if self.app != Ready { return Err(InvalidState) }
+  if self.app != Ready {
+    return Err(InvalidState)
+  }
   match self.windows.get(id) {
     Some(window) => {
       if window.state != Live || !window.active {
         return Err(InvalidState)
       }
-      if window.generation != generation { return Err(StaleDocument) }
+      if window.generation != generation {
+        return Err(StaleDocument)
+      }
       if !main_frame || window.origin != host_origin {
         return Err(Denied)
       }
-      if !window.grants.contains(channel) { return Err(Denied) }
+      if !window.grants.contains(channel) {
+        return Err(Denied)
+      }
       Ok(())
     }
     None => Err(UnknownWindow)
@@ -345,13 +387,13 @@ pub fn Runtime::authorize(
 ///|
 pub fn Runtime::begin_request(
   self : Runtime,
-  id : Int,
-  generation : Int,
+  id : Int32,
+  generation : Int32,
   host_origin : String,
   main_frame : Bool,
   channel : String,
-  payload_bytes : Int,
-) -> Result[Int, RuntimeError] {
+  payload_bytes : Int32,
+) -> Result[Int32, RuntimeError] {
   match self.authorize(id, generation, host_origin, main_frame, channel) {
     Err(error) => return Err(error)
     Ok(_) => ()
@@ -359,13 +401,16 @@ pub fn Runtime::begin_request(
   if payload_bytes < 0 || payload_bytes > 1048576 {
     return Err(LimitExceeded)
   }
-  if self.pending.length() + self.cancelled.length() >= 256 || self.queue_bytes > 4194304 - payload_bytes {
+  if self.pending.length() + self.cancelled.length() >= 256 ||
+    self.queue_bytes > 4194304 - payload_bytes {
     return Err(LimitExceeded)
   }
-  if self.next_request == 2147483647 { return Err(IdExhausted) }
+  if self.next_request == 2147483647 {
+    return Err(IdExhausted)
+  }
   let request = self.next_request
   self.next_request += 1
-  self.pending[request] = { window: id, generation, bytes: payload_bytes }
+  self.pending[request] = { window: id, generation, bytes: payload_bytes, }
   self.queue_bytes += payload_bytes
   Ok(request)
 }
@@ -373,9 +418,9 @@ pub fn Runtime::begin_request(
 ///|
 pub fn Runtime::complete_request(
   self : Runtime,
-  request : Int,
-  id : Int,
-  generation : Int,
+  request : Int32,
+  id : Int32,
+  generation : Int32,
 ) -> Result[Unit, RuntimeError] {
   match self.pending.get(request) {
     Some(pending) => {
@@ -387,23 +432,22 @@ pub fn Runtime::complete_request(
       self.remember_terminal(request)
       Ok(())
     }
-    None => {
+    None =>
       if self.terminal.contains(request) {
         Err(AlreadyCompleted)
       } else {
         Err(UnknownRequest)
       }
-    }
   }
 }
 
 ///|
-pub fn Runtime::pending_count(self : Runtime) -> Int {
+pub fn Runtime::pending_count(self : Runtime) -> Int32 {
   self.pending.length()
 }
 
 ///|
-pub fn Runtime::queued_bytes(self : Runtime) -> Int {
+pub fn Runtime::queued_bytes(self : Runtime) -> Int32 {
   self.queue_bytes
 }
 
@@ -418,7 +462,7 @@ pub fn validate_preferences(
 }
 
 ///|
-pub fn Runtime::take_cancellations(self : Runtime) -> Array[Int] {
+pub fn Runtime::take_cancellations(self : Runtime) -> Array[Int32] {
   let result = self.cancelled.copy()
   self.cancelled.clear()
   result

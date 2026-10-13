@@ -1,27 +1,32 @@
 ///|
 struct Budget {
-  mut remaining : Int
+  mut remaining : Int32
 }
 
 ///|
-fn validate_value(value : Json, depth : Int, budget : Budget) -> Bool {
-  if depth > 64 || budget.remaining <= 0 { return false }
+fn validate_value(value : Json, depth : Int32, budget : Budget) -> Bool {
+  if depth > 64 || budget.remaining <= 0 {
+    return false
+  }
   budget.remaining -= 1
   match value {
     Null | True | False | String(_) => true
-    Number(number, ..) => {
+    Number(number, ..) =>
       // JSON would erase negative zero; infinities and NaN also cannot round-trip.
       number - number == 0.0 && (number != 0.0 || 1.0 / number > 0.0)
-    }
     Array(values) => {
       for value in values {
-        if !validate_value(value, depth + 1, budget) { return false }
+        if !validate_value(value, depth + 1, budget) {
+          return false
+        }
       }
       true
     }
     Object(values) => {
       for _, value in values {
-        if !validate_value(value, depth + 1, budget) { return false }
+        if !validate_value(value, depth + 1, budget) {
+          return false
+        }
       }
       true
     }
@@ -30,5 +35,5 @@ fn validate_value(value : Json, depth : Int, budget : Budget) -> Bool {
 
 ///|
 pub fn validate_json(value : Json) -> Bool {
-  validate_value(value, 0, { remaining: 100000 })
+  validate_value(value, 0, { remaining: 100000, })
 }

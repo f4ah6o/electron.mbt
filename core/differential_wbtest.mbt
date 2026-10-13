@@ -46,7 +46,10 @@ test "environment fields are recorded but never compared" {
 
 ///|
 test "the first diverging trace entry is reported with its index" {
-  let electron : Json = { "status": "completed", "trace": [["a"], ["b"], ["c"]] }
+  let electron : Json = {
+    "status": "completed",
+    "trace": [["a"], ["b"], ["c"]],
+  }
   let mbt : Json = { "status": "completed", "trace": [["a"], ["x"]] }
   let verdict = compare_observations(electron, mbt)
   assert_true(field(verdict, "verdict") is String("diverged"))
@@ -65,7 +68,10 @@ test "the first diverging trace entry is reported with its index" {
 test "an early-ended trace diverges at the missing entry" {
   let electron : Json = { "trace": [["a"], ["b"]] }
   let mbt : Json = { "trace": [["a"]] }
-  let trace = field(field(compare_observations(electron, mbt), "fields"), "trace")
+  let trace = field(
+    field(compare_observations(electron, mbt), "fields"),
+    "trace",
+  )
   assert_true(field(trace, "matchedPrefix") is Number(1, ..))
   assert_true(field(field(trace, "firstDivergence"), "mbt") is Null)
 }
@@ -73,13 +79,18 @@ test "an early-ended trace diverges at the missing entry" {
 ///|
 test "a key present on only one side is a reported mismatch" {
   let electron : Json = { "status": "completed" }
-  let mbt : Json = { "status": "aborted", "abort": { "code": "ELECTRON_MBT_UNSUPPORTED_API" } }
+  let mbt : Json = {
+    "status": "aborted",
+    "abort": { "code": "ELECTRON_MBT_UNSUPPORTED_API" },
+  }
   let verdict = compare_observations(electron, mbt)
   assert_true(field(verdict, "verdict") is String("diverged"))
   let abort = field(field(verdict, "fields"), "abort")
   assert_true(field(abort, "match") is False)
   assert_true(field(abort, "electron") is String("<absent>"))
-  assert_true(field(field(abort, "mbt"), "code") is String("ELECTRON_MBT_UNSUPPORTED_API"))
+  assert_true(
+    field(field(abort, "mbt"), "code") is String("ELECTRON_MBT_UNSUPPORTED_API"),
+  )
 }
 
 ///|
@@ -98,6 +109,9 @@ test "an explicit null is not equal to an absent key" {
 test "non-object observations are rejected as invalid payloads" {
   let array = @json.parse("[1,2,3]")
   assert_true(field(compare_observations(array, { "a": 1 }), "ok") is False)
-  assert_true(field(compare_observations(array, { "a": 1 }), "code") is String("InvalidPayload"))
+  assert_true(
+    field(compare_observations(array, { "a": 1 }), "code")
+    is String("InvalidPayload"),
+  )
   assert_true(field(compare_observations({ "a": 1 }, array), "ok") is False)
 }

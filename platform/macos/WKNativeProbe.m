@@ -50,11 +50,75 @@ static void finish(NSDictionary *result, int code) {
            @"traces": self.traces, @"nativeObservations": self.nativeLog}, 1);
 }
 
+// The observation each trace must produce. Unexpected values flip the run to
+// INCONCLUSIVE; a stalled or missing trace makes it PARTIAL — the top-level
+// status is computed, never asserted from constants.
+- (NSString *)outcomeForTrace:(NSString *)name
+                     observed:(NSDictionary *)obs
+                  expectation:(NSString **)expectation {
+  if ([name isEqual:@"inputDomSynthesis"]) {
+    *expectation = @"evaluateJavaScript-synthesized events must all carry isTrusted=false and insert no text";
+    if ([obs[@"anyTrustedEvent"] isEqual:@YES]) return @"unexpected";
+    return @"as-expected";
+  }
+  if ([name isEqual:@"inputOsEvent"]) {
+    *expectation = @"delivery outcomes are recorded per path; trusted input is AppKit/WindowServer-level, not hardware";
+    return @"as-expected";
+  }
+  if ([name isEqual:@"resizeAndDpi"]) {
+    *expectation = @"the real NSWindow resize produces a DOM resize event and a changed viewport";
+    NSDictionary *after = obs[@"after"];
+    NSDictionary *before = obs[@"before"];
+    BOOL resized = [after[@"resizeEvents"] integerValue] >= 1 &&
+                   ![after[@"inner"] isEqual:before[@"inner"]];
+    return resized ? @"as-expected" : @"unexpected";
+  }
+  if ([name isEqual:@"pasteboard"]) {
+    *expectation = @"the named NSPasteboard write/read round-trips; a parked DOM probe is recorded as stalled";
+    NSDictionary *native = obs[@"native"];
+    BOOL roundTrip = [native[@"write"] isEqual:@YES] &&
+                     [native[@"readBack"] isEqual:@"mbt-pasteboard-ok"];
+    if (!roundTrip) return @"unexpected";
+    if ([obs[@"dom"][@"stalled"] isEqual:@YES]) return @"stalled";
+    return @"as-expected";
+  }
+  if ([name isEqual:@"accessibilityTree"]) {
+    *expectation = @"an in-process AX role read returns a non-null value";
+    return obs[@"webViewRole"] != nil && obs[@"webViewRole"] != [NSNull null]
+         ? @"as-expected" : @"unexpected";
+  }
+  *expectation = nil;
+  return @"as-expected";
+}
+
 - (void)emit {
+  NSInteger unexpected = 0, notRun = 0, executed = 0, stalled = 0;
+  for (NSString *name in self.traces.allKeys) {
+    NSMutableDictionary *entry = [self.traces[name] mutableCopy];
+    if ([entry[@"status"] isEqual:@"NOT_RUN"] || ![entry[@"attempted"] isEqual:@YES]) {
+      entry[@"outcome"] = @"not-run";
+      notRun++;
+    } else {
+      NSString *expectation = nil;
+      NSString *outcome = [self outcomeForTrace:name
+                                       observed:entry[@"observed"]
+                                    expectation:&expectation];
+      if (expectation != nil) entry[@"expectation"] = expectation;
+      entry[@"outcome"] = outcome;
+      if ([outcome isEqual:@"unexpected"]) unexpected++;
+      else if ([outcome isEqual:@"stalled"]) stalled++;
+      else executed++;
+    }
+    self.traces[name] = entry;
+  }
+  NSString *status = unexpected > 0 ? @"INCONCLUSIVE"
+                   : (stalled > 0 || self.stallPhase != nil) ? @"PARTIAL" : @"PASS";
   NSMutableDictionary *result = [@{
     @"probe": @"wknative",
-    @"status": @"PASS",
+    @"status": status,
     @"compatibilityGate": @"OPEN",
+    @"coverage": @{@"executed": @(executed), @"notRun": @(notRun),
+                   @"stalled": @(stalled), @"unexpected": @(unexpected)},
     @"note": @"DOM events marked isTrusted=false are evaluateJavaScript synthesis, not OS input. "
              @"Entries with attempted=NO were genuinely unexercisable on this machine.",
     @"traces": self.traces,
@@ -139,9 +203,14 @@ static void finish(NSDictionary *result, int code) {
   self.traces[@"realKeyboardHardware"] = @{@"attempted": @NO, @"status": @"NOT_RUN",
     @"reason": @"No operator pressed real keys; posted events may carry isTrusted but are not "
                @"proof of hardware input."};
+  NSUInteger screenCount = [NSScreen screens].count;
   self.traces[@"secondaryDisplayDpi"] = @{@"attempted": @NO, @"status": @"NOT_RUN",
-    @"reason": @"Only one display is attached, so a devicePixelRatio transition cannot be "
-               @"exercised on this machine."};
+    @"reason": screenCount < 2
+      ? [NSString stringWithFormat:@"Only %lu display is attached, so a devicePixelRatio transition "
+         @"cannot be exercised on this machine.", (unsigned long)screenCount]
+      : [NSString stringWithFormat:@"%lu displays are attached but this probe does not retarget the "
+         @"window across backing-scale factors; a real DPI transition was not exercised.",
+         (unsigned long)screenCount]};
   self.nativeLog = [NSMutableArray array];
   self.phases = [NSMutableArray array];
   self.phaseIndex = 0;
@@ -398,11 +467,23 @@ static void finish(NSDictionary *result, int code) {
   }];
 }
 
-// Real OS-level paste: preload the pasteboard natively, then post Cmd+V as a
-// hardware-path CGEvent. Anything reaching the DOM is genuine trusted input,
-// unlike navigator.clipboard calls.
+// Real OS-level paste: preload the system pasteboard natively, then post Cmd+V.
+// Mutating the general pasteboard destroys a developer's clipboard, so this
+// phase runs only with ELECTRON_MBT_OS_PASTE_OPT_IN=1 (set in CI, where the
+// pasteboard is disposable); otherwise it is an explicit NOT_RUN.
 - (void)phaseOsPaste {
   __weak NativeProbe *weakSelf = self;
+  if (![NSProcessInfo.processInfo.environment[@"ELECTRON_MBT_OS_PASTE_OPT_IN"] isEqual:@"1"]) {
+    [self trace:@"osPaste" body:@{
+      @"executed": @NO,
+      @"status": @"NOT_RUN",
+      @"reason": @"posting Cmd+V requires writing the general pasteboard, which would destroy the "
+                 @"user's clipboard contents; set ELECTRON_MBT_OS_PASTE_OPT_IN=1 in a disposable "
+                 @"environment (CI sets it) to opt in",
+    }];
+    [self advance];
+    return;
+  }
   NSPasteboard *pb = [NSPasteboard generalPasteboard];
   [pb clearContents];
   [pb setString:@"mbt-cgevent-paste" forType:NSPasteboardTypeString];
@@ -469,11 +550,14 @@ static void finish(NSDictionary *result, int code) {
 
 - (void)phasePasteboard {
   __weak NativeProbe *weakSelf = self;
-  NSPasteboard *pb = [NSPasteboard generalPasteboard];
+  // A named pasteboard is fully owned by this process — the round-trip never
+  // touches the user's general pasteboard.
+  NSPasteboard *pb = [NSPasteboard pasteboardWithName:@"electron-mbt-probe"];
   [pb clearContents];
   BOOL wrote = [pb setString:@"mbt-pasteboard-ok" forType:NSPasteboardTypeString];
   NSString *readBack = [pb stringForType:NSPasteboardTypeString];
-  [weakSelf recordNative:@"pasteboard.native" detail:@{@"wrote": @(wrote), @"readBack": readBack ?: [NSNull null]}];
+  [weakSelf recordNative:@"pasteboard.native" detail:@{@"pasteboard": @"named:electron-mbt-probe",
+    @"wrote": @(wrote), @"readBack": readBack ?: [NSNull null]}];
   NSString *domProbe = @"(function () {"
     @"var out = { api: typeof navigator.clipboard };"
     @"var done = function () { globalThis.__clipResult = JSON.stringify(out); };"
@@ -487,13 +571,19 @@ static void finish(NSDictionary *result, int code) {
     @"})()";
   // Bounded phase: a pasteboard-consent prompt can park the web process and
   // leave any DOM clipboard eval unresolved; the guard records it and moves on.
+  // Verifying a DOM write means reading the general pasteboard — gated on the
+  // same opt-in because the read itself can raise a consent prompt.
+  BOOL osPasteOptIn = [NSProcessInfo.processInfo.environment[@"ELECTRON_MBT_OS_PASTE_OPT_IN"] isEqual:@"1"];
   [self guardPhase:12 fallback:^{
-    NSString *nativeVerify = [pb stringForType:NSPasteboardTypeString];
+    id nativeVerify = osPasteOptIn
+      ? ([[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] ?: [NSNull null])
+      : @"skipped: reading the general pasteboard requires ELECTRON_MBT_OS_PASTE_OPT_IN=1";
     [weakSelf trace:@"pasteboard" body:@{
       @"executed": @YES,
       @"observed": @{
-        @"native": @{@"write": @(wrote), @"readBack": readBack ?: [NSNull null],
-                     @"afterDomWriteAttempt": nativeVerify ?: [NSNull null]},
+        @"native": @{@"pasteboard": @"named:electron-mbt-probe",
+                     @"write": @(wrote), @"readBack": readBack ?: [NSNull null],
+                     @"generalPasteboardVerify": nativeVerify},
         @"dom": @{@"stalled": @YES,
                   @"reason": @"evaluateJavaScript never completed — the web process parked "
                              @"(a pasteboard-consent prompt is the likely cause); the DOM "
@@ -511,12 +601,15 @@ static void finish(NSDictionary *result, int code) {
       [weakSelf eval:@"globalThis.__clipResult" then:^(id dom, NSError *e1) {
         if (![weakSelf.currentPhase isEqual:@"phasePasteboard"]) return;
         if (e1 != nil) { [weakSelf abort:@"ELECTRON_MBT_PAGE_OBSERVATION"]; return; }
-        NSString *nativeVerify = [pb stringForType:NSPasteboardTypeString];
+        id nativeVerify = osPasteOptIn
+          ? ([[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] ?: [NSNull null])
+          : @"skipped: reading the general pasteboard requires ELECTRON_MBT_OS_PASTE_OPT_IN=1";
         [weakSelf trace:@"pasteboard" body:@{
           @"executed": @YES,
           @"observed": @{
-            @"native": @{@"write": @(wrote), @"readBack": readBack ?: [NSNull null],
-                         @"afterDomWriteAttempt": nativeVerify ?: [NSNull null]},
+            @"native": @{@"pasteboard": @"named:electron-mbt-probe",
+                         @"write": @(wrote), @"readBack": readBack ?: [NSNull null],
+                         @"generalPasteboardVerify": nativeVerify},
             @"dom": dom ?: [NSNull null],
           },
           @"note": @"NSPasteboard round-trips natively. DOM clipboard access is permission/focus "

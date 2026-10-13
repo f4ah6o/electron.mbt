@@ -44,16 +44,94 @@ static void finish(NSDictionary *result, int code) {
            @"candidates": self.candidates, @"nativeObservations": self.nativeLog}, 1);
 }
 
+// The outcome each candidate must produce for the no-sync-proxy verdict to
+// hold on this build. An unexpected observation flips the candidate to
+// 'unexpected' and the whole run to INCONCLUSIVE — the conclusion never gets
+// asserted from constants alone.
+- (NSString *)outcomeForCandidate:(NSString *)name
+                          observed:(NSDictionary *)obs
+                       expectation:(NSString **)expectation {
+  BOOL unexpected = NO;
+  if ([name isEqual:@"crossWorldFunctionReference"]) {
+    *expectation = @"function references are 'undefined' in both directions — worlds share DOM, not JS objects";
+    unexpected = !([obs[@"pageFnVisibleFromIsolated"] isEqual:@"undefined"] &&
+                   [obs[@"isolatedFnVisibleFromPage"] isEqual:@"undefined"]);
+  } else if ([name isEqual:@"domEventDispatchChannel"]) {
+    *expectation = @"payloads may round-trip, but never callables and never a propagated throw";
+    for (NSDictionary *call in obs[@"isolatedListenerCalls"] ?: @[]) {
+      if ([call[@"callable"] isEqual:@YES]) unexpected = YES;
+    }
+    if ([obs[@"dispatcherCaughtThrow"] isEqual:@YES]) unexpected = YES;
+  } else if ([name isEqual:@"sharedLocalStorage"]) {
+    *expectation = @"a shared string store at most — any read/write result is data";
+  } else if ([name isEqual:@"jsDialogChannel"]) {
+    *expectation = @"dialogs may or may not reach the UIDelegate; they are a page-visible surface, never a world function — any observed result is data";
+  } else if ([name isEqual:@"scriptMessageHandlers"]) {
+    *expectation = @"delivery and reply are asynchronous Promises; nothing settles synchronously";
+    unexpected = [obs[@"settledSynchronously"] isEqual:@YES] ||
+                 [obs[@"plainIsPromise"] isEqual:@NO] ||
+                 [obs[@"replyIsPromise"] isEqual:@NO];
+  } else if ([name isEqual:@"evaluateJavaScriptAsync"]) {
+    *expectation = @"the completion handler fires on a later run-loop turn";
+    unexpected = [obs[@"completionOnLaterRunLoopTurn"] isEqual:@NO];
+  } else if ([name isEqual:@"syncXhrToUrlSchemeHandler"]) {
+    *expectation = @"whatever it returns is a status/headers/body string — never a function proxy";
+  }
+  return unexpected ? @"unexpected" : @"as-expected";
+}
+
 - (void)emit {
+  // Score every candidate against its invariant before drawing any verdict.
+  NSInteger unexpected = 0, notExecuted = 0, asExpected = 0;
+  for (NSString *name in self.candidates.allKeys) {
+    NSMutableDictionary *entry = [self.candidates[name] mutableCopy];
+    if (![entry[@"executed"] isEqual:@YES]) {
+      entry[@"outcome"] = @"not-executed";
+      notExecuted++;
+    } else {
+      NSString *expectation = nil;
+      NSString *outcome = [self outcomeForCandidate:name
+                                          observed:entry[@"observed"]
+                                       expectation:&expectation];
+      entry[@"expectation"] = expectation;
+      entry[@"outcome"] = outcome;
+      if ([outcome isEqual:@"unexpected"]) unexpected++; else asExpected++;
+    }
+    self.candidates[name] = entry;
+  }
+  NSString *status = unexpected > 0 ? @"INCONCLUSIVE"
+                   : notExecuted > 0 ? @"PARTIAL" : @"PASS";
+  NSString *buildSdk = [NSString stringWithFormat:@"%ld.%ld",
+    (long)(__MAC_OS_X_VERSION_MAX_ALLOWED / 10000),
+    (long)((__MAC_OS_X_VERSION_MAX_ALLOWED / 100) % 100)];
+  NSString *verdict = unexpected > 0
+    ? [NSString stringWithFormat:
+       @"On OS %@ / WebKit %@ / build SDK %@, %ld executed candidate(s) VIOLATED their expectations — "
+       @"the observations must be reviewed before drawing any sync-proxy conclusion.",
+       NSProcessInfo.processInfo.operatingSystemVersionString,
+       [[NSBundle bundleForClass:[WKWebView class]] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"unknown",
+       buildSdk, (long)unexpected]
+    : [NSString stringWithFormat:
+       @"On OS %@ / WebKit %@ / build SDK %@ and within the %ld candidates executed here, no public "
+       @"WKWebView API provided a synchronous function proxy into a named WKContentWorld. World JS "
+       @"objects were mutually unreachable; every working channel was asynchronous, string/DOM-bound "
+       @"without value identity or exception propagation, or a page-visible UI surface callable by "
+       @"any script. This conclusion covers only these candidates on this build.",
+       NSProcessInfo.processInfo.operatingSystemVersionString,
+       [[NSBundle bundleForClass:[WKWebView class]] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"unknown",
+       buildSdk, (long)asExpected];
   NSDictionary *result = @{
     @"probe": @"wksyncbridge",
-    @"status": @"PASS",
+    @"status": status,
     @"compatibilityGate": @"OPEN",
     @"contextBridge": @"NO_PUBLIC_SYNC_PROXY",
-    @"verdict": @"No public WKWebView API provides a synchronous function proxy into a named "
-                @"WKContentWorld. World JS objects are mutually unreachable; every working "
-                @"channel is either asynchronous, string/DOM-bound without value identity or "
-                @"exception propagation, or a page-visible UI surface callable by any script.",
+    @"verdict": verdict,
+    @"coverage": @{
+      @"candidates": @(self.candidates.count),
+      @"asExpected": @(asExpected),
+      @"unexpected": @(unexpected),
+      @"notExecuted": @(notExecuted),
+    },
     @"preconditions": self.report[@"preconditions"] ?: [NSNull null],
     @"candidates": self.candidates,
     @"nativeObservations": self.nativeLog,

@@ -94,6 +94,10 @@ jobs:
           mkdir -p evidence
           npm test 2>&1 | tee evidence/node-tests.log
       - name: Probe actual WKContentWorld observations
+        env:
+          # The runner pasteboard is disposable, so the real Cmd+V/general
+          # pasteboard path is exercised here; local runs stay opt-in gated.
+          ELECTRON_MBT_OS_PASTE_OPT_IN: '1'
         run: node scripts/macos-probe.cjs
       - name: Install the separate pinned test oracle
         shell: bash

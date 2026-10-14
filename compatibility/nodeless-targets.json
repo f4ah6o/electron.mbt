@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "decision": "docs/adr/0001-nodeless-macos-runtime-decisions.md",
+  "date": "2026-10-11",
+  "status": "planned",
+  "compatible": false,
+  "platform": {
+    "os": "macos",
+    "arch": "arm64",
+    "renderer": "system WKWebView",
+    "host": "MoonBit native plus AppKit"
+  },
+  "runtime": {
+    "requiresNodeAtRuntime": false,
+    "allowsNodeAtBuildTime": true,
+    "engine": {
+      "name": "QuickJS",
+      "version": "2026-06-04",
+      "license": "MIT",
+      "selection": "selected",
+      "integration": "not-implemented",
+      "sourceSha256": null
+    },
+    "nodeApiPolicy": "symbol-allowlist; unsupported fail-closed"
+  },
+  "profiles": [
+    {
+      "id": "electron-nodeless-v1",
+      "status": "blocked",
+      "compatible": false,
+      "semantics": "strict Electron contextBridge source-compatibility",
+      "reason": "No native production evidence for authenticated synchronous cross-world function proxies on public WKWebView. Existing M0 probe demonstrates shared-DOM reply forgery."
+    },
+    {
+      "id": "electron-nodeless-adapted-v1",
+      "status": "planned",
+      "compatible": false,
+      "semantics": "explicitly adapted renderer API; NOT general Electron contextBridge",
+      "bridge": "host-audited allowlisted async IPC in WKWebView page world; local synchronous listener disposal only",
+      "trust": "native WKFrameInfo/frame/document/generation and per-operation grants; page readable values are not authentication",
+      "limitations": [
+        "original preload is not generally executed with identical contextBridge semantics",
+        "synchronous privileged results unsupported",
+        "no arbitrary raw ipcRenderer",
+        "renderer asset unchanged only when verified by hash",
+        "source unchanged does not imply binary distribution unchanged"
+      ]
+    }
+  ],
+  "applications": [
+    {
+      "id": "moji-ts-primary",
+      "repository": "alexishida/Moji",
+      "gitTag": "v1.0.5",
+      "gitCommit": "b7b1d585d61772a0f791f165c8d07a420443b65b",
+      "license": "MIT",
+      "licenseSource": "https://github.com/alexishida/Moji/blob/b7b1d585d61772a0f791f165c8d07a420443b65b/LICENSE",
+      "role": "primary real application",
+      "entry": [
+        "electron/main.ts",
+        "electron/preload.ts"
+      ],
+      "build": "electron-vite build (build environment only; exact dependency pins and outputs captured at N0)",
+      "profile": "electron-nodeless-adapted-v1",
+      "mode": "C: TypeScript build to JS, then embedded runner",
+      "status": "not-run",
+      "compatible": false,
+      "scenarios": [
+        {
+          "id": "M1",
+          "name": "launch local Markdown sample and edit in renderer",
+          "status": "not-run"
+        },
+        {
+          "id": "M2",
+          "name": "open test Markdown via OS file dialog using native-granted permission",
+          "status": "not-run"
+        },
+        {
+          "id": "M3",
+          "name": "save as new test Markdown in isolated temporary directory, reopen and verify bytes, then quit",
+          "status": "not-run"
+        }
+      ],
+      "knownChallenges": [
+        "original preload API has synchronous webUtils.getPathForFile(File), excluded from v0.1",
+        "upstream electron-updater import and non-Node dependencies must be audited; startup must fail explicitly if unresolved",
+        "newer v1.0.7 uses MessageChannel streaming; out of initial pin",
+        "file access must require explicit grants",
+        "save/close/event semantics not yet tested"
+      ],
+      "excluded": [
+        "drag and drop path via webUtils",
+        "app autoUpdater operation",
+        "export PNG/PDF",
+        "unrestricted readPath filesystem access",
+        "full Electron strict contextBridge"
+      ]
+    },
+    {
+      "id": "jmd-cjs-secondary",
+      "repository": "jojonki/jmd",
+      "gitTag": "v0.2.3",
+      "gitCommit": "f875fc616feb89ea803a0fc140ec770a2ade041e",
+      "license": "MIT",
+      "licenseSource": "https://github.com/jojonki/jmd/blob/f875fc616feb89ea803a0fc140ec770a2ade041e/LICENSE",
+      "role": "secondary real application and CJS negative fixture",
+      "entry": [
+        "electron/main.js",
+        "electron/preload.js"
+      ],
+      "build": "upstream Vite renderer build only; record output hash",
+      "profile": "electron-nodeless-adapted-v1",
+      "mode": "A: direct CommonJS main; B: built renderer assets",
+      "status": "not-run",
+      "compatible": false,
+      "scenarios": [
+        {
+          "id": "J1",
+          "name": "run original CJS startup and verify facade/module identity and initial window or explicit unsupported diagnosis",
+          "status": "not-run"
+        }
+      ],
+      "knownChallenges": [
+        "jmd-file custom privileged protocol with bypassCSP: true; security review required",
+        "native Menu/net/protocol/screen/shell dependencies",
+        "electron-updater lazily imported, out of initial scope"
+      ],
+      "excluded": [
+        "jmd-file custom protocol until secure design",
+        "automatic updates",
+        "whole application compatibility"
+      ]
+    }
+  ],
+  "evidence": {
+    "engineTests": "not-run",
+    "syncStrictBridge": "blocked",
+    "adaptedBridgeTests": "not-run",
+    "realAppTests": "not-run",
+    "nodeFreeArtifactAudit": "not-run",
+    "performanceComparison": "not-run",
+    "existingNodeProfileResultsDoNotCount": true
+  }
+}

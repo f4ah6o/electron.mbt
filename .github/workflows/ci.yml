@@ -105,11 +105,12 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/electron-oracle" --save-exact electron@44.7.0
           node "$RUNNER_TEMP/electron-oracle/node_modules/electron/install.js"
           cp "$RUNNER_TEMP/electron-oracle/package-lock.json" evidence/oracle-package-lock.json
-      - name: Collect unchanged Electron baseline
+      - name: Collect unchanged Electron baseline and compare main listeners
         shell: bash
         run: |
           ORACLE="$(node -e 'process.stdout.write(require(process.argv[1]))' "$RUNNER_TEMP/electron-oracle/node_modules/electron")"
           node scripts/oracle.cjs "$ORACLE"
+          node scripts/ipc-listener-oracle.cjs "$ORACLE"
       - name: Compare the electron.mbt observation against the baseline
         shell: bash
         run: node scripts/differential.cjs --baseline evidence/electron-baseline.json

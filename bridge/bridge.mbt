@@ -96,6 +96,9 @@ fn dispatch_json(runtime : @core.Runtime, raw : String) -> String {
     return invalid_payload()
   }
   let value = @json.parse(raw) catch { _ => return invalid_payload() }
+  if text(value, "op").has_prefix("ipc.listeners.") {
+    return dispatch_ipc_listeners(runtime, value)
+  }
   match text(value, "op") {
     "window.reserve" =>
       match runtime.reserve_window() {

@@ -83,6 +83,8 @@ pub struct Runtime {
   pending : Map[Int32, Pending]
   terminal : Array[Int32]
   cancelled : Array[Int32]
+  ipc_listeners : Array[MainListener]
+  mut next_listener : Int32
   mut next_window : Int32
   mut next_request : Int32
   mut queue_bytes : Int32
@@ -96,6 +98,8 @@ pub fn Runtime::new() -> Runtime {
     pending: {},
     terminal: [],
     cancelled: [],
+    ipc_listeners: [],
+    next_listener: 1,
     next_window: 1,
     next_request: 1,
     queue_bytes: 0,
@@ -143,6 +147,7 @@ pub fn Runtime::stop(self : Runtime) -> Unit {
   }
   self.windows.clear()
   self.pending.clear()
+  self.ipc_listeners.clear()
   self.queue_bytes = 0
 }
 

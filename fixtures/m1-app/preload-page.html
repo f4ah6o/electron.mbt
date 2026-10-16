@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>pending</title></head>
+<body>
+<script>
+  document.title = typeof globalThis.__electronMbtIsolatedPreload === 'undefined' &&
+    typeof window.webkit?.messageHandlers?.electronMbtBootstrap === 'undefined' &&
+    typeof window.require === 'undefined' &&
+    typeof window.process === 'undefined' ? 'PRELOAD_ISOLATED' : 'PRELOAD_LEAKED';
+</script>
+</body>
+</html>

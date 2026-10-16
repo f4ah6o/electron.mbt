@@ -5,6 +5,7 @@ const { EventEmitter } = require('node:events');
 const { types } = require('node:util');
 const { NativeHost } = require('./native-host.cjs');
 const { runtimeError } = require('./errors.cjs');
+const { readPreload } = require('./preload-file.cjs');
 
 let active = null;
 function fail(code, detail) { throw runtimeError(code, detail); }
@@ -57,7 +58,7 @@ function normalizedPartialBounds(bounds, animate) {
   }
   return copy;
 }
-function supportedOptions(options = {}) {
+function supportedOptions(options = {}, appRoot) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) {
     fail('ELECTRON_MBT_UNSUPPORTED_API', 'BrowserWindow expects ordinary options');
   }
@@ -71,9 +72,10 @@ function supportedOptions(options = {}) {
     fail('ELECTRON_MBT_UNSUPPORTED_API', 'Invalid webPreferences');
   }
   for (const [key, value] of Object.entries(preferences)) {
-    if (!['nodeIntegration', 'contextIsolation', 'sandbox', 'webSecurity'].includes(key)) {
+    if (!['nodeIntegration', 'contextIsolation', 'sandbox', 'webSecurity', 'preload'].includes(key)) {
       fail('ELECTRON_MBT_UNSUPPORTED_API', 'webPreferences.' + key + ' is not implemented in M1');
     }
+    if (key === 'preload') continue;
     if ((key === 'nodeIntegration' && value !== false) ||
         (key !== 'nodeIntegration' && value !== true)) {
       fail('ELECTRON_MBT_UNSUPPORTED_API', 'Unsafe webPreferences.' + key + ' is unsupported');
@@ -88,7 +90,11 @@ function supportedOptions(options = {}) {
       !supportedTitle(title) || typeof show !== 'boolean') {
     fail('ELECTRON_MBT_UNSUPPORTED_API', 'Unsupported BrowserWindow options');
   }
-  return { width, height, title, show };
+  const normalized = { width, height, title, show };
+  if (Object.hasOwn(preferences, 'preload')) {
+    Object.assign(normalized, readPreload(appRoot, preferences.preload));
+  }
+  return normalized;
 }
 function fileWithin(root, file) {
   if (typeof file !== 'string' || !file || file.includes('\0')) {
@@ -137,7 +143,7 @@ class ExperimentalRuntime {
         if (!runtime.ready || runtime.terminated || runtime.quitting) {
           fail('ELECTRON_MBT_INVALID_STATE', 'Window cannot be created before ready');
         }
-        const normalized = supportedOptions(options);
+        const normalized = supportedOptions(options, runtime.appInfo.root);
         const id = checked(runtime.core.window_reserve(runtime.runtime)).id;
         this.id = id;
         this.webContents = new EventEmitter();

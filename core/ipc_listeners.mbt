@@ -75,7 +75,7 @@ pub fn Runtime::ipc_remove_listener(
   if id <= 0 {
     return Err(InvalidPayload)
   }
-  for index = 0; index < self.ipc_listeners.length(); index += 1 {
+  for index = 0; index < self.ipc_listeners.length(); index = index + 1 {
     if self.ipc_listeners[index].id == id {
       self.ipc_listeners.remove(index) |> ignore
       return Ok(true)

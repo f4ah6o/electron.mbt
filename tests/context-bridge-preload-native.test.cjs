@@ -37,6 +37,8 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
       { code: 'ELECTRON_MBT_PRELOAD_PATH_DENIED' });
     const good = new runtime.BrowserWindow(preload('isolated-preload.cjs'));
     await good.loadFile('preload-page.html');
+    // The fixture checks a different native bootstrap world from the app
+    // preload world while pageWorld cannot access either handler.
     assert.equal(good.webContents.getTitle(), 'PRELOAD_ISOLATED');
     const scope = runtime.bootstrapScopeForTrustedHost(good, 'preload-read');
     const id = runtime.contextHandles.retainFunction(scope, () => 'host-only');
@@ -80,6 +82,8 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     console.log(JSON.stringify({
       probe: 'contextbridge-preload-file', status: 'PASS',
       preloadSourceUnchanged: true, isolatedWorldPrivate: true,
+      nativeBootstrapHandlerHiddenFromPreload: true,
+      pageWorldSeesNeitherHandler: true,
       nativeChecksumTamperRejected: true,
       sameURLReloadRevoked: true, requireFailsClosed: true,
       caughtUnsupportedRequireFailsClosed: true,

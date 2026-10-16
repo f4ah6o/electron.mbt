@@ -55,13 +55,14 @@
     "note": "Ordinary non-empty string channels only. Emit is trusted main-local dispatch, not renderer IPC. Symbols, borrowed/mutated emitter methods, custom wrapper mutation and remaining EventEmitter methods are not a compatibility claim."
   },
   "mainInvokeProfile": {
-    "name": "invoke-handler-tiny-json-v1",
+    "name": "invoke-json-undefined-v1",
     "status": "partial",
     "methods": ["handle", "handleOnce", "removeHandler"],
+    "additionalInvokeValues": ["undefined", "undefined-in-dense-array", "undefined-in-plain-record"],
     "rendererIngress": false,
     "senderAttestation": "not_implemented",
     "implicitHandlerTimeout": false,
-    "note": "The private host controller invokes a bounded MoonBit-owned kernel with captured document authority. No public renderer path. Tiny JSON values only; bounded error messages, not full clone/error compatibility. Invalid handleOnce callbacks reject immediately. Native integration must reconcile invalidated tickets; the differential candidate uses a synthetic trusted-host driver, not a renderer."
+    "note": "The private host controller invokes a bounded MoonBit-owned kernel with captured document authority. No public renderer path. Bounded tagged JSON/undefined values for invoke only; not full clone/error compatibility. Invalid handleOnce callbacks reject immediately. Native integration must reconcile invalidated tickets; the differential candidate uses a synthetic trusted-host driver, not a renderer."
   },
   "valueProfile": {
     "name": "tiny-json-tree-v1",

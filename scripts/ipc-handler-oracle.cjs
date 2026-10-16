@@ -20,7 +20,7 @@ function observation(result, label) {
   assert.ok(lines[0].length <= 16384, `${label}: oversized observation`);
   const value = JSON.parse(lines[0].slice(marker.length));
   assert.equal(value.status, 'completed');
-  assert.equal(value.trace.length, 13);
+  assert.equal(value.trace.length, 16);
   for (const row of value.trace) assert.equal(row[1], true);
   return value;
 }

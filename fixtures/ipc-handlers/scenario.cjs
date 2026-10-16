@@ -111,6 +111,30 @@ async function runScenario(ipcMain, invoke) {
     ipcMain.handle(channel, () => 2);
     assert.equal(await call(), 2);
   });
+  await check('an undefined return value is distinct from null', async () => {
+    ipcMain.handle(channel, () => undefined);
+    assert.equal(await call(), undefined);
+    ipcMain.removeHandler(channel);
+    ipcMain.handleOnce(channel, () => null);
+    assert.equal(await call(), null);
+  });
+  await check('argument arrays and records preserve undefined slots', async () => {
+    ipcMain.handle(channel, (_event, array, record) => {
+      assert.equal(array.length, 2);
+      assert.equal(array[0], undefined);
+      assert.equal(array[1], null);
+      assert.equal(Object.hasOwn(array, '0'), true);
+      assert.equal(Object.hasOwn(record, 'missing'), true);
+      assert.equal(record.missing, undefined);
+      assert.equal(record.explicit, null);
+      return true;
+    });
+    assert.equal(await call([undefined, null], { missing: undefined, explicit: null }), true);
+  });
+  await check('result arrays and records preserve undefined slots', async () => {
+    ipcMain.handle(channel, () => [undefined, { missing: undefined, explicit: null }]);
+    assert.deepEqual(await call(), [undefined, { missing: undefined, explicit: null }]);
+  });
   return trace;
 }
 

@@ -49,7 +49,7 @@ test('the facade declares the app surface and fails closed on unimplemented APIs
     ['isReady-before', false],
     ['browserwindow', 'ELECTRON_MBT_UNSUPPORTED_API'],
     ['contextbridge', 'ELECTRON_MBT_UNSUPPORTED_API'],
-    ['ipcmain-handle', 'ELECTRON_MBT_UNSUPPORTED_API'],
+    ['ipcmain-handle', 'registered'],
     ['getPath-unknown', 'ELECTRON_MBT_INVALID_ARGUMENT'],
     ['getName', 'electron-mbt-facade-fixture'],
     ['getVersion', '0.1.0'],

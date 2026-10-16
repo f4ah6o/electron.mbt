@@ -99,9 +99,9 @@ test('dispose releases callbacks and all further operations fail closed', () => 
   assert.throws(() => ipcMain.rawListeners('channel'), { code: 'ELECTRON_MBT_CORE_InvalidState' });
 });
 
-test('invoke handlers and unsupported EventEmitter methods remain explicit failures', () => {
+test('undeclared emitter and host controller methods remain explicit failures', () => {
   const { ipcMain } = setup();
-  for (const method of ['handle', 'handleOnce', 'removeHandler', 'prependListener', 'setMaxListeners', 'eventNames']) {
+  for (const method of ['prependListener', 'setMaxListeners', 'eventNames', 'invoke', 'reconcile']) {
     assert.throws(() => ipcMain[method]('channel', () => {}), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
   }
 });

@@ -1,0 +1,5 @@
+{
+  "name": "electron-mbt-invoke-contract",
+  "version": "0.0.0",
+  "main": "reference.cjs"
+}

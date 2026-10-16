@@ -387,7 +387,7 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadFinishedGeneration = 0;
   if (ok) [self publishVerifiedBootstrapIfReady];
   if (done) done(ok, reason);
-
+}
 - (BOOL)isCurrentLoadNavigation:(WKNavigation *)navigation {
   return navigation != nil && navigation == self.loadingNavigation &&
          self.loadingNavigationGeneration > 0 &&

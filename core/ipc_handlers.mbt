@@ -15,13 +15,13 @@ pub fn InvokeError::code(self : InvokeError) -> String {
 }
 
 ///|
-priv struct InvokeHandler {
+struct InvokeHandler {
   id : Int32
   once : Bool
 }
 
 ///|
-priv struct Invocation {
+struct Invocation {
   window : Int32
   generation : Int32
   origin : String

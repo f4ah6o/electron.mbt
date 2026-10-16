@@ -1,8 +1,10 @@
 'use strict';
 const { runtimeError } = require('./errors.cjs');
+const { createInvokeHandlers } = require('./ipc-handlers.cjs');
 
 function createIpcMain(core, runtime, unsupported) {
   const callbacks = new Map();
+  const invokes = createInvokeHandlers(core, runtime);
   let disposed = false;
   let ipcMain;
 
@@ -54,6 +56,7 @@ function createIpcMain(core, runtime, unsupported) {
   }
 
   const methods = {
+    ...invokes.methods,
     on(channel, listener) { return add(channel, listener, false); },
     once(channel, listener) { return add(channel, listener, true); },
     removeListener(channel, listener) {
@@ -104,7 +107,9 @@ function createIpcMain(core, runtime, unsupported) {
   });
   return {
     ipcMain,
-    dispose() { disposed = true; callbacks.clear(); },
+    invoke: invokes.invoke,
+    reconcile: invokes.reconcile,
+    dispose() { invokes.dispose(); disposed = true; callbacks.clear(); },
   };
 }
 

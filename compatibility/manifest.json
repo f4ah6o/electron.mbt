@@ -35,6 +35,9 @@
     "windows": 64,
     "channelCodeUnits": 128,
     "mainListeners": 256,
+    "mainHandlers": 128,
+    "ownedInvocationTickets": 256,
+    "handlerErrorMessageCodeUnits": 1024,
     "grantsPerDocument": 128,
     "payloadBytes": 1048576,
     "jsonDepth": 64,
@@ -51,6 +54,15 @@
     "rendererIngress": false,
     "note": "Ordinary non-empty string channels only. Emit is trusted main-local dispatch, not renderer IPC. Symbols, borrowed/mutated emitter methods, custom wrapper mutation and remaining EventEmitter methods are not a compatibility claim."
   },
+  "mainInvokeProfile": {
+    "name": "invoke-handler-tiny-json-v1",
+    "status": "partial",
+    "methods": ["handle", "handleOnce", "removeHandler"],
+    "rendererIngress": false,
+    "senderAttestation": "not_implemented",
+    "implicitHandlerTimeout": false,
+    "note": "The private host controller invokes a bounded MoonBit-owned kernel with captured document authority. No public renderer path. Tiny JSON values only; bounded error messages, not full clone/error compatibility. Invalid handleOnce callbacks reject immediately. Native integration must reconcile invalidated tickets; the differential candidate uses a synthetic trusted-host driver, not a renderer."
+  },
   "valueProfile": {
     "name": "tiny-json-tree-v1",
     "supported": ["null", "boolean", "string", "finite-number-except-negative-zero", "dense-array", "plain-enumerable-data-record"],
@@ -59,16 +71,16 @@
   },
   "rows": [
     {"id":"A","scope":"CJS resolution and immutable source inventory","status":"partial","tests":["tests/loader.test.cjs","tests/facade.test.cjs"],"evidence":[],"gap":"Runtime-owned facade declares the app surface; not an Electron compatibility proof or a real packaged app run."},
-    {"id":"B","scope":"lifecycle and synchronous main API","status":"partial","tests":["core/runtime_wbtest.mbt","tests/transport.test.cjs","tests/core-integration.test.cjs","tests/facade.test.cjs","tests/differential.test.cjs"],"evidence":["evidence/differential.json"],"gap":"MoonBit lifecycle drives the facade and a real socketpair probe. The unchanged full fixture now passes listener registration and reaches readiness, then reports failed/ready-rejected with exitCode 1. No native host or BrowserWindow API in this branch."},
+    {"id":"B","scope":"lifecycle and synchronous main API","status":"partial","tests":["core/runtime_wbtest.mbt","tests/transport.test.cjs","tests/core-integration.test.cjs","tests/facade.test.cjs","tests/differential.test.cjs"],"evidence":["evidence/differential.json"],"gap":"MoonBit lifecycle drives the facade and a real socketpair probe. The unchanged full fixture passes listener registration and reaches readiness, then reports failed/ready-rejected with exitCode 1. No native host or BrowserWindow API in this branch."},
     {"id":"C","scope":"isolated preload and synchronous contextBridge","status":"partial","tests":["tests/differential.test.cjs","scripts/macos-probe.cjs"],"evidence":["evidence/wkcontentworld.json","evidence/wksyncbridge.json"],"gap":"Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute."},
-    {"id":"D","scope":"application IPC","status":"partial","tests":["tests/clone.test.cjs","core/runtime_wbtest.mbt","core/ipc_listeners_wbtest.mbt","tests/ipc-listeners.test.cjs","tests/candidate-observation.test.cjs","tests/differential.test.cjs","scripts/ipc-listener-oracle.cjs"],"evidence":["evidence/differential.json","evidence/ipc-main-listeners.json"],"gap":"Bounded MoonBit-owned main listener registrations and main-local emit are implemented. Renderer ingress, sender attestation, ipcRenderer, invoke handlers and event replies remain unimplemented. Listener oracle equivalence is not application IPC compatibility."},
+    {"id":"D","scope":"application IPC","status":"partial","tests":["tests/clone.test.cjs","core/runtime_wbtest.mbt","core/ipc_listeners_wbtest.mbt","core/ipc_handlers_wbtest.mbt","tests/ipc-listeners.test.cjs","tests/ipc-handlers.test.cjs","tests/candidate-observation.test.cjs","tests/differential.test.cjs","scripts/ipc-listener-oracle.cjs","scripts/ipc-handler-oracle.cjs"],"evidence":["evidence/differential.json","evidence/ipc-main-listeners.json","evidence/ipc-main-handlers.json"],"gap":"Bounded main listeners, invoke-handler registration and private invocation kernel are implemented. Handler comparison uses real Electron renderer IPC versus a synthetic trusted-host candidate driver, not native candidate E2E. Production renderer ingress, native sender attestation, ipcRenderer and event replies remain unimplemented."},
     {"id":"E","scope":"dialog files clipboard","status":"planned","tests":[],"evidence":[],"gap":"OS service adapters not implemented."},
-    {"id":"F","scope":"sender and document authority","status":"partial","tests":["core/runtime_wbtest.mbt","core/ipc_listeners_wbtest.mbt"],"evidence":[],"gap":"No native sender-attestation adapter; caller-supplied metadata is not authentication. Registering a main listener never grants renderer authority."},
+    {"id":"F","scope":"sender and document authority","status":"partial","tests":["core/runtime_wbtest.mbt","core/ipc_listeners_wbtest.mbt","core/ipc_handlers_wbtest.mbt","tests/ipc-handlers.test.cjs"],"evidence":[],"gap":"No native sender-attestation adapter; caller-supplied metadata is not authentication. Registration grants no renderer authority. Core invocation tickets bind completion to the originally authorized document; native invalidation/reconcile wiring is still required."},
     {"id":"G","scope":"IME focus accessibility DPI","status":"partial","tests":["scripts/macos-probe.cjs"],"evidence":["evidence/wknative.json"],"gap":"Executed: resize/DPI observation, DOM-synthesized vs trusted posted-event input, native pasteboard, in-process AX role. NOT_RUN: focus/blur (no key status in session), OS paste, IME composition, VoiceOver traversal, hardware keys, second-display DPI. DOM clipboard probe stalled on the web process. Interactive acceptance still required."},
     {"id":"H","scope":"process crash and cleanup","status":"partial","tests":["tests/transport.test.cjs"],"evidence":[],"gap":"Child probe only; full host/Node/WebView process ledger remains open."},
     {"id":"I","scope":"release size and cold/warm metrics","status":"planned","tests":[],"evidence":[],"gap":"No release bundle, fixed Node payload, signing or comparable measurements."},
     {"id":"J","scope":"unchanged real Electron application","status":"planned","tests":[],"evidence":[],"gap":"No real application selected or executed."}
   ],
-  "unsupported": ["run", "pack", "BrowserWindow", "contextBridge", "ipcMain.handle", "ipcMain.handleOnce", "ipcMain.removeHandler", "ipcMain renderer ingress", "ipcRenderer", "ESM electron imports", "electron subpaths", "nodeIntegration:true", "contextIsolation:false", "sandbox:false", "webSecurity:false", "sendSync", "ASAR", "native addon ABI", "autoUpdater", "Windows backend", "Linux backend"],
+  "unsupported": ["run", "pack", "BrowserWindow", "contextBridge", "ipcMain renderer ingress", "ipcRenderer", "ESM electron imports", "electron subpaths", "nodeIntegration:true", "contextIsolation:false", "sandbox:false", "webSecurity:false", "sendSync", "ASAR", "native addon ABI", "autoUpdater", "Windows backend", "Linux backend"],
   "gates": {"versions":"open","syncMainApi":"open","syncIsolatedContextBridge":"open","electronDifferential":"open","nativeAcceptance":"open","releaseMeasurement":"open"}
 }

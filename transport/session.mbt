@@ -119,8 +119,10 @@ pub fn Session::close(self : Session) -> Array[Int64] {
 pub fn Session::observe(self : Session, raw : String) -> Result[Unit, String] {
   try {
     let envelope = self.read(raw)
-    if !(envelope.operation == "web-content-gone" || envelope.operation == "native-close-request") || envelope.terminal ||
-        envelope.window <= 0L || envelope.request <= self.last_event {
+    if !(envelope.operation == "web-content-gone" || envelope.operation == "native-close-request" ||
+         envelope.operation == "isolated-preload-attested") || envelope.terminal ||
+        envelope.window <= 0L || envelope.request <= self.last_event ||
+        (envelope.operation == "isolated-preload-attested" && envelope.generation <= 0L) {
       raise BadProtocol("Invalid or replayed native event")
     }
     // Event IDs are a separate monotonic sequence from outgoing requests.

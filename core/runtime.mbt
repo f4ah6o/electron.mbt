@@ -22,6 +22,7 @@ pub(all) enum RuntimeError {
   LimitExceeded
   InvalidPayload
   UnknownRequest
+  UnknownBridgeHandle
   AlreadyCompleted
   IdExhausted
 } derive(Eq)
@@ -55,6 +56,7 @@ pub fn RuntimeError::code(self : RuntimeError) -> String {
     LimitExceeded => "LimitExceeded"
     InvalidPayload => "InvalidPayload"
     UnknownRequest => "UnknownRequest"
+    UnknownBridgeHandle => "UnknownBridgeHandle"
     AlreadyCompleted => "AlreadyCompleted"
     IdExhausted => "IdExhausted"
   }
@@ -81,6 +83,8 @@ pub struct Runtime {
   mut app : AppState
   windows : Map[Int, Window]
   pending : Map[Int, Pending]
+  bridge_handles : Map[Int, BridgeHandle]
+  mut next_bridge_handle : Int
   terminal : Array[Int]
   cancelled : Array[Int]
   mut next_window : Int
@@ -94,6 +98,8 @@ pub fn Runtime::new() -> Runtime {
     app: Booting,
     windows: {},
     pending: {},
+    bridge_handles: {},
+    next_bridge_handle: 1,
     terminal: [],
     cancelled: [],
     next_window: 1,
@@ -137,6 +143,7 @@ pub fn Runtime::stop(self : Runtime) -> Unit {
   }
   self.windows.clear()
   self.pending.clear()
+  self.bridge_handles.clear()
   self.queue_bytes = 0
 }
 
@@ -245,6 +252,7 @@ fn Runtime::cancel_window_requests(self : Runtime, window : Int) -> Unit {
 pub fn Runtime::destroy_window(self : Runtime, id : Int) -> Bool {
   if !self.windows.contains(id) { return false }
   self.cancel_window_requests(id)
+  self.revoke_bridge_handles(id)
   self.windows.remove(id)
   true
 }
@@ -263,6 +271,7 @@ pub fn Runtime::navigate(
       window.origin = ""
       window.grants.clear()
       self.cancel_window_requests(id)
+      self.revoke_bridge_handles(id)
       Ok(window.generation)
     }
     None => Err(UnknownWindow)
@@ -439,6 +448,7 @@ pub fn Runtime::invalidate_document(
       window.origin = ""
       window.grants.clear()
       self.cancel_window_requests(id)
+      self.revoke_bridge_handles(id)
       Ok(())
     }
     None => Err(UnknownWindow)

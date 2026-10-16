@@ -1,5 +1,6 @@
 #import <AppKit/AppKit.h>
 #import <WebKit/WebKit.h>
+#import <CommonCrypto/CommonDigest.h>
 #import <dispatch/dispatch.h>
 #import <sys/stat.h>
 #import <sys/types.h>
@@ -103,9 +104,31 @@ static NSString *canonicalPath(NSString *path) {
   return [NSString stringWithUTF8String:resolved];
 }
 
-@interface MBTWindow : NSObject <WKNavigationDelegate, NSWindowDelegate, WKUIDelegate>
+static NSString *preloadDigest(NSData *data) {
+  unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+  CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+  char hex[CC_SHA256_DIGEST_LENGTH * 2 + 1];
+  static const char digits[] = "0123456789abcdef";
+  for (NSUInteger i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) {
+    hex[i * 2] = digits[digest[i] >> 4];
+    hex[i * 2 + 1] = digits[digest[i] & 15];
+  }
+  hex[CC_SHA256_DIGEST_LENGTH * 2] = '\0';
+  return [NSString stringWithUTF8String:hex];
+}
+
+@interface MBTWindow : NSObject <WKNavigationDelegate, NSWindowDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply>
 @property(nonatomic, strong) NSWindow *native;
 @property(nonatomic, strong) WKWebView *web;
+@property(nonatomic, strong) WKContentWorld *bootstrapWorld;
+@property(nonatomic, strong) WKContentWorld *preloadWorld;
+@property(nonatomic, copy) NSString *bootstrapNonce;
+@property(nonatomic, copy) NSString *preloadNonce;
+@property(nonatomic) long long bootstrapObservedGeneration;
+@property(nonatomic) long long preloadObservedGeneration;
+@property(nonatomic, copy) NSString *preloadSource;
+@property(nonatomic, copy) NSString *preloadStatus;
+@property(nonatomic) long long preloadFinishedGeneration;
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *loadedFile;
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
@@ -126,18 +149,30 @@ static NSString *canonicalPath(NSString *path) {
 @property(nonatomic) BOOL allowNextNavigation;
 @property(nonatomic) BOOL contentAlive;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
-                       title:(NSString *)title visible:(BOOL)visible;
+                       title:(NSString *)title visible:(BOOL)visible
+                  preloadSource:(NSString *)preloadSource;
 - (void)tearDown;
 @end
 
 @implementation MBTWindow
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
-                       title:(NSString *)title visible:(BOOL)visible {
+                       title:(NSString *)title visible:(BOOL)visible
+                  preloadSource:(NSString *)preloadSource {
   self = [super init];
   if (self) {
     self.root = root;
+    self.preloadSource = preloadSource;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    config.userContentController = [[WKUserContentController alloc] init];
+    self.bootstrapWorld = [WKContentWorld worldWithName:@"electron.mbt.bootstrap"];
+    [config.userContentController addScriptMessageHandlerWithReply:self
+      contentWorld:self.bootstrapWorld name:@"electronMbtBootstrap"];
+    if (self.preloadSource) {
+      self.preloadWorld = [WKContentWorld worldWithName:@"electron.mbt.preload"];
+      [config.userContentController addScriptMessageHandlerWithReply:self
+        contentWorld:self.preloadWorld name:@"electronMbtPreloadResult"];
+    }
     NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
       NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;
     // Do not pass Electron's outer width/height directly as content dimensions:
@@ -160,6 +195,10 @@ static NSString *canonicalPath(NSString *path) {
     self.generation = 0;
     self.loadedGeneration = 0;
     self.loadingNavigationGeneration = 0;
+    self.bootstrapObservedGeneration = 0;
+    self.preloadObservedGeneration = 0;
+    self.preloadFinishedGeneration = 0;
+    self.preloadStatus = nil;
     self.contentAlive = YES;
     self.allowNextNavigation = NO;
     self.closeRequestOutstanding = NO;
@@ -167,6 +206,109 @@ static NSString *canonicalPath(NSString *path) {
     if (visible) [self.native orderFront:nil];
   }
   return self;
+}
+- (void)installBootstrapScript {
+  // Bootstrap attestation is issued by a different JS realm from the app's
+  // preload. The app can use DOM, but cannot call this privileged handler.
+  self.bootstrapNonce = [[NSUUID UUID] UUIDString];
+  self.bootstrapObservedGeneration = 0;
+  self.preloadNonce = self.preloadSource ? [[NSUUID UUID] UUIDString] : nil;
+  self.preloadObservedGeneration = 0;
+  self.preloadFinishedGeneration = 0;
+  self.preloadStatus = nil;
+  WKUserContentController *controller = self.web.configuration.userContentController;
+  [controller removeAllUserScripts];
+  NSString *bootstrapSource = [NSString stringWithFormat:
+    @"void window.webkit.messageHandlers.electronMbtBootstrap.postMessage({nonce:'%@'}).catch(() => {});",
+    self.bootstrapNonce];
+  WKUserScript *bootstrap = [[WKUserScript alloc] initWithSource:bootstrapSource
+    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+    forMainFrameOnly:YES inContentWorld:self.bootstrapWorld];
+  [controller addUserScript:bootstrap];
+  if (self.preloadSource) {
+    NSError *error = nil;
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@[self.preloadSource]
+      options:0 error:&error];
+    NSString *encoded = json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : nil;
+    if (error || encoded.length < 2) return;
+    NSString *quoted = [encoded substringWithRange:NSMakeRange(1, encoded.length - 2)];
+    // Only a status reporter exists in the preload realm. It must not gain
+    // the separate bootstrap realm's handler or nonce.
+    NSString *preloadScriptSource = [NSString stringWithFormat:
+      @"(function(){"
+       "const h=window.webkit.messageHandlers.electronMbtPreloadResult;"
+       "const report=h.postMessage.bind(h);"
+       "let status='ok',requestedUnsupported=false;"
+       "try{const module={exports:{}};"
+       "const deny=function(){requestedUnsupported=true;"
+       "throw {code:'ELECTRON_MBT_REQUIRE_UNSUPPORTED'};};"
+       "(new Function('require','module','exports',%@))(deny,module,module.exports);}"
+       "catch(error){status=error&&error.code==='ELECTRON_MBT_REQUIRE_UNSUPPORTED'?"
+       "'unsupported':'failed';}"
+       "if(requestedUnsupported)status='unsupported';"
+       "report({nonce:'%@',preload:status}).catch(function(){});"
+       "})();",
+      quoted, self.preloadNonce];
+    WKUserScript *preload = [[WKUserScript alloc] initWithSource:preloadScriptSource
+      injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+      forMainFrameOnly:YES inContentWorld:self.preloadWorld];
+    [controller addUserScript:preload];
+  }
+}
+- (void)userContentController:(WKUserContentController *)controller
+    didReceiveScriptMessage:(WKScriptMessage *)message
+    replyHandler:(void (^)(id _Nullable, NSString * _Nullable))replyHandler {
+  NSDictionary *body = [message.body isKindOfClass:[NSDictionary class]] ? message.body : nil;
+  NSString *nonce = body[@"nonce"];
+  NSURL *url = message.frameInfo.request.URL;
+  NSString *file = url.isFileURL ? canonicalPath(url.path) : nil;
+  BOOL common = controller == self.web.configuration.userContentController &&
+    message.webView == self.web && self.contentAlive &&
+    self.generation > 0 && self.generation == self.loadedGeneration &&
+    self.loadedFile != nil && message.frameInfo.isMainFrame &&
+    [nonce isKindOfClass:[NSString class]] &&
+    [file isEqualToString:self.loadedFile];
+  BOOL bootstrap = common && [message.name isEqualToString:@"electronMbtBootstrap"] &&
+    body.count == 1 && self.bootstrapNonce != nil &&
+    self.bootstrapObservedGeneration != self.generation &&
+    [nonce isEqualToString:self.bootstrapNonce];
+  NSString *preloadResult = body[@"preload"];
+  BOOL preload = common && self.preloadSource != nil &&
+    [message.name isEqualToString:@"electronMbtPreloadResult"] &&
+    body.count == 2 && self.preloadNonce != nil &&
+    self.preloadObservedGeneration != self.generation &&
+    [nonce isEqualToString:self.preloadNonce] &&
+    [preloadResult isKindOfClass:[NSString class]] &&
+    [@[@"ok", @"unsupported", @"failed"] containsObject:preloadResult];
+  if (!bootstrap && !preload) {
+    replyHandler(nil, @"ELECTRON_MBT_BOOTSTRAP_DENIED");
+    return;
+  }
+  if (bootstrap) self.bootstrapObservedGeneration = self.generation;
+  else {
+    self.preloadObservedGeneration = self.generation;
+    self.preloadStatus = preloadResult;
+  }
+  replyHandler(@{@"ok": @YES}, nil);
+  if (self.preloadSource && self.preloadFinishedGeneration == self.generation) {
+    [self completeVerifiedPreload];
+  }
+}
+- (NSDictionary *)bootstrapStatus {
+  NSURL *url = self.web.URL;
+  NSString *file = url.isFileURL ? canonicalPath(url.path) : nil;
+  BOOL observed = self.contentAlive && self.generation > 0 &&
+    self.loadedGeneration == self.generation &&
+    self.bootstrapObservedGeneration == self.generation &&
+    self.bootstrapNonce != nil &&
+    (!self.preloadSource || (self.preloadObservedGeneration == self.generation &&
+     [self.preloadStatus isEqualToString:@"ok"])) &&
+    self.loadDone == nil &&
+    self.loadingNavigation == nil && self.loadedFile != nil &&
+    [file isEqualToString:self.loadedFile];
+  return @{@"observed": @(observed), @"mainFrame": @(observed),
+    @"generation": @(self.generation),
+    @"documentURL": observed ? url.absoluteString : @""};
 }
 - (BOOL)withinRoot:(NSString *)path {
   NSString *canonical = canonicalPath(path);
@@ -212,6 +354,14 @@ static NSString *canonicalPath(NSString *path) {
   self.loadDone = nil;
   self.loadingNavigation = nil;
   self.loadingNavigationGeneration = 0;
+  if (!ok) {
+    self.bootstrapNonce = nil;
+    self.bootstrapObservedGeneration = 0;
+    self.preloadNonce = nil;
+    self.preloadObservedGeneration = 0;
+    self.preloadStatus = nil;
+  }
+  self.preloadFinishedGeneration = 0;
   if (done) done(ok, reason);
 }
 - (BOOL)isCurrentLoadNavigation:(WKNavigation *)navigation {
@@ -226,13 +376,42 @@ static NSString *canonicalPath(NSString *path) {
   if (![self isCurrentLoadNavigation:navigation]) return;
   [self completeLoad:ok reason:reason];
 }
+- (void)completeVerifiedPreload {
+  if (!self.preloadSource || self.preloadFinishedGeneration != self.generation ||
+      self.bootstrapObservedGeneration != self.generation ||
+      self.preloadObservedGeneration != self.generation ||
+      ![self isCurrentLoadNavigation:self.loadingNavigation]) return;
+  NSString *reason = [self.preloadStatus isEqualToString:@"ok"] ? @"" :
+    ([self.preloadStatus isEqualToString:@"unsupported"] ?
+     @"ELECTRON_MBT_PRELOAD_UNSUPPORTED_API" : @"ELECTRON_MBT_PRELOAD_FAILED");
+  [self completeLoad:(reason.length == 0) reason:reason];
+}
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
   (void)webView;
   if (![self isCurrentLoadNavigation:navigation]) return;
 #if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
   if (!self.testingRetiredNavigation) self.testingRetiredNavigation = navigation;
 #endif
-  [self completeLoad:YES reason:@"" forNavigation:navigation];
+  if (self.preloadSource) {
+    self.preloadFinishedGeneration = self.generation;
+    [self completeVerifiedPreload];
+    if ([self isCurrentLoadNavigation:navigation]) {
+      __weak MBTWindow *weakWindow = self;
+      long long loadGeneration = self.generation;
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC),
+                     dispatch_get_main_queue(), ^{
+        MBTWindow *window = weakWindow;
+        if (window && window.generation == loadGeneration &&
+            window.preloadFinishedGeneration == loadGeneration &&
+            [window isCurrentLoadNavigation:navigation]) {
+          [window completeLoad:NO reason:@"ELECTRON_MBT_PRELOAD_NOT_VERIFIED"
+                   forNavigation:navigation];
+        }
+      });
+    }
+  } else {
+    [self completeLoad:YES reason:@"" forNavigation:navigation];
+  }
 #if defined(ELECTRON_MBT_TEST_TERMINATION_CALLBACK)
   // A separate CI-only binary invokes the public delegate callback, not
   // a real WebKit subprocess kill. It tests event/revocation plumbing only.
@@ -272,6 +451,12 @@ static NSString *canonicalPath(NSString *path) {
   BOOL newlyTerminated = self.contentAlive;
   self.contentAlive = NO;
   self.allowNextNavigation = NO;
+  self.bootstrapNonce = nil;
+  self.bootstrapObservedGeneration = 0;
+  self.preloadNonce = nil;
+  self.preloadObservedGeneration = 0;
+  self.preloadStatus = nil;
+  self.preloadFinishedGeneration = 0;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
   if (newlyTerminated && self.contentGone) self.contentGone(self.generation);
 }
@@ -280,6 +465,19 @@ static NSString *canonicalPath(NSString *path) {
   self.closeRequestOutstanding = NO;
   self.closeRequestEventID = 0;
   self.closeRequested = nil;
+  self.bootstrapNonce = nil;
+  self.bootstrapObservedGeneration = 0;
+  self.preloadNonce = nil;
+  self.preloadObservedGeneration = 0;
+  self.preloadStatus = nil;
+  self.preloadFinishedGeneration = 0;
+  [self.web.configuration.userContentController removeAllUserScripts];
+  [self.web.configuration.userContentController
+    removeScriptMessageHandlerForName:@"electronMbtBootstrap" contentWorld:self.bootstrapWorld];
+  if (self.preloadWorld) {
+    [self.web.configuration.userContentController
+      removeScriptMessageHandlerForName:@"electronMbtPreloadResult" contentWorld:self.preloadWorld];
+  }
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   self.web.navigationDelegate = nil;
   self.web.UIDelegate = nil;
@@ -361,7 +559,19 @@ static NSString *canonicalPath(NSString *path) {
     NSNumber *height = payload[@"height"];
     NSString *title = payload[@"title"];
     NSNumber *visible = payload[@"show"];
-    if (self.windows.count >= 64 || self.windows[windowID] ||
+    NSString *preloadSource = payload[@"preloadSource"];
+    NSString *preloadSHA256 = payload[@"preloadSHA256"];
+    BOOL wantsPreload = preloadSource != nil || preloadSHA256 != nil;
+    NSData *preloadBytes = [preloadSource isKindOfClass:[NSString class]] ?
+      [preloadSource dataUsingEncoding:NSUTF8StringEncoding] : nil;
+    BOOL validPreload = !wantsPreload || (
+      payload.count == 6 && [preloadSource isKindOfClass:[NSString class]] &&
+      [preloadSHA256 isKindOfClass:[NSString class]] && preloadBytes != nil &&
+      preloadBytes.length > 0 && preloadBytes.length <= 65536 &&
+      preloadSHA256.length == 64 &&
+      [preloadDigest(preloadBytes) isEqualToString:preloadSHA256]);
+    if (!validPreload || (wantsPreload ? payload.count != 6 : payload.count != 4) ||
+        self.windows.count >= 64 || self.windows[windowID] ||
         generation.longLongValue != 0 || windowID.longLongValue <= 0 ||
         ![width isKindOfClass:[NSNumber class]] || ![height isKindOfClass:[NSNumber class]] ||
         width.integerValue < 100 || width.integerValue > 4096 ||
@@ -373,7 +583,7 @@ static NSString *canonicalPath(NSString *path) {
     }
     MBTWindow *window = [[MBTWindow alloc] initWithRoot:self.root
       width:width.integerValue height:height.integerValue title:title
-      visible:visible.boolValue];
+      visible:visible.boolValue preloadSource:wantsPreload ? preloadSource : nil];
     __weak MBTHost *weakHost = self;
     window.contentGone = ^(long long eventGeneration) {
       [weakHost publishContentGone:windowID generation:eventGeneration];
@@ -416,6 +626,13 @@ static NSString *canonicalPath(NSString *path) {
     window.generation = generation.longLongValue;
     window.allowNextNavigation = NO;
     window.loadedFile = nil;
+    window.bootstrapNonce = nil;
+    window.bootstrapObservedGeneration = 0;
+    window.preloadNonce = nil;
+    window.preloadObservedGeneration = 0;
+    window.preloadStatus = nil;
+    window.preloadFinishedGeneration = 0;
+    [window.web.configuration.userContentController removeAllUserScripts];
     // Drop the old delegate token and settle its request before stopLoading
     // can deliver a late failure callback against a later generation.
     [window completeLoad:NO reason:@"ELECTRON_MBT_STALE_DOCUMENT"];
@@ -440,6 +657,7 @@ static NSString *canonicalPath(NSString *path) {
     }
     window.loadedGeneration = generation.longLongValue;
     window.loadedFile = canonical;
+    [window installBootstrapScript];
     window.allowNextNavigation = YES;
 #if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
     __weak MBTWindow *weakWindow = window;
@@ -492,6 +710,14 @@ static NSString *canonicalPath(NSString *path) {
   }
   if (generation.longLongValue != window.generation) {
     done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+    return;
+  }
+  if ([operation isEqualToString:@"get-bootstrap-status"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    done(@"success", [window bootstrapStatus]);
     return;
   }
   if ([operation isEqualToString:@"cancel-close"]) {

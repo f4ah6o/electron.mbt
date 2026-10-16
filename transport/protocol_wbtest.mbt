@@ -368,3 +368,34 @@ test "What: rounded fractional setBounds requests are invalid before registratio
   assert_true(validate(visibility_wire("set-window-bounds",
     "{\"x\":-2.0e1,\"y\":5e1,\"width\":6.4e2,\"height\":4.8e2}", "")) is Ok(_))
 }
+
+
+///|
+fn bootstrap_wire(generation : String, payload : String, suffix : String) -> String {
+  "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":2,\"generation\":" +
+    generation + ",\"operation\":\"get-bootstrap-status\",\"payload\":" + payload + suffix + "}"
+}
+
+///|
+test "What: native isolated bootstrap status cannot forge a frame or document generation" {
+  let request = bootstrap_wire("3", "{}", "")
+  assert_true(validate(request) is Ok(_))
+  let session = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(session.register(request) is Ok(_))
+  let completed = bootstrap_wire("3", "{\"observed\":true,\"mainFrame\":true,\"generation\":3,\"documentURL\":\"file:///app/bootstrap.html\"}", ",\"terminal\":\"success\"")
+  assert_true(session.accept(completed) is Ok(_))
+  for malformed in [
+    "{\"observed\":true,\"mainFrame\":false,\"generation\":3,\"documentURL\":\"file:///app/bootstrap.html\"}",
+    "{\"observed\":true,\"mainFrame\":true,\"generation\":2,\"documentURL\":\"file:///app/bootstrap.html\"}",
+    "{\"observed\":true,\"mainFrame\":true,\"generation\":3,\"documentURL\":\"\"}",
+    "{\"observed\":false,\"mainFrame\":false,\"generation\":3,\"documentURL\":\"file:///app/bootstrap.html\"}",
+    "{\"observed\":\"true\",\"mainFrame\":true,\"generation\":3,\"documentURL\":\"file:///app/bootstrap.html\"}",
+    "{\"observed\":true,\"mainFrame\":true,\"generation\":\"3\",\"documentURL\":\"file:///app/bootstrap.html\"}",
+    "{\"observed\":true,\"mainFrame\":true,\"generation\":3,\"documentURL\":\"file:///app/bootstrap.html\",\"nonce\":\"do-not-serialize\"}",
+  ] {
+    assert_true(validate(bootstrap_wire("3", malformed, ",\"terminal\":\"success\"")) is Err(_))
+  }
+  assert_true(validate(bootstrap_wire("3", "{\"unexpected\":true}", "")) is Err(_))
+  let not_ready = bootstrap_wire("0", "{\"observed\":false,\"mainFrame\":false,\"generation\":0,\"documentURL\":\"\"}", ",\"terminal\":\"success\"")
+  assert_true(validate(not_ready) is Ok(_))
+}

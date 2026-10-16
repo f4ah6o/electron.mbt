@@ -64,6 +64,9 @@ not be presented as a complete security sandbox for untrusted scripts.
 
 - Node tests/preload-file.test.cjs: actual filesystem, path root and
   symlink escapes, UTF-8, zero/maximum/oversized input, stable SHA-256.
+- macOS native create-window negative: a forged source SHA-256 must be
+  rejected without creating a window, even if the Node filesystem gate is
+  bypassed in the controlled test harness.
 - macOS tests/context-bridge-preload-native.test.cjs: real AppKit/WKWebView
   loads the original preload-file bytes, tests first page-world script
   cannot read isolated globals, verifies native trusted bootstrap, same

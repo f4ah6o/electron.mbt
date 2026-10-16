@@ -22,6 +22,17 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
   try {
     runtime.start();
     await runtime.app.whenReady();
+    // Bypass the Node filesystem leaf to exercise the native checksum gate:
+    // a failed source digest must not create any real WKWebView window.
+    const reserved = JSON.parse(runtime.core.window_reserve(runtime.runtime));
+    assert.equal(reserved.ok, true);
+    const malformed = {
+      width: 640, height: 480, title: 'tampered', show: false,
+      preloadSource: 'module.exports = true;', preloadSHA256: '0'.repeat(64),
+    };
+    assert.throws(() => runtime.host.request('create-window', reserved.id, 0, malformed),
+      { code: 'ELECTRON_MBT_WINDOW_OPTIONS' });
+    assert.equal(runtime.core.window_destroy(runtime.runtime, reserved.id), true);
     assert.throws(() => new runtime.BrowserWindow(preload('../missing-preload.cjs')),
       { code: 'ELECTRON_MBT_PRELOAD_PATH_DENIED' });
     const good = new runtime.BrowserWindow(preload('isolated-preload.cjs'));
@@ -69,6 +80,7 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     console.log(JSON.stringify({
       probe: 'contextbridge-preload-file', status: 'PASS',
       preloadSourceUnchanged: true, isolatedWorldPrivate: true,
+      nativeChecksumTamperRejected: true,
       sameURLReloadRevoked: true, requireFailsClosed: true,
       caughtUnsupportedRequireFailsClosed: true,
       syntaxFailureReported: true, compatible: false, contextBridge: 'NOT_IMPLEMENTED',

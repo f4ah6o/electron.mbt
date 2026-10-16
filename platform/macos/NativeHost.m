@@ -103,9 +103,12 @@ static NSString *canonicalPath(NSString *path) {
   return [NSString stringWithUTF8String:resolved];
 }
 
-@interface MBTWindow : NSObject <WKNavigationDelegate, NSWindowDelegate, WKUIDelegate>
+@interface MBTWindow : NSObject <WKNavigationDelegate, NSWindowDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply>
 @property(nonatomic, strong) NSWindow *native;
 @property(nonatomic, strong) WKWebView *web;
+@property(nonatomic, strong) WKContentWorld *bootstrapWorld;
+@property(nonatomic, copy) NSString *bootstrapNonce;
+@property(nonatomic) long long bootstrapObservedGeneration;
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *loadedFile;
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
@@ -138,6 +141,10 @@ static NSString *canonicalPath(NSString *path) {
     self.root = root;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    config.userContentController = [[WKUserContentController alloc] init];
+    self.bootstrapWorld = [WKContentWorld worldWithName:@"electron.mbt.bootstrap"];
+    [config.userContentController addScriptMessageHandlerWithReply:self
+      contentWorld:self.bootstrapWorld name:@"electronMbtBootstrap"];
     NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
       NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;
     // Do not pass Electron's outer width/height directly as content dimensions:
@@ -160,6 +167,7 @@ static NSString *canonicalPath(NSString *path) {
     self.generation = 0;
     self.loadedGeneration = 0;
     self.loadingNavigationGeneration = 0;
+    self.bootstrapObservedGeneration = 0;
     self.contentAlive = YES;
     self.allowNextNavigation = NO;
     self.closeRequestOutstanding = NO;
@@ -167,6 +175,57 @@ static NSString *canonicalPath(NSString *path) {
     if (visible) [self.native orderFront:nil];
   }
   return self;
+}
+- (void)installBootstrapScript {
+  // A fresh per-navigation token distinguishes a retired same-URL document.
+  // This controller owns only this bootstrap user script until preload support.
+  self.bootstrapNonce = [[NSUUID UUID] UUIDString];
+  self.bootstrapObservedGeneration = 0;
+  WKUserContentController *controller = self.web.configuration.userContentController;
+  [controller removeAllUserScripts];
+  NSString *source = [NSString stringWithFormat:
+    @"void window.webkit.messageHandlers.electronMbtBootstrap.postMessage({nonce:'%@'}).catch(() => {});",
+    self.bootstrapNonce];
+  WKUserScript *script = [[WKUserScript alloc] initWithSource:source
+    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+    forMainFrameOnly:YES inContentWorld:self.bootstrapWorld];
+  [controller addUserScript:script];
+}
+- (void)userContentController:(WKUserContentController *)controller
+    didReceiveScriptMessage:(WKScriptMessage *)message
+    replyHandler:(void (^)(id _Nullable, NSString * _Nullable))replyHandler {
+  NSDictionary *body = [message.body isKindOfClass:[NSDictionary class]] ? message.body : nil;
+  NSString *nonce = body[@"nonce"];
+  NSURL *url = message.frameInfo.request.URL;
+  NSString *file = url.isFileURL ? canonicalPath(url.path) : nil;
+  BOOL valid = controller == self.web.configuration.userContentController &&
+    message.webView == self.web && self.contentAlive &&
+    self.generation > 0 && self.generation == self.loadedGeneration &&
+    self.bootstrapObservedGeneration != self.generation &&
+    self.bootstrapNonce != nil && self.loadedFile != nil &&
+    message.frameInfo.isMainFrame && body.count == 1 &&
+    [nonce isKindOfClass:[NSString class]] &&
+    [nonce isEqualToString:self.bootstrapNonce] &&
+    [file isEqualToString:self.loadedFile];
+  if (!valid) {
+    replyHandler(nil, @"ELECTRON_MBT_BOOTSTRAP_DENIED");
+    return;
+  }
+  self.bootstrapObservedGeneration = self.generation;
+  replyHandler(@{@"ok": @YES}, nil);
+}
+- (NSDictionary *)bootstrapStatus {
+  NSURL *url = self.web.URL;
+  NSString *file = url.isFileURL ? canonicalPath(url.path) : nil;
+  BOOL observed = self.contentAlive && self.generation > 0 &&
+    self.loadedGeneration == self.generation &&
+    self.bootstrapObservedGeneration == self.generation &&
+    self.bootstrapNonce != nil && self.loadDone == nil &&
+    self.loadingNavigation == nil && self.loadedFile != nil &&
+    [file isEqualToString:self.loadedFile];
+  return @{@"observed": @(observed), @"mainFrame": @(observed),
+    @"generation": @(self.generation),
+    @"documentURL": observed ? url.absoluteString : @""};
 }
 - (BOOL)withinRoot:(NSString *)path {
   NSString *canonical = canonicalPath(path);
@@ -212,6 +271,10 @@ static NSString *canonicalPath(NSString *path) {
   self.loadDone = nil;
   self.loadingNavigation = nil;
   self.loadingNavigationGeneration = 0;
+  if (!ok) {
+    self.bootstrapNonce = nil;
+    self.bootstrapObservedGeneration = 0;
+  }
   if (done) done(ok, reason);
 }
 - (BOOL)isCurrentLoadNavigation:(WKNavigation *)navigation {
@@ -272,6 +335,8 @@ static NSString *canonicalPath(NSString *path) {
   BOOL newlyTerminated = self.contentAlive;
   self.contentAlive = NO;
   self.allowNextNavigation = NO;
+  self.bootstrapNonce = nil;
+  self.bootstrapObservedGeneration = 0;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
   if (newlyTerminated && self.contentGone) self.contentGone(self.generation);
 }
@@ -280,6 +345,11 @@ static NSString *canonicalPath(NSString *path) {
   self.closeRequestOutstanding = NO;
   self.closeRequestEventID = 0;
   self.closeRequested = nil;
+  self.bootstrapNonce = nil;
+  self.bootstrapObservedGeneration = 0;
+  [self.web.configuration.userContentController removeAllUserScripts];
+  [self.web.configuration.userContentController
+    removeScriptMessageHandlerForName:@"electronMbtBootstrap" contentWorld:self.bootstrapWorld];
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   self.web.navigationDelegate = nil;
   self.web.UIDelegate = nil;
@@ -416,6 +486,9 @@ static NSString *canonicalPath(NSString *path) {
     window.generation = generation.longLongValue;
     window.allowNextNavigation = NO;
     window.loadedFile = nil;
+    window.bootstrapNonce = nil;
+    window.bootstrapObservedGeneration = 0;
+    [window.web.configuration.userContentController removeAllUserScripts];
     // Drop the old delegate token and settle its request before stopLoading
     // can deliver a late failure callback against a later generation.
     [window completeLoad:NO reason:@"ELECTRON_MBT_STALE_DOCUMENT"];
@@ -440,6 +513,7 @@ static NSString *canonicalPath(NSString *path) {
     }
     window.loadedGeneration = generation.longLongValue;
     window.loadedFile = canonical;
+    [window installBootstrapScript];
     window.allowNextNavigation = YES;
 #if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
     __weak MBTWindow *weakWindow = window;
@@ -492,6 +566,14 @@ static NSString *canonicalPath(NSString *path) {
   }
   if (generation.longLongValue != window.generation) {
     done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+    return;
+  }
+  if ([operation isEqualToString:@"get-bootstrap-status"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    done(@"success", [window bootstrapStatus]);
     return;
   }
   if ([operation isEqualToString:@"cancel-close"]) {

@@ -56,7 +56,10 @@ jobs:
         shell: bash
         run: moon test --target native 2>&1 | tee evidence/moon-native.log
       - name: Build compiled core and native control channel
-        run: npm run build
+        run: |
+          npm run build
+          git rev-parse HEAD > evidence/source-revision.txt
+          git archive --format=tar HEAD -o evidence/test-source.tar
       - name: Test complete Node boundary
         shell: bash
         run: npm test 2>&1 | tee evidence/node-tests.log
@@ -105,12 +108,13 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/electron-oracle" --save-exact electron@44.7.0
           node "$RUNNER_TEMP/electron-oracle/node_modules/electron/install.js"
           cp "$RUNNER_TEMP/electron-oracle/package-lock.json" evidence/oracle-package-lock.json
-      - name: Collect unchanged Electron baseline and compare main listeners
+      - name: Collect unchanged Electron baseline and compare IPC contracts
         shell: bash
         run: |
           ORACLE="$(node -e 'process.stdout.write(require(process.argv[1]))' "$RUNNER_TEMP/electron-oracle/node_modules/electron")"
           node scripts/oracle.cjs "$ORACLE"
           node scripts/ipc-listener-oracle.cjs "$ORACLE"
+          node scripts/ipc-handler-oracle.cjs "$ORACLE"
       - name: Compare the electron.mbt observation against the baseline
         shell: bash
         run: node scripts/differential.cjs --baseline evidence/electron-baseline.json

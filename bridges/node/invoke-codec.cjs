@@ -21,15 +21,21 @@ function internalArray(...items) {
 function envelope(value) {
   const seen = new WeakSet();
   let nodes = 0;
+  let encodedBytes = 0;
+  function account(bytes) {
+    encodedBytes += bytes;
+    if (encodedBytes > LIMITS.bytes) exceeded();
+  }
   function wrap(input, depth) {
     if (++nodes > LIMITS.nodes || depth > LIMITS.depth) exceeded();
-    if (input === undefined) return internalArray(0);
+    if (input === undefined) { account(3); return internalArray(0); }
     if (input === null || typeof input === 'string' || typeof input === 'boolean') {
-      if (typeof input === 'string' && Buffer.byteLength(input, 'utf8') > LIMITS.bytes) exceeded();
+      account(4 + Buffer.byteLength(JSON.stringify(input), 'utf8'));
       return internalArray(1, input);
     }
     if (typeof input === 'number') {
       if (!Number.isFinite(input) || Object.is(input, -0)) unsupported();
+      account(4 + String(input).length);
       return internalArray(1, input);
     }
     if (typeof input !== 'object' || types.isProxy(input) || seen.has(input)) unsupported();
@@ -41,6 +47,7 @@ function envelope(value) {
     if (Array.isArray(input)) {
       if (Object.getPrototypeOf(input) !== Array.prototype || keys.length !== input.length + 1) unsupported();
       if (input.length > LIMITS.nodes) exceeded();
+      account(6 + Math.max(0, input.length - 1));
       const result = [];
       for (let i = 0; i < input.length; i++) {
         const descriptor = Object.getOwnPropertyDescriptor(input, String(i));
@@ -52,11 +59,12 @@ function envelope(value) {
     }
     const prototype = Object.getPrototypeOf(input);
     if (prototype !== Object.prototype && prototype !== null) unsupported();
+    account(6 + Math.max(0, keys.length - 1));
     const result = [];
     for (const key of keys) {
       const descriptor = Object.getOwnPropertyDescriptor(input, key);
       if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) unsupported();
-      if (Buffer.byteLength(key, 'utf8') > LIMITS.bytes) exceeded();
+      account(3 + Buffer.byteLength(JSON.stringify(key), 'utf8'));
       result.push(internalArray(key, wrap(descriptor.value, depth + 1)));
     }
     Object.setPrototypeOf(result, null);

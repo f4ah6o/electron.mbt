@@ -22,7 +22,7 @@ const sender = { window, generation, host_origin: 'file:///fixture/', main_frame
 runScenario(ipc.ipcMain, (channel, args) => ipc.invoke(sender, channel, args, { testOnly: true })).then(trace => {
   const observed = {
     status: 'completed', moduleIdentity: core === require('../../dist/core.cjs'), trace,
-    observation: { profile: 'invoke-handler-tiny-json-v1', scenarios: trace.length },
+    observation: { profile: 'invoke-json-undefined-v1', scenarios: trace.length },
     versions: { node: process.versions.node }, platform: process.platform, arch: process.arch,
   };
   fs.writeSync(1, `ELECTRON_MBT_INVOKE=${JSON.stringify(observed)}\n`);

@@ -1,6 +1,7 @@
 'use strict';
 const { types } = require('node:util');
 const { encodeTiny } = require('./clone.cjs');
+const { encodeInvoke, decodeInvoke, cloneInvoke } = require('./invoke-codec.cjs');
 const { runtimeError } = require('./errors.cjs');
 
 function createInvokeHandlers(core, runtime) {
@@ -67,9 +68,14 @@ function createInvokeHandlers(core, runtime) {
     const entry = pending.get(request);
     if (!entry) return;
     let output, error;
-    if (ok) {
-      try { output = JSON.parse(encodeTiny(value)); } catch (cause) { error = cause; }
-    } else error = handlerError(value);
+    // A revoked document must not traverse or serialize a late result. This
+    // also prevents the late result's own value error from hiding cancellation.
+    try { command({ op: 'check', request }); } catch (cause) { error = cause; }
+    if (!error) {
+      if (ok) {
+        try { output = cloneInvoke(value); } catch (cause) { error = cause; }
+      } else error = handlerError(value);
+    }
     try { command({ op: 'finish', request }); } catch (cause) { error = cause; }
     pending.delete(request);
     if (error) entry.reject(error);
@@ -81,8 +87,8 @@ function createInvokeHandlers(core, runtime) {
     try {
       channelArgument(channel);
       const sender = JSON.parse(encodeTiny(hostSender));
-      const wire = encodeTiny(args);
-      copiedArgs = JSON.parse(wire);
+      const wire = encodeInvoke(args);
+      copiedArgs = decodeInvoke(wire);
       if (!Array.isArray(copiedArgs)) throw runtimeError('ELECTRON_MBT_INVALID_ARGUMENT', 'Invoke arguments must be an array');
       ticket = command({
         op: 'begin', window: sender.window, generation: sender.generation,

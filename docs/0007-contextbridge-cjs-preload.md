@@ -17,8 +17,14 @@ recomputes the digest before creating the window. Original source is not
 rewritten. No external package or app directory may be loaded by preload.
 
 The native WKWebView host injects the source in a named isolated
-WKContentWorld using WKUserScriptInjectionTimeAtDocumentStart, restricted
-to the main frame. A limited CommonJS module.exports/exports wrapper runs
+`electron.mbt.preload` WKContentWorld using
+WKUserScriptInjectionTimeAtDocumentStart, restricted to the main frame.
+A **different** `electron.mbt.bootstrap` WKContentWorld owns the native
+document-attestation handler and its separate unpredictable navigation
+nonce. A preload may see its own status-only reporter, but cannot access
+the bootstrap handler or nonce. The page sees neither handler. These
+registrations are separate public WebKit content worlds with no special
+private selectors or changes to pageWorld. A limited CommonJS module.exports/exports wrapper runs
 the body synchronously through Function *in the isolated realm*.
 This is not a Node VM, full Electron preload sandbox or CJS module resolver.
 
@@ -35,12 +41,14 @@ bootstrap evidence fails closed as ELECTRON_MBT_PRELOAD_NOT_VERIFIED.
 A normal WebKit navigation success cannot override preload failure.
 
 The preload wrapper sends only an enumerated status
-(ok/unsupported/failed) and the existing per-navigation nonce to the
-isolated native message handler. Native validates actual main-frame,
-file URL, WKWebView/controller, expected generation and current nonce.
-Completion waits for both WKNavigation success and authenticated preload
-status, without blocking the AppKit main thread; a bounded timer rejects
-if the status never arrives. Same-URL reload rotates the nonce and
+(ok/unsupported/failed) and a **preload-reporter-specific** per-navigation
+nonce to its own private native handler. The independent bootstrap script
+sends a separate nonce from a different isolated world. Native uses trusted
+`WKScriptMessage.name` and WebKit's actual main-frame, file URL and
+WKWebView/controller along with each handler's distinct nonce, generation
+and one-shot replay check. Completion waits for **both observations**
+and actual WKNavigation success, without blocking the AppKit main thread;
+a bounded timer rejects if either report never arrives. Same-URL reload rotates the nonce and
 re-runs unchanged source. Termination/close/destroy revoke state and
 JS handles. The four-field private bootstrap status remains unchanged.
 
@@ -52,6 +60,11 @@ realm isolation and error propagation. It does NOT implement
 contextBridge.exposeInMainWorld, secure synchronous page/preload proxy,
 copy/freeze, callback identity, or Electron Promise semantics.
 
+The preload's own execution-status report is functional self-reporting by
+app code, **not** a security proof against a malicious application preload.
+Only the separate bootstrap world supplies independent document-start
+attestation. Arbitrary page messages and shared-DOM initiators remain
+untrusted, and the preload status-only handler grants no operations.
 The Electron sandboxed preload's process/global polyfills, frame-specific
 behavior, and additional supported requires are not implemented. Real
 preload code using those APIs is not compatible and must not be silently

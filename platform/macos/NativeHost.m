@@ -121,10 +121,13 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, strong) NSWindow *native;
 @property(nonatomic, strong) WKWebView *web;
 @property(nonatomic, strong) WKContentWorld *bootstrapWorld;
+@property(nonatomic, strong) WKContentWorld *preloadWorld;
 @property(nonatomic, copy) NSString *bootstrapNonce;
+@property(nonatomic, copy) NSString *preloadNonce;
 @property(nonatomic) long long bootstrapObservedGeneration;
 @property(nonatomic) long long bootstrapNotifiedGeneration;
 @property(nonatomic, copy) void (^bootstrapAttested)(long long);
+@property(nonatomic) long long preloadObservedGeneration;
 @property(nonatomic, copy) NSString *preloadSource;
 @property(nonatomic, copy) NSString *preloadStatus;
 @property(nonatomic) long long preloadFinishedGeneration;
@@ -168,6 +171,11 @@ static NSString *preloadDigest(NSData *data) {
     self.bootstrapWorld = [WKContentWorld worldWithName:@"electron.mbt.bootstrap"];
     [config.userContentController addScriptMessageHandlerWithReply:self
       contentWorld:self.bootstrapWorld name:@"electronMbtBootstrap"];
+    if (self.preloadSource) {
+      self.preloadWorld = [WKContentWorld worldWithName:@"electron.mbt.preload"];
+      [config.userContentController addScriptMessageHandlerWithReply:self
+        contentWorld:self.preloadWorld name:@"electronMbtPreloadResult"];
+    }
     NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
       NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;
     // Do not pass Electron's outer width/height directly as content dimensions:
@@ -192,6 +200,7 @@ static NSString *preloadDigest(NSData *data) {
     self.loadingNavigationGeneration = 0;
     self.bootstrapObservedGeneration = 0;
     self.bootstrapNotifiedGeneration = 0;
+    self.preloadObservedGeneration = 0;
     self.preloadFinishedGeneration = 0;
     self.preloadStatus = nil;
     self.contentAlive = YES;
@@ -203,31 +212,35 @@ static NSString *preloadDigest(NSData *data) {
   return self;
 }
 - (void)installBootstrapScript {
-  // A fresh per-navigation token distinguishes a retired same-URL document.
-  // This controller owns only this bootstrap user script until preload support.
+  // Bootstrap attestation is issued by a different JS realm from the app's
+  // preload. The app can use DOM, but cannot call this privileged handler.
   self.bootstrapNonce = [[NSUUID UUID] UUIDString];
   self.bootstrapObservedGeneration = 0;
+  self.preloadNonce = self.preloadSource ? [[NSUUID UUID] UUIDString] : nil;
+  self.preloadObservedGeneration = 0;
   self.preloadFinishedGeneration = 0;
   self.preloadStatus = nil;
   WKUserContentController *controller = self.web.configuration.userContentController;
   [controller removeAllUserScripts];
-  NSString *source = nil;
-  if (!self.preloadSource) {
-    source = [NSString stringWithFormat:
-      @"void window.webkit.messageHandlers.electronMbtBootstrap.postMessage({nonce:'%@'}).catch(() => {});",
-      self.bootstrapNonce];
-  } else {
+  NSString *bootstrapSource = [NSString stringWithFormat:
+    @"void window.webkit.messageHandlers.electronMbtBootstrap.postMessage({nonce:'%@'}).catch(() => {});",
+    self.bootstrapNonce];
+  WKUserScript *bootstrap = [[WKUserScript alloc] initWithSource:bootstrapSource
+    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+    forMainFrameOnly:YES inContentWorld:self.bootstrapWorld];
+  [controller addUserScript:bootstrap];
+  if (self.preloadSource) {
     NSError *error = nil;
     NSData *json = [NSJSONSerialization dataWithJSONObject:@[self.preloadSource]
       options:0 error:&error];
     NSString *encoded = json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : nil;
     if (error || encoded.length < 2) return;
     NSString *quoted = [encoded substringWithRange:NSMakeRange(1, encoded.length - 2)];
-    // The isolated preload body has no Electron/Node capabilities. Requiring
-    // modules fails instead of fabricating a compatible contextBridge.
-    source = [NSString stringWithFormat:
+    // Only a status reporter exists in the preload realm. It must not gain
+    // the separate bootstrap realm's handler or nonce.
+    NSString *preloadScriptSource = [NSString stringWithFormat:
       @"(function(){"
-       "const h=window.webkit.messageHandlers.electronMbtBootstrap;"
+       "const h=window.webkit.messageHandlers.electronMbtPreloadResult;"
        "const report=h.postMessage.bind(h);"
        "let status='ok',requestedUnsupported=false;"
        "try{const module={exports:{}};"
@@ -239,12 +252,12 @@ static NSString *preloadDigest(NSData *data) {
        "if(requestedUnsupported)status='unsupported';"
        "report({nonce:'%@',preload:status}).catch(function(){});"
        "})();",
-      quoted, self.bootstrapNonce];
+      quoted, self.preloadNonce];
+    WKUserScript *preload = [[WKUserScript alloc] initWithSource:preloadScriptSource
+      injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+      forMainFrameOnly:YES inContentWorld:self.preloadWorld];
+    [controller addUserScript:preload];
   }
-  WKUserScript *script = [[WKUserScript alloc] initWithSource:source
-    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-    forMainFrameOnly:YES inContentWorld:self.bootstrapWorld];
-  [controller addUserScript:script];
 }
 - (void)userContentController:(WKUserContentController *)controller
     didReceiveScriptMessage:(WKScriptMessage *)message
@@ -253,26 +266,33 @@ static NSString *preloadDigest(NSData *data) {
   NSString *nonce = body[@"nonce"];
   NSURL *url = message.frameInfo.request.URL;
   NSString *file = url.isFileURL ? canonicalPath(url.path) : nil;
-  NSString *preloadResult = body[@"preload"];
-  BOOL validPreloadStatus = self.preloadSource ?
-    (body.count == 2 && [preloadResult isKindOfClass:[NSString class]] &&
-     [@[@"ok", @"unsupported", @"failed"] containsObject:preloadResult]) :
-    (body.count == 1);
-  BOOL valid = controller == self.web.configuration.userContentController &&
+  BOOL common = controller == self.web.configuration.userContentController &&
     message.webView == self.web && self.contentAlive &&
     self.generation > 0 && self.generation == self.loadedGeneration &&
-    self.bootstrapObservedGeneration != self.generation &&
-    self.bootstrapNonce != nil && self.loadedFile != nil &&
-    message.frameInfo.isMainFrame && validPreloadStatus &&
+    self.loadedFile != nil && message.frameInfo.isMainFrame &&
     [nonce isKindOfClass:[NSString class]] &&
-    [nonce isEqualToString:self.bootstrapNonce] &&
     [file isEqualToString:self.loadedFile];
-  if (!valid) {
+  BOOL bootstrap = common && [message.name isEqualToString:@"electronMbtBootstrap"] &&
+    body.count == 1 && self.bootstrapNonce != nil &&
+    self.bootstrapObservedGeneration != self.generation &&
+    [nonce isEqualToString:self.bootstrapNonce];
+  NSString *preloadResult = body[@"preload"];
+  BOOL preload = common && self.preloadSource != nil &&
+    [message.name isEqualToString:@"electronMbtPreloadResult"] &&
+    body.count == 2 && self.preloadNonce != nil &&
+    self.preloadObservedGeneration != self.generation &&
+    [nonce isEqualToString:self.preloadNonce] &&
+    [preloadResult isKindOfClass:[NSString class]] &&
+    [@[@"ok", @"unsupported", @"failed"] containsObject:preloadResult];
+  if (!bootstrap && !preload) {
     replyHandler(nil, @"ELECTRON_MBT_BOOTSTRAP_DENIED");
     return;
   }
-  self.bootstrapObservedGeneration = self.generation;
-  self.preloadStatus = self.preloadSource ? preloadResult : nil;
+  if (bootstrap) self.bootstrapObservedGeneration = self.generation;
+  else {
+    self.preloadObservedGeneration = self.generation;
+    self.preloadStatus = preloadResult;
+  }
   replyHandler(@{@"ok": @YES}, nil);
   if (self.preloadSource && self.preloadFinishedGeneration == self.generation) {
     [self completeVerifiedPreload];
@@ -288,10 +308,12 @@ static NSString *preloadDigest(NSData *data) {
       self.bootstrapNotifiedGeneration == self.generation ||
       self.bootstrapNonce == nil || self.loadedFile == nil ||
       self.loadDone != nil || self.loadingNavigation != nil ||
-      (self.preloadSource != nil && ![self.preloadStatus isEqualToString:@"ok"]) ||
+      (self.preloadSource != nil && (self.preloadObservedGeneration != self.generation ||
+        self.preloadNonce == nil || ![self.preloadStatus isEqualToString:@"ok"])) ||
       ![canonical isEqualToString:self.loadedFile]) return;
-  // The isolated document-start message never authenticates a page-world
-  // initiator. Emit only a one-shot native-owned observation without payload.
+  // The app preload realm cannot attest itself; only the independent native
+  // bootstrap and the successful restricted preload can produce this event.
+  // Neither attests a later page-world message initiator.
   self.bootstrapNotifiedGeneration = self.generation;
   if (self.bootstrapAttested) self.bootstrapAttested(self.generation);
 }
@@ -301,7 +323,10 @@ static NSString *preloadDigest(NSData *data) {
   BOOL observed = self.contentAlive && self.generation > 0 &&
     self.loadedGeneration == self.generation &&
     self.bootstrapObservedGeneration == self.generation &&
-    self.bootstrapNonce != nil && self.loadDone == nil &&
+    self.bootstrapNonce != nil &&
+    (!self.preloadSource || (self.preloadObservedGeneration == self.generation &&
+     [self.preloadStatus isEqualToString:@"ok"])) &&
+    self.loadDone == nil &&
     self.loadingNavigation == nil && self.loadedFile != nil &&
     [file isEqualToString:self.loadedFile];
   return @{@"observed": @(observed), @"mainFrame": @(observed),
@@ -355,12 +380,14 @@ static NSString *preloadDigest(NSData *data) {
   if (!ok) {
     self.bootstrapNonce = nil;
     self.bootstrapObservedGeneration = 0;
+    self.preloadNonce = nil;
+    self.preloadObservedGeneration = 0;
     self.preloadStatus = nil;
   }
   self.preloadFinishedGeneration = 0;
   if (ok) [self publishVerifiedBootstrapIfReady];
   if (done) done(ok, reason);
-}
+
 - (BOOL)isCurrentLoadNavigation:(WKNavigation *)navigation {
   return navigation != nil && navigation == self.loadingNavigation &&
          self.loadingNavigationGeneration > 0 &&
@@ -376,6 +403,7 @@ static NSString *preloadDigest(NSData *data) {
 - (void)completeVerifiedPreload {
   if (!self.preloadSource || self.preloadFinishedGeneration != self.generation ||
       self.bootstrapObservedGeneration != self.generation ||
+      self.preloadObservedGeneration != self.generation ||
       ![self isCurrentLoadNavigation:self.loadingNavigation]) return;
   NSString *reason = [self.preloadStatus isEqualToString:@"ok"] ? @"" :
     ([self.preloadStatus isEqualToString:@"unsupported"] ?
@@ -449,6 +477,8 @@ static NSString *preloadDigest(NSData *data) {
   self.allowNextNavigation = NO;
   self.bootstrapNonce = nil;
   self.bootstrapObservedGeneration = 0;
+  self.preloadNonce = nil;
+  self.preloadObservedGeneration = 0;
   self.preloadStatus = nil;
   self.preloadFinishedGeneration = 0;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
@@ -462,11 +492,17 @@ static NSString *preloadDigest(NSData *data) {
   self.bootstrapAttested = nil;
   self.bootstrapNonce = nil;
   self.bootstrapObservedGeneration = 0;
+  self.preloadNonce = nil;
+  self.preloadObservedGeneration = 0;
   self.preloadStatus = nil;
   self.preloadFinishedGeneration = 0;
   [self.web.configuration.userContentController removeAllUserScripts];
   [self.web.configuration.userContentController
     removeScriptMessageHandlerForName:@"electronMbtBootstrap" contentWorld:self.bootstrapWorld];
+  if (self.preloadWorld) {
+    [self.web.configuration.userContentController
+      removeScriptMessageHandlerForName:@"electronMbtPreloadResult" contentWorld:self.preloadWorld];
+  }
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   self.web.navigationDelegate = nil;
   self.web.UIDelegate = nil;
@@ -624,6 +660,8 @@ static NSString *preloadDigest(NSData *data) {
     window.loadedFile = nil;
     window.bootstrapNonce = nil;
     window.bootstrapObservedGeneration = 0;
+    window.preloadNonce = nil;
+    window.preloadObservedGeneration = 0;
     window.preloadStatus = nil;
     window.preloadFinishedGeneration = 0;
     [window.web.configuration.userContentController removeAllUserScripts];

@@ -6,12 +6,14 @@ authenticate arbitrary page-originated messages. No main or other PR branch upda
 
 ## Concrete behavior
 
-After receiving a genuine `WKScriptMessage` from its own main-frame isolated
-`WKContentWorld`, the AppKit host already verifies exact WKWebView/controller,
+After independently receiving genuine `WKScriptMessage` observations from the
+host-owned bootstrap `WKContentWorld` and the separate restricted preload
+`WKContentWorld` (if configured), the AppKit host verifies exact WKWebView/controller,
 file URL, navigation generation and a private per-navigation nonce. It now
 publishes a one-shot `isolated-preload-attested` event **only after a completed
 successful navigation and successful restricted preload execution** (or the
-host-owned bootstrap when no preload was configured). It never includes a
+host-owned bootstrap when no preload was configured). The application preload
+cannot see the independent bootstrap handler or nonce; it cannot attest itself. It never includes a
 user channel, nonce, origin claim or arbitrary renderer payload. A failed
 preload, failed navigation, stale or duplicate bootstrap cannot publish.
 

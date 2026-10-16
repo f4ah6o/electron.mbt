@@ -49,6 +49,8 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     const good = new runtime.BrowserWindow(preload('isolated-preload.cjs'));
     await good.loadFile('preload-page.html');
     const attestedFirst = await awaitVerified(good, good._generation);
+    // The fixture checks a different native bootstrap world from the app
+    // preload world while pageWorld cannot access either handler.
     assert.equal(good.webContents.getTitle(), 'PRELOAD_ISOLATED');
     const scope = runtime.bootstrapScopeForTrustedHost(good, 'preload-read');
     const id = runtime.contextHandles.retainFunction(scope, () => 'host-only');
@@ -99,6 +101,8 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
       probe: 'contextbridge-preload-file', status: 'PASS',
       preloadSourceUnchanged: true, isolatedWorldPrivate: true,
       nativeAttestationEventOneShot: true, failedPreloadNeverAttested: true,
+      nativeBootstrapHandlerHiddenFromPreload: true,
+      pageWorldSeesNeitherHandler: true,
       nativeChecksumTamperRejected: true,
       sameURLReloadRevoked: true, requireFailsClosed: true,
       caughtUnsupportedRequireFailsClosed: true,

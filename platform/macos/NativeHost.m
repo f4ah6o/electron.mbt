@@ -148,6 +148,7 @@ static NSString *preloadDigest(NSData *data) {
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
                   preloadSource:(NSString *)preloadSource;
+- (void)publishVerifiedBootstrapIfReady;
 - (void)tearDown;
 @end
 

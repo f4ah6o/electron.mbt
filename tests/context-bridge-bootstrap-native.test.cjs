@@ -35,6 +35,17 @@ test('real WebKit document-start isolated bootstrap gates trusted host handles b
     runtime.start();
     await bounded(runtime.app.whenReady());
     const window = new runtime.BrowserWindow({ show: false });
+    const isolatedEvents = [];
+    runtime.host.on('isolated-preload-attested', event => isolatedEvents.push(event));
+    const awaitEvent = async generation => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const seen = isolatedEvents.filter(event => event.window === window.id &&
+          event.generation === generation);
+        if (seen.length) { assert.equal(seen.length, 1); return seen[0]; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      throw new Error('No native-attested isolated bootstrap event for this document');
+    };
     const registry = runtime.contextHandles;
     const initial = runtime.host.request('get-bootstrap-status', window.id, 0);
     assert.deepEqual(initial, {
@@ -47,6 +58,8 @@ test('real WebKit document-start isolated bootstrap gates trusted host handles b
     assert.equal(window.webContents.getTitle(), 'BOOTSTRAP_HANDLER_HIDDEN',
       'The isolated native message handler must not be callable by pageWorld');
     const first = await observedBootstrap(runtime, window);
+    const attestedFirst = await awaitEvent(window._generation);
+    assert.ok(attestedFirst.request > 0);
     assert.equal(first.observed, true);
     assert.equal(first.mainFrame, true);
     assert.equal(first.generation, window._generation);
@@ -67,6 +80,9 @@ test('real WebKit document-start isolated bootstrap gates trusted host handles b
     await revoked;
     await bounded(reloading);
     await observedBootstrap(runtime, window);
+    const attestedSecond = await awaitEvent(window._generation);
+    assert.ok(attestedSecond.request > attestedFirst.request);
+    assert.equal(isolatedEvents.filter(event => event.window === window.id).length, 2);
     assert.equal(registry.retainedCount, 0);
     assert.throws(() => registry.invoke(scope, id));
     const second = runtime.bootstrapScopeForTrustedHost(window, 'read-text');
@@ -83,6 +99,7 @@ test('real WebKit document-start isolated bootstrap gates trusted host handles b
     console.log(JSON.stringify({
       probe: 'contextbridge-native-bootstrap', status: 'PASS',
       isolatedHandlerHidden: true, nativeFrameDocumentObserved: true,
+      isolatedNativeNotificationOneShot: true,
       sameURLReloadRevoked: true, windowDestroyRevoked: true,
       sourceHashPreserved: true, contextBridge: 'NOT_IMPLEMENTED', compatible: false,
     }));

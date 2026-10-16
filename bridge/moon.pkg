@@ -11,6 +11,7 @@ options(
         "dispatch",
         "diagnose",
         "compare_observations",
+        "validate_baseline",
       ],
       "format": "cjs",
     },

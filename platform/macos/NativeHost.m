@@ -123,6 +123,8 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, strong) WKContentWorld *bootstrapWorld;
 @property(nonatomic, copy) NSString *bootstrapNonce;
 @property(nonatomic) long long bootstrapObservedGeneration;
+@property(nonatomic) long long bootstrapNotifiedGeneration;
+@property(nonatomic, copy) void (^bootstrapAttested)(long long);
 @property(nonatomic, copy) NSString *preloadSource;
 @property(nonatomic, copy) NSString *preloadStatus;
 @property(nonatomic) long long preloadFinishedGeneration;
@@ -189,6 +191,7 @@ static NSString *preloadDigest(NSData *data) {
     self.loadedGeneration = 0;
     self.loadingNavigationGeneration = 0;
     self.bootstrapObservedGeneration = 0;
+    self.bootstrapNotifiedGeneration = 0;
     self.preloadFinishedGeneration = 0;
     self.preloadStatus = nil;
     self.contentAlive = YES;
@@ -274,6 +277,23 @@ static NSString *preloadDigest(NSData *data) {
   if (self.preloadSource && self.preloadFinishedGeneration == self.generation) {
     [self completeVerifiedPreload];
   }
+  [self publishVerifiedBootstrapIfReady];
+}
+- (void)publishVerifiedBootstrapIfReady {
+  NSURL *url = self.web.URL;
+  NSString *canonical = url.isFileURL ? canonicalPath(url.path) : nil;
+  if (!self.contentAlive || self.generation <= 0 ||
+      self.loadedGeneration != self.generation ||
+      self.bootstrapObservedGeneration != self.generation ||
+      self.bootstrapNotifiedGeneration == self.generation ||
+      self.bootstrapNonce == nil || self.loadedFile == nil ||
+      self.loadDone != nil || self.loadingNavigation != nil ||
+      (self.preloadSource != nil && ![self.preloadStatus isEqualToString:@"ok"]) ||
+      ![canonical isEqualToString:self.loadedFile]) return;
+  // The isolated document-start message never authenticates a page-world
+  // initiator. Emit only a one-shot native-owned observation without payload.
+  self.bootstrapNotifiedGeneration = self.generation;
+  if (self.bootstrapAttested) self.bootstrapAttested(self.generation);
 }
 - (NSDictionary *)bootstrapStatus {
   NSURL *url = self.web.URL;
@@ -338,6 +358,7 @@ static NSString *preloadDigest(NSData *data) {
     self.preloadStatus = nil;
   }
   self.preloadFinishedGeneration = 0;
+  if (ok) [self publishVerifiedBootstrapIfReady];
   if (done) done(ok, reason);
 }
 - (BOOL)isCurrentLoadNavigation:(WKNavigation *)navigation {
@@ -438,6 +459,7 @@ static NSString *preloadDigest(NSData *data) {
   self.closeRequestOutstanding = NO;
   self.closeRequestEventID = 0;
   self.closeRequested = nil;
+  self.bootstrapAttested = nil;
   self.bootstrapNonce = nil;
   self.bootstrapObservedGeneration = 0;
   self.preloadStatus = nil;
@@ -462,6 +484,7 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, strong) dispatch_queue_t notificationQueue;
 @property(nonatomic) long long nextEvent;
 - (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation;
+- (void)publishBootstrapAttested:(NSNumber *)windowID generation:(long long)generation;
 - (long long)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation;
 - (long long)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID generation:(long long)generation;
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done;
@@ -495,6 +518,9 @@ static NSString *preloadDigest(NSData *data) {
 }
 - (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation {
   [self publishNativeEvent:@"web-content-gone" windowID:windowID generation:generation];
+}
+- (void)publishBootstrapAttested:(NSNumber *)windowID generation:(long long)generation {
+  [self publishNativeEvent:@"isolated-preload-attested" windowID:windowID generation:generation];
 }
 - (long long)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation {
   return [self publishNativeEvent:@"native-close-request" windowID:windowID generation:generation];
@@ -554,6 +580,9 @@ static NSString *preloadDigest(NSData *data) {
     __weak MBTHost *weakHost = self;
     window.contentGone = ^(long long eventGeneration) {
       [weakHost publishContentGone:windowID generation:eventGeneration];
+    };
+    window.bootstrapAttested = ^(long long eventGeneration) {
+      [weakHost publishBootstrapAttested:windowID generation:eventGeneration];
     };
     window.closeRequested = ^long long(long long eventGeneration) {
       return [weakHost publishCloseRequested:windowID generation:eventGeneration];

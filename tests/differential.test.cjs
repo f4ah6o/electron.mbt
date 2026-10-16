@@ -6,6 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { snapshot } = require('../bridges/node/app-files.cjs');
+const manifest = require('../compatibility/manifest.json');
 const root = path.resolve(__dirname, '..');
 const script = path.join(root, 'scripts/differential.cjs');
 const oracleFixture = path.join(root, 'fixtures/oracle');
@@ -27,15 +28,15 @@ function run(t, args) {
 
 function baselineFile(t, observed, { fixtureDir = oracleFixture, overrides = {} } = {}) {
   const file = path.join(temp(t), 'baseline.json');
+  const inventory = snapshot(fixtureDir);
   fs.writeFileSync(file, JSON.stringify({
     schema: 1, status: 'baseline-collected', compatible: false,
-    fixtureHash: snapshot(fixtureDir).sha256,
+    fixtureHash: inventory.sha256, fileHashes: inventory.files,
     observed, ...overrides,
   }));
   return file;
 }
 
-// A minimal app that inspectApp can resolve: package.json plus a CJS entry.
 function fixtureApp(t, mainSource) {
   const dir = temp(t);
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'differential-test-fixture', version: '0.0.0', main: 'main.cjs' }));
@@ -47,7 +48,7 @@ const completedObservation = {
   status: 'completed', moduleIdentity: true,
   trace: [['isReady-before', false], ['before-ready-throws', true], ['ready', true], ['bounds-synchronous', true], ['did-finish-load'], ['close-cancel'], ['alive-after-cancel', true], ['closed'], ['before-quit'], ['will-quit'], ['quit']],
   observation: { availableAtFirstScript: true, syncValue: 42, syncThrow: true, returnsPromise: true, promiseValue: 43, promiseReject: true, dataFrozen: true, dataUnchanged: true, callbackValues: ['first', 'second'], primordialIntact: true },
-  versions: { electron: '44.7.0', node: '24.21.0', chromium: '152.0.7977.130' },
+  versions: { electron: manifest.versions.electronOracle, node: manifest.versions.nodeOracle, chromium: '152.0.7977.130' },
   platform: 'darwin', arch: 'arm64',
 };
 
@@ -69,19 +70,14 @@ test('a completed Electron baseline diverges where the facade fails closed', t =
   assert.equal(comparison.fields.trace.firstDivergence.mbt, null);
   assert.equal(comparison.fields.abort.match, false);
   assert.equal(comparison.fields.abort.mbt.api, 'ipcMain.on');
-  // The same report is persisted to the requested output path.
   assert.equal(JSON.parse(fs.readFileSync(result.output, 'utf8')).status, 'differential-collected');
 });
 
-test('an equivalent pair reports equivalent without claiming compatibility', t => {
-  // The harness synthesizes an aborted observation when the run cannot emit;
-  // environment fields are recorded but never compared.
-  const aborted = {
-    status: 'aborted', moduleIdentity: null, trace: [], observation: null,
-    versions: { node: '0.0.0-fake' }, platform: 'darwin', arch: 'arm64',
-    abort: { phase: 'evaluate-or-run', code: 'ELECTRON_MBT_UNSUPPORTED_API', api: 'ipcMain.on' },
-  };
-  const result = run(t, ['--baseline', baselineFile(t, aborted)]);
+test('an equivalent completed synthetic pair reports equivalent without claiming compatibility', t => {
+  // An aborted Electron reference is not admissible even if the comparator
+  // itself can compare arbitrary objects. Keep synthetic reports in temp dirs.
+  const dir = fixtureApp(t, `require('node:fs').writeSync(1, ${JSON.stringify(`ELECTRON_MBT_ORACLE=${JSON.stringify(completedObservation)}\n`)});`);
+  const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, completedObservation, { fixtureDir: dir })]);
   assert.equal(result.status, 0, result.stderr);
   const comparison = JSON.parse(result.stdout).comparison;
   assert.equal(comparison.verdict, 'equivalent');
@@ -89,8 +85,6 @@ test('an equivalent pair reports equivalent without claiming compatibility', t =
 });
 
 test('a baseline collected from a different fixture is rejected', t => {
-  // The comparison is only evidence when both sides ran the same unchanged
-  // sources, so a hash mismatch fails the harness instead of reporting.
   const result = run(t, ['--baseline', baselineFile(t, completedObservation, { overrides: { fixtureHash: '0'.repeat(64) } })]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /ELECTRON_MBT_DIFFERENTIAL:.*different fixture sources/);
@@ -99,25 +93,21 @@ test('a baseline collected from a different fixture is rejected', t => {
 
 test('an emitted observation followed by a nonzero child exit is not trusted', t => {
   const dir = fixtureApp(t, `require('node:fs').writeSync(1, 'ELECTRON_MBT_ORACLE={"status":"completed"}\\n'); process.exit(1);`);
-  const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, { status: 'completed' }, { fixtureDir: dir })]);
+  const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, completedObservation, { fixtureDir: dir })]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /ELECTRON_MBT_DIFFERENTIAL:.*did not exit cleanly/);
   assert.equal(fs.existsSync(result.output), false);
 });
 
 test('a Node error code on stderr is not a recognized facade abort', t => {
-  // MODULE_NOT_FOUND is not an electron-mbt diagnostic; the child still died
-  // before emitting, so the harness must fail rather than synthesize 'aborted'.
   const dir = fixtureApp(t, `require('__missing__');`);
-  const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, { status: 'aborted' }, { fixtureDir: dir })]);
+  const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, completedObservation, { fixtureDir: dir })]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /ELECTRON_MBT_DIFFERENTIAL:.*recognized diagnostic/);
   assert.equal(fs.existsSync(result.output), false);
 });
 
 test('--electron cannot be combined with a non-oracle fixture', t => {
-  // oracle.cjs always collects fixtures/oracle, so the combination can never
-  // produce same-source evidence and is rejected as a usage error.
   const dir = fixtureApp(t, ``);
   const result = run(t, ['--fixture', dir, '--electron', process.execPath]);
   assert.equal(result.status, 1);
@@ -126,10 +116,8 @@ test('--electron cannot be combined with a non-oracle fixture', t => {
 });
 
 test('an unclassified child failure is a harness error, not an abort observation', t => {
-  // An unrecognized crash (no facade code/api, no timeout) must not be
-  // synthesized into evidence; the harness fails with the stderr detail.
   const dir = fixtureApp(t, `throw new Error('unclassified bootstrap crash');`);
-  const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, { status: 'aborted' }, { fixtureDir: dir })]);
+  const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, completedObservation, { fixtureDir: dir })]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /ELECTRON_MBT_DIFFERENTIAL:.*recognized diagnostic/);
   assert.match(result.stderr, /unclassified bootstrap crash/);
@@ -150,10 +138,45 @@ test('unusable baselines and arguments are rejected before any run', t => {
   assert.match(usage.stderr, /^ELECTRON_MBT_DIFFERENTIAL:/);
 });
 
-test('the comparison verdict belongs to the compiled MoonBit core', t => {
+test('the comparison verdict belongs to the compiled MoonBit core', () => {
   const core = require('../dist/core.cjs');
   const verdict = JSON.parse(core.compare_observations('{"status":"completed"}', '{"status":"aborted"}'));
   assert.equal(verdict.ok, true);
   assert.equal(verdict.verdict, 'diverged');
   assert.equal(JSON.parse(core.compare_observations('{"a":', '{}')).ok, false);
+});
+
+for (const [label, change, overrides, expectedField] of [
+  ['aborted reference', value => { value.status = 'aborted'; }, {}, 'observed.status'],
+  ['wrong Electron pin', value => { value.versions.electron = '0.0.0'; }, {}, 'observed.versions.electron'],
+  ['wrong Node pin', value => { value.versions.node = '0.0.0'; }, {}, 'observed.versions.node'],
+  ['missing trace', value => { delete value.trace; }, {}, 'observed.trace'],
+  ['compatibility claim', () => {}, { compatible: true }, 'compatible'],
+]) {
+  test(`a saved ${label} is rejected before the fixture can run`, t => {
+    const marker = path.join(temp(t), 'launched');
+    const dir = fixtureApp(t, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'launched');`);
+    const value = structuredClone(completedObservation);
+    change(value);
+    const result = run(t, ['--fixture', dir, '--baseline', baselineFile(t, value, { fixtureDir: dir, overrides })]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /baseline rejected/);
+    assert.ok(result.stderr.includes(expectedField), result.stderr);
+    assert.equal(fs.existsSync(marker), false);
+    assert.equal(fs.existsSync(result.output), false);
+  });
+}
+
+test('oversized and non-file baselines are rejected without publishing a report', t => {
+  const directory = temp(t);
+  const oversized = path.join(directory, 'oversized.json');
+  fs.writeFileSync(oversized, ' '.repeat(65537));
+  const large = run(t, ['--baseline', oversized]);
+  assert.equal(large.status, 1);
+  assert.match(large.stderr, /65536-byte file limit/);
+  assert.equal(fs.existsSync(large.output), false);
+  const nonFile = run(t, ['--baseline', directory]);
+  assert.equal(nonFile.status, 1);
+  assert.match(nonFile.stderr, /not a regular file/);
+  assert.equal(fs.existsSync(nonFile.output), false);
 });

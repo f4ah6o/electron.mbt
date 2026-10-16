@@ -110,3 +110,25 @@ test('What: cancelled IDs cannot be reused or replayed', () => {
   assert.throws(() => gate.accept(encodeEnvelope(envelope({ request: 20, terminal: 'success' }))), { code: 'ELECTRON_MBT_PROTOCOL' });
   assert.throws(() => gate.register(envelope({ request: 19 })), { code: 'ELECTRON_MBT_PROTOCOL' });
 });
+
+// What: only a verified, one-shot isolated-world document event may cross the
+// host event lane; it cannot carry an arbitrary renderer payload.
+test('What: isolated preload attestation is strictly shaped and replay-protected', () => {
+  const event = envelope({ operation: 'isolated-preload-attested', window: 2, generation: 1 });
+  const gate = createSessionGate(session);
+  assert.equal(gate.observe(encodeEnvelope(event)).operation, event.operation);
+  assert.throws(() => gate.observe(encodeEnvelope(event)), { code: 'ELECTRON_MBT_PROTOCOL' });
+  const validNext = { ...event, request: 2, generation: 2 };
+  for (const malformed of [
+    { ...validNext, payload: { name: 'arbitrary-command' } },
+    { ...validNext, payload: { nonce: 'never-expose' } },
+    { ...validNext, terminal: 'success' },
+    { ...validNext, generation: 0 },
+    { ...validNext, window: 0 },
+    { ...validNext, session: 'f'.repeat(32) },
+  ]) {
+    assert.throws(() => gate.observe(Buffer.from(JSON.stringify(malformed))),
+      { code: 'ELECTRON_MBT_PROTOCOL' });
+  }
+  assert.equal(gate.observe(encodeEnvelope(validNext)).generation, 2);
+});

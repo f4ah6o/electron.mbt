@@ -42,6 +42,13 @@ pub fn Session::register(self : Session, raw : String) -> Result[Unit, String] {
   try {
     let envelope = self.read(raw)
     if envelope.terminal { raise BadProtocol("Cannot register a completion") }
+    // Native notifications travel only from the dedicated host event descriptor.
+    // Registering them as outgoing control work would conflate two ID ledgers.
+    if envelope.operation == "web-content-gone" ||
+       envelope.operation == "native-close-request" ||
+       envelope.operation == "isolated-preload-attested" {
+      raise BadProtocol("Cannot register a native notification")
+    }
     if envelope.request <= self.last_issued { raise BadProtocol("Request ID must increase") }
     if self.pending.length() >= MaxPending || self.queued_bytes > MaxQueuedBytes - envelope.bytes {
       raise BadProtocol("Pending request budget exceeded")
@@ -112,8 +119,10 @@ pub fn Session::close(self : Session) -> Array[Int64] {
 pub fn Session::observe(self : Session, raw : String) -> Result[Unit, String] {
   try {
     let envelope = self.read(raw)
-    if !(envelope.operation == "web-content-gone" || envelope.operation == "native-close-request") || envelope.terminal ||
-        envelope.window <= 0L || envelope.request <= self.last_event {
+    if !(envelope.operation == "web-content-gone" || envelope.operation == "native-close-request" ||
+         envelope.operation == "isolated-preload-attested") || envelope.terminal ||
+        envelope.window <= 0L || envelope.request <= self.last_event ||
+        (envelope.operation == "isolated-preload-attested" && envelope.generation <= 0L) {
       raise BadProtocol("Invalid or replayed native event")
     }
     // Event IDs are a separate monotonic sequence from outgoing requests.

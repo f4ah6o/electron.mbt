@@ -399,3 +399,23 @@ test "What: native isolated bootstrap status cannot forge a frame or document ge
   let not_ready = bootstrap_wire("0", "{\"observed\":false,\"mainFrame\":false,\"generation\":0,\"documentURL\":\"\"}", ",\"terminal\":\"success\"")
   assert_true(validate(not_ready) is Ok(_))
 }
+
+///|
+test "What: native isolated attestation is one-shot, bounded and cannot be registered as control work" {
+  let secret = "0123456789abcdef0123456789abcdef"
+  let session = Session::new(secret)
+  let first = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":1,\"window\":2,\"generation\":1,\"operation\":\"isolated-preload-attested\",\"payload\":{}}"
+  assert_true(validate(first) is Ok(_))
+  assert_true(session.register(first) is Err(_))
+  assert_true(session.observe(first) is Ok(_))
+  assert_true(session.observe(first) is Err(_))
+  let wrong_payload = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":2,\"operation\":\"isolated-preload-attested\",\"payload\":{\"channel\":\"all\"}}"
+  assert_true(validate(wrong_payload) is Err(_))
+  assert_true(session.observe(wrong_payload) is Err(_))
+  let bad_generation = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":0,\"operation\":\"isolated-preload-attested\",\"payload\":{}}"
+  assert_true(validate(bad_generation) is Err(_))
+  let second = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":2,\"operation\":\"isolated-preload-attested\",\"payload\":{}}"
+  assert_true(session.observe(second) is Ok(_))
+  let success = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":3,\"window\":2,\"generation\":2,\"operation\":\"isolated-preload-attested\",\"payload\":{},\"terminal\":\"success\"}"
+  assert_true(session.observe(success) is Err(_))
+}

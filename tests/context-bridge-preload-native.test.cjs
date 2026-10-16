@@ -20,6 +20,17 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     },
   });
   try {
+    const verifiedEvents = [];
+    runtime.host.on('isolated-preload-attested', event => verifiedEvents.push(event));
+    const awaitVerified = async (window, generation) => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const accepted = verifiedEvents.filter(event => event.window === window.id &&
+          event.generation === generation);
+        if (accepted.length) { assert.equal(accepted.length, 1); return accepted[0]; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      throw new Error('Isolated preload did not produce an attested native notification');
+    };
     runtime.start();
     await runtime.app.whenReady();
     // Bypass the Node filesystem leaf to exercise the native checksum gate:
@@ -37,6 +48,7 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
       { code: 'ELECTRON_MBT_PRELOAD_PATH_DENIED' });
     const good = new runtime.BrowserWindow(preload('isolated-preload.cjs'));
     await good.loadFile('preload-page.html');
+    const attestedFirst = await awaitVerified(good, good._generation);
     // The fixture checks a different native bootstrap world from the app
     // preload world while pageWorld cannot access either handler.
     assert.equal(good.webContents.getTitle(), 'PRELOAD_ISOLATED');
@@ -46,6 +58,9 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     const slot = runtime.contextHandles.createPromise(scope);
     const expired = assert.rejects(slot.promise, { code: 'ELECTRON_MBT_BRIDGE_REVOKED' });
     await good.loadFile('preload-page.html');
+    const attestedSecond = await awaitVerified(good, good._generation);
+    assert.ok(attestedSecond.request > attestedFirst.request);
+    assert.equal(verifiedEvents.filter(event => event.window === good.id).length, 2);
     await expired;
     assert.equal(good.webContents.getTitle(), 'PRELOAD_ISOLATED');
     assert.throws(() => runtime.contextHandles.invoke(scope, id));
@@ -60,6 +75,7 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     assert.equal(runtime.host.request('get-bootstrap-status', denied.id, denied._generation).observed, false);
     assert.throws(() => runtime.bootstrapScopeForTrustedHost(denied, 'preload-read'),
       { code: 'ELECTRON_MBT_BRIDGE_NOT_READY' });
+    assert.equal(verifiedEvents.filter(event => event.window === denied.id).length, 0);
     denied.destroy();
 
     // Even when an app catches the failed module import, this is not a
@@ -68,6 +84,7 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     await assert.rejects(caught.loadFile('preload-page.html'),
       { code: 'ELECTRON_MBT_PRELOAD_UNSUPPORTED_API' });
     assert.equal(runtime.host.request('get-bootstrap-status', caught.id, caught._generation).observed, false);
+    assert.equal(verifiedEvents.filter(event => event.window === caught.id).length, 0);
     caught.destroy();
 
     const broken = new runtime.BrowserWindow(preload('broken-preload.cjs'));
@@ -75,6 +92,7 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
       { code: 'ELECTRON_MBT_PRELOAD_FAILED' });
     assert.throws(() => runtime.bootstrapScopeForTrustedHost(broken, 'preload-read'),
       { code: 'ELECTRON_MBT_BRIDGE_NOT_READY' });
+    assert.equal(verifiedEvents.filter(event => event.window === broken.id).length, 0);
     broken.destroy();
 
     assert.equal(runtime.contextHandles.retainedCount, 0);
@@ -82,6 +100,7 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     console.log(JSON.stringify({
       probe: 'contextbridge-preload-file', status: 'PASS',
       preloadSourceUnchanged: true, isolatedWorldPrivate: true,
+      nativeAttestationEventOneShot: true, failedPreloadNeverAttested: true,
       nativeBootstrapHandlerHiddenFromPreload: true,
       pageWorldSeesNeitherHandler: true,
       nativeChecksumTamperRejected: true,

@@ -22,8 +22,11 @@ to the main frame. A limited CommonJS module.exports/exports wrapper runs
 the body synchronously through Function *in the isolated realm*.
 This is not a Node VM, full Electron preload sandbox or CJS module resolver.
 
-Every require() throws an explicit unsupported-module exception. In
-particular, require('electron') and contextBridge remain unsupported.
+Every require() throws an explicit unsupported-module exception. An
+attempt permanently marks this preload run unsupported even if the CJS body
+catches that exception and otherwise returns normally; it cannot be counted
+as a successful execution. In particular, require('electron') and
+contextBridge remain unsupported.
 No renderer IPC, native file access, Node API or pageWorld privilege is
 exposed. A synchronous preload error (including a syntax error) rejects
 loadFile with ELECTRON_MBT_PRELOAD_FAILED. An unsupported module import

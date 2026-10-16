@@ -49,6 +49,14 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
       { code: 'ELECTRON_MBT_BRIDGE_NOT_READY' });
     denied.destroy();
 
+    // Even when an app catches the failed module import, this is not a
+    // compatible preload, and must not be counted as successful execution.
+    const caught = new runtime.BrowserWindow(preload('caught-require-preload.cjs'));
+    await assert.rejects(caught.loadFile('preload-page.html'),
+      { code: 'ELECTRON_MBT_PRELOAD_UNSUPPORTED_API' });
+    assert.equal(runtime.host.request('get-bootstrap-status', caught.id, caught._generation).observed, false);
+    caught.destroy();
+
     const broken = new runtime.BrowserWindow(preload('broken-preload.cjs'));
     await assert.rejects(broken.loadFile('preload-page.html'),
       { code: 'ELECTRON_MBT_PRELOAD_FAILED' });
@@ -62,6 +70,7 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
       probe: 'contextbridge-preload-file', status: 'PASS',
       preloadSourceUnchanged: true, isolatedWorldPrivate: true,
       sameURLReloadRevoked: true, requireFailsClosed: true,
+      caughtUnsupportedRequireFailsClosed: true,
       syntaxFailureReported: true, compatible: false, contextBridge: 'NOT_IMPLEMENTED',
     }));
   } finally { runtime.abort(); }

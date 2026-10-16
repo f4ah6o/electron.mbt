@@ -225,12 +225,14 @@ static NSString *preloadDigest(NSData *data) {
       @"(function(){"
        "const h=window.webkit.messageHandlers.electronMbtBootstrap;"
        "const report=h.postMessage.bind(h);"
-       "let status='ok';"
+       "let status='ok',requestedUnsupported=false;"
        "try{const module={exports:{}};"
-       "const deny=function(){throw {code:'ELECTRON_MBT_REQUIRE_UNSUPPORTED'};};"
+       "const deny=function(){requestedUnsupported=true;"
+       "throw {code:'ELECTRON_MBT_REQUIRE_UNSUPPORTED'};};"
        "(new Function('require','module','exports',%@))(deny,module,module.exports);}"
        "catch(error){status=error&&error.code==='ELECTRON_MBT_REQUIRE_UNSUPPORTED'?"
        "'unsupported':'failed';}"
+       "if(requestedUnsupported)status='unsupported';"
        "report({nonce:'%@',preload:status}).catch(function(){});"
        "})();",
       quoted, self.bootstrapNonce];

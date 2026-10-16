@@ -1,15 +1,14 @@
 'use strict';
 // Runtime-owned leaf resolved for require('electron') by installElectronFacade.
-// It declares only the desktop-core-v1 app surface wired to the compiled
-// MoonBit core; every unimplemented Electron surface fails closed instead of
-// silently degrading to an approximation. This file is not compatibility
-// evidence: nothing here proves BrowserWindow, IPC, contextBridge or Electron
-// event ordering.
+// App lifecycle and bounded main-local listeners use the compiled MoonBit core.
+// Unimplemented Electron surfaces fail closed. Main-local emit is not renderer
+// IPC or evidence of BrowserWindow, contextBridge or Electron compatibility.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { runtimeError } = require('./errors.cjs');
+const { createIpcMain } = require('./ipc-main.cjs');
 
 const CONTEXT_LIMIT = 65536;
 // Issue 0001 section 11: the default userData must be an independent directory
@@ -64,6 +63,7 @@ function call(operation) {
   if (!result.ok) {
     throw runtimeError(`ELECTRON_MBT_CORE_${result.code}`, `Core rejected the lifecycle operation (${result.code})`);
   }
+  if (operation === 'stop') ipc.dispose();
   return result;
 }
 function appState() {
@@ -90,6 +90,7 @@ function unsupported(name) {
   });
 }
 
+const ipc = createIpcMain(core, runtime, unsupported);
 const app = new EventEmitter();
 const pathOverrides = new Map();
 if (context.userData) pathOverrides.set('userData', context.userData);
@@ -175,7 +176,7 @@ setImmediate(() => {
 module.exports = {
   app,
   BrowserWindow: unsupported('BrowserWindow'),
-  ipcMain: unsupported('ipcMain'),
+  ipcMain: ipc.ipcMain,
   ipcRenderer: unsupported('ipcRenderer'),
   contextBridge: unsupported('contextBridge'),
   dialog: unsupported('dialog'),

@@ -9,6 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { inspectApp, snapshot } = require('../bridges/node/app-files.cjs');
+const { parseCandidateObservation } = require('./candidate-observation.cjs');
 const manifest = require('../compatibility/manifest.json');
 const root = path.resolve(__dirname, '..');
 let fixture = path.join(root, 'fixtures/oracle');
@@ -52,11 +53,9 @@ function collectBaseline(executable) {
   return result.stdout || '';
 }
 
-// The fixture must run unchanged. When the facade rejects an API the app may
-// die before it can emit its observation; that abort is itself the observed
-// electron.mbt behavior and is reported, not hidden. Only recognized aborts
-// (a watchdog timeout, or a facade diagnostic carrying a code/API name) count
-// as evidence — any other child failure is a harness error.
+// The fixture must run unchanged. Recognized aborts and deliberate fixture
+// failures are observations, not successful app executions. Unclassified child
+// failures remain harness errors, and completed markers never mask crashes.
 function runMbt() {
   let inspected;
   try { inspected = inspectApp(fixture); } catch (error) { fail(`the fixture cannot be inspected: ${error.message}`); }
@@ -83,15 +82,10 @@ function runMbt() {
     const api = /^Error: (\S+) is not implemented by electron-mbt/m.exec(stderr);
     const timedOut = result.error && result.error.code === 'ETIMEDOUT';
     if (lines.length === 1) {
-      // An observation is only trustworthy from a child that exited cleanly;
-      // a crash after printing could mean the report itself is incomplete.
-      if (result.status !== 0 || result.error || result.signal) {
-        fail(`the electron.mbt run emitted an observation but did not exit cleanly (status=${result.status}, signal=${result.signal || (result.error && result.error.signal) || 'none'})`);
-      }
       try {
-        return JSON.parse(lines[0].slice('ELECTRON_MBT_ORACLE='.length));
-      } catch {
-        fail('the electron.mbt run emitted a malformed observation');
+        return parseCandidateObservation(result, lines[0].slice('ELECTRON_MBT_ORACLE='.length));
+      } catch (error) {
+        fail(error.message);
       }
     }
     if (!timedOut && !code && !api) {

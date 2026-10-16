@@ -52,24 +52,26 @@ const completedObservation = {
   platform: 'darwin', arch: 'arm64',
 };
 
-test('a completed Electron baseline diverges where the facade fails closed', t => {
+test('the unchanged fixture passes listener registration and records its next explicit failure', t => {
   const result = run(t, ['--baseline', baselineFile(t, completedObservation)]);
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.status, 'differential-collected');
   assert.equal(report.compatible, false);
-  assert.equal(report.mbt.observed.status, 'aborted');
-  assert.equal(report.mbt.observed.abort.code, 'ELECTRON_MBT_UNSUPPORTED_API');
+  assert.equal(report.mbt.observed.status, 'failed');
+  assert.equal(report.mbt.observed.code, 'ready-rejected');
+  assert.equal(report.mbt.observed.exitCode, 1);
+  assert.equal(report.mbt.observed.moduleIdentity, true);
+  assert.deepEqual(report.mbt.observed.trace, completedObservation.trace.slice(0, 3));
   const comparison = report.comparison;
   assert.equal(comparison.ok, true);
   assert.equal(comparison.verdict, 'diverged');
   assert.equal(comparison.compatible, false);
   assert.equal(comparison.fields.status.match, false);
-  assert.equal(comparison.fields.trace.matchedPrefix, 0);
-  assert.equal(comparison.fields.trace.firstDivergence.index, 0);
+  assert.equal(comparison.fields.trace.matchedPrefix, 3);
+  assert.equal(comparison.fields.trace.firstDivergence.index, 3);
   assert.equal(comparison.fields.trace.firstDivergence.mbt, null);
-  assert.equal(comparison.fields.abort.match, false);
-  assert.equal(comparison.fields.abort.mbt.api, 'ipcMain.on');
+  assert.equal(Object.hasOwn(report.mbt.observed, 'abort'), false);
   assert.equal(JSON.parse(fs.readFileSync(result.output, 'utf8')).status, 'differential-collected');
 });
 

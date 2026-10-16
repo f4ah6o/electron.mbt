@@ -21,9 +21,9 @@ function setup(t) {
   return { ...ipc, runtime, call, sender, event, request: (...args) => ipc.invoke(sender, channel, args, event) };
 }
 
-test('the exact compiled kernel satisfies the shared 13-scenario handler contract', async t => {
+test('the exact compiled kernel satisfies the shared 16-scenario handler contract', async t => {
   const ctx = setup(t);
-  assert.equal((await runScenario(ctx.ipcMain, (channel, args) => ctx.invoke(ctx.sender, channel, args, ctx.event))).length, 13);
+  assert.equal((await runScenario(ctx.ipcMain, (channel, args) => ctx.invoke(ctx.sender, channel, args, ctx.event))).length, 16);
   assert.equal(ctx.call({ op: 'pending' }).pending, 0);
   assert.equal(ctx.call({ op: 'queued-bytes' }).bytes, 0);
 });
@@ -70,7 +70,7 @@ test('an ungranted channel is denied whether or not a handler exists', async t =
 test('invalid argument values fail before consuming a once handler', async t => {
   const ctx = setup(t);
   ctx.ipcMain.handleOnce(channel, () => 1);
-  for (const args of [[undefined], [new Date()], [() => {}], [{ get secret() { throw new Error('getter ran'); } }]]) {
+  for (const args of [[new Date()], [() => {}], [{ get secret() { throw new Error('getter ran'); } }]]) {
     await assert.rejects(ctx.invoke(ctx.sender, channel, args, ctx.event), { code: 'ELECTRON_MBT_UNSUPPORTED_VALUE' });
   }
   await assert.rejects(ctx.invoke(ctx.sender, channel, ['x'.repeat(1048576)], ctx.event), { code: 'ELECTRON_MBT_LIMIT' });
@@ -157,7 +157,7 @@ for (const op of ['window.destroy', 'stop']) {
 
 test('unsupported results reject and release request accounting', async t => {
   const ctx = setup(t);
-  for (const value of [undefined, new Date(), new Map(), -0]) {
+  for (const value of [new Date(), new Map(), -0]) {
     ctx.ipcMain.handleOnce(channel, () => value);
     await assert.rejects(ctx.request(), { code: 'ELECTRON_MBT_UNSUPPORTED_VALUE' });
     assert.equal(ctx.call({ op: 'pending' }).pending, 0);
@@ -224,4 +224,37 @@ test('malformed and oversized handler envelopes fail without mutation', () => {
   for (const raw of ['{', ' '.repeat(16384) + '{}']) {
     assert.deepEqual(JSON.parse(core.dispatch_invokes(registry, raw)), { ok: false, code: 'InvalidPayload' });
   }
+});
+
+
+test('undefined arguments and handler results survive IPC cloning', async t => {
+  const ctx = setup(t);
+  ctx.ipcMain.handleOnce(channel, (_event, argument) => ({ copied: argument, missing: undefined }));
+  const input = Object.fromEntries([['__proto__', undefined], ['nested', [undefined, null, 1]]]);
+  const result = await ctx.request(input);
+  assert.deepStrictEqual(result, { copied: input, missing: undefined });
+  assert.equal(ctx.call({ op: 'pending' }).pending, 0);
+});
+
+test('stale completion rejects before touching an expensive handler return value', async t => {
+  const ctx = setup(t);
+  const release = Promise.withResolvers();
+  let reads = 0;
+  const stale = { value: 42 };
+  ctx.ipcMain.handleOnce(channel, () => release.promise);
+  const promise = ctx.request();
+  ctx.call({ op: 'window.navigate', window: ctx.sender.window });
+  const original = Object.getOwnPropertyDescriptor;
+  Object.getOwnPropertyDescriptor = function (object, key) {
+    if (object === stale) reads++;
+    return original(object, key);
+  };
+  try {
+    release.resolve(stale);
+    await assert.rejects(promise, { code: 'ELECTRON_MBT_CORE_AlreadyCompleted' });
+    assert.equal(reads, 0);
+  } finally {
+    Object.getOwnPropertyDescriptor = original;
+  }
+  assert.equal(ctx.call({ op: 'pending' }).pending, 0);
 });

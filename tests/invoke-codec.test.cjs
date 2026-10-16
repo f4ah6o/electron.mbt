@@ -95,3 +95,21 @@ test('internal wire serialization does not consult inherited toJSON hooks', () =
     else delete Array.prototype.toJSON;
   }
 });
+
+test('encoded-byte budget stops wide records before inspecting their tail', () => {
+  const input = {};
+  for (let i = 0; i < 25000; i++) input[`key-${i}`] = 'x'.repeat(40);
+  Object.defineProperty(input, 'tail', { enumerable: true, value: 'uninspected' });
+  const original = Object.getOwnPropertyDescriptor;
+  let inspectedTail = 0;
+  Object.getOwnPropertyDescriptor = function (object, key) {
+    if (object === input && key === 'tail') inspectedTail++;
+    return original(object, key);
+  };
+  try {
+    assert.throws(() => encodeInvoke(input), { code: 'ELECTRON_MBT_LIMIT' });
+    assert.equal(inspectedTail, 0);
+  } finally {
+    Object.getOwnPropertyDescriptor = original;
+  }
+});

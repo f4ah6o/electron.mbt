@@ -70,7 +70,7 @@ function buildReport() {
   checks.push(check('adapted-source-snapshot', sourceOk ? 'PASS' : 'FAIL',
     `private staging files=${sourceFiles.length}; entry=${sourceManifest.entry}; hash=${sourceEntry ? sourceEntry.sha256 : ''}`));
   checks.push(check('adapted-native-ingress', adaptedRecord.semantics.nativeIngress === 'test-only-selftest' ? 'PASS' : 'FAIL',
-    `page-world electronMbtApp selftest=${adaptedRecord.nativeIngress?.operation || 'absent'}; application RPC ingress=${adaptedRecord.semantics.ingress}`));
+    `page-world electronMbtApp selftest=${adaptedRecord.nativeIngress?.operation || 'absent'}; queue=${adaptedRecord.nativeIngress?.queueRelease || 'absent'}; application RPC ingress=${adaptedRecord.semantics.ingress}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',
     'Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected'));
 

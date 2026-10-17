@@ -602,24 +602,32 @@ fn ingress_wire(operation : String, payload : String, suffix : String) -> String
 }
 
 ///|
-test "What: native ingress status and trigger envelopes are bounded" {
+test "What: native ingress status, release and trigger envelopes are bounded" {
   assert_true(validate(ingress_wire("get-ingress-status", "{}", "")) is Ok(_))
   let session = Session::new("0123456789abcdef0123456789abcdef")
   assert_true(session.register(ingress_wire("get-ingress-status", "{}", "")) is Ok(_))
   let completed = ingress_wire("get-ingress-status",
-    "{\"admitted\":1,\"denied\":2,\"lastCode\":\"ELECTRON_MBT_INGRESS_LIMIT\",\"generation\":1}",
+    "{\"admitted\":1,\"denied\":2,\"unhandled\":4,\"lastCode\":\"ELECTRON_MBT_NO_HANDLER\",\"generation\":1}",
     ",\"terminal\":\"success\"")
   assert_true(session.accept(completed) is Ok(_))
   for malformed in [
-    "{\"admitted\":-1,\"denied\":2,\"lastCode\":\"x\",\"generation\":1}",
-    "{\"admitted\":1,\"denied\":-1,\"lastCode\":\"x\",\"generation\":1}",
-    "{\"admitted\":1,\"denied\":2,\"lastCode\":\"" + "x".repeat(129) + "\",\"generation\":1}",
-    "{\"admitted\":1,\"denied\":2,\"lastCode\":\"x\",\"generation\":2}",
-    "{\"admitted\":1,\"denied\":2,\"lastCode\":\"x\",\"generation\":1,\"extra\":1}",
+    "{\"admitted\":-1,\"denied\":2,\"unhandled\":4,\"lastCode\":\"x\",\"generation\":1}",
+    "{\"admitted\":1,\"denied\":-1,\"unhandled\":4,\"lastCode\":\"x\",\"generation\":1}",
+    "{\"admitted\":1,\"denied\":2,\"unhandled\":-1,\"lastCode\":\"x\",\"generation\":1}",
+    "{\"admitted\":1,\"denied\":2,\"unhandled\":4,\"lastCode\":\"" + "x".repeat(129) + "\",\"generation\":1}",
+    "{\"admitted\":1,\"denied\":2,\"unhandled\":4,\"lastCode\":\"x\",\"generation\":2}",
+    "{\"admitted\":1,\"denied\":2,\"unhandled\":4,\"lastCode\":\"x\",\"generation\":1,\"extra\":1}",
   ] {
     assert_true(validate(ingress_wire("get-ingress-status", malformed, ",\"terminal\":\"success\"")) is Err(_))
   }
   assert_true(validate(ingress_wire("get-ingress-status", "{\"x\":1}", "")) is Err(_))
+
+  assert_true(validate(ingress_wire("release-adapted-ingress", "{}", "")) is Ok(_))
+  assert_true(validate(ingress_wire("release-adapted-ingress",
+    "{\"released\":true}", ",\"terminal\":\"success\"")) is Ok(_))
+  for malformed in ["{\"released\":false}", "{}", "{\"released\":true,\"extra\":1}"] {
+    assert_true(validate(ingress_wire("release-adapted-ingress", malformed, ",\"terminal\":\"success\"")) is Err(_))
+  }
 
   assert_true(validate(ingress_wire("trigger-adapted-ingress", "{}", "")) is Ok(_))
   assert_true(validate(ingress_wire("trigger-adapted-ingress",

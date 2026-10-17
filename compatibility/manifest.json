@@ -658,7 +658,7 @@
     "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity, node_modules package exports(require/default)/main",
     "restart": "sequential second host start/hello/ready/shutdown; not an automatic restart policy",
     "bootstrap": "get-bootstrap-status observed/mainFrame/generation/index.html; preloadStatus=absent",
-    "adaptedAdapter": "get-adapted-status observed/documentStartBeforeLoad=true/ingress=absent; pageTitle=adapted-api-ok; entry and adapter loaded from a private hash-verified source snapshot; dispatch-adapted-event delivers doc:open after load and after a generation-2 reload; a page-world electronMbtApp selftest admits the native main-frame sender and rejects unknown/oversize operations; a forged page nonce is rejected page-side",
+    "adaptedAdapter": "get-adapted-status observed/documentStartBeforeLoad=true/ingress=absent; pageTitle=adapted-api-ok; entry and adapter loaded from a private hash-verified source snapshot; dispatch-adapted-event delivers doc:open after load and after a generation-2 reload; the adapter queue is released into the page-world electronMbtApp selftest path, where four calls reject NO_HANDLER; the selftest admits the native main-frame sender and rejects unknown/oversize operations; a forged page nonce is rejected page-side",
     "retry": "initial start/handshake retries up to 3 with 100 ms backoff; flaky wrapper reaches attempts=2; no crash-after-ready restart policy"
   },
   "previewReadiness": {
@@ -712,6 +712,7 @@
     "eventTrigger": "dispatch-adapted-event",
     "sourceSnapshot": "private staging from fixtures/native-app/source-manifest.json (entry and adapter pinned by SHA-256 and bytes)",
     "note": "Generated page-local listener and ingress-gated Promise-call fixture only. The entry and adapter load from a private hash-verified snapshot; native event delivery and a selftest ingress admission are private-lane test paths. Application RPC ingress, Main dispatch, ipcRenderer/contextBridge, Moji preload adaptation and app boot remain absent.",
-    "nativeIngress": "test-only-selftest"
+    "nativeIngress": "test-only-selftest",
+    "nativeQueue": "test-release; four calls reach native and reject NO_HANDLER, three overflow calls reject QUEUE_FULL"
   }
 }

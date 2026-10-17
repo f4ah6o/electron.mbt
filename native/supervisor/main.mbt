@@ -250,9 +250,35 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_EVENT\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let mut queue_pending_ok = false
+  for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let pending_request = request_frame(session, 9, 1, 1, "get-web-contents-title", "{}")
+    let pending_sent = send(fd, pending_request)
+    let pending_reply = if pending_sent { receive(fd, buffer) } else { None }
+    if pending_sent && pending_reply is Some(_) &&
+      pending_reply.unwrap().contains("\"title\":\"adapted-queue-pending\"") {
+      queue_pending_ok = true
+      break
+    }
+    supervisor_sleep_ms(20)
+  }
+  if !queue_pending_ok {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_QUEUE_PENDING\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let release = request_frame(session, 41, 1, 1, "release-adapted-ingress", "{}")
+  let release_sent = send(fd, release)
+  let release_reply = if release_sent { receive(fd, buffer) } else { None }
+  if !release_sent || release_reply is None ||
+    !release_reply.unwrap().contains("\"released\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_QUEUE_RELEASE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let mut page_title_ok = false
-  for _attempt = 0; _attempt < 40; _attempt = _attempt + 1 {
-    let page_title_request = request_frame(session, 9, 1, 1, "get-web-contents-title", "{}")
+  for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let page_title_request = request_frame(session, 42, 1, 1, "get-web-contents-title", "{}")
     let page_title_sent = send(fd, page_title_request)
     let page_title_reply = if page_title_sent { receive(fd, buffer) } else { None }
     if page_title_sent && page_title_reply is Some(_) &&
@@ -260,11 +286,21 @@ fn main {
       page_title_ok = true
       break
     }
-    supervisor_sleep_ms(50)
+    supervisor_sleep_ms(20)
   }
   if !page_title_ok {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PAGE_API\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let queue_status = request_frame(session, 43, 1, 1, "get-ingress-status", "{}")
+  let queue_status_sent = send(fd, queue_status)
+  let queue_status_reply = if queue_status_sent { receive(fd, buffer) } else { None }
+  if !queue_status_sent || queue_status_reply is None ||
+    !queue_status_reply.unwrap().contains("\"unhandled\":4") ||
+    !queue_status_reply.unwrap().contains("\"generation\":1") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_QUEUE_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
   let unknown_event = request_frame(session, 13, 1, 1, "dispatch-adapted-event",
@@ -439,9 +475,35 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_EVENT\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let mut reload_pending_ok = false
+  for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let reload_pending_request = request_frame(session, 22, 1, 2, "get-web-contents-title", "{}")
+    let reload_pending_sent = send(fd, reload_pending_request)
+    let reload_pending_reply = if reload_pending_sent { receive(fd, buffer) } else { None }
+    if reload_pending_sent && reload_pending_reply is Some(_) &&
+      reload_pending_reply.unwrap().contains("\"title\":\"adapted-queue-pending\"") {
+      reload_pending_ok = true
+      break
+    }
+    supervisor_sleep_ms(20)
+  }
+  if !reload_pending_ok {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_QUEUE_PENDING\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_release = request_frame(session, 44, 1, 2, "release-adapted-ingress", "{}")
+  let reload_release_sent = send(fd, reload_release)
+  let reload_release_reply = if reload_release_sent { receive(fd, buffer) } else { None }
+  if !reload_release_sent || reload_release_reply is None ||
+    !reload_release_reply.unwrap().contains("\"released\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_QUEUE_RELEASE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let mut reload_title_ok = false
-  for _attempt = 0; _attempt < 40; _attempt = _attempt + 1 {
-    let reload_title_request = request_frame(session, 22, 1, 2, "get-web-contents-title", "{}")
+  for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let reload_title_request = request_frame(session, 45, 1, 2, "get-web-contents-title", "{}")
     let reload_title_sent = send(fd, reload_title_request)
     let reload_title_reply = if reload_title_sent { receive(fd, buffer) } else { None }
     if reload_title_sent && reload_title_reply is Some(_) &&
@@ -449,11 +511,21 @@ fn main {
       reload_title_ok = true
       break
     }
-    supervisor_sleep_ms(50)
+    supervisor_sleep_ms(20)
   }
   if !reload_title_ok {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_PAGE_API\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_queue_status = request_frame(session, 46, 1, 2, "get-ingress-status", "{}")
+  let reload_queue_status_sent = send(fd, reload_queue_status)
+  let reload_queue_status_reply = if reload_queue_status_sent { receive(fd, buffer) } else { None }
+  if !reload_queue_status_sent || reload_queue_status_reply is None ||
+    !reload_queue_status_reply.unwrap().contains("\"unhandled\":4") ||
+    !reload_queue_status_reply.unwrap().contains("\"generation\":2") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_QUEUE_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
   let reload_bootstrap = request_frame(session, 23, 1, 2, "get-bootstrap-status", "{}")
@@ -643,7 +715,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"nativeQueueRelease\":true,\"nativeQueueUnhandled\":4,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

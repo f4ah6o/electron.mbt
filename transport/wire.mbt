@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "get-document-identity" | "get-ingress-status" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -668,10 +668,11 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       }
     } else if success {
       match payload {
-        Object(values) if values.length() == 4 => {
+        Object(values) if values.length() == 5 => {
           let admitted = identifier(values.get("admitted").unwrap_or(null))
           let denied = identifier(values.get("denied").unwrap_or(null))
-          if admitted < 0L || denied < 0L {
+          let unhandled = identifier(values.get("unhandled").unwrap_or(null))
+          if admitted < 0L || denied < 0L || unhandled < 0L {
             raise BadProtocol("Invalid ingress counters")
           }
           match values.get("lastCode") {
@@ -683,6 +684,24 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Malformed ingress status")
+      }
+    }
+  }
+  if operation == "release-adapted-ingress" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid ingress release request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 1 => {
+          match values.get("released") {
+            Some(True) => ()
+            _ => raise BadProtocol("Invalid ingress release acknowledgement")
+          }
+        }
+        _ => raise BadProtocol("Malformed ingress release acknowledgement")
       }
     }
   }

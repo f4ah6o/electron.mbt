@@ -1,24 +1,31 @@
-# Native ingress selftest (fixture)
+# Native ingress / adapter queue (fixture)
 
-Status: **fixture-only, EP-14 partial (C1)**. A page-world request can reach
-native, is bound to the actual WebKit frame/document/generation and is admitted
-or denied before any application handler runs. There is no Main/QuickJS
-dispatch and no production application operation.
+Status: **fixture-only, EP-14 partial (C1 + C1c)**. A page-world request can
+reach native, is bound to the actual WebKit frame/document/generation and is
+admitted or denied before any application handler runs. The adapter's bounded
+first-call queue is released into this path, but recognized application
+operations return a typed `NO_HANDLER`; there is no Main/QuickJS dispatch.
 
 ## Contract
 
 - `install-adapted-adapter` registers the page-world
   `electronMbtApp` script-message handler in addition to the installation
   receipt handler.
-- The page sends `{ operation, payload }`. Only `selftest:identity` is admitted
-  in this slice. The payload may contain one bounded value; the page-supplied
-  `claimedSender` is never used as authority.
-- The admitted reply contains `admitted`, `operation`, `sender:
-  "native-wkwebview"`, `mainFrame`, `generation`, `source`, `entrySHA256` and
-  `manifestSHA256`. The hashes identify the prepared source snapshot.
-- `get-ingress-status` returns the admission/denial counters and last denial
-  code. `trigger-adapted-ingress` is a private-lane test trigger that calls the
-  page-defined `__electronMbtIngressProbe` function.
+- The host object injected at document-start exposes `whenReady(callback)` and
+  `dispatch(operation, argsJson)`. `dispatch` posts
+  `{ operation, payload }` to `electronMbtApp`, maps the native error message to
+  a typed `Error.code`, and returns the Promise.
+- The page sends `{ operation, payload }` with exactly two members.
+  `selftest:identity` is admitted; `app:get-settings` and
+  `app:get-update-state` are recognized but rejected with
+  `ELECTRON_MBT_NO_HANDLER`. The payload's `claimedSender` is never used as
+  authority.
+- `get-ingress-status` returns `admitted`, `denied`, `unhandled`, `lastCode`
+  and `generation`.
+- `release-adapted-ingress` is a private-lane test trigger that calls the
+  page-defined `__electronMbtIngressReady()` and flushes the adapter queue.
+  `trigger-adapted-ingress` calls `__electronMbtIngressProbe()` for the direct
+  selftest.
 
 ## Native admission
 
@@ -35,17 +42,31 @@ Before any reply, native checks:
 The request must have exactly `operation` and `payload`; unknown operations,
 a non-dictionary payload, payloads with more than one value and strings longer
 than 256 characters are denied with typed codes (`INGRESS_UNKNOWN_OPERATION`,
-`INGRESS_MALFORMED`, `INGRESS_LIMIT`, `INGRESS_DENIED`). The handler does not
-require `LoadComplete`, so ingress observation is separate from the load
-outcome.
+`INGRESS_MALFORMED`, `INGRESS_LIMIT`, `INGRESS_DENIED`). Recognized application
+operations increment `unhandled` and reject with `ELECTRON_MBT_NO_HANDLER`.
+The handler does not require `LoadComplete`, so ingress observation is separate
+from the load outcome.
+
+## Adapter queue release
+
+The page sets `adapted-queue-pending`, then makes four calls that fit the queue
+and three that overflow it. The supervisor observes the pending title, calls
+`release-adapted-ingress`, and the host's `__electronMbtIngressReady` invokes
+the adapter's stored flush callback. The four queued calls reach native as
+`app:get-settings` and reject with `NO_HANDLER`; the three overflow calls reject
+with `ELECTRON_MBT_ADAPTER_QUEUE_FULL`. The page then sets `adapted-api-ok`.
+
+The same sequence runs after the generation-2 reload; native counters reset on
+`begin-load`. The queue's own timeout path remains unit-tested by
+`scripts/adapted-api-check.cjs`; the native fixture no longer uses the timeout
+as its normal path.
 
 ## Evidence
 
-The supervisor triggers the page probe after the load and again after the
-generation-2 reload. It reports:
+The supervisor reports:
 
 ```json
-{"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2}
+{"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueUnhandled":4}
 ```
 
 The page probe verifies that:
@@ -64,21 +85,25 @@ the admission path but is not exercised by that probe.
 
 ## Deliberate limits
 
-- one test-only operation (`selftest:identity`); no application method,
-  invoke/reply, event reply or Main/QuickJS dispatch
+- no Main/QuickJS dispatch, actual handler result, invoke/reply or event reply;
+  recognized application operations end in `NO_HANDLER`
 - no `contextBridge`/`ipcRenderer`, no production sender grant and no
   `DocumentIngressReady` state machine
+- `release-adapted-ingress` is a test trigger; the page can call
+  `__electronMbtIngressReady`, but each request is revalidated against the
+  actual frame/document/generation
+- the native fixture exercises queue release rather than the queue timeout;
+  the timeout/overflow contract remains unit-level
 - no iframe/srcdoc delivery evidence; the handler exposure itself is a separate
   policy question
 - no origin/redirect/back-forward or opaque-origin policy
-- no Moji preload adaptation or app scenario
 - `compatible:false`, adapted **partial** and strict **blocked** are unchanged
 
 ## Next
 
-- dispatch admitted operations into the Main/QuickJS kernel and return the
-  actual handler result
-- connect the adapter's `getSettings`/`getUpdateState` queue to this ingress
-  without conflating route readiness with `DocumentIngressReady`
+- dispatch admitted application operations into the Main/QuickJS kernel and
+  return the actual handler result
+- define the production `DocumentIngressReady` transition and remove the
+  test-only release trigger
 - decide the subframe/iframe handler policy and add executed negative tests
 - add origin/redirect/back-forward and sender/document lease cases

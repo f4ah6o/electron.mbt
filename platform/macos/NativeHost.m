@@ -241,6 +241,7 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, copy) NSString *snapshotManifestSHA256;
 @property(nonatomic) long long ingressAdmitted;
 @property(nonatomic) long long ingressDenied;
+@property(nonatomic) long long ingressUnhandled;
 @property(nonatomic, copy) NSString *ingressLastCode;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
@@ -272,6 +273,7 @@ static NSString *preloadDigest(NSData *data) {
     self.snapshotManifestSHA256 = nil;
     self.ingressAdmitted = 0;
     self.ingressDenied = 0;
+    self.ingressUnhandled = 0;
     self.ingressLastCode = nil;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
@@ -364,7 +366,26 @@ static NSString *preloadDigest(NSData *data) {
     self.adaptedEventNonce = [[NSUUID UUID] UUIDString];
     NSString *hostSource = [NSString stringWithFormat:
       @"(function (__adaptedEventNonce) {\n"
+       "const readyCallbacks = [];\n"
        "const host = Object.freeze({\n"
+       "  whenReady: function (callback) {\n"
+       "    if (typeof callback === 'function') readyCallbacks.push(callback);\n"
+       "  },\n"
+       "  dispatch: function (operation, args) {\n"
+       "    const handler = window.webkit && window.webkit.messageHandlers &&\n"
+       "      window.webkit.messageHandlers.electronMbtApp;\n"
+       "    if (!handler) {\n"
+       "      return Promise.reject(new Error('ELECTRON_MBT_INGRESS_UNAVAILABLE'));\n"
+       "    }\n"
+       "    const payload = args === null ? {} : JSON.parse(args);\n"
+       "    return handler.postMessage({ operation: operation, payload: payload }).catch(function (error) {\n"
+       "      const message = String((error && error.message) || error || '');\n"
+       "      const match = message.match(/ELECTRON_MBT_[A-Z0-9_]+/);\n"
+       "      const wrapped = new Error(message);\n"
+       "      wrapped.code = match ? match[0] : 'ELECTRON_MBT_INGRESS_FAILED';\n"
+       "      throw wrapped;\n"
+       "    });\n"
+       "  },\n"
        "  onEvent: function (emit) {\n"
        "    Object.defineProperty(window, '__electronMbtDispatch', {\n"
        "      value: function (nonce, topic, payload) {\n"
@@ -379,6 +400,13 @@ static NSString *preloadDigest(NSData *data) {
        "});\n"
        "Object.defineProperty(window, '__electronMbtIngress', {\n"
        "  value: host, enumerable: false, configurable: true, writable: false\n"
+       "});\n"
+       "Object.defineProperty(window, '__electronMbtIngressReady', {\n"
+       "  value: function () {\n"
+       "    const batch = readyCallbacks.splice(0, readyCallbacks.length);\n"
+       "    for (let index = 0; index < batch.length; index += 1) batch[index]();\n"
+       "  },\n"
+       "  enumerable: false, configurable: false, writable: false\n"
        "});\n"
        "})(\"%@\");",
       self.adaptedEventNonce];
@@ -485,10 +513,21 @@ static NSString *preloadDigest(NSData *data) {
       replyHandler(nil, @"ELECTRON_MBT_INGRESS_MALFORMED");
       return;
     }
-    if (![operation isEqualToString:@"selftest:identity"]) {
+    BOOL known = [operation isEqualToString:@"selftest:identity"] ||
+                 [operation isEqualToString:@"app:get-settings"] ||
+                 [operation isEqualToString:@"app:get-update-state"];
+    if (!known) {
       self.ingressDenied++;
       self.ingressLastCode = @"ELECTRON_MBT_INGRESS_UNKNOWN_OPERATION";
       replyHandler(nil, @"ELECTRON_MBT_INGRESS_UNKNOWN_OPERATION");
+      return;
+    }
+    if (![operation isEqualToString:@"selftest:identity"]) {
+      // The application operation is recognized but no Main handler is wired.
+      // This is a typed fail-closed result, not a successful reply.
+      self.ingressUnhandled++;
+      self.ingressLastCode = @"ELECTRON_MBT_NO_HANDLER";
+      replyHandler(nil, @"ELECTRON_MBT_NO_HANDLER");
       return;
     }
     NSDictionary *payload = requestPayload;
@@ -1005,6 +1044,7 @@ static NSString *preloadDigest(NSData *data) {
     window.adaptedAdapterBeforeLoad = NO;
     window.ingressAdmitted = 0;
     window.ingressDenied = 0;
+    window.ingressUnhandled = 0;
     window.ingressLastCode = nil;
     [window.web.configuration.userContentController removeAllUserScripts];
     // Drop the old delegate token and settle its request before stopLoading
@@ -1411,8 +1451,38 @@ static NSString *preloadDigest(NSData *data) {
     }
     done(@"success", @{@"admitted": @(window.ingressAdmitted),
       @"denied": @(window.ingressDenied),
+      @"unhandled": @(window.ingressUnhandled),
       @"lastCode": window.ingressLastCode ?: @"",
       @"generation": @(window.generation)});
+    return;
+  }
+  if ([operation isEqualToString:@"release-adapted-ingress"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive || window.generation <= 0 || window.loadedFile == nil ||
+        window.adaptedAdapterObservedGeneration != window.generation) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    NSString *script = @"if (typeof window.__electronMbtIngressReady === 'function') { "
+      "window.__electronMbtIngressReady(); } else { "
+      "throw new Error('ELECTRON_MBT_INGRESS_READY_MISSING'); } true;";
+    long long eventGeneration = generation.longLongValue;
+    __weak MBTWindow *weakWindow = window;
+    [window.web evaluateJavaScript:script inFrame:nil
+      inContentWorld:[WKContentWorld pageWorld]
+      completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        (void)result;
+        MBTWindow *candidate = weakWindow;
+        if (error != nil || candidate == nil || !candidate.contentAlive ||
+            candidate.generation != eventGeneration) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_INGRESS_READY_FAILED"});
+          return;
+        }
+        done(@"success", @{@"released": @YES});
+      }];
     return;
   }
   if ([operation isEqualToString:@"trigger-adapted-ingress"]) {

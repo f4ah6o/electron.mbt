@@ -5,8 +5,8 @@
   "files": [
     {
       "path": "index.html",
-      "sha256": "23cccf98b51e88c9905f0737ef239fe4e27b56cf164f5d9e6fdbbfbd96fad0e4",
-      "bytes": 3965
+      "sha256": "e1b15c9097a0983e0fec489dc7a21f18a8d35292cda8767457b388ec8eb980ac",
+      "bytes": 4046
     },
     {
       "path": "adapted/page-api.js",

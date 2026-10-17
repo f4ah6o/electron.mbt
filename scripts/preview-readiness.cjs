@@ -130,13 +130,16 @@ function buildReport() {
   checks.push(check('supervisor-handshake', String(manifest.nativeSupervisor.result).startsWith('PASS') ? 'PASS' : 'FAIL',
     manifest.nativeSupervisor.result));
   const mojiProvenance = readJson('compatibility/apps/moji-v1.0.5/build-provenance.json');
+  const mojiHarnessHash = require('node:crypto').createHash('sha256')
+    .update(fs.readFileSync(path.join(root, 'fixtures/moji-boot/harness.js'))).digest('hex');
   let mojiBoot = null;
   try { mojiBoot = readJson('compatibility/reports/moji-boot.json'); } catch {}
   const mojiBootOk = mojiBoot !== null && mojiBoot.status === 'PASS' &&
     mojiBoot.mainEvaluated === true && mojiBoot.whenReady === true &&
     mojiBoot.windows >= 1 && mojiBoot.ipcHandlers === 14 &&
     mojiBoot.preloadPresent === true && mojiBoot.preloadExecuted === false &&
-    mojiBoot.mainSHA256 === mojiProvenance.hashes.main;
+    mojiBoot.mainSHA256 === mojiProvenance.hashes.main &&
+    mojiBoot.harnessSHA256 === mojiHarnessHash;
   checks.push(check('moji-main-boot', mojiBoot === null ? 'NOT_RUN' : (mojiBootOk ? 'PASS' : 'FAIL'),
     mojiBoot === null
       ? 'Moji main boot report is absent'

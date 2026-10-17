@@ -779,6 +779,7 @@
     "ipcHandlers": 14,
     "preloadExecuted": false,
     "compatible": false,
-    "note": "Moji main boot smoke in QuickJS with a virtual Electron facade; original preload NOT_EXECUTED."
+    "note": "Moji main boot smoke in QuickJS with a virtual Electron facade; original preload NOT_EXECUTED.",
+    "harnessSHA256": "4dcaa322a0efaa6e36ccd25e49b3813e7569b59dda252f213a623f4c825382bc"
   }
 }

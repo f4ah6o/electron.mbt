@@ -27,6 +27,8 @@ if (!fs.existsSync(mainPath) || !fs.existsSync(preloadPath)) {
 const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'));
 const mainSHA256 = hashFile(mainPath);
 const preloadSHA256 = hashFile(preloadPath);
+const harnessPath = path.join(root, 'fixtures/moji-boot/harness.js');
+const harnessSHA256 = hashFile(harnessPath);
 if (mainSHA256 !== provenance.hashes.main || preloadSHA256 !== provenance.hashes.preload) {
   process.stderr.write('ELECTRON_MBT_MOJI_BOOT: source hash mismatch\n');
   process.exit(1);
@@ -37,7 +39,7 @@ try {
   fs.mkdirSync(path.join(temp, 'out/preload'), { recursive: true });
   fs.copyFileSync(mainPath, path.join(temp, 'out/main/main.js'));
   fs.copyFileSync(preloadPath, path.join(temp, 'out/preload/preload.js'));
-  fs.copyFileSync(path.join(root, 'fixtures/moji-boot/harness.js'), path.join(temp, 'harness.js'));
+  fs.copyFileSync(harnessPath, path.join(temp, 'harness.js'));
   fs.writeFileSync(path.join(temp, 'package.json'),
     `${JSON.stringify({ name: 'moji', version: '1.0.5', main: 'out/main/main.js' }, null, 2)}\n`);
   const manifest = spawnSync(process.execPath, [
@@ -82,6 +84,7 @@ try {
     sourceRoot,
     mainSHA256,
     preloadSHA256,
+    harnessSHA256,
     bootGraphFiles: 4,
     compatible: false,
     note: 'Moji main boot smoke in QuickJS with a virtual Electron facade; original preload NOT_EXECUTED.',

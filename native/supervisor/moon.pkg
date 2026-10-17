@@ -8,5 +8,6 @@ options(
   targets: {
     "main.mbt": ["native"],
     "main_js.mbt": ["js"],
+    "session_wbtest.mbt": ["native"],
   },
 )

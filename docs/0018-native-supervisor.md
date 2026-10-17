@@ -11,7 +11,8 @@ without Node. It is not a complete supervisor, app launcher or Node-less boot.
 - `posix_spawn` of `dist/electron-mbt-native-host`
 - three inherited Unix socketpairs placed at child fds 3 (control), 4 (load)
   and 5 (event), matching the host contract
-- absolute app root + 32-hex session in `ELECTRON_MBT_HOST_SESSION`
+- absolute app root + a fresh 32-hex session from `arc4random_buf` in
+  `ELECTRON_MBT_HOST_SESSION`
 - 4-byte big-endian length framing around canonical JSON envelopes
 - `hello` → `ready` → `shutdown`
 - close/EOF and `waitpid` on finish; `SIGKILL` + wait on failure
@@ -29,14 +30,23 @@ the final JSON line:
 ```
 
 Observed: real native host startup, `hello` reply with `AppKit+WKWebView`,
-`ready` reply, `shutdown` reply, child exit status 0.
+`ready` reply, `shutdown` reply, child exit status 0. A native test also checks
+that sessions are 32 lowercase hex characters and differ between draws.
+
+`node scripts/m1-native-supervisor-fault.cjs` passes two negative cases:
+
+- a dead child (`/usr/bin/false`) fails at the `hello` exchange
+- a missing app root fails before spawn (`ELECTRON_MBT_SUPERVISOR_START`)
+
+Both set `compatible:false` and do not leave the intended session running.
 
 ## Deliberate limits
 
-- fixed test session and fixed `fixtures/m1` root; production needs a random
-  session, validated app root and argument/config plumbing
-- no watchdog, restart, orphan reaping policy, event-loop ownership or fault
-  injection
+- fixed default `fixtures/m1` root; test-only env overrides select a different
+  binary/root. Production needs normal argument/config plumbing and must not
+  accept arbitrary supervisor binary/root from ambient environment
+- no restart/watchdog policy or orphan sweep beyond the 5s finish timeout and
+  explicit kill; no event-loop ownership or broad fault injection
 - load/event channels are kept open but the prototype only uses control
 - no window creation, preload/contextBridge, app main, QuickJS runner or
   Node-less Moji boot

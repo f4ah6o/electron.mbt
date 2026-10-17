@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -82,6 +83,18 @@ int32_t moonbit_ebt_supervisor_start(
     free(binary); free(root); free(session);
     return -1;
   }
+  const char *env_binary = getenv("ELECTRON_MBT_SUPERVISOR_BINARY");
+  if (env_binary != NULL && env_binary[0] != '\0') {
+    char *replacement = strdup(env_binary);
+    if (replacement == NULL) { free(binary); free(root); free(session); return -1; }
+    free(binary); binary = replacement;
+  }
+  const char *env_root = getenv("ELECTRON_MBT_SUPERVISOR_ROOT");
+  if (env_root != NULL && env_root[0] != '\0') {
+    char *replacement = strdup(env_root);
+    if (replacement == NULL) { free(binary); free(root); free(session); return -1; }
+    free(root); root = replacement;
+  }
   char *absolute_root = realpath(root, NULL);
   if (absolute_root == NULL) {
     free(binary); free(root); free(session);
@@ -89,6 +102,11 @@ int32_t moonbit_ebt_supervisor_start(
   }
   free(root);
   root = absolute_root;
+  struct stat root_info;
+  if (stat(root, &root_info) != 0 || !S_ISDIR(root_info.st_mode)) {
+    free(binary); free(root); free(session);
+    return -1;
+  }
   int control[2] = {-1, -1};
   int load[2] = {-1, -1};
   int events[2] = {-1, -1};
@@ -172,6 +190,18 @@ int32_t moonbit_ebt_supervisor_read_frame(int32_t fd, moonbit_bytes_t buffer, in
   return (int32_t)length;
 }
 
+int32_t moonbit_ebt_supervisor_session(moonbit_bytes_t buffer) {
+  if (buffer == NULL || Moonbit_array_length(buffer) < 32) return -1;
+  unsigned char random[16];
+  arc4random_buf(random, sizeof(random));
+  static const char hex[] = "0123456789abcdef";
+  for (int i = 0; i < 16; i++) {
+    buffer[i * 2] = (unsigned char)hex[(random[i] >> 4) & 0xf];
+    buffer[i * 2 + 1] = (unsigned char)hex[random[i] & 0xf];
+  }
+  return 32;
+}
+
 int32_t moonbit_ebt_supervisor_pid(void) { return (int32_t)child_pid; }
 
 int32_t moonbit_ebt_supervisor_finish(void) {
@@ -180,9 +210,16 @@ int32_t moonbit_ebt_supervisor_finish(void) {
   if (event_fd >= 0) { close(event_fd); event_fd = -1; }
   if (child_pid <= 0) return 0;
   int status = 0;
-  if (waitpid(child_pid, &status, 0) < 0) status = -1;
+  for (int i = 0; i < 500; i++) {
+    pid_t waited = waitpid(child_pid, &status, WNOHANG);
+    if (waited == child_pid) { child_pid = -1; return status; }
+    if (waited < 0) break;
+    usleep(10000);
+  }
+  kill(child_pid, SIGKILL);
+  waitpid(child_pid, &status, 0);
   child_pid = -1;
-  return status;
+  return -1;
 }
 
 void moonbit_ebt_supervisor_kill(void) {

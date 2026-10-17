@@ -13,6 +13,10 @@ extern "C" fn supervisor_read(fd : Int, buffer : Bytes, capacity : Int) -> Int =
 extern "C" fn supervisor_pid() -> Int = "moonbit_ebt_supervisor_pid"
 
 ///|
+#borrow(buffer)
+extern "C" fn supervisor_session(buffer : Bytes) -> Int = "moonbit_ebt_supervisor_session"
+
+///|
 extern "C" fn supervisor_finish() -> Int = "moonbit_ebt_supervisor_finish"
 
 ///|
@@ -49,7 +53,12 @@ fn receive(fd : Int, buffer : Bytes) -> String? {
 
 ///|
 fn main {
-  let session = "0123456789abcdef0123456789abcdef"
+  let session_buffer = Bytes::new(32)
+  if supervisor_session(session_buffer) != 32 {
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SESSION\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let session = @utf8.decode_lossy(session_buffer)
   let fd = supervisor_start(
     @utf8.encode("dist/electron-mbt-native-host"),
     @utf8.encode("fixtures/m1"),

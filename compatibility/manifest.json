@@ -638,17 +638,17 @@
     "status": "prototype",
     "compatible": false,
     "probe": "scripts/m1-native-supervisor.cjs",
-    "result": "PASS",
+    "result": "PASS: random session, hello/ready/shutdown, exit 0; fault probes PASS",
     "backend": "AppKit+WKWebView",
     "creator": "moonbit-native",
     "evidence": "hello/ready/shutdown handshake; child exit status 0",
     "open": [
-      "random session/root validation",
-      "watchdog/restart/faults",
+      "restart/watchdog policy",
       "event/load routing",
       "QuickJS runner ownership",
       "Node-less app boot",
       "signing/app identity"
-    ]
+    ],
+    "faultProbe": "scripts/m1-native-supervisor-fault.cjs"
   }
 }

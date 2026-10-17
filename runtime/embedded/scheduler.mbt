@@ -138,14 +138,11 @@ fn timer_before(left : Timer, right : Timer) -> Int {
 }
 
 ///|
-// Return due callbacks in (deadline, registration sequence) order and remove
-// them. A caller may schedule new timers after receiving this batch; those
-// timers are considered by the next call, not retroactively in this batch.
-pub fn Scheduler::take_due(
+fn Scheduler::take_due_timers(
   self : Scheduler,
   now : Int64,
   limit : Int32,
-) -> Result[Array[Int32], SchedulerError] {
+) -> Result[Array[Timer], SchedulerError] {
   if now < self.now {
     return Err(NonMonotonicTime)
   }
@@ -157,16 +154,14 @@ pub fn Scheduler::take_due(
     }
   }
   due.sort_by(timer_before)
-  let callbacks : Array[Int32] = []
   let selected : Array[Timer] = []
   for timer in due {
-    if callbacks.length() >= limit {
+    if selected.length() >= limit {
       break
     }
-    callbacks.push(timer.callback)
     selected.push(timer)
   }
-  if callbacks.length() > 0 {
+  if selected.length() > 0 {
     let remaining : Array[Timer] = []
     for timer in self.timers {
       let mut remove = false
@@ -181,7 +176,46 @@ pub fn Scheduler::take_due(
     }
     self.timers = remaining
   }
-  Ok(callbacks)
+  Ok(selected)
+}
+
+///|
+// Return due callback IDs in (deadline, registration sequence) order and remove
+// them. The runner variant below returns timer IDs so it can join the callback
+// lease map without guessing a preassigned callback number.
+pub fn Scheduler::take_due(
+  self : Scheduler,
+  now : Int64,
+  limit : Int32,
+) -> Result[Array[Int32], SchedulerError] {
+  match self.take_due_timers(now, limit) {
+    Ok(timers) => {
+      let callbacks : Array[Int32] = []
+      for timer in timers {
+        callbacks.push(timer.callback)
+      }
+      Ok(callbacks)
+    }
+    Err(error) => Err(error)
+  }
+}
+
+///|
+pub fn Scheduler::take_due_ids(
+  self : Scheduler,
+  now : Int64,
+  limit : Int32,
+) -> Result[Array[Int32], SchedulerError] {
+  match self.take_due_timers(now, limit) {
+    Ok(timers) => {
+      let ids : Array[Int32] = []
+      for timer in timers {
+        ids.push(timer.id)
+      }
+      Ok(ids)
+    }
+    Err(error) => Err(error)
+  }
 }
 
 ///|

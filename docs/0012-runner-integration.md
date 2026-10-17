@@ -25,12 +25,15 @@ Node builtins or start a native window.
 - a rejecting job is consumed and later evaluation still works; unhandled
   rejection policy is explicitly not claimed
 - timers scheduled through the runner return in deadline order
+- a due JS callback is retained, invoked once, released, and its Promise jobs run
+- a throwing callback is counted as a failure and later evaluation still works
+- clearing a timer releases its callback without invoking it
 - the CJS graph entry point executes through the same runner
 
 ## Open
 
-- connect due timer IDs to actual QuickJS callback leases
 - nextTick/microtask/timer partial-order fixtures and shutdown deadlines
+- timer callback reentrancy, cancellation while running and host-loss interaction
 - host event queue, I/O completion and process supervision
 - unhandled rejection policy, request-local exception mapping and root ledger
 - real CJS file resolution and Node builtins

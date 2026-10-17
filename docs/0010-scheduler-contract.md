@@ -25,7 +25,8 @@ not retroactively inserted into the current batch.
 | --- | --- |
 | `set_timeout(delay, callback, unref?)` | negative delay clamps to zero; returns monotonic ID; rejects at the timer limit |
 | `clear_timeout(id)` | most recent live ID is cancelled; repeated clear returns false |
-| `take_due(now, limit)` | rejects non-monotonic time; returns up to `limit` callbacks in deterministic order and removes them |
+| `take_due(now, limit)` | rejects non-monotonic time; returns up to `limit` callback IDs in deterministic order and removes them |
+| `take_due_ids(now, limit)` | same batch selection, but returns timer IDs for the runner's lease map |
 | `next_deadline()` | earliest live ref timer; unref-only timers return `None` |
 | `advance_to(now)` | monotonic host clock update |
 | `compact()` | drops cancelled entries without changing live order |

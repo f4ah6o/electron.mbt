@@ -56,6 +56,71 @@ test "runner shares timer ownership with the QuickJS context" {
 }
 
 ///|
+test "runner invokes a due JS callback exactly once and runs resulting jobs" {
+  let runner = Runner::new()
+  let callback = runner.eval_lease(
+    "(function () { globalThis.__timers = (globalThis.__timers || 0) + 1; Promise.resolve().then(() => { globalThis.__timer_jobs = 1; }); })",
+    "runner-timer.js",
+  )
+  let id = match runner.schedule_callback(10L, callback) {
+    Ok(id) => id
+    Err(_) => {
+      assert_true(false)
+      -1
+    }
+  }
+  assert_true(id > 0)
+  let due = runner.run_due(10, 8)
+  assert_eq(due.due, 1)
+  assert_eq(due.called, 1)
+  assert_eq(due.callback_failures, 0)
+  let timers = runner.eval("globalThis.__timers", "runner-timer-read.js")
+  assert_eq(timers.text, "1")
+  let jobs = runner.eval("globalThis.__timer_jobs", "runner-timer-jobs.js")
+  assert_eq(jobs.text, "1")
+  runner.destroy()
+}
+
+///|
+test "runner reports a throwing callback and keeps later evaluation usable" {
+  let runner = Runner::new()
+  let callback = runner.eval_lease(
+    "(function () { throw new Error('runner-timer-error'); })",
+    "runner-timer-throw.js",
+  )
+  let _ = match runner.schedule_callback(10L, callback) {
+    Ok(id) => id
+    Err(_) => -1
+  }
+  let due = runner.run_due(10, 8)
+  assert_eq(due.called, 1)
+  assert_eq(due.callback_failures, 1)
+  let after = runner.eval("6 * 7", "runner-timer-after.js")
+  assert_true(after.status is @engine.Value)
+  assert_eq(after.text, "42")
+  runner.destroy()
+}
+
+///|
+test "clearing a timer releases its callback without invoking it" {
+  let runner = Runner::new()
+  let callback = runner.eval_lease(
+    "(function () { globalThis.__cleared = 1; })",
+    "runner-timer-clear.js",
+  )
+  let id = match runner.schedule_callback(10L, callback) {
+    Ok(id) => id
+    Err(_) => -1
+  }
+  assert_true(runner.clear_timeout(id))
+  let due = runner.run_due(10, 8)
+  assert_eq(due.due, 0)
+  let observed = runner.eval("typeof globalThis.__cleared", "runner-timer-clear-read.js")
+  assert_eq(observed.text, "\"undefined\"")
+  runner.destroy()
+}
+
+///|
 test "runner exposes the pre-resolved CJS graph path" {
   let runner = Runner::new()
   let source = @engine.ModuleSource::new(

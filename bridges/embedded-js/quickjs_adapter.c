@@ -240,6 +240,29 @@ moonbit_bytes_t moonbit_emb_value_text(void *raw) {
 }
 
 MOONBIT_FFI_EXPORT
+void *moonbit_emb_call(void *raw) {
+  EmbValue *value = (EmbValue *)raw;
+  if (value == NULL || !emb_value_live(value) || !value->alive || value->is_exception) return NULL;
+  EmbValue *result = (EmbValue *)calloc(1, sizeof(EmbValue));
+  if (result == NULL) return NULL;
+  result->ctx = value->ctx;
+  result->alive = 1;
+  JSValue call_result = JS_Call(value->ctx, value->value, JS_UNDEFINED, 0, NULL);
+  if (JS_IsException(call_result)) {
+    result->is_exception = 1;
+    result->value = JS_GetException(value->ctx);
+  } else {
+    result->value = call_result;
+  }
+  if (!emb_register_value(result)) {
+    JS_FreeValue(result->ctx, result->value);
+    free(result);
+    return NULL;
+  }
+  return result;
+}
+
+MOONBIT_FFI_EXPORT
 void *moonbit_emb_value_dup(void *raw) {
   EmbValue *value = (EmbValue *)raw;
   if (value == NULL || !emb_value_live(value) || !value->alive) return NULL;

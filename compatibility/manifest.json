@@ -421,7 +421,8 @@
     "status": "partial",
     "compatible": false,
     "tests": [
-      "runtime/embedded/scheduler_wbtest.mbt"
+      "runtime/embedded/scheduler_wbtest.mbt",
+      "runtime/runner/runner_wbtest.mbt"
     ],
     "passed": [
       "deadline/registration ordering",
@@ -430,7 +431,8 @@
       "non-monotonic rejection",
       "timer limit",
       "unref next-deadline",
-      "post-batch scheduling"
+      "post-batch scheduling",
+      "runner timer callback lease invoke/release/cancel"
     ],
     "open": [
       "QuickJS jobs/nextTick integration",
@@ -507,13 +509,16 @@
       "job batch execution",
       "rejecting job consumed",
       "timer deadline order through runner",
+      "retained JS timer callback invoke/release",
+      "throwing callback isolated",
+      "clear releases callback",
       "pre-resolved CJS entry"
     ],
     "open": [
       "host event loop",
-      "timer callback leases",
-      "native supervisor/process ownership",
       "shutdown/fault",
+      "native supervisor/process ownership",
+      "timer reentrancy/cancel-while-running",
       "unhandled rejection policy",
       "real CJS file resolution"
     ],

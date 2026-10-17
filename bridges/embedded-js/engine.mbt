@@ -53,6 +53,9 @@ extern "C" fn emb_value_text(value : ValueLease) -> Bytes = "moonbit_emb_value_t
 extern "C" fn emb_value_dup(value : ValueLease) -> ValueLease = "moonbit_emb_value_dup"
 
 ///|
+extern "C" fn emb_call(value : ValueLease) -> ValueLease = "moonbit_emb_call"
+
+///|
 extern "C" fn emb_value_release(value : ValueLease) = "moonbit_emb_value_release"
 
 ///|
@@ -165,6 +168,11 @@ pub fn ValueLease::text(self : ValueLease) -> String {
 ///|
 pub fn ValueLease::dup(self : ValueLease) -> ValueLease {
   emb_value_dup(self)
+}
+
+///|
+pub fn ValueLease::call(self : ValueLease) -> ValueLease {
+  emb_call(self)
 }
 
 ///|

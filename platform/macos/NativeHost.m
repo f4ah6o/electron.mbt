@@ -239,6 +239,9 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic) long long snapshotBytes;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *snapshotFiles;
 @property(nonatomic, copy) NSString *snapshotManifestSHA256;
+@property(nonatomic) long long ingressAdmitted;
+@property(nonatomic) long long ingressDenied;
+@property(nonatomic, copy) NSString *ingressLastCode;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
                   preloadSource:(NSString *)preloadSource;
@@ -267,6 +270,9 @@ static NSString *preloadDigest(NSData *data) {
     self.snapshotBytes = 0;
     self.snapshotFiles = nil;
     self.snapshotManifestSHA256 = nil;
+    self.ingressAdmitted = 0;
+    self.ingressDenied = 0;
+    self.ingressLastCode = nil;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -452,6 +458,71 @@ static NSString *preloadDigest(NSData *data) {
     self.loadedFile != nil && message.frameInfo.isMainFrame &&
     [nonce isKindOfClass:[NSString class]] &&
     [file isEqualToString:self.loadedFile];
+  if ([message.name isEqualToString:@"electronMbtApp"]) {
+    NSDictionary *request = [message.body isKindOfClass:[NSDictionary class]] ? message.body : nil;
+    BOOL mainFrame = message.frameInfo.isMainFrame;
+    BOOL pageWorld = message.world == [WKContentWorld pageWorld];
+    NSURL *requestURL = message.frameInfo.request.URL;
+    NSString *requestFile = requestURL.isFileURL ? canonicalPath(requestURL.path) : nil;
+    BOOL current = controller == self.web.configuration.userContentController &&
+      message.webView == self.web && self.contentAlive &&
+      self.generation > 0 && self.generation == self.loadedGeneration &&
+      self.loadedFile != nil && requestFile != nil &&
+      [requestFile isEqualToString:self.loadedFile] &&
+      self.adaptedAdapterObservedGeneration == self.generation;
+    if (!mainFrame || !pageWorld || !current) {
+      self.ingressDenied++;
+      self.ingressLastCode = @"ELECTRON_MBT_INGRESS_DENIED";
+      replyHandler(nil, @"ELECTRON_MBT_INGRESS_DENIED");
+      return;
+    }
+    NSString *operation = request[@"operation"];
+    id requestPayload = request[@"payload"];
+    if (request == nil || request.count != 2 || ![operation isKindOfClass:[NSString class]] ||
+        ![requestPayload isKindOfClass:[NSDictionary class]]) {
+      self.ingressDenied++;
+      self.ingressLastCode = @"ELECTRON_MBT_INGRESS_MALFORMED";
+      replyHandler(nil, @"ELECTRON_MBT_INGRESS_MALFORMED");
+      return;
+    }
+    if (![operation isEqualToString:@"selftest:identity"]) {
+      self.ingressDenied++;
+      self.ingressLastCode = @"ELECTRON_MBT_INGRESS_UNKNOWN_OPERATION";
+      replyHandler(nil, @"ELECTRON_MBT_INGRESS_UNKNOWN_OPERATION");
+      return;
+    }
+    NSDictionary *payload = requestPayload;
+    BOOL limited = payload.count <= 1;
+    for (id value in payload.allValues) {
+      if ([value isKindOfClass:[NSString class]]) {
+        limited = limited && [value length] <= 256;
+      } else if ([value isKindOfClass:[NSNumber class]]) {
+        limited = limited &&
+          (CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() ||
+           isfinite([value doubleValue]));
+      } else {
+        limited = NO;
+      }
+    }
+    if (!limited) {
+      self.ingressDenied++;
+      self.ingressLastCode = @"ELECTRON_MBT_INGRESS_LIMIT";
+      replyHandler(nil, @"ELECTRON_MBT_INGRESS_LIMIT");
+      return;
+    }
+    self.ingressAdmitted++;
+    replyHandler(@{
+      @"admitted": @YES,
+      @"operation": operation,
+      @"sender": @"native-wkwebview",
+      @"mainFrame": @YES,
+      @"generation": @(self.generation),
+      @"source": self.snapshotFile != nil ? @"snapshot" : @"app",
+      @"entrySHA256": self.snapshotSHA256 ?: @"",
+      @"manifestSHA256": self.snapshotManifestSHA256 ?: @"",
+    }, nil);
+    return;
+  }
   BOOL bootstrap = common && [message.name isEqualToString:@"electronMbtBootstrap"] &&
     body.count == 1 && self.bootstrapNonce != nil &&
     self.bootstrapObservedGeneration != self.generation &&
@@ -713,6 +784,9 @@ static NSString *preloadDigest(NSData *data) {
   [self.web.configuration.userContentController
     removeScriptMessageHandlerForName:@"electronMbtAdapterInstalled"
     contentWorld:[WKContentWorld pageWorld]];
+  [self.web.configuration.userContentController
+    removeScriptMessageHandlerForName:@"electronMbtApp"
+    contentWorld:[WKContentWorld pageWorld]];
   if (self.preloadWorld) {
     [self.web.configuration.userContentController
       removeScriptMessageHandlerForName:@"electronMbtPreloadResult" contentWorld:self.preloadWorld];
@@ -901,6 +975,10 @@ static NSString *preloadDigest(NSData *data) {
     // the per-document nonce and never routes application operations.
     [window.web.configuration.userContentController addScriptMessageHandlerWithReply:window
       contentWorld:[WKContentWorld pageWorld] name:@"electronMbtAdapterInstalled"];
+    // The application handler is page-callable. It derives the sender from the
+    // actual WKScriptMessage frame/document, never from request payload fields.
+    [window.web.configuration.userContentController addScriptMessageHandlerWithReply:window
+      contentWorld:[WKContentWorld pageWorld] name:@"electronMbtApp"];
     done(@"success", @{@"installed": @YES});
     return;
   }
@@ -925,6 +1003,9 @@ static NSString *preloadDigest(NSData *data) {
     window.adaptedEventNonce = nil;
     window.adaptedAdapterObservedGeneration = 0;
     window.adaptedAdapterBeforeLoad = NO;
+    window.ingressAdmitted = 0;
+    window.ingressDenied = 0;
+    window.ingressLastCode = nil;
     [window.web.configuration.userContentController removeAllUserScripts];
     // Drop the old delegate token and settle its request before stopLoading
     // can deliver a late failure callback against a later generation.
@@ -1321,6 +1402,46 @@ static NSString *preloadDigest(NSData *data) {
       @"source": snapshot ? @"snapshot" : @"app",
       @"sha256": snapshot ? (window.snapshotSHA256 ?: @"") : @"",
       @"manifestSHA256": snapshot ? (window.snapshotManifestSHA256 ?: @"") : @""});
+    return;
+  }
+  if ([operation isEqualToString:@"get-ingress-status"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    done(@"success", @{@"admitted": @(window.ingressAdmitted),
+      @"denied": @(window.ingressDenied),
+      @"lastCode": window.ingressLastCode ?: @"",
+      @"generation": @(window.generation)});
+    return;
+  }
+  if ([operation isEqualToString:@"trigger-adapted-ingress"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive || window.generation <= 0 || window.loadedFile == nil ||
+        window.adaptedAdapterObservedGeneration != window.generation) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    NSString *script = @"if (typeof window.__electronMbtIngressProbe === 'function') { "
+      "window.__electronMbtIngressProbe(); } else { "
+      "throw new Error('ELECTRON_MBT_INGRESS_PROBE_MISSING'); } true;";
+    long long eventGeneration = generation.longLongValue;
+    __weak MBTWindow *weakWindow = window;
+    [window.web evaluateJavaScript:script inFrame:nil
+      inContentWorld:[WKContentWorld pageWorld]
+      completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        (void)result;
+        MBTWindow *candidate = weakWindow;
+        if (error != nil || candidate == nil || !candidate.contentAlive ||
+            candidate.generation != eventGeneration) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_INGRESS_PROBE_FAILED"});
+          return;
+        }
+        done(@"success", @{@"triggered": @YES});
+      }];
     return;
   }
   if ([operation isEqualToString:@"dispatch-adapted-event"]) {

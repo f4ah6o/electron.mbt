@@ -4,6 +4,47 @@
 <body>
 <main id="app">native-app-fixture</main>
 <script>
+window.__electronMbtIngressProbe = async function () {
+  const handler = window.webkit && window.webkit.messageHandlers &&
+    window.webkit.messageHandlers.electronMbtApp;
+  if (!handler) { document.title = 'adapted-ingress-missing'; return; }
+  try {
+    const positive = await handler.postMessage({
+      operation: 'selftest:identity',
+      payload: { claimedSender: 'forged-page' },
+    });
+    const ok = positive && positive.admitted === true &&
+      positive.operation === 'selftest:identity' &&
+      positive.sender === 'native-wkwebview' &&
+      positive.mainFrame === true &&
+      positive.source === 'snapshot' &&
+      typeof positive.entrySHA256 === 'string' && positive.entrySHA256.length === 64 &&
+      typeof positive.manifestSHA256 === 'string' && positive.manifestSHA256.length === 64;
+    if (!ok) { document.title = 'adapted-ingress-bad-reply'; return; }
+    let unknownRejected = false;
+    try {
+      await handler.postMessage({ operation: 'unknown:op', payload: {} });
+    } catch (error) {
+      unknownRejected = String(error).includes('ELECTRON_MBT_INGRESS_UNKNOWN_OPERATION');
+    }
+    if (!unknownRejected) { document.title = 'adapted-ingress-unknown-accepted'; return; }
+    let oversizeRejected = false;
+    try {
+      await handler.postMessage({
+        operation: 'selftest:identity',
+        payload: { value: 'x'.repeat(2048) },
+      });
+    } catch (error) {
+      oversizeRejected = String(error).includes('ELECTRON_MBT_INGRESS_LIMIT');
+    }
+    if (!oversizeRejected) { document.title = 'adapted-ingress-oversize-accepted'; return; }
+    document.title = 'adapted-ingress-ok';
+  } catch (error) {
+    document.title = 'adapted-ingress-denied';
+  }
+};
+</script>
+<script>
 (async function () {
   const finish = (title) => { document.title = title; };
   try {

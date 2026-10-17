@@ -23,8 +23,8 @@
     "files": [
       {
         "path": "index.html",
-        "sha256": "0b014aa18f6ae6156320255bf5b7ded934669009cdd1de7f5765d1bdf7271980",
-        "bytes": 2246
+        "sha256": "23cccf98b51e88c9905f0737ef239fe4e27b56cf164f5d9e6fdbbfbd96fad0e4",
+        "bytes": 3965
       },
       {
         "path": "adapted/page-api.js",
@@ -35,13 +35,30 @@
     "staging": "private-temporary-directory"
   },
   "topics": [
-    { "topic": "doc:open", "method": "onOpenDocument" },
-    { "topic": "app:request-close", "method": "onCloseRequest" },
-    { "topic": "update:state", "method": "onUpdateState" }
+    {
+      "topic": "doc:open",
+      "method": "onOpenDocument"
+    },
+    {
+      "topic": "app:request-close",
+      "method": "onCloseRequest"
+    },
+    {
+      "topic": "update:state",
+      "method": "onUpdateState"
+    }
   ],
   "calls": [
-    { "name": "getSettings", "operation": "app:get-settings", "args": "none" },
-    { "name": "getUpdateState", "operation": "app:get-update-state", "args": "json" }
+    {
+      "name": "getSettings",
+      "operation": "app:get-settings",
+      "args": "none"
+    },
+    {
+      "name": "getUpdateState",
+      "operation": "app:get-update-state",
+      "args": "json"
+    }
   ],
   "queue": {
     "maxCalls": 4,
@@ -59,6 +76,18 @@
     "ingress": "ABSENT",
     "eventDelivery": "native-test-triggered-fixed-topics",
     "eventTrigger": "dispatch-adapted-event",
-    "note": "Fixture adapter only. Native event delivery is a private-lane test trigger; no production native event route, main/renderer IPC, Moji preload adaptation or compatibility claim."
+    "note": "Fixture adapter only. Native event delivery is a private-lane test trigger; no production native event route, main/renderer IPC, Moji preload adaptation or compatibility claim.",
+    "nativeIngress": "test-only-selftest"
+  },
+  "nativeIngress": {
+    "mode": "test-only-selftest",
+    "operation": "selftest:identity",
+    "sender": "native-wkwebview",
+    "denied": [
+      "unknown-operation",
+      "oversize-payload",
+      "malformed-request"
+    ],
+    "applicationRpcIngress": "ABSENT"
   }
 }

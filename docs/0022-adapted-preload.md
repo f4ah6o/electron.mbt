@@ -77,6 +77,11 @@ application ingress is wired.
   generation; it requires an observed adapter installation and a completed
   load. It then evaluates the page-world dispatcher and returns a correlated
   `delivered` reply. It is a test trigger, not an application event route.
+- A page-world `electronMbtApp` handler is registered with the adapter. It
+  admits only `selftest:identity`, derives the sender from the actual
+  `WKScriptMessage` frame/document/generation, ignores the payload's claimed
+  sender and returns a typed admission reply. Unknown and oversized requests
+  are denied. See [docs/0024-native-ingress.md](0024-native-ingress.md).
 - Before load, the supervisor calls `prepare-source`; native verifies the
   fixture entry against `source-manifest.json`, copies it to a private staging
   directory and loads that snapshot instead of the working tree. The reload
@@ -100,7 +105,7 @@ application ingress is wired.
 Observed fixture probe (macOS, AppKit + WKWebView):
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"adapted-api-ok","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"reloadGeneration":2,"compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"adapted-api-ok","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"reloadGeneration":2,"compatible":false}
 ```
 
 Adapter hash:
@@ -117,8 +122,8 @@ event path.
 ## Deliberate limits
 
 - no original preload execution and no `contextBridge`/`ipcRenderer`
-- no native application ingress, Main dispatch, invoke/reply or sender/document
-  grant
+- no application RPC ingress, Main dispatch, invoke/reply or sender/document
+  grant; the page-world `selftest:identity` ingress is test-only
 - the source snapshot covers the entry document and generated adapter only and
   is not a signed manifest; the remaining app graph is outside it
 - native event delivery is a private-lane test trigger; there is no production
@@ -134,8 +139,8 @@ event path.
 
 ## Next
 
-- connect the native application-message handler and actual sender/document
-  admission to Main (EP-14) and replace the test host seam
+- dispatch the admitted ingress path into Main and connect the adapter queue
+  (EP-14); decide the iframe/subframe handler policy and add executed negatives
 - define and observe the actual `DocumentIngressReady` transitions separately
   from `LoadComplete` (EP-15)
 - extend the entry+adapter source snapshot to the complete boot graph, with

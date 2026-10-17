@@ -86,16 +86,25 @@ window.__electronMbtIngressProbe = async function () {
     document.title = 'adapted-queue-pending';
     const calls = [];
     for (let index = 0; index < 7; index += 1) {
-      calls.push(index < 6 ? api.getSettings() : api.getUpdateState({ theme: 'light' }));
+      calls.push(index === 3 ? api.getUpdateState({ theme: 'light' }) : api.getSettings());
     }
     const results = await Promise.allSettled(calls);
     const rejectedWith = (result, expected) => result.status === 'rejected' &&
       result.reason && (result.reason.code === expected || String(result.reason).includes(expected));
-    const unhandled = results.slice(0, 4)
-      .every((result) => rejectedWith(result, 'ELECTRON_MBT_NO_HANDLER'));
+    const fulfilled = (result) => result.status === 'fulfilled' && result.value &&
+      result.value.source === 'quickjs-main';
+    const settings = results.slice(0, 3)
+      .every((result) => fulfilled(result) && result.value.theme === 'light');
+    const state = fulfilled(results[3]) && results[3].value.state === 'ready';
     const overflowed = results.slice(4)
       .every((result) => rejectedWith(result, 'ELECTRON_MBT_ADAPTER_QUEUE_FULL'));
-    finish(unhandled && overflowed ? 'adapted-api-ok' : 'adapted-api-failed');
+    if (!(settings && state && overflowed)) return finish('adapted-api-failed');
+    const app = document.getElementById('app');
+    if (app) {
+      app.textContent = 'nodeless-app-ready';
+      app.dataset.state = results[3].value.state;
+    }
+    document.title = results[0].value.documentTitle;
   } catch (_) {
     finish('adapted-api-error');
   }

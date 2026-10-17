@@ -11,4 +11,25 @@ if (data.kind !== 'fixture') throw new Error('JSON module failed');
 if (pkg.kind !== 'package' || pkg.title !== 'native-app-window') throw new Error('package exports failed');
 globalThis.__nativeMain = app.name;
 globalThis.__nativeTitle = pkg.title;
+globalThis.__nativeInvoke = function (operation, payloadJson) {
+  const payload = payloadJson ? JSON.parse(payloadJson) : {};
+  if (operation === 'app:get-settings') {
+    return JSON.stringify({
+      ok: true,
+      result: {
+        theme: 'light',
+        documentTitle: 'nodeless-app-ready',
+        source: 'quickjs-main',
+        app: app.name,
+      },
+    });
+  }
+  if (operation === 'app:get-update-state') {
+    return JSON.stringify({
+      ok: true,
+      result: { state: 'ready', source: 'quickjs-main', app: app.name },
+    });
+  }
+  return JSON.stringify({ ok: false, code: 'ELECTRON_MBT_MAIN_UNKNOWN_OPERATION' });
+};
 module.exports = { name: app.name, title: pkg.title };

@@ -239,6 +239,9 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic) long long snapshotBytes;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *snapshotFiles;
 @property(nonatomic, copy) NSString *snapshotManifestSHA256;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, id> *pendingAppReplies;
+@property(nonatomic) unsigned long long nextAppRequest;
+@property(nonatomic, copy) void (^publishAppRequest)(long long, NSDictionary *);
 @property(nonatomic) long long ingressAdmitted;
 @property(nonatomic) long long ingressDenied;
 @property(nonatomic) long long ingressUnhandled;
@@ -248,6 +251,7 @@ static NSString *preloadDigest(NSData *data) {
                   preloadSource:(NSString *)preloadSource;
 - (void)publishVerifiedBootstrapIfReady;
 - (void)clearSnapshot;
+- (void)failPendingAppReplies:(NSString *)code;
 - (void)tearDown;
 @end
 
@@ -271,6 +275,9 @@ static NSString *preloadDigest(NSData *data) {
     self.snapshotBytes = 0;
     self.snapshotFiles = nil;
     self.snapshotManifestSHA256 = nil;
+    self.pendingAppReplies = [NSMutableDictionary dictionary];
+    self.nextAppRequest = 0;
+    self.publishAppRequest = nil;
     self.ingressAdmitted = 0;
     self.ingressDenied = 0;
     self.ingressUnhandled = 0;
@@ -323,6 +330,14 @@ static NSString *preloadDigest(NSData *data) {
     if (visible) [self.native orderFront:nil];
   }
   return self;
+}
+- (void)failPendingAppReplies:(NSString *)code {
+  NSArray<NSString *> *keys = self.pendingAppReplies.allKeys;
+  for (NSString *key in keys) {
+    id block = self.pendingAppReplies[key];
+    [self.pendingAppReplies removeObjectForKey:key];
+    if (block != nil) ((void (^)(id, NSString *))block)(nil, code);
+  }
 }
 - (void)clearSnapshot {
   if (self.snapshotRoot != nil) {
@@ -523,11 +538,28 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     if (![operation isEqualToString:@"selftest:identity"]) {
-      // The application operation is recognized but no Main handler is wired.
-      // This is a typed fail-closed result, not a successful reply.
-      self.ingressUnhandled++;
-      self.ingressLastCode = @"ELECTRON_MBT_NO_HANDLER";
-      replyHandler(nil, @"ELECTRON_MBT_NO_HANDLER");
+      if (self.publishAppRequest == nil) {
+        self.ingressDenied++;
+        self.ingressLastCode = @"ELECTRON_MBT_MAIN_UNAVAILABLE";
+        replyHandler(nil, @"ELECTRON_MBT_MAIN_UNAVAILABLE");
+        return;
+      }
+      NSString *requestID = [NSString stringWithFormat:@"%llu", ++self.nextAppRequest];
+      self.pendingAppReplies[requestID] = [replyHandler copy];
+      self.ingressAdmitted++;
+      NSDictionary *appRequest = @{@"request": requestID, @"operation": operation,
+        @"payload": requestPayload};
+      self.publishAppRequest(self.generation, appRequest);
+      __weak MBTWindow *weakWindow = self;
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
+                     dispatch_get_main_queue(), ^{
+        MBTWindow *window = weakWindow;
+        void (^pending)(id, NSString *) = window.pendingAppReplies[requestID];
+        if (pending != nil) {
+          [window.pendingAppReplies removeObjectForKey:requestID];
+          pending(nil, @"ELECTRON_MBT_MAIN_TIMEOUT");
+        }
+      });
       return;
     }
     NSDictionary *payload = requestPayload;
@@ -795,6 +827,7 @@ static NSString *preloadDigest(NSData *data) {
   self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
+  [self failPendingAppReplies:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
   [self clearSnapshot];
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
   if (newlyTerminated && self.contentGone) self.contentGone(self.generation);
@@ -816,6 +849,7 @@ static NSString *preloadDigest(NSData *data) {
   self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
+  [self failPendingAppReplies:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   [self clearSnapshot];
   [self.web.configuration.userContentController removeAllUserScripts];
   [self.web.configuration.userContentController
@@ -850,6 +884,8 @@ static NSString *preloadDigest(NSData *data) {
 - (void)publishBootstrapAttested:(NSNumber *)windowID generation:(long long)generation;
 - (long long)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation;
 - (long long)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID generation:(long long)generation;
+- (long long)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID
+    generation:(long long)generation payload:(NSDictionary *)payload;
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done;
 @end
 
@@ -865,12 +901,17 @@ static NSString *preloadDigest(NSData *data) {
 }
 - (long long)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID
                 generation:(long long)generation {
+  return [self publishNativeEvent:operation windowID:windowID
+    generation:generation payload:@{}];
+}
+- (long long)publishNativeEvent:(NSString *)operation windowID:(NSNumber *)windowID
+    generation:(long long)generation payload:(NSDictionary *)payload {
   if (self.nextEvent == 9007199254740991LL) _exit(2);
   NSNumber *eventID = @(++self.nextEvent);
   NSDictionary *notice = @{
     @"version": @1, @"session": self.session, @"request": eventID,
     @"window": windowID, @"generation": @(generation),
-    @"operation": operation, @"payload": @{}
+    @"operation": operation, @"payload": payload ?: @{}
   };
   // Delegate callbacks run on AppKit's main thread. Never perform blocking
   // native-to-Node I/O here; the dedicated serial event queue preserves order.
@@ -949,6 +990,10 @@ static NSString *preloadDigest(NSData *data) {
     };
     window.closeRequested = ^long long(long long eventGeneration) {
       return [weakHost publishCloseRequested:windowID generation:eventGeneration];
+    };
+    window.publishAppRequest = ^(long long eventGeneration, NSDictionary *payload) {
+      [weakHost publishNativeEvent:@"app-request" windowID:windowID
+        generation:eventGeneration payload:payload];
     };
     self.windows[windowID] = window;
 #if defined(ELECTRON_MBT_TEST_NATIVE_CLOSE)
@@ -1046,6 +1091,7 @@ static NSString *preloadDigest(NSData *data) {
     window.ingressDenied = 0;
     window.ingressUnhandled = 0;
     window.ingressLastCode = nil;
+    [window failPendingAppReplies:@"ELECTRON_MBT_STALE_DOCUMENT"];
     [window.web.configuration.userContentController removeAllUserScripts];
     // Drop the old delegate token and settle its request before stopLoading
     // can deliver a late failure callback against a later generation.
@@ -1442,6 +1488,43 @@ static NSString *preloadDigest(NSData *data) {
       @"source": snapshot ? @"snapshot" : @"app",
       @"sha256": snapshot ? (window.snapshotSHA256 ?: @"") : @"",
       @"manifestSHA256": snapshot ? (window.snapshotManifestSHA256 ?: @"") : @""});
+    return;
+  }
+  if ([operation isEqualToString:@"app-reply"]) {
+    if (payload.count != 2) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *requestID = payload[@"request"];
+    NSString *json = payload[@"json"];
+    if (![requestID isKindOfClass:[NSString class]] || requestID.length == 0 ||
+        requestID.length > 64 || ![json isKindOfClass:[NSString class]] ||
+        json.length == 0 || json.length > 65536) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    void (^pending)(id, NSString *) = window.pendingAppReplies[requestID];
+    if (pending == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_MAIN_UNKNOWN_REQUEST"});
+      return;
+    }
+    [window.pendingAppReplies removeObjectForKey:requestID];
+    NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
+    id parsed = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![parsed isKindOfClass:[NSDictionary class]]) {
+      pending(nil, @"ELECTRON_MBT_MAIN_ERROR");
+      done(@"success", @{@"delivered": @YES});
+      return;
+    }
+    NSDictionary *reply = parsed;
+    if ([reply[@"ok"] boolValue]) {
+      pending(reply[@"result"], nil);
+    } else {
+      NSString *code = [reply[@"code"] isKindOfClass:[NSString class]] ?
+        reply[@"code"] : @"ELECTRON_MBT_MAIN_ERROR";
+      pending(nil, code);
+    }
+    done(@"success", @{@"delivered": @YES});
     return;
   }
   if ([operation isEqualToString:@"get-ingress-status"]) {

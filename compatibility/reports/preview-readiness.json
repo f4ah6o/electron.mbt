@@ -10,8 +10,8 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 20,
-    "pass": 13,
+    "checks": 21,
+    "pass": 14,
     "fail": 2,
     "notRun": 5
   },
@@ -44,12 +44,17 @@
     {
       "id": "adapted-source-snapshot",
       "status": "PASS",
-      "detail": "private staging files=2; entry=index.html; hash=e1b15c9097a0983e0fec489dc7a21f18a8d35292cda8767457b388ec8eb980ac"
+      "detail": "private staging files=2; entry=index.html; hash=39433d887f14fbd59a80b0335c09e34f35288276e764b5a9ba232b4d71df1672"
     },
     {
       "id": "adapted-native-ingress",
       "status": "PASS",
       "detail": "page-world electronMbtApp selftest=selftest:identity; queue=release-adapted-ingress; application RPC ingress=ABSENT"
+    },
+    {
+      "id": "adapted-main-roundtrip",
+      "status": "PASS",
+      "detail": "QuickJS Main fixture dispatches app:get-settings,app:get-update-state; scenario=nodeless-fixture"
     },
     {
       "id": "adapted-moji-runtime",

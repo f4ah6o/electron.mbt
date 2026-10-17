@@ -24,6 +24,9 @@ static int event_fd = -1;
 static char *supervisor_root = NULL;
 static char *supervisor_app_title = NULL;
 static char *supervisor_app_entry = NULL;
+static JSRuntime *app_runtime = NULL;
+static JSContext *app_context = NULL;
+static void release_app(void);
 
 static char *copy_bytes(moonbit_bytes_t bytes) {
   if (bytes == NULL) return NULL;
@@ -263,6 +266,7 @@ int32_t moonbit_ebt_supervisor_timeout_ms(void) {
 }
 
 int32_t moonbit_ebt_supervisor_finish(void) {
+  release_app();
   if (control_fd >= 0) { close(control_fd); control_fd = -1; }
   if (load_fd >= 0) { close(load_fd); load_fd = -1; }
   if (event_fd >= 0) { close(event_fd); event_fd = -1; }
@@ -281,6 +285,7 @@ int32_t moonbit_ebt_supervisor_finish(void) {
 }
 
 void moonbit_ebt_supervisor_kill(void) {
+  release_app();
   if (child_pid > 0) {
     kill(child_pid, SIGKILL);
     waitpid(child_pid, NULL, 0);
@@ -336,8 +341,14 @@ static int valid_entry(const char *entry) {
   return 1;
 }
 
+static void release_app(void) {
+  if (app_context != NULL) { JS_FreeContext(app_context); app_context = NULL; }
+  if (app_runtime != NULL) { JS_FreeRuntime(app_runtime); app_runtime = NULL; }
+}
+
 int32_t moonbit_ebt_supervisor_app_main(void) {
   if (supervisor_root == NULL) return -1;
+  release_app();
   char entry[257];
   snprintf(entry, sizeof(entry), "main.js");
   char *package_path = join_root("package.json");
@@ -466,9 +477,70 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
   }
   JS_FreeValue(context, value);
   JS_FreeValue(context, global);
-  JS_FreeContext(context);
-  JS_FreeRuntime(runtime);
+  if (ok == 42) {
+    app_context = context;
+    app_runtime = runtime;
+  } else {
+    JS_FreeContext(context);
+    JS_FreeRuntime(runtime);
+  }
   return ok;
+}
+
+int32_t moonbit_ebt_supervisor_app_dispatch(
+    moonbit_bytes_t operation_bytes,
+    moonbit_bytes_t payload_bytes,
+    moonbit_bytes_t out,
+    int32_t capacity) {
+  if (app_context == NULL || app_runtime == NULL || out == NULL || capacity <= 0 ||
+      Moonbit_array_length(out) < capacity) return -1;
+  char *operation = copy_bytes(operation_bytes);
+  char *payload = copy_bytes(payload_bytes);
+  if (operation == NULL || payload == NULL) {
+    free(operation); free(payload);
+    return -1;
+  }
+  JSValue global = JS_GetGlobalObject(app_context);
+  JSValue invoke = JS_GetPropertyStr(app_context, global, "__nativeInvoke");
+  if (!JS_IsFunction(app_context, invoke)) {
+    JS_FreeValue(app_context, invoke);
+    JS_FreeValue(app_context, global);
+    free(operation); free(payload);
+    return -2;
+  }
+  JSValue args[2] = {
+    JS_NewString(app_context, operation),
+    JS_NewString(app_context, payload),
+  };
+  JSValue result = JS_Call(app_context, invoke, global, 2, args);
+  JS_FreeValue(app_context, args[0]);
+  JS_FreeValue(app_context, args[1]);
+  JS_FreeValue(app_context, invoke);
+  JS_FreeValue(app_context, global);
+  free(operation); free(payload);
+  if (JS_IsException(result)) {
+    JS_FreeValue(app_context, result);
+    const char *error = "{\"ok\":false,\"code\":\"ELECTRON_MBT_MAIN_ERROR\"}";
+    size_t length = strlen(error);
+    if (length + 1 > (size_t)capacity) return -3;
+    memcpy(out, error, length + 1);
+    return (int32_t)length;
+  }
+  const char *text = JS_ToCString(app_context, result);
+  JS_FreeValue(app_context, result);
+  if (text == NULL) return -3;
+  size_t length = strlen(text);
+  if (length + 1 > (size_t)capacity) {
+    JS_FreeCString(app_context, text);
+    return -3;
+  }
+  memcpy(out, text, length + 1);
+  JS_FreeCString(app_context, text);
+  return (int32_t)length;
+}
+
+void moonbit_ebt_supervisor_app_release(void) {
+  release_app();
 }
 
 int32_t moonbit_ebt_supervisor_app_entry(moonbit_bytes_t buffer, int32_t capacity) {
@@ -496,6 +568,7 @@ void moonbit_ebt_supervisor_sleep_ms(int32_t milliseconds) {
 }
 
 void moonbit_ebt_supervisor_exit(int32_t code) {
+  release_app();
   fflush(NULL);
   _exit((int)code);
 }

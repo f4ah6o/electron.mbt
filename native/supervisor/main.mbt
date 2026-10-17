@@ -48,6 +48,10 @@ extern "C" fn supervisor_file(buffer : Bytes, capacity : Int, name : Bytes) -> I
 extern "C" fn supervisor_session(buffer : Bytes) -> Int = "moonbit_ebt_supervisor_session"
 
 ///|
+#borrow(operation, payload, out)
+extern "C" fn supervisor_app_dispatch(operation : Bytes, payload : Bytes, out : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_app_dispatch"
+
+///|
 extern "C" fn supervisor_finish() -> Int = "moonbit_ebt_supervisor_finish"
 
 ///|
@@ -100,6 +104,78 @@ fn receive(fd : Int, buffer : Bytes) -> String? {
   receive_timeout(fd, buffer, supervisor_timeout_ms())
 }
 
+///|
+fn dispatch_app(operation : String, payload : String) -> String {
+  let out = Bytes::new(65536)
+  let length = supervisor_app_dispatch(@utf8.encode(operation), @utf8.encode(payload),
+    out, out.length())
+  if length <= 0 {
+    "{\"ok\":false,\"code\":\"ELECTRON_MBT_MAIN_UNAVAILABLE\"}"
+  } else {
+    @utf8.decode_lossy(out[:length])
+  }
+}
+
+///|
+fn pump_app_requests(
+  fd : Int,
+  event_fd : Int,
+  control_buffer : Bytes,
+  event_buffer : Bytes,
+  session : String,
+  window : Int,
+  generation : Int,
+) -> Bool {
+  let mut handled = false
+  for _attempt = 0; _attempt < 8; _attempt = _attempt + 1 {
+    let length = supervisor_read_timeout(event_fd, event_buffer, event_buffer.length(), 20)
+    if length <= 0 {
+      break
+    }
+    let text = try {
+      @utf8.decode(event_buffer[:length])
+    } catch {
+      _ => continue
+    }
+    let parsed = @json.parse(text) catch {
+      _ => continue
+    }
+    let fields = match parsed {
+      Object(values) => values
+      _ => continue
+    }
+    if !(fields.get("operation") is Some(String("app-request"))) {
+      continue
+    }
+    let payload = match fields.get("payload") {
+      Some(Object(values)) => values
+      _ => continue
+    }
+    let request = match payload.get("request") {
+      Some(String(value)) => value
+      _ => continue
+    }
+    let operation = match payload.get("operation") {
+      Some(String(value)) => value
+      _ => continue
+    }
+    let args = match payload.get("payload") {
+      Some(value) => value.stringify()
+      None => "null"
+    }
+    let result = dispatch_app(operation, args)
+    let reply = request_frame(session, 900, window, generation, "app-reply",
+      "{\"request\":\"" + json_path(request) + "\",\"json\":\"" + json_path(result) + "\"}")
+    let sent = send(fd, reply)
+    let reply_result = if sent { receive(fd, control_buffer) } else { None }
+    if !sent || reply_result is None || !reply_result.unwrap().contains("\"delivered\":true") {
+      return false
+    }
+    handled = true
+  }
+  handled
+}
+
 fn start_ready(buffer : Bytes) -> (Int, String, Int)? {
   for attempt = 1; attempt <= 3; attempt = attempt + 1 {
     let session_buffer = Bytes::new(32)
@@ -137,6 +213,7 @@ fn start_ready(buffer : Bytes) -> (Int, String, Int)? {
 ///|
 fn main {
   let buffer = Bytes::new(65536)
+  let event_buffer = Bytes::new(65536)
   let (fd, session, attempts) = match start_ready(buffer) {
     Some(value) => value
     None => {
@@ -278,11 +355,12 @@ fn main {
   }
   let mut page_title_ok = false
   for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let _ = pump_app_requests(fd, event_fd, buffer, event_buffer, session, 1, 1)
     let page_title_request = request_frame(session, 42, 1, 1, "get-web-contents-title", "{}")
     let page_title_sent = send(fd, page_title_request)
     let page_title_reply = if page_title_sent { receive(fd, buffer) } else { None }
     if page_title_sent && page_title_reply is Some(_) &&
-      page_title_reply.unwrap().contains("\"title\":\"adapted-api-ok\"") {
+      page_title_reply.unwrap().contains("\"title\":\"nodeless-app-ready\"") {
       page_title_ok = true
       break
     }
@@ -297,7 +375,7 @@ fn main {
   let queue_status_sent = send(fd, queue_status)
   let queue_status_reply = if queue_status_sent { receive(fd, buffer) } else { None }
   if !queue_status_sent || queue_status_reply is None ||
-    !queue_status_reply.unwrap().contains("\"unhandled\":4") ||
+    !queue_status_reply.unwrap().contains("\"admitted\":4") ||
     !queue_status_reply.unwrap().contains("\"generation\":1") {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_QUEUE_STATUS\",\"compatible\":false}")
@@ -383,7 +461,7 @@ fn main {
   let ingress_status_sent = send(fd, ingress_status)
   let ingress_status_reply = if ingress_status_sent { receive(fd, buffer) } else { None }
   if !ingress_status_sent || ingress_status_reply is None ||
-    !ingress_status_reply.unwrap().contains("\"admitted\":1") ||
+    !ingress_status_reply.unwrap().contains("\"admitted\":5") ||
     !ingress_status_reply.unwrap().contains("\"denied\":2") ||
     !ingress_status_reply.unwrap().contains("\"generation\":1") ||
     !ingress_status_reply.unwrap().contains("ELECTRON_MBT_INGRESS_LIMIT") {
@@ -503,11 +581,12 @@ fn main {
   }
   let mut reload_title_ok = false
   for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let _ = pump_app_requests(fd, event_fd, buffer, event_buffer, session, 1, 2)
     let reload_title_request = request_frame(session, 45, 1, 2, "get-web-contents-title", "{}")
     let reload_title_sent = send(fd, reload_title_request)
     let reload_title_reply = if reload_title_sent { receive(fd, buffer) } else { None }
     if reload_title_sent && reload_title_reply is Some(_) &&
-      reload_title_reply.unwrap().contains("\"title\":\"adapted-api-ok\"") {
+      reload_title_reply.unwrap().contains("\"title\":\"nodeless-app-ready\"") {
       reload_title_ok = true
       break
     }
@@ -522,7 +601,7 @@ fn main {
   let reload_queue_status_sent = send(fd, reload_queue_status)
   let reload_queue_status_reply = if reload_queue_status_sent { receive(fd, buffer) } else { None }
   if !reload_queue_status_sent || reload_queue_status_reply is None ||
-    !reload_queue_status_reply.unwrap().contains("\"unhandled\":4") ||
+    !reload_queue_status_reply.unwrap().contains("\"admitted\":4") ||
     !reload_queue_status_reply.unwrap().contains("\"generation\":2") {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_QUEUE_STATUS\",\"compatible\":false}")
@@ -629,7 +708,7 @@ fn main {
   let reload_ingress_status_sent = send(fd, reload_ingress_status)
   let reload_ingress_status_reply = if reload_ingress_status_sent { receive(fd, buffer) } else { None }
   if !reload_ingress_status_sent || reload_ingress_status_reply is None ||
-    !reload_ingress_status_reply.unwrap().contains("\"admitted\":1") ||
+    !reload_ingress_status_reply.unwrap().contains("\"admitted\":5") ||
     !reload_ingress_status_reply.unwrap().contains("\"denied\":2") ||
     !reload_ingress_status_reply.unwrap().contains("\"generation\":2") {
     supervisor_kill()
@@ -715,7 +794,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"nativeQueueRelease\":true,\"nativeQueueUnhandled\":4,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"nodeless-app-ready\",\"appScenario\":\"nodeless-fixture\",\"appDocumentTitle\":\"nodeless-app-ready\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"nativeQueueRelease\":true,\"nativeQueueAdmitted\":4,\"nativeMainRoundTrip\":true,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

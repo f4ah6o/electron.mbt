@@ -51,11 +51,11 @@ resolvers; native admission and revocation remain the authority.
 
 In the native fixture the supervisor releases the queue explicitly with
 `release-adapted-ingress` after the page reports `adapted-queue-pending`. The
-four admitted calls reach the native ingress path as `app:get-settings` and
-reject with `ELECTRON_MBT_NO_HANDLER`; the three overflow calls stay
-`QUEUE_FULL`. Main is still absent, so this is a typed fail-closed result, not
-a successful application call. The queue timeout path remains covered by the
-Node contract harness.
+four admitted calls reach the native ingress path and are dispatched to the
+fixed QuickJS Main fixture; their results resolve the page. The three overflow
+calls stay `QUEUE_FULL`. The page applies the Main settings and sets
+`nodeless-app-ready`. The queue timeout path remains covered by the Node
+contract harness. See [docs/0025-main-dispatch.md](0025-main-dispatch.md).
 
 Local event delivery is independent of the RPC queue deadline. The native host
 installs a host object at document-start that exposes only a nonce-bound page
@@ -113,7 +113,7 @@ application ingress is wired.
 Observed fixture probe (macOS, AppKit + WKWebView):
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"adapted-api-ok","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueUnhandled":4,"reloadGeneration":2,"compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"reloadGeneration":2,"compatible":false}
 ```
 
 Adapter hash:
@@ -130,9 +130,9 @@ event path.
 ## Deliberate limits
 
 - no original preload execution and no `contextBridge`/`ipcRenderer`
-- no application RPC ingress, Main dispatch, invoke/reply or sender/document
-  grant; the page-world ingress and queue release are test-only, and recognized
-  application operations end in `NO_HANDLER`
+- no general application ingress, Main loader, invoke/reply or sender/document
+  grant; the page-world ingress and queue release are test-only, and Main is a
+  fixed QuickJS fixture graph
 - the source snapshot covers the entry document and generated adapter only and
   is not a signed manifest; the remaining app graph is outside it
 - native event delivery is a private-lane test trigger; there is no production
@@ -148,9 +148,9 @@ event path.
 
 ## Next
 
-- dispatch the admitted operations into Main and return the actual handler
-  result (EP-14); define the production `DocumentIngressReady` transition; decide
-  the iframe/subframe handler policy and add executed negatives
+- move the Main graph into the source snapshot and add the general CJS/Node
+  symbol layers (EP-11/12); define the production `DocumentIngressReady`
+  transition; add a close/lifecycle scenario
 - define and observe the actual `DocumentIngressReady` transitions separately
   from `LoadComplete` (EP-15)
 - extend the entry+adapter source snapshot to the complete boot graph, with

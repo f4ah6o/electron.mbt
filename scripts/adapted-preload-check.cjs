@@ -46,6 +46,9 @@ function check() {
   }
   if (semantics.ingress !== 'ABSENT') errors.push('application RPC ingress must be recorded as ABSENT');
   if (semantics.nativeIngress !== 'test-only-selftest') errors.push('test-only native ingress mode required');
+  if (!record.mainDispatch || record.mainDispatch.mode !== 'quickjs-fixture') {
+    errors.push('QuickJS Main dispatch record required');
+  }
   if (typeof semantics.eventDelivery !== 'string' || semantics.eventDelivery.length === 0) {
     errors.push('event delivery mode required');
   }
@@ -96,6 +99,7 @@ function check() {
     ingress: semantics.ingress || null,
     eventDelivery: semantics.eventDelivery || null,
     nativeIngress: semantics.nativeIngress || null,
+    mainDispatch: record.mainDispatch ? record.mainDispatch.mode : null,
     sourceSnapshot: {
       schema: sourceManifest.schema,
       entry: sourceManifest.entry,

@@ -687,7 +687,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       match payload {
         Object(values) if values.length() == 2 => {
           match values.get("kind") {
-            Some(String(kind)) if kind == "open" || kind == "save" || kind == "export-html" || kind == "export-png" || kind == "export-pdf" => ()
+            Some(String(kind)) if kind == "open" || kind == "save" || kind == "export-html" || kind == "export-png" || kind == "export-pdf" || kind == "export-doc-png" => ()
             _ => raise BadProtocol("Invalid dialog result kind")
           }
           match values.get("path") {
@@ -705,7 +705,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
             _ => raise BadProtocol("Invalid dialog result acknowledgement")
           }
           match values.get("kind") {
-            Some(String(kind)) if kind == "open" || kind == "save" || kind == "export-html" || kind == "export-png" || kind == "export-pdf" => ()
+            Some(String(kind)) if kind == "open" || kind == "save" || kind == "export-html" || kind == "export-png" || kind == "export-pdf" || kind == "export-doc-png" => ()
             _ => raise BadProtocol("Invalid dialog result kind")
           }
           match values.get("path") {

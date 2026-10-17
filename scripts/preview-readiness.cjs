@@ -176,7 +176,8 @@ function buildReport() {
   const mojiRendererApiOk = mojiRendererApi.state === 'done' &&
     mojiRendererApi.openOk === true && mojiRendererApi.saveAsOk === true &&
     mojiRendererApi.exportOk === true && mojiRendererApi.pngOk === true &&
-    mojiRendererApi.pdfOk === true && mojiRendererApi.saveOk === true && mojiRendererApi.readOk === true &&
+    mojiRendererApi.pdfOk === true && mojiRendererApi.docPngOk === true &&
+    mojiRendererApi.saveOk === true && mojiRendererApi.readOk === true &&
     mojiRendererApi.sampleOk === true && mojiRendererApi.settingsTheme === 'dark';
   const mojiRendererOk = mojiRenderer !== null && mojiRenderer.status === 'PASS' &&
     mojiRenderer.rendererLoaded === true && mojiRenderer.apiPresent === true &&
@@ -189,7 +190,7 @@ function buildReport() {
   checks.push(check('moji-renderer', mojiRenderer === null ? 'NOT_RUN' : (mojiRendererOk ? 'PASS' : 'FAIL'),
     mojiRenderer === null
       ? 'Moji renderer report is absent'
-      : `Moji renderer: title=${mojiRenderer.pageTitle}, rootChildren=${mojiRenderer.rootChildren}, api=${mojiRenderer.apiPresent}, open=${mojiRendererApi.openOk}, saveAs=${mojiRendererApi.saveAsOk}, export=${mojiRendererApi.exportOk}, png=${mojiRendererApi.pngOk}, pdf=${mojiRendererApi.pdfOk}, save=${mojiRendererApi.saveOk}, read=${mojiRendererApi.readOk}, sample=${mojiRendererApi.sampleOk}, preloadExecuted=${mojiRenderer.preloadExecuted}`));
+      : `Moji renderer: title=${mojiRenderer.pageTitle}, rootChildren=${mojiRenderer.rootChildren}, api=${mojiRenderer.apiPresent}, open=${mojiRendererApi.openOk}, saveAs=${mojiRendererApi.saveAsOk}, export=${mojiRendererApi.exportOk}, png=${mojiRendererApi.pngOk}, pdf=${mojiRendererApi.pdfOk}, docPng=${mojiRendererApi.docPngOk}, save=${mojiRendererApi.saveOk}, read=${mojiRendererApi.readOk}, sample=${mojiRendererApi.sampleOk}, preloadExecuted=${mojiRenderer.preloadExecuted}`));
   checks.push(check('node-less-moji-app-main', mojiRendererOk ? 'PASS' : 'NOT_RUN',
     mojiRendererOk
       ? 'Moji main boots and the adapted Moji renderer loads; original preload NOT_EXECUTED'

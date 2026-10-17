@@ -825,7 +825,7 @@
     "assetServer": "loopback-http-test-only",
     "bootGraphFiles": 112,
     "compatible": false,
-    "note": "Pinned Moji renderer loaded under the adapted profile via a loopback asset server; open/save/export (HTML/PDF/diagram PNG)/sample and settings/update paths work; original preload NOT_EXECUTED.",
+    "note": "Pinned Moji renderer loaded under the adapted profile via a loopback asset server; open/save/export (HTML/PDF/PNG document/diagram PNG)/sample and settings/update paths work; original preload NOT_EXECUTED.",
     "apiProbe": {
       "state": "done",
       "saveOk": true,
@@ -836,7 +836,8 @@
       "saveAsOk": true,
       "exportOk": true,
       "pngOk": true,
-      "pdfOk": true
+      "pdfOk": true,
+      "docPngOk": true
     },
     "readContent": "# renderer save\n",
     "sampleContent": "# Complete Markdown Guide..."

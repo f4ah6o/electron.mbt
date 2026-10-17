@@ -194,31 +194,63 @@ static NSString *preloadDigest(NSData *data) {
 
 @interface MBTExportRenderer : NSObject <WKNavigationDelegate>
 @property(nonatomic, strong) WKWebView *web;
+@property(nonatomic, strong) NSWindow *window;
+@property(nonatomic, copy) NSString *format;
 @property(nonatomic, copy) void (^completion)(NSData *, NSString *);
-- (void)renderHTML:(NSString *)html completion:(void (^)(NSData *, NSString *))completion;
+- (void)renderHTML:(NSString *)html format:(NSString *)format
+  completion:(void (^)(NSData *, NSString *))completion;
 @end
 
 @implementation MBTExportRenderer
-- (void)renderHTML:(NSString *)html completion:(void (^)(NSData *, NSString *))completion {
+- (void)renderHTML:(NSString *)html format:(NSString *)format
+  completion:(void (^)(NSData *, NSString *))completion {
   self.completion = completion;
+  self.format = format;
   WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
   configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
   self.web = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 794, 1123)
     configuration:configuration];
   self.web.navigationDelegate = self;
+  self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(-10000, -10000, 794, 1123)
+    styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
+  self.window.contentView = self.web;
+  self.window.ignoresMouseEvents = YES;
+  [self.window orderBack:nil];
   [self.web loadHTMLString:html baseURL:nil];
 }
 - (void)finishData:(NSData *)data error:(NSString *)error {
   void (^done)(NSData *, NSString *) = self.completion;
   self.completion = nil;
   self.web.navigationDelegate = nil;
+  [self.window orderOut:nil];
+  self.window.contentView = nil;
+  self.window = nil;
   if (done != nil) done(data, error);
 }
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
   (void)navigation;
+  __weak MBTExportRenderer *weakSelf = self;
+  if ([self.format isEqualToString:@"png"]) {
+    WKSnapshotConfiguration *configuration = [[WKSnapshotConfiguration alloc] init];
+    configuration.rect = NSMakeRect(0, 0, 794, 1123);
+    configuration.afterScreenUpdates = YES;
+    [webView takeSnapshotWithConfiguration:configuration
+      completionHandler:^(NSImage * _Nullable image, NSError * _Nullable error) {
+        MBTExportRenderer *renderer = weakSelf;
+        if (renderer == nil) return;
+        if (error != nil || image == nil) {
+          [renderer finishData:nil error:@"ELECTRON_MBT_EXPORT_RENDER"];
+          return;
+        }
+        NSBitmapImageRep *bitmap = [NSBitmapImageRep imageRepWithData:image.TIFFRepresentation];
+        NSData *png = bitmap == nil ? nil :
+          [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+        [renderer finishData:png error:(png == nil ? @"ELECTRON_MBT_EXPORT_RENDER" : nil)];
+      }];
+    return;
+  }
   WKPDFConfiguration *configuration = [[WKPDFConfiguration alloc] init];
   configuration.rect = NSMakeRect(0, 0, 794, 1123);
-  __weak MBTExportRenderer *weakSelf = self;
   [webView createPDFWithConfiguration:configuration
     completionHandler:^(NSData * _Nullable data, NSError * _Nullable error) {
       MBTExportRenderer *renderer = weakSelf;
@@ -300,6 +332,7 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, copy) NSString *testExportHtmlPath;
 @property(nonatomic, copy) NSString *testExportPngPath;
 @property(nonatomic, copy) NSString *testExportPdfPath;
+@property(nonatomic, copy) NSString *testExportPngDocumentPath;
 @property(nonatomic, strong) NSMutableArray<MBTExportRenderer *> *exportRenderers;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
@@ -343,6 +376,7 @@ static NSString *preloadDigest(NSData *data) {
     self.testExportHtmlPath = nil;
     self.testExportPngPath = nil;
     self.testExportPdfPath = nil;
+    self.testExportPngDocumentPath = nil;
     self.exportRenderers = [NSMutableArray array];
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
@@ -689,7 +723,7 @@ static NSString *preloadDigest(NSData *data) {
   MBTExportRenderer *renderer = [[MBTExportRenderer alloc] init];
   [self.exportRenderers addObject:renderer];
   __weak MBTWindow *weakSelf = self;
-  [renderer renderHTML:html completion:^(NSData *data, NSString *error) {
+  [renderer renderHTML:html format:@"pdf" completion:^(NSData *data, NSString *error) {
     MBTWindow *window = weakSelf;
     if (window == nil) return;
     [window.exportRenderers removeObject:renderer];
@@ -704,6 +738,35 @@ static NSString *preloadDigest(NSData *data) {
     }
     [window writeExportData:data suggestedName:[name stringByAppendingString:@".pdf"]
       testPath:window.testExportPdfPath reply:reply];
+  }];
+}
+- (void)exportPngDocument:(NSString *)html baseName:(NSString *)baseName
+  reply:(void (^)(id, NSString *))reply {
+  if (html.length > 1048576) {
+    [self denyFile:@"ELECTRON_MBT_EXPORT_LIMIT" reply:reply];
+    return;
+  }
+  NSString *name = [baseName lastPathComponent];
+  if (name.length == 0 || name.length > 96) name = @"export";
+  MBTExportRenderer *renderer = [[MBTExportRenderer alloc] init];
+  [self.exportRenderers addObject:renderer];
+  __weak MBTWindow *weakSelf = self;
+  [renderer renderHTML:html format:@"png" completion:^(NSData *data, NSString *error) {
+    MBTWindow *window = weakSelf;
+    if (window == nil) return;
+    [window.exportRenderers removeObject:renderer];
+    if (error != nil || data == nil) {
+      [window denyFile:(error != nil ? error : @"ELECTRON_MBT_EXPORT_RENDER") reply:reply];
+      return;
+    }
+    static const unsigned char pngMagic[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.length < 8 || data.length > 16777216 ||
+        memcmp(data.bytes, pngMagic, 8) != 0) {
+      [window denyFile:@"ELECTRON_MBT_EXPORT_RENDER" reply:reply];
+      return;
+    }
+    [window writeExportData:data suggestedName:[name stringByAppendingString:@".png"]
+      testPath:window.testExportPngDocumentPath reply:reply];
   }];
 }
 - (void)handleFileOperation:(NSString *)operation payload:(NSDictionary *)payload
@@ -826,6 +889,11 @@ static NSString *preloadDigest(NSData *data) {
     }
     if ([format isEqualToString:@"pdf"]) {
       [self exportPdf:html
+        baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
+      return;
+    }
+    if ([format isEqualToString:@"png"]) {
+      [self exportPngDocument:html
         baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
       return;
     }
@@ -2111,6 +2179,7 @@ static NSString *preloadDigest(NSData *data) {
       "const exported=await window.api.exportAs({format:'html',html:'<h1>renderer export</h1>',baseName:'export'}); "
       "const png=await window.api.exportDiagramPng({dataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=',baseName:'diagram'}); "
       "const pdf=await window.api.exportAs({format:'pdf',html:'<h1>renderer pdf</h1>',baseName:'export'}); "
+      "const docPng=await window.api.exportAs({format:'png',html:'<h1>renderer png document</h1>',baseName:'export'}); "
       "const saved=await window.api.save('renderer-save.md','# renderer save\\n'); "
       "const read=await window.api.readPath('renderer-save.md'); "
       "const sample=await window.api.readSample('markdown-guide.en.md'); "
@@ -2120,7 +2189,7 @@ static NSString *preloadDigest(NSData *data) {
       "opened.documents[0].content&&opened.documents[0].content.indexOf('# Complete Markdown Guide')===0),"
       "openPath:opened&&opened.path?opened.path:'',"
       "saveAsOk:!!(savedAs&&savedAs.ok),exportOk:!!(exported&&exported.ok),"
-      "pngOk:!!(png&&png.ok),pdfOk:!!(pdf&&pdf.ok),"
+      "pngOk:!!(png&&png.ok),pdfOk:!!(pdf&&pdf.ok),docPngOk:!!(docPng&&docPng.ok),"
       "saveOk:!!(saved&&saved.ok),"
       "readOk:!!(read&&read.ok),readContent:read&&read.content?read.content.slice(0,64):'',"
       "sampleOk:!!(sample&&sample.ok),"
@@ -2171,7 +2240,8 @@ static NSString *preloadDigest(NSData *data) {
     NSString *path = payload[@"path"];
     if (![kind isKindOfClass:[NSString class]] || !([kind isEqualToString:@"open"] ||
         [kind isEqualToString:@"save"] || [kind isEqualToString:@"export-html"] ||
-        [kind isEqualToString:@"export-png"] || [kind isEqualToString:@"export-pdf"]) ||
+        [kind isEqualToString:@"export-png"] || [kind isEqualToString:@"export-pdf"] ||
+        [kind isEqualToString:@"export-doc-png"]) ||
         ![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
       return;
@@ -2185,7 +2255,8 @@ static NSString *preloadDigest(NSData *data) {
     else if ([kind isEqualToString:@"save"]) window.testSaveDialogPath = canonical;
     else if ([kind isEqualToString:@"export-html"]) window.testExportHtmlPath = canonical;
     else if ([kind isEqualToString:@"export-png"]) window.testExportPngPath = canonical;
-    else window.testExportPdfPath = canonical;
+    else if ([kind isEqualToString:@"export-pdf"]) window.testExportPdfPath = canonical;
+    else window.testExportPngDocumentPath = canonical;
     done(@"success", @{@"set": @YES, @"kind": kind, @"path": canonical});
     return;
   }

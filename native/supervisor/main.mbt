@@ -361,6 +361,7 @@ fn run_moji_app() -> Unit {
     (55, "\"kind\":\"export-html\",\"path\":\"renderer-export.html\""),
     (56, "\"kind\":\"export-png\",\"path\":\"renderer-export.png\""),
     (57, "\"kind\":\"export-pdf\",\"path\":\"renderer-export.pdf\""),
+    (58, "\"kind\":\"export-doc-png\",\"path\":\"renderer-export-doc.png\""),
   ]
   for entry in dialogs {
     let (id, body) = entry
@@ -522,6 +523,7 @@ fn run_moji_app() -> Unit {
     api_probe.contains("\"exportOk\":true") &&
     api_probe.contains("\"pngOk\":true") &&
     api_probe.contains("\"pdfOk\":true") &&
+    api_probe.contains("\"docPngOk\":true") &&
     api_probe.contains("\"saveOk\":true") &&
     api_probe.contains("\"readOk\":true") &&
     api_probe.contains("\"sampleOk\":true") &&

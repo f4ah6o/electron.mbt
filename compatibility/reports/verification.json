@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "status": "NOT_READY",
+  "compatible": false,
+  "checks": [
+    {
+      "id": "moon-js",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": "Total tests: 121, passed: 121, failed: 0."
+    },
+    {
+      "id": "moon-native",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": "Total tests: 140, passed: 140, failed: 0."
+    },
+    {
+      "id": "npm-test",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "probe": "contextbridge-preload-file",
+        "status": "PASS",
+        "preloadSourceUnchanged": true,
+        "isolatedWorldPrivate": true,
+        "nativeAttestationEventOneShot": true,
+        "failedPreloadNeverAttested": true,
+        "nativeBootstrapHandlerHiddenFromPreload": true,
+        "pageWorldSeesNeitherHandler": true,
+        "nativeChecksumTamperRejected": true,
+        "sameURLReloadRevoked": true,
+        "requireFailsClosed": true,
+        "caughtUnsupportedRequireFailsClosed": true,
+        "syntaxFailureReported": true,
+        "compatible": false,
+        "contextBridge": "NOT_IMPLEMENTED"
+      }
+    },
+    {
+      "id": "build",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": "Finished. moon: no work to do"
+    },
+    {
+      "id": "native-host-build",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": ""
+    },
+    {
+      "id": "m1-smoke",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "status": "PASS",
+        "probe": "m1-native-fault-injection",
+        "peerMismatchRejected": true,
+        "crashedChildDetected": true,
+        "noOrphanChild": true,
+        "compatible": false
+      }
+    },
+    {
+      "id": "m1-app-smoke",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "probe": "m1-unchanged-cjs-app",
+        "status": "PASS",
+        "mainUnmodified": true,
+        "sourceHashPreserved": true,
+        "backend": "AppKit+WKWebView",
+        "compatible": false
+      }
+    },
+    {
+      "id": "native-supervisor",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "status": "PASS",
+        "probe": "native-supervisor-window-load",
+        "backend": "AppKit+WKWebView",
+        "childPid": 89763,
+        "exitStatus": 0,
+        "windowLoaded": true,
+        "event": "isolated-preload-attested",
+        "mainEvaluated": true,
+        "moduleGraph": true,
+        "packageGraph": true,
+        "appMain": "native-fixture",
+        "appEntry": "src/main.js",
+        "appTitle": "native-app-window",
+        "bootstrapObserved": true,
+        "preloadStatus": "absent",
+        "attempts": 1,
+        "restarts": 1,
+        "secondPid": 89769,
+        "secondExitStatus": 0,
+        "creator": "moonbit-native",
+        "compatible": false
+      }
+    },
+    {
+      "id": "native-supervisor-fault",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "status": "PASS",
+        "probe": "native-supervisor-fault",
+        "cases": [
+          {
+            "label": "dead-child",
+            "status": "PASS",
+            "code": "ELECTRON_MBT_SUPERVISOR_START"
+          },
+          {
+            "label": "missing-root",
+            "status": "PASS",
+            "code": "ELECTRON_MBT_SUPERVISOR_START"
+          },
+          {
+            "label": "entry-traversal",
+            "status": "PASS",
+            "code": "ELECTRON_MBT_SUPERVISOR_APP_MAIN"
+          },
+          {
+            "label": "handshake-timeout",
+            "status": "PASS",
+            "code": "ELECTRON_MBT_SUPERVISOR_START"
+          }
+        ],
+        "compatible": false
+      }
+    },
+    {
+      "id": "native-supervisor-retry",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "status": "PASS",
+        "probe": "native-supervisor-retry",
+        "attempts": 2,
+        "spawns": 3,
+        "compatible": false
+      }
+    },
+    {
+      "id": "readiness",
+      "status": "NOT_READY",
+      "exit": 2,
+      "expectedExit": 2,
+      "detail": {
+        "ok": true,
+        "status": "NOT_READY",
+        "counts": {
+          "checks": 16,
+          "pass": 9,
+          "fail": 2,
+          "notRun": 5
+        },
+        "out": "compatibility/reports/preview-readiness.json"
+      }
+    },
+    {
+      "id": "gate-report",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "ok": true,
+        "out": "compatibility/reports/g0-g4.md"
+      }
+    }
+  ],
+  "note": "NOT_READY is the expected overall state. FAIL means a command or expected exit code did not hold."
+}

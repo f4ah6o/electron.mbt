@@ -677,5 +677,12 @@
     "report": "compatibility/reports/g0-g4.md",
     "source": "compatibility/reports/preview-readiness.json",
     "note": "Generated status report; not app compatibility or release approval."
+  },
+  "verification": {
+    "status": "NOT_READY",
+    "report": "compatibility/reports/verification.json",
+    "checks": 12,
+    "unexpectedFailures": 0,
+    "note": "Expected NOT_READY; not app compatibility or release approval."
   }
 }

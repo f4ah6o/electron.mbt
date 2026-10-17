@@ -1,6 +1,6 @@
 # 0017: 軽量化・応答性・資源budgetの測定設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -20,7 +20,7 @@ Branch: impl/0017-measurement-schema-runner
 
 | 項目 | 内容 |
 | --- | --- |
-| 状態 | OPEN / 未測定。下記の数値は提案budgetまたは既存設計目標 |
+| 状態 | POLISHED / 未測定。下記の数値は提案budgetまたは既存設計目標 |
 | 優先度 | P1。baseline収集はP0と並行可能 |
 | 依存 | [0014 apps](0014-real-app-acceptance.md)、[0015 evidence](0015-oracle-ci-and-evidence.md)、[0016 pack](0016-packaging-release-and-updates.md) |
 | 既存 | Issue 0001 §12。サイズ削減の実績はまだない |
@@ -211,14 +211,18 @@ node --test tests/measurement-summary.test.cjs
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: 同条件比較、raw/wire bytes、cold/warm、全 process/resource、提案 budget の設計を作成。
 - 2026-10-17 polish: 必須 11 セクションへ再構成。最初の schema/summary PR、明確な statistics/limits/error、Given/when/then、既存 inventory と performance の違い、測定条件を決める質問を追加。元の数値目標と全測定項目を保持。
 
 ## 注記
 
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
 **準備状態:** measurement schema、deterministic summary、反証 fixtures に着手可能。Q-PERF-01 は実計測条件、Q-PERF-02 は合否閾値の決定であり、最初の実装や条件収集を停止する理由ではない。actual release artifact/実機がない範囲の性能試験は NOT_RUN のまま。
 
-Status は指定の `issues/open`、既存 open-only と runtime 実受入まで open を維持する AGENTS 方針に合わせる。保留前・再開先とも本 file の open、理由と影響は上表。Branch は提案で、性能実装が既に存在する意味ではない。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0017-performance-and-resource-budgets.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。 Branch は提案で、性能実装が既に存在する意味ではない。
 
 ### 7. 出典
 

@@ -1,6 +1,6 @@
 # 0010: IPC ingress・値転送・backpressureの実装設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -217,15 +217,19 @@ fixtureはstep ID、開始/accepted/terminal、source hashes、native sender obs
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: polish-issue に合わせ、拒否専用 admission の初回 slice、native identity の依存、既定 limits、既存 source/tests と実行 command、codec/queue の限定的な未解決範囲を追加した。旧 §1〜§9 と全受入行を保持した。 runtime/API の実装変更や互換状態の昇格は行っていない。
 
 ## 注記
+
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
 
 ### 準備状態・格納先・確認基点
 
 拒否専用の core/codec/queue contract と PR 統合回帰は着手可能。実 renderer positive の gate は native identity の確認後に進める。Node-less 未実装であること自体を、定義済みの contract 着手を止める質問にしない。
 
-`Status: open` と `issues/open` は、[AGENTS.md](../../AGENTS.md) の「runtime の受入まで issue を open に保つ」規約と、今回の指定格納先に合わせる。整備済みの初回作業は着手してよく、未知の実験結果や後続実装の未完成だけを調査開始の blocker にしない。`polished` への移動や新しい保留状態は追加しない。将来の状態変更は同規約の受入と状態遷移を確認し、元状態 `open`・復帰先 `issues/open/0010-ipc-values-and-flow-control.md` を基準に判断する。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0010-ipc-values-and-flow-control.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。
 
 Branch は最初の実装 PR の候補名である。今回の本文整備は main 向けで、ブランチ作成済みという意味ではない。旧番号付き節を小見出しとして保持したため、既存の § 番号と fixture ID を引き続き参照できる。
 

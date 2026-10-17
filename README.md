@@ -1,8 +1,8 @@
 # electron.mbt
 
-MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/open/0001-electron-compatible-lightweight-runtime.md).
+MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/polished/0001-electron-compatible-lightweight-runtime.md).
 
-**Status: M0 in progress, not an Electron-compatible runtime release.** The implementation contains executable core contracts and feasibility probes. It does not yet run or package an Electron app. In particular, isolated synchronous `contextBridge` is unresolved; `run` and `pack` fail explicitly before evaluating application code. The design issue remains open.
+**Status: M0 in progress, not an Electron-compatible runtime release.** The implementation contains executable core contracts and feasibility probes. It does not yet run or package an Electron app. In particular, isolated synchronous `contextBridge` is unresolved; `run` and `pack` fail explicitly before evaluating application code. The design issues are organized under `issues/polished`; their runtime acceptance criteria remain unmet.
 
 ## Implemented paths
 

@@ -1,6 +1,6 @@
 # 0013: Native CLI・診断・開発workflowの実装設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -189,14 +189,19 @@ static inventoryでunknown APIが見つからないことは、動的分岐・re
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: native CLIのcommand/input/schema/exit、source modes、dev loop、admission設計を追加。
 - 2026-10-17: `polish-issue`で実CLI/テストを読取確認し、現行commandと新規command、最初のschema/doctor slice、observable negative、migrationと変更対象を具体化。必須metadata/構成へ再配置し旧節anchorを保持。runtimeや公開CLIは未変更。
 
 ## 注記
 
-- **状態・配置:** 整備前後とも `Status: open`、`issues/open` を維持する。現repositoryにはこの状態ディレクトリがあり、今回の指定先でもある。`polished` / 保留用ディレクトリを新設せず、本文の準備状態とruntimeのverifiedを別に記録する。
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0013-cli-diagnostics-and-developer-workflow.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。
+
 - **準備状態:** schema/exit/golden fixtureとnative inventory/doctorの限定実装には着手可能。このIssue固有の未決の安全設計はなく、通常run/pack/verifyの製品受入は0006/0007/0008/0011/0015/0016の実証を消費する後続作業。依存未実装をCLI全体の保留理由にしない。
-- **再開・復帰先:** 後続依存は関連Issueの証拠・担当roleで判断し、解決後も既存 `issues/open` の同pathへ記録する。将来repositoryの状態遷移を採用する場合は、その規約を確認してから遷移する。
+- **再開・記録先:** 未解決事項と後続依存は本文の証拠・担当role・再開条件で判断し、進捗は本ファイルへ記録する。状態を変更するときはmetadataと配置を同時に更新する。
 - **ブランチ:** `Branch` の `feat/issue-0013-native-cli` は実装時の提案名であり、この整備で作成したbranchではない。既存PRの履歴を消さず、小さい統合PRへ分ける。
 - **確認基点:** 本整備のmainは `8177cf051976b8d7b9eca25ae7ad8820bb04a719`。初回設計の `30c6fc97186e7ecfc8397c799525f00c8e4f0f65` と各PR/appの固定SHAは履歴根拠として保持する。mainへのPR統合・runtime実装・native E2E完了を意味しない。
 - **検証の範囲:** 2026-10-17のpolishはIssueと関連source/testの読取・文書整合を対象とする。下記のruntime/GUI/配布試験は、この本文更新では実行していない。実行する際はcommand、対象SHA、環境とPASS / FAIL / NOT_RUNを別記録にする。

@@ -1,6 +1,6 @@
 # Issue 0001 implementation ledger
 
-Status: M0 in progress. This document does not replace or close `issues/open/0001-electron-compatible-lightweight-runtime.md`.
+Status: M0 in progress. This document does not replace or close `issues/polished/0001-electron-compatible-lightweight-runtime.md`.
 
 ## Connected execution paths
 

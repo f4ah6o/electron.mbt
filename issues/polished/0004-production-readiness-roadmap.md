@@ -1,6 +1,6 @@
 # 0004: electron.mbt 実用化ロードマップと実装設計の入口
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -31,7 +31,7 @@ macOS Apple Silicon 上で、固定 Moji の編集・保存・再起動を Node-
 | PR #10/#13 | isolated bootstrap/lifetime、native one-shot attestation | arbitrary page requestのsender証明、adapted installation variant |
 | PR #3 | Node-less/profile/QuickJS/app選定の設計。未merge | QuickJS FFI、scheduler、module/subset、actual app試験 |
 | 全PR | 13件中8件open/Draft、5件merged。open全8件の最終HEAD CIはsuccess | stack同士を統合したSHAの回帰と新profileの受入 |
-| GitHub Issues | 通常Issuesは0、`has_issues:false` | `issues/open`内の文書とPRから作業を追跡 |
+| GitHub Issues | 通常Issuesは0、`has_issues:false` | `issues/polished`内の整備済み文書とPRから作業を追跡 |
 | 実アプリ | 固定Moji/jmdのsource/lock/APIを追加調査 | 実build出力、動的boot閉包、candidate E2E |
 | 配布・性能 | root LICENSE未確定、pack/署名/製品比較未受入 | license方針、SBOM、Node不在端末、比較測定 |
 
@@ -258,7 +258,7 @@ PR #2の `0002-m1-native-host-contract.md` とPR #3の `0002-node-less-electron-
 
 ### 10. 完了の扱い
 
-**この設計作業の完了:** 既存issue/PRを追跡し、実装場所・依存・API/state・security/data・negative tests・配布/性能・終了条件をreview可能な文書として保存すること。今回の追加文書はすべてOPENのままにする。
+**この設計作業の完了:** 既存issue/PRを追跡し、実装場所・依存・API/state・security/data・negative tests・配布/性能・終了条件をreview可能な文書として保存すること。整備済みの文書はユーザー指示に従って `issues/polished` に配置し、実装の受入条件は未達のまま保持する。
 
 **製品previewの完了:** G0〜G4のrequired evidenceが同一source/profile/artifactの条件で揃うこと。runtime実装、Moji build/E2E、署名、性能の未実行を文書の整合性PASSで置換しない。
 
@@ -305,14 +305,18 @@ PR #2の `0002-m1-native-host-contract.md` とPR #3の `0002-node-less-electron-
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: 全既存PR・原0001を踏まえ、0004〜0021、S0〜S5、32 EPの初期実用化計画を作成。
 - 2026-10-17: polish-issueで最初の変更単位・独立した受入条件・文書とruntimeの検証・実装前の質問を明示。原M/N/A〜Jと工数の根拠を維持。
 
 ## 注記
 
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
 **準備状態:** S0のEP-01/05と計画維持は着手可。G2以降の製品受入は表の未解決事項と0020の直接依存を満たしてから進める。
 
-**状態と配置:** 既存の状態ディレクトリは `issues/open` のみで、今回も指定された配置と `open` を維持する。これは着手不可や実装済みという表示ではない。本文の着手条件・未解決事項と、実装後の受入を別々に判定する。未解決事項による保留前の状態・復帰先はいずれも `open`、復帰先パスは本ファイル。新しい状態は追加しない。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0004-production-readiness-roadmap.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。
 
 `Branch` は次の作業用ブランチ案であり、作成済みではない。既存 PR を引き継ぐときは元の履歴を保ち、同内容を別実装として数えない。今回の変更は本文整備であり、既存 PR の merge、runtime の有効化、license 選択、release の実行を意味しない。
 

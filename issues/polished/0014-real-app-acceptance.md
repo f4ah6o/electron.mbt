@@ -1,6 +1,6 @@
 # 0014: 固定実アプリ Moji / jmd の起動閉包・受入・データ保護
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -20,7 +20,7 @@ Branch: impl/0014-app-inventory-baselines
 
 | 項目 | 内容 |
 | --- | --- |
-| 状態 | OPEN / design |
+| 状態 | POLISHED / design |
 | 優先度 | P0（N0 起動閉包・差分確定）、P1（N4 Moji 操作）、P1（N5 配布受入） |
 | 作成 / 更新 | 2026-10-17 |
 | 上位 | [0004 実用化ロードマップ](0004-production-readiness-roadmap.md) |
@@ -318,7 +318,7 @@ settings の省略可能 field、`undefined`、Promise<void>、エラー結果 o
 1. A1 だけで「実アプリ対応」を表示しない。
 2. A4 を閉じるには Moji の許容 adaptation が明示され、操作・security・data の必須 gate がすべて candidate SHA で満たされること。
 3. A5 の負例は未実装の成功率を飾るために使わず、原本の future positive に必要な残件を維持する。
-4. A6 で実機・配布試験が未実行なら、本 Issue 全体は open のまま。
+4. A6 で実機・配布試験が未実行なら、本 Issue の実装は未完了のまま。計画の `polished` 状態は実機・配布の受入を代替しない。
 5. app version 更新は新 inventory / baseline として扱い、v1.0.7 等へ自動で切り替えない。
 6. この設計時点で新しく実行可能になった runtime 機能はない。新しく明確になったものは、実在する boot blocker、必要 symbols、adaptation 範囲、再現可能な受入手順である。
 
@@ -444,14 +444,18 @@ QuickJS の engine 選定、Moji/jmd の版、strict/adapted 分離、Moji の a
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: 固定 source/lock と 16 updater package instances、boot side effects、Moji API、M1〜M3/J1、APP-N01〜N15 を調査・設計。
 - 2026-10-17 polish: 11 必須見出しと必要な質問へ再編。全 pins・source citations・シナリオを保持し、A1 の最小実装、path 所在、app result shape と ingress error、具体 command、調査と runtime 保留の境界を追加。
 
 ## 注記
 
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
 **準備状態:** A1 の inventory/collector と A2 の runner 設計に着手可能。A3 の boot adaptation は Q-APP-01、actual app baseline の環境は Q-APP-02 を解決して進む。M1〜M3 の native 実装がまだないことは N0 調査の blocker ではない。現在の reader/source 調査を N0 complete とも呼ばない。
 
-Status は指定の `issues/open` と既存 open-only / AGENTS の受入運用を保持して open。保留範囲・理由・再開条件を上表に残し、復帰先もこの file の open 状態とする。新しい状態ディレクトリは作らない。Branch は提案で、upstream repository へ push する指示ではない。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0014-real-app-acceptance.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。 Branch は提案で、upstream repository へ push する指示ではない。
 
 polish では pinned Moji `package.json / electron.vite.config.ts / preload.ts`、main の open/save/setPath/ready、settings の catch、jmd の early protocol・save・JMD_SMOKE を照合した。元の numbered heading text を保持しているため §参照を継続できる。
 

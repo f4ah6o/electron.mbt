@@ -1,6 +1,6 @@
 # 0001: Electron API 互換・軽量ランタイム electron.mbt の設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-09
 Updated: 2026-10-17
@@ -248,7 +248,7 @@ production package には launcher、MoonBit host、Node runner、薄い bridge�
 | `fixtures/` | 同じソースで走るdifferential fixtures | CJS/facade/oracle/worldsは存在。実app/faultを追加 |
 | `tests/` | core / integration / security / native E2E | 既存portable/Node回帰と、未作成の製品native/app受入を区別 |
 | `benchmarks/` | 配布・メモリ・起動の計測とraw results | 未作成。release artifactと実測を必要とする |
-| `issues/open/` | 設計と未解決課題 | 要求と残作業を継続管理 |
+| `issues/polished/` | 整備済みの計画と未解決課題 | 要求・着手条件・残作業を継続管理 |
 
 製品向け CLI は `electron-mbt run <app-dir>`、`electron-mbt doctor <app-dir>`、`electron-mbt pack <app-dir>`、`electron-mbt compat-check <app-dir>` を目指す。現行 `cmd/electron-mbt.cjs` には `snapshot` と静的 `doctor/compat-check` が実装されている。`snapshot` は成功時 exit 0、静的診断は `compatible:false` / exit 2。`run/pack` は app を評価せず `ELECTRON_MBT_M0_INCOMPLETE` / exit 1 で拒否する。これは実 app の起動・配布機能ではない。`doctor` の静的解析だけで動的 import、reflection、未実行分岐の完全な互換性を保証しない。実行時の API 利用診断と組み合わせる。
 
@@ -282,7 +282,7 @@ MoonBit の純粋 core は deterministic unit/property tests、native bridge は
 - [ ] Given forged sender、旧 document、重複完了または上限超過、when production ingress に入力する、then許可していない Main/OS 副作用と旧 realm への配送が0で、requestは一度だけ終端化する。
 - [ ] Given 未実装 API・欠損 evidence・別 profile の証跡、when CLI/manifest が適合判定する、then理由付きの拒否または未判定になり、`verified` を生成しない。
 - [ ] Given 同一条件の release artifact と実アプリ、when 配布・I/J を判定する、thenNode/共有依存込みの bytes、全関連 process、実操作と原本との差が記録される。
-- [ ] `AGENTS.md` のとおり、本 issue は runtime の受入が実際に通るまで open を維持する。設計保存や別 profile の成功を閉鎖理由にしない。
+- [ ] `AGENTS.md` のとおり、本 issue は runtime の受入が実際に通るまで実装完了にしない。`polished` への整理、設計保存や別 profile の成功を閉鎖理由にしない。
 
 ## テスト計画
 
@@ -385,6 +385,8 @@ cross-world sync の不成立、実 native sender の誤認、未bounded request
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-09: Electron互換・軽量runtimeの原設計を作成。
 - 2026-10-17: 0004〜0021への実用化ロードマップ参照を追加。
 - 2026-10-17: polish-issueに従い分類・最初のPR・受入・現行検証を整理。古い「CLI全未実装」と選定前の記述を現行mainに合わせ、原番号・M0〜M4・A〜J・安全条件を保持した。
@@ -401,9 +403,11 @@ cross-world sync の不成立、実 native sender の誤認、未bounded request
 
 ## 注記
 
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
 **準備状態:** EP-01 の再現・判定器修正と既存 stack の棚卸しは着手可。strict 製品実装全体は§16の実現性と native 証拠を条件とし、未確定のまま適合を宣言しない。
 
-**状態と配置:** 既存の状態ディレクトリは `issues/open` のみで、今回も指定された配置と `open` を維持する。これは着手不可や実装済みという表示ではない。本文の着手条件・未解決事項と、実装後の受入を別々に判定する。未解決事項による保留前の状態・復帰先はいずれも `open`、復帰先パスは本ファイル。新しい状態は追加しない。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0001-electron-compatible-lightweight-runtime.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。
 
 `Branch` は次の作業用ブランチ案であり、作成済みではない。既存 PR を引き継ぐときは元の履歴を保ち、同内容を別実装として数えない。今回の変更は本文整備であり、既存 PR の merge、runtime の有効化、license 選択、release の実行を意味しない。
 

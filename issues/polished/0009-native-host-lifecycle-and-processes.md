@@ -1,6 +1,6 @@
 # 0009: Native host・window lifecycle・停止性の実装設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -223,14 +223,19 @@ PR #2のprivate WebKit selectorを使うkill試験はcompile-time test buildの�
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: native owner、state、profile別ingress/load、W1〜W5、close/quit、fault/cleanupの設計を追加。
 - 2026-10-17: `polish-issue`で現行core/Node transport/probeとPR由来hostを照合。EP-03の限定統合、変更path、具体的な受入/command、未決事項のownerと再開条件を追加。state契約・W番号・出典・旧節anchorを保持して再構成。既存runtime/PR状態は変更していない。
 
 ## 注記
 
-- **状態・配置:** 整備前後とも `Status: open`、`issues/open` を維持する。現repositoryにはこの状態ディレクトリがあり、今回の指定先でもある。`polished` / 保留用ディレクトリを新設せず、本文の準備状態とruntimeのverifiedを別に記録する。
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0009-native-host-lifecycle-and-processes.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。
+
 - **準備状態:** PR #2の最新base統合・既存state/transport回帰とW1/native supervisor fixtureは着手可能。early ingress、paint/beforeunload parity、shared-process帰属の追加能力は上記の観測待ち。
-- **再開・復帰先:** 未解決事項は「未解決の質問」の証拠・担当roleで判断し、解決後も既存 `issues/open` の同pathへ記録する。将来repositoryの状態遷移を採用する場合は、その規約を確認してから遷移する。
+- **再開・記録先:** 未解決事項と後続依存は本文の証拠・担当role・再開条件で判断し、進捗は本ファイルへ記録する。状態を変更するときはmetadataと配置を同時に更新する。
 - **ブランチ:** `Branch` の `feat/issue-0009-native-lifecycle` は実装時の提案名であり、この整備で作成したbranchではない。既存PRの履歴を消さず、小さい統合PRへ分ける。
 - **確認基点:** 本整備のmainは `8177cf051976b8d7b9eca25ae7ad8820bb04a719`。初回設計の `30c6fc97186e7ecfc8397c799525f00c8e4f0f65` と各PR/appの固定SHAは履歴根拠として保持する。mainへのPR統合・runtime実装・native E2E完了を意味しない。
 - **検証の範囲:** 2026-10-17のpolishはIssueと関連source/testの読取・文書整合を対象とする。下記のruntime/GUI/配布試験は、この本文更新では実行していない。実行する際はcommand、対象SHA、環境とPASS / FAIL / NOT_RUNを別記録にする。

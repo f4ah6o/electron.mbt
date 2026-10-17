@@ -1,6 +1,6 @@
 # 0015: Oracle・CI・証跡・互換判定の実装設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -19,7 +19,7 @@ Branch: fix/0015-evidence-admission
 
 | 項目 | 内容 |
 | --- | --- |
-| 状態 | OPEN / 実用化の判定を支える最優先基盤 |
+| 状態 | POLISHED / 実用化の判定を支える最優先基盤 |
 | 優先度 | P0 |
 | 既存作業 | PR #5 differential、#6 probes、#8 baseline admission、#9/#11/#12 kernels |
 | 依存 | [0005 棚卸し](0005-existing-work-and-integration.md)、[0006 profile](0006-runtime-architecture-and-profiles.md) |
@@ -262,14 +262,18 @@ Node-less/new native/app/releaseコマンドは各実装PRで追加し、同じe
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: oracle の 3 lane、evidence bundle、admission 順序、CI・比較器設計を作成。
 - 2026-10-17 polish: 11 セクションへ再編し、producer 別 required observations、最初の差分、入出力・エラー、Given/when/then、実在 command と新規 command 案、開始可能な範囲を追加。既存 pins・全回帰項目は保持。
 
 ## 注記
 
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
 **準備状態:** missing observation の反証・schema/validator 修正と PR #8 の再利用は着手可能。始めるための追加の製品判断はない。source/API の型を読みながら行う実装判断は、この issue の受入基準に従う。macOS 実行と新規 lane は環境・依存成果物が揃ってから実施し、その不足で portable 修正の着手を止めない。
 
-Status は既存 open-only 運用、指定された `issues/open`、AGENTS の runtime 受入方針に合わせて open を維持する。文書の整備と runtime gate 完了を同一視せず、移動・状態遷移は行っていない。Branch は提案名。common issue CLI と全体リンク検証は本 polish の全ファイルを揃えた後に行う。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0015-oracle-ci-and-evidence.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。 Branch は提案名。
 
 ### 10. 出典
 

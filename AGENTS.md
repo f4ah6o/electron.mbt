@@ -1,13 +1,13 @@
 # electron.mbt development
 
-The source of truth is `issues/open/0001-electron-compatible-lightweight-runtime.md`.
+The source of truth is `issues/polished/0001-electron-compatible-lightweight-runtime.md`.
 
 ## Implementation boundaries
 
 1. MoonBit owns lifecycle, identifiers, policy, transport contracts, compatibility validation and diagnostics. Handwritten JavaScript is leaf glue for real Node.js and JS function/listener identity, not a parallel implementation of the core.
 2. Use real Node.js and system WebViews. Do not bundle Electron/Chromium as a hidden fallback, rewrite app source, disable isolation/security, or silently turn synchronous APIs into promises.
 3. Follow M0 feasibility gates before claiming M1/M2 compatibility. In particular, safe synchronous contextBridge across WKContentWorlds is an unresolved gate, not something a postMessage shim proves.
-4. Implement reviewable increments and preserve the complete remaining scope of issue 0001. Keep planned, partial, verified and unsupported distinct. Keep the issue open until its runtime acceptance criteria really pass.
+4. Implement reviewable increments and preserve the complete remaining scope of issue 0001. Keep planned, partial, verified and unsupported distinct. Do not mark the issue implemented until its runtime acceptance criteria really pass. The `polished` planning status does not mean runtime acceptance or compatibility is complete.
 5. Never discard unrelated changes, reset/clean existing work, force-push, weaken branch protection, or modify other repositories. Main updates need explicit authorization (the current implementation task authorizes main delivery).
 
 ## Validation and reporting

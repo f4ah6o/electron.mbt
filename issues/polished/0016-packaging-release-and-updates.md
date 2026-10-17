@@ -1,6 +1,6 @@
 # 0016: 配布・署名・更新・復旧の実装設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -19,7 +19,7 @@ macOS arm64 の native runtime を、利用者が開発ツールなしで instal
 
 | 項目 | 内容 |
 | --- | --- |
-| 状態 | OPEN / pack・release artifact・署名・更新はいずれも未受入 |
+| 状態 | POLISHED / pack・release artifact・署名・更新はいずれも未受入 |
 | 優先度 | P1。製品previewの必須gate |
 | 依存 | [0011 data](0011-app-loading-origin-and-storage.md)、[0013 CLI](0013-cli-diagnostics-and-developer-workflow.md)、[0014 apps](0014-real-app-acceptance.md)、[0015 evidence](0015-oracle-ci-and-evidence.md) |
 | 指標 | [0017 performance](0017-performance-and-resource-budgets.md) |
@@ -242,14 +242,18 @@ node --test tests/pack-audit.test.cjs
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: native bundle、署名、Node-free audit、Preview/Stable 更新、data rollback の設計を作成。
 - 2026-10-17 polish: 11 必須セクションへ再編。実 CLI/Node-API probe と将来 pack の違い、最初の manifest/auditor 差分、error/report 契約、Given/when/then、段階別検証と配布判断を左右する質問を追加。既存全設計は保持。
 
 ## 注記
 
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
 **準備状態:** schema、staging auditor、SBOM input と test fixture の実装は着手可能。actual native bundle は 0008/0013/0014 の成果に接続して作り、Q-PACK-01/02 を解決して外部配布の gate を判断する。Q-PACK-03 は Stable 更新器の範囲であり、Preview の着手を止めない。
 
-Status は既存 open-only、指定 `issues/open`、AGENTS の実受入まで open を維持する規約に合わせる。保留前・再開先とも本 file の open、影響範囲と理由は上表に記録した。ファイル移動・実装コード変更・署名/publish は本 polish で行っていない。Branch は実装案。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0016-packaging-release-and-updates.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。 Branch は実装案。
 
 ### 9. 出典
 

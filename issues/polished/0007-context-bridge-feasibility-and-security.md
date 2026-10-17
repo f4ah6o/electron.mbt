@@ -1,6 +1,6 @@
 # 0007: contextBridge の技術成立条件・renderer 安全境界・adapted bridge 設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -394,15 +394,19 @@ B1 oracle、B2 統合、local listener/codec の contract 実装、拒否専用�
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: polish-issue により metadata と必須構成を統一し、B1 の最初の slice、実在 command、scope 別の未解決事項、source/PR の読取根拠を追加した。旧 §1〜§13、S/A/N の全 33 ID、SHA・一次資料・Moji disposer と file authority の境界を保持した。 runtime/API の実装変更や互換状態の昇格は行っていない。
 
 ## 注記
+
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
 
 ### 準備状態・格納先・確認基点
 
 初回 B1 と contract/negative fixture の作業は着手可能。strict production と adapted early native ingress は上の技術条件を満たすまで保留する。既存 PR 未統合は通常の統合依存として追跡し、調査を始められない理由へ広げない。
 
-`Status: open` と `issues/open` は、[AGENTS.md](../../AGENTS.md) の「runtime の受入まで issue を open に保つ」規約と、今回の指定格納先に合わせる。整備済みの初回作業は着手してよく、未知の実験結果や後続実装の未完成だけを調査開始の blocker にしない。`polished` への移動や新しい保留状態は追加しない。将来の状態変更は同規約の受入と状態遷移を確認し、元状態 `open`・復帰先 `issues/open/0007-context-bridge-feasibility-and-security.md` を基準に判断する。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0007-context-bridge-feasibility-and-security.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。
 
 Branch は最初の実装 PR の候補名である。今回の本文整備は main 向けで、ブランチ作成済みという意味ではない。旧番号付き節を小見出しとして保持したため、既存の § 番号と fixture ID を引き続き参照できる。
 

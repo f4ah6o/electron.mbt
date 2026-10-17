@@ -1,6 +1,6 @@
 # 0005: 既存 Issue・PR の棚卸しと実装統合設計
 
-Status: open
+Status: polished
 Model: GPT-6 Astra Pro
 Created: 2026-10-17
 Updated: 2026-10-17
@@ -35,7 +35,7 @@ Related: [0006 アーキテクチャ・profile](0006-runtime-architecture-and-pr
 
 ## 背景
 
-既存 CI は取得時点の PR HEAD に紐付く。今回の polish の入力は main [`8177cf051976b8d7b9eca25ae7ad8820bb04a719`](https://github.com/f4ah6o/electron.mbt/commit/8177cf051976b8d7b9eca25ae7ad8820bb04a719) の文書・実装であり、以下の旧 snapshot を新しい CI 結果へ読み替えない。旧 main 1 文書という記述は最初の調査時点を表す。polish 対象は現在 `issues/open` の 19 文書である。
+既存 CI は取得時点の PR HEAD に紐付く。今回の polish の入力は main [`8177cf051976b8d7b9eca25ae7ad8820bb04a719`](https://github.com/f4ah6o/electron.mbt/commit/8177cf051976b8d7b9eca25ae7ad8820bb04a719) の文書・実装であり、以下の旧 snapshot を新しい CI 結果へ読み替えない。旧 main 1 文書という記述は最初の調査時点を表す。polish 対象は 19 文書であり、整備後のユーザー指示により現在は `issues/polished` に配置している。
 
 ### 2. 全 PR の基点台帳
 
@@ -366,13 +366,17 @@ node --test tests/differential.test.cjs tests/manifest.test.cjs
 
 ## 変更履歴
 
+- 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
+
 - 2026-10-17: 既存 PR 1〜13、CI/review snapshot、INT / G 受入、旧 0002 alias を作成。
 - 2026-10-17 polish: 必須メタデータと 11 セクションへ再構成。全 SHA/CI 件数・残存レビュー・最小再現を保持し、最初の変更単位、既存/新規 path、入出力・拒否、限定 command と readiness を追加。元の番号付き見出しは文字列を変えず下位階層へ移動。
 
 ## 注記
 
+- 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。
+
 **準備状態:** INT-01/02 の棚卸し更新・欠陥再現・修正候補作成、INT-03/04 の独立 review は着手可能。開始を妨げる追加の製品判断は本 issue 内にない。native/renderer の統合完了は §6/§7 の前提と実機証跡で判定する。実装が未完了という理由だけで着手不可とはしない。
 
-`Status: open` と `issues/open` は既存運用・ユーザー指定の保存先・AGENTS の runtime 受入まで open を維持する指示に合わせる。文書品質と runtime readiness は別欄で管理し、この polish では move/transition を行わない。Branch は実装候補の提案名で、作成済みを意味しない。
+**状態と配置:** 2026-10-17 のユーザー指示により `open` から `polished` へ移動した。現在の保存先は `issues/polished/0005-existing-work-and-integration.md`。`polished` は計画の整備状態であり、runtime の受入や未解決事項の解消を示さない。着手は本文の準備状態・依存条件に従い、受入は [AGENTS.md](../../AGENTS.md) と各試験の実証で判断する。進捗と再開条件は本ファイルへ記録する。 Branch は実装候補の提案名で、作成済みを意味しない。
 
 固定 source・PR・review・run URL は本文にすべて残した。現在の主担当は 0015 と同じ欠陥を二重実装せず、0005 が取り込みと scope 台帳、0015 が evidence 契約・validator の実装を所有する。

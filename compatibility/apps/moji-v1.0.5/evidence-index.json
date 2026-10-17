@@ -31,7 +31,7 @@
       "kind": "boot-attempt",
       "path": "production-closure.json",
       "status": "FAIL",
-      "note": "M1 app paths succeeded; blocked at app.requestSingleInstanceLock"
+      "note": "Structured M1 boot failure at Menu after app paths, single-instance lock and ipcMain registration"
     }
   ],
   "note": "Build/source/production-closure evidence only. The M1 boot attempt failed at app.setName; no Node-less runtime or app-scenario acceptance is recorded."

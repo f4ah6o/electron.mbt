@@ -6,6 +6,7 @@ const runtime = current();
 const implemented = Object.freeze({
   app: runtime.app,
   BrowserWindow: runtime.BrowserWindow,
+  ipcMain: runtime.ipcMain,
 });
 module.exports = new Proxy(implemented, {
   get(target, property, receiver) {

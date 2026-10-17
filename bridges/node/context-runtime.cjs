@@ -1,6 +1,7 @@
 'use strict';
 const session = require('./runtime-session.cjs');
 const { bindContextBridgeCore } = require('./context-bridge-registry.cjs');
+const { createIpcMain } = require('./ipc-main.cjs');
 const { runtimeError } = require('./errors.cjs');
 
 function checked(core, runtime, operation) {
@@ -18,7 +19,20 @@ class ExperimentalRuntime extends session.ExperimentalRuntime {
     try {
       this.core = bindContextBridgeCore(this.core);
       this.contextHandles = this.core.context_registry(this.runtime);
+      this.ipc = createIpcMain(this.core, this.runtime, name => {
+        throw runtimeError('ELECTRON_MBT_UNSUPPORTED_API',
+          `${name} is not available in the experimental M1 profile`);
+      });
+      this.ipcMain = this.ipc.ipcMain;
     } catch (error) { this.abort(); throw error; }
+  }
+
+  invalidateHost(cause) {
+    try { this.ipc?.dispose(); } finally { super.invalidateHost(cause); }
+  }
+
+  quit() {
+    try { super.quit(); } finally { if (this.terminated) this.ipc?.dispose(); }
   }
 
   bootstrapScopeForTrustedHost(window, channel) {

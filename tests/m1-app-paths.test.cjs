@@ -65,6 +65,10 @@ test('M1 app path escape and unsupported APIs fail closed', async (t) => {
   assert.throws(() => app.setPath('appData', path.join(root, 'appData')), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
   assert.throws(() => app.setPath('userData', path.join(root, '..', 'escape')), { code: 'ELECTRON_MBT_FILE_DENIED' });
   assert.throws(() => app.setPath('userData', 'relative/path'), { code: 'ELECTRON_MBT_INVALID_ARGUMENT' });
-  assert.throws(() => app.requestSingleInstanceLock(), { code: 'ELECTRON_MBT_UNSUPPORTED_API' });
+  assert.equal(app.requestSingleInstanceLock(), true);
+  assert.equal(app.requestSingleInstanceLock(), true);
+  app.releaseSingleInstanceLock();
+  assert.equal(app.requestSingleInstanceLock(), true);
+  app.releaseSingleInstanceLock();
   app.quit();
 });

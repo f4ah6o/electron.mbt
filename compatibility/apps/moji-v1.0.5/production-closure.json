@@ -1062,13 +1062,14 @@
   "note": "Production package closure only. node_modules source is not committed. Native addons are recorded; none were present in this closure.",
   "bootAttempt": {
     "status": "FAIL",
-    "stage": "after isolated app paths",
+    "stage": "after isolated app paths, single-instance lock and ipcMain registration",
     "command": "ELECTRON_MBT_M1_USER_DATA_ROOT=<isolated-root> HOME=<isolated> TMPDIR=<isolated> node cmd/electron-mbt.cjs run <production-closure> --experimental-m1",
     "exitCode": 1,
     "code": "ELECTRON_MBT_UNSUPPORTED_API",
-    "blocker": "app.requestSingleInstanceLock is not available in the experimental M1 profile",
+    "blocker": "Electron API Menu is not available in the experimental M1 profile",
+    "structured": true,
     "backend": "experimental M1 (Node-backed AppKit/WKWebView host)",
-    "userData": "isolated appData/userData root; app.setName/getPath/setPath succeeded",
-    "note": "This is an M1 facade boot blocker after app-path isolation. It is not a Node-less boot and not an app acceptance result."
+    "userData": "isolated appData/userData root; app paths, single-instance lock and ipcMain registration succeeded",
+    "note": "Structured M1 boot failure after app-path, single-instance and main-local ipcMain integration. This is not a Node-less boot and not an app acceptance result."
   }
 }

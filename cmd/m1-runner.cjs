@@ -22,7 +22,21 @@ function run(appDir) {
   const runtime = new ExperimentalRuntime(app, { userDataRoot });
   if (ownsRoot) process.once('exit', () => { try { fs.rmSync(userDataRoot, { recursive: true, force: true }); } catch {} });
   attach(runtime);
-  process.once('exit', () => { runtime.abort(); detach(runtime); });
+  process.once('exit', () => { runtime.releaseSingleInstanceLock(); runtime.abort(); detach(runtime); });
+  let failed = false;
+  const reportFailure = reason => {
+    if (failed) return;
+    failed = true;
+    const code = reason && typeof reason.code === 'string' ? reason.code : 'ELECTRON_MBT_APP_ERROR';
+    const message = reason && reason.message ? String(reason.message) : String(reason);
+    try { runtime.releaseSingleInstanceLock(); runtime.abort(); } catch {}
+    detach(runtime);
+    process.stdout.write(`${JSON.stringify({ ok: false, compatible: false, code, message })}\n`);
+    process.exitCode = 1;
+    process.exit(1);
+  };
+  process.on('unhandledRejection', reportFailure);
+  process.on('uncaughtException', reportFailure);
   try {
     installElectronFacade(path.resolve(__dirname, '../bridges/node/runtime-facade.cjs'));
     loadCjs(app.entry);

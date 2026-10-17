@@ -172,6 +172,8 @@ class ExperimentalRuntime {
     Object.defineProperty(app, 'name', { enumerable: true, get: () => this.appName });
     Object.defineProperty(app, 'isPackaged', { enumerable: true, get: () => false });
     app.getLocale = () => Intl.DateTimeFormat().resolvedOptions().locale;
+    app.requestSingleInstanceLock = () => this.requestSingleInstanceLock();
+    app.releaseSingleInstanceLock = () => this.releaseSingleInstanceLock();
     app.getPath = name => {
       if (typeof name !== 'string') fail('ELECTRON_MBT_INVALID_ARGUMENT', 'app.getPath expects a string');
       if (name === 'exe') return process.execPath;
@@ -487,6 +489,40 @@ class ExperimentalRuntime {
     // loss signal for error, exit, close and transport failures.
     this.host.on('lost', error => this.invalidateHost(error));
   }
+  requestSingleInstanceLock() {
+    if (this.singleInstanceLock) return true;
+    const lockPath = path.join(this.userDataRoot, 'single-instance.lock');
+    const flags = fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY |
+      (fs.constants.O_NOFOLLOW || 0);
+    let fd;
+    try {
+      fd = fs.openSync(lockPath, flags, 0o600);
+    } catch (error) {
+      if (error.code !== 'EEXIST') return false;
+      let pid = NaN;
+      try { pid = Number(fs.readFileSync(lockPath, 'utf8')); } catch {}
+      if (Number.isInteger(pid) && pid > 0) {
+        try {
+          process.kill(pid, 0);
+          return false;
+        } catch (probe) {
+          if (probe.code !== 'ESRCH') return false;
+        }
+      }
+      try { fs.unlinkSync(lockPath); } catch { return false; }
+      try { fd = fs.openSync(lockPath, flags, 0o600); } catch { return false; }
+    }
+    fs.writeSync(fd, String(process.pid));
+    this.singleInstanceLock = { fd, path: lockPath };
+    return true;
+  }
+  releaseSingleInstanceLock() {
+    const lock = this.singleInstanceLock;
+    if (!lock) return;
+    this.singleInstanceLock = null;
+    try { fs.closeSync(lock.fd); } catch {}
+    try { fs.unlinkSync(lock.path); } catch {}
+  }
   start() {
     if (this.host.dead) { this.invalidateHost(); return; }
     queueMicrotask(() => {
@@ -542,6 +578,7 @@ class ExperimentalRuntime {
       if (this.terminated) return;
       checked(this.core.dispatch(this.runtime, 'stop'));
       this.terminated = true;
+      this.releaseSingleInstanceLock();
       // Native shutdown already happened; the final quit event is informational
       // and cannot prevent the exit, though Electron passes an Event object.
       this.app.emit('quit', { preventDefault() {} }, 0);
@@ -566,6 +603,7 @@ class ExperimentalRuntime {
   invalidateHost(cause) {
     if (this.terminated) return;
     this.terminated = true;
+    this.releaseSingleInstanceLock();
     const wasReady = this.ready;
     this.ready = false;
     this.host.abort();

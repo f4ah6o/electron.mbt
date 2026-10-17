@@ -41,26 +41,29 @@ ELECTRON_MBT_M1_USER_DATA_ROOT=<isolated-root> \
   node cmd/electron-mbt.cjs run <moji-production-closure> --experimental-m1
 ```
 
-The facade now implements `setName/getName/name/isPackaged/getLocale/getPath/setPath`
-over an isolated appData/userData root and fails typed for unknown app methods.
-Moji reached app-path setup (`appData/moji` was created under the isolated root)
-and then stopped at:
+The facade implements `setName/getName/name/isPackaged/getLocale/getPath/setPath`
+over an isolated appData/userData root, a real single-instance lock file, typed
+unknown-app-property rejection, and the main-local `ipcMain` registration
+surface. Moji reached app-path setup, acquired the isolated single-instance
+lock, registered main-local handlers, and then stopped at:
 
 ```text
 exit 1
 ELECTRON_MBT_UNSUPPORTED_API
-app.requestSingleInstanceLock is not available in the experimental M1 profile
+Electron API Menu is not available in the experimental M1 profile
 ```
 
-This is a real M1 facade boot blocker, not a Node-less boot and not app
-acceptance. It did not reach a window or app scenario.
+The failure is now a structured stdout diagnostic instead of an uncaught
+`whenReady` rejection. This is a real M1 facade boot blocker, not a Node-less
+boot and not app acceptance. It did not reach a window or app scenario.
 
 ## Open
 
-- typed unsupported-API diagnostics for app methods, instead of a plain TypeError
-- isolated `appData`/`userData` root, `setName`/`getPath`/`setPath` with the
-  existing-directory policy, and a disposable user
-- the next Moji boot blockers after app paths (`requestSingleInstanceLock`,
-  `getLocale`, BrowserWindow options, menus/preload, IPC)
+- `Menu`/menu-item identity and roles, BrowserWindow option coverage, preload
+  and renderer IPC
+- the next Moji boot blockers after `Menu` (window options, preload, renderer
+  ingress, file dialogs)
+- a disposable OS user for real app tests; the current isolated root is not a
+  sandbox
 - Node-less runner boot with the QuickJS/CJS stack, not the Node-backed M1 host
 - signed artifact, SBOM, clean-install and app scenarios

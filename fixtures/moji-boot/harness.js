@@ -167,6 +167,8 @@
 
   const pathBuiltin = {
     join: function () {
+      const absolute = arguments.length > 0 && typeof arguments[0] === 'string' &&
+        arguments[0].startsWith('/');
       const parts = [];
       for (const argument of arguments) {
         if (typeof argument !== 'string') throw makeError('ELECTRON_MBT_BAD_PATH', 'path.join');
@@ -176,7 +178,7 @@
           else parts.push(part);
         }
       }
-      return parts.join('/');
+      return (absolute ? '/' : '') + parts.join('/');
     },
     basename: function (value) {
       const parts = String(value).split('/');
@@ -205,7 +207,12 @@
     writeFileSync: function () {},
   };
   const fsPromises = {
-    readFile: function () { return Promise.reject(makeError('ENOENT', 'moji boot fs is virtual')); },
+    readFile: function (filePath) {
+      if (String(filePath).endsWith('/samples/markdown-guide.en.md')) {
+        return Promise.resolve('# Markdown Guide\n');
+      }
+      return Promise.reject(makeError('ENOENT', 'moji boot fs is virtual'));
+    },
     writeFile: function () { return Promise.resolve(); },
   };
   const zlibBuiltin = {
@@ -315,21 +322,60 @@
     }
   };
   globalThis.__mojiBootFinish = function () {
-    const report = {
-      status: state.error === null && state.whenReady && windows.length > 0 &&
-        Object.keys(ipcHandlers).length === 14 ? 'PASS' : 'FAIL',
-      probe: 'moji-main-boot',
-      app: 'moji-v1.0.5',
-      entry: entry,
-      mainEvaluated: state.error === null,
-      whenReady: state.whenReady,
-      windows: windows.length,
-      ipcHandlers: Object.keys(ipcHandlers).length,
-      preloadPresent: typeof sources['out/preload/preload.js'] === 'string',
-      preloadExecuted: false,
-      error: state.error === null ? null : String(state.error && state.error.message || state.error),
-      compatible: false,
-    };
-    globalThis.__nativeBootReport = JSON.stringify(report);
+    const results = {};
+    const pending = [];
+    function call(key, operation, args) {
+      const handler = ipcHandlers[operation];
+      if (typeof handler !== 'function') {
+        results[key] = { missing: true };
+        return;
+      }
+      try {
+        const value = handler({}, ...(args || []));
+        if (value && typeof value.then === 'function') {
+          pending.push(value.then(function (resolved) {
+            results[key] = resolved === undefined ? { ok: true } : resolved;
+          }).catch(function (error) {
+            results[key] = { error: String(error && error.message || error) };
+          }));
+        } else {
+          results[key] = value === undefined ? { ok: true } : value;
+        }
+      } catch (error) {
+        results[key] = { error: String(error && error.message || error) };
+      }
+    }
+    call('settingsBefore', 'settings:get', []);
+    call('settingsSet', 'settings:set', [{ previewTheme: 'light' }]);
+    call('settingsAfter', 'settings:get', []);
+    call('updateState', 'update:get-state', []);
+    call('confirmClose', 'app:confirm-close', [false]);
+    call('readSample', 'file:read-sample', ['markdown-guide.en.md']);
+    return Promise.all(pending).then(function () {
+      const handlersOk = state.error === null &&
+        results.settingsBefore && results.settingsBefore.previewTheme === 'dark' &&
+        results.settingsSet && results.settingsSet.previewTheme === 'light' &&
+        results.settingsAfter && results.settingsAfter.previewTheme === 'light' &&
+        results.updateState && results.updateState.status === 'unsupported' &&
+        results.confirmClose && results.confirmClose.ok === true &&
+        results.readSample && results.readSample.ok === true;
+      const report = {
+        status: state.error === null && state.whenReady && windows.length > 0 &&
+          Object.keys(ipcHandlers).length === 14 && handlersOk ? 'PASS' : 'FAIL',
+        probe: 'moji-main-boot',
+        app: 'moji-v1.0.5',
+        entry: entry,
+        mainEvaluated: state.error === null,
+        whenReady: state.whenReady,
+        windows: windows.length,
+        ipcHandlers: Object.keys(ipcHandlers).length,
+        preloadPresent: typeof sources['out/preload/preload.js'] === 'string',
+        preloadExecuted: false,
+        handlerResults: results,
+        error: state.error === null ? null : String(state.error && state.error.message || state.error),
+        compatible: false,
+      };
+      globalThis.__nativeBootReport = JSON.stringify(report);
+    });
   };
 })();

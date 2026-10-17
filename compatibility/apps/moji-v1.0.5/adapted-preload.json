@@ -68,6 +68,9 @@
     "whenReady": true,
     "windows": 1,
     "ipcHandlers": 14,
-    "preloadExecuted": false
+    "preloadExecuted": false,
+    "handlersInvoked": true,
+    "settingsRoundTrip": "dark\u2192light\u2192light (previewTheme)",
+    "readSample": true
   }
 }

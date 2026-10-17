@@ -529,6 +529,13 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
       return -1;
     }
     JS_FreeValue(context, finish_value);
+    JSContext *finish_job_context = NULL;
+    int finish_job_status = 0;
+    while ((finish_job_status = JS_ExecutePendingJob(runtime, &finish_job_context)) > 0) {}
+    if (finish_job_status < 0) {
+      JS_FreeValue(context, global); JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
     JSValue report = JS_GetPropertyStr(context, global, "__nativeBootReport");
     const char *report_text = JS_ToCString(context, report);
     if (report_text == NULL) {
@@ -545,8 +552,7 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
     free(supervisor_app_title);
     supervisor_app_title = strdup("Moji");
     JS_FreeValue(context, global);
-    int32_t boot_ok = app_boot_report != NULL &&
-      strstr(app_boot_report, "\"status\":\"PASS\"") != NULL;
+    int32_t boot_ok = app_boot_report != NULL;
     JS_FreeContext(context);
     JS_FreeRuntime(runtime);
     return boot_ok ? 43 : -1;

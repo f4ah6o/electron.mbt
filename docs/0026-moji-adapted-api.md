@@ -53,10 +53,11 @@ exposes `contextBridge`, `ipcRenderer` or a generic `send(channel, ...)`.
 ## Moji main boot smoke
 
 Moji's bundled `out/main/main.js` now evaluates in QuickJS against a virtual
-Electron/Node facade. It reaches `whenReady`, creates one virtual window and
-registers 14 IPC handlers; the preload is present but **NOT_EXECUTED**. See
+Electron/Node facade. It reaches `whenReady`, creates one virtual window,
+registers 14 IPC handlers and invokes settings/update/read-sample/confirm-close
+handlers directly; the preload is present but **NOT_EXECUTED**. See
 [docs/0030-moji-main-boot.md](0030-moji-main-boot.md). The handlers are not yet
-connected to the adapted API or a renderer.
+connected to a renderer or the page-world adapted adapter.
 
 ## Fixture Main handlers
 

@@ -72,12 +72,19 @@ try {
     process.stderr.write(`ELECTRON_MBT_MOJI_BOOT: no JSON report\n${result.stdout}\n${result.stderr}\n`);
     process.exit(1);
   }
+  const handlers = parsed.handlerResults || {};
+  const handlersOk = handlers.settingsBefore && handlers.settingsBefore.previewTheme === 'dark' &&
+    handlers.settingsSet && handlers.settingsSet.previewTheme === 'light' &&
+    handlers.settingsAfter && handlers.settingsAfter.previewTheme === 'light' &&
+    handlers.updateState && handlers.updateState.status === 'unsupported' &&
+    handlers.confirmClose && handlers.confirmClose.ok === true &&
+    handlers.readSample && handlers.readSample.ok === true;
   const ok = result.status === 0 && parsed.status === 'PASS' &&
     parsed.probe === 'moji-main-boot' && parsed.app === 'moji-v1.0.5' &&
     parsed.entry === 'out/main/main.js' && parsed.mainEvaluated === true &&
     parsed.whenReady === true && Number.isInteger(parsed.windows) && parsed.windows >= 1 &&
     parsed.ipcHandlers === 14 && parsed.preloadPresent === true &&
-    parsed.preloadExecuted === false && parsed.compatible === false;
+    parsed.preloadExecuted === false && handlersOk && parsed.compatible === false;
   const report = {
     ...parsed,
     status: ok ? 'PASS' : 'FAIL',

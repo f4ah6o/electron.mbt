@@ -139,11 +139,20 @@ function buildReport() {
     mojiBoot.windows >= 1 && mojiBoot.ipcHandlers === 14 &&
     mojiBoot.preloadPresent === true && mojiBoot.preloadExecuted === false &&
     mojiBoot.mainSHA256 === mojiProvenance.hashes.main &&
-    mojiBoot.harnessSHA256 === mojiHarnessHash;
+    mojiBoot.harnessSHA256 === mojiHarnessHash &&
+    mojiBoot.handlerResults && mojiBoot.handlerResults.settingsBefore &&
+    mojiBoot.handlerResults.settingsBefore.previewTheme === 'dark' &&
+    mojiBoot.handlerResults.settingsSet &&
+    mojiBoot.handlerResults.settingsSet.previewTheme === 'light' &&
+    mojiBoot.handlerResults.settingsAfter &&
+    mojiBoot.handlerResults.settingsAfter.previewTheme === 'light' &&
+    mojiBoot.handlerResults.updateState &&
+    mojiBoot.handlerResults.updateState.status === 'unsupported' &&
+    mojiBoot.handlerResults.readSample && mojiBoot.handlerResults.readSample.ok === true;
   checks.push(check('moji-main-boot', mojiBoot === null ? 'NOT_RUN' : (mojiBootOk ? 'PASS' : 'FAIL'),
     mojiBoot === null
       ? 'Moji main boot report is absent'
-      : `Moji main boot: entry=${mojiBoot.entry}, whenReady=${mojiBoot.whenReady}, windows=${mojiBoot.windows}, ipcHandlers=${mojiBoot.ipcHandlers}, preloadExecuted=${mojiBoot.preloadExecuted}, mainSHA256=${mojiBoot.mainSHA256}`));
+      : `Moji main boot: entry=${mojiBoot.entry}, whenReady=${mojiBoot.whenReady}, windows=${mojiBoot.windows}, ipcHandlers=${mojiBoot.ipcHandlers}, handlers=${mojiBoot.handlerResults ? Object.keys(mojiBoot.handlerResults).length : 0}, preloadExecuted=${mojiBoot.preloadExecuted}, mainSHA256=${mojiBoot.mainSHA256}`));
   checks.push(check('node-less-moji-app-main', 'NOT_RUN', 'Moji main boots in a virtual QuickJS harness; no real app window/renderer or preload execution'));
   checks.push(check('preview-signing', 'NOT_RUN', 'No Developer ID signing, notarization or clean-install evidence'));
   checks.push(check('clean-install', 'NOT_RUN', 'No clean machine install has been executed'));

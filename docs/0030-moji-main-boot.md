@@ -11,7 +11,7 @@ evaluates, reaches `app.whenReady()`, creates one virtual window and registers
 | --- | --- |
 | `out/main/main.js` | `41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e` |
 | `out/preload/preload.js` | `bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544` |
-| `harness.js` | `4dcaa322a0efaa6e36ccd25e49b3813e7569b59dda252f213a623f4c825382bc` (fixture harness) |
+| `harness.js` | `2761d3f5421569623c9047ac9a2d4c03c08172285b9e19d7588900867cf2a35a` (fixture harness) |
 | `package.json` | minimal `{name:"moji", version:"1.0.5", main:"out/main/main.js"}` |
 
 The hashes match `compatibility/apps/moji-v1.0.5/build-provenance.json`.
@@ -30,14 +30,24 @@ bounded CommonJS loader and a **virtual** Electron/Node facade:
 
 The C supervisor evaluates the harness in QuickJS, calls `__mojiBoot()`, drains
 pending jobs (the `whenReady().then(...)` callback), then calls
-`__mojiBootFinish()` and reads `__nativeBootReport`.
+`__mojiBootFinish()`, drains the handler promises and reads
+`__nativeBootReport`.
+
+`__mojiBootFinish()` also invokes the registered Moji handlers directly:
+
+- `settings:get` → default settings (`previewTheme:"dark"`);
+- `settings:set {previewTheme:"light"}` → `previewTheme:"light"`;
+- `settings:get` → persists `previewTheme:"light"`;
+- `update:get-state` → `{status:"unsupported", currentVersion:"1.0.5"}`;
+- `app:confirm-close(false)` → resolves without closing;
+- `file:read-sample("markdown-guide.en.md")` → virtual sample content.
 
 ## Evidence
 
 `node scripts/m1-moji-boot.cjs` → PASS:
 
 ```json
-{"status":"PASS","probe":"moji-main-boot","app":"moji-v1.0.5","entry":"out/main/main.js","mainEvaluated":true,"whenReady":true,"windows":1,"ipcHandlers":14,"preloadPresent":true,"preloadExecuted":false,"compatible":false}
+{"status":"PASS","probe":"moji-main-boot","mainEvaluated":true,"whenReady":true,"windows":1,"ipcHandlers":14,"preloadPresent":true,"preloadExecuted":false,"handlerResults":{"settingsBefore":{"previewTheme":"dark"},"settingsSet":{"previewTheme":"light"},"settingsAfter":{"previewTheme":"light"},"updateState":{"status":"unsupported"},"confirmClose":{"ok":true},"readSample":{"ok":true,"content":"# Markdown Guide\n"}},"compatible":false}
 ```
 
 The report is stored at
@@ -52,8 +62,8 @@ and the readiness row `moji-main-boot` is PASS.
   and contextBridge/ipcRenderer remains the unresolved gate
 - `electron-updater`, `fs`, `zlib` and dialogs are virtual stubs; no update,
   file, save or export flow is connected
-- the 14 IPC handlers are registered but not called; no renderer call reaches
-  Moji's main
+- the handlers are invoked directly by the virtual harness; no renderer or IPC
+  message reaches Moji's main, and `fs`/dialog/updater facades are virtual
 - the adapted API remains the page-world substitute, not contextBridge
 - no app scenario, no verified row, `compatible:false`, adapted **partial** and
   strict **blocked** unchanged

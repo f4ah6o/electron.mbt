@@ -239,7 +239,7 @@ fn main {
     supervisor_exit(1)
   }
   let mut page_title_ok = false
-  for _attempt = 0; _attempt < 20; _attempt = _attempt + 1 {
+  for _attempt = 0; _attempt < 40; _attempt = _attempt + 1 {
     let page_title_request = request_frame(session, 9, 1, 1, "get-web-contents-title", "{}")
     let page_title_sent = send(fd, page_title_request)
     let page_title_reply = if page_title_sent { receive(fd, buffer) } else { None }
@@ -275,7 +275,18 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PRELOAD_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let destroy = request_frame(session, 12, 1, 1, "destroy-window", "{}")
+  let adapted = request_frame(session, 12, 1, 1, "get-adapted-status", "{}")
+  let adapted_sent = send(fd, adapted)
+  let adapted_reply = if adapted_sent { receive(fd, buffer) } else { None }
+  if !adapted_sent || adapted_reply is None ||
+    !adapted_reply.unwrap().contains("\"observed\":true") ||
+    !adapted_reply.unwrap().contains("\"documentStartBeforeLoad\":true") ||
+    !adapted_reply.unwrap().contains("\"ingress\":\"absent\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTED_STATUS\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let destroy = request_frame(session, 13, 1, 1, "destroy-window", "{}")
   let destroy_sent = send(fd, destroy)
   let destroy_reply = if destroy_sent { receive(fd, buffer) } else { None }
   if !destroy_sent || destroy_reply is None || !destroy_reply.unwrap().contains("\"destroyed\":true") {
@@ -283,7 +294,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_DESTROY\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let shutdown = request_frame(session, 13, 0, 0, "shutdown", "{}")
+  let shutdown = request_frame(session, 14, 0, 0, "shutdown", "{}")
   if !send(fd, shutdown) || receive(fd, buffer) is None {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SHUTDOWN\",\"compatible\":false}")
@@ -344,7 +355,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

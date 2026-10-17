@@ -1,7 +1,19 @@
 {
-  "schema": 1,
+  "schema": 2,
   "name": "api",
-  "methods": [
-    { "name": "version", "returns": "adapted-fixture" }
-  ]
+  "version": "adapted-fixture",
+  "topics": [
+    { "topic": "doc:open", "method": "onOpenDocument" },
+    { "topic": "app:request-close", "method": "onCloseRequest" },
+    { "topic": "update:state", "method": "onUpdateState" }
+  ],
+  "calls": [
+    { "name": "getSettings", "operation": "app:get-settings", "args": "none" },
+    { "name": "getUpdateState", "operation": "app:get-update-state", "args": "json" }
+  ],
+  "queue": {
+    "maxCalls": 4,
+    "maxBytes": 16384,
+    "readyTimeoutMs": 300
+  }
 }

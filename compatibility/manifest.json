@@ -647,6 +647,7 @@
       "general event queue/close-request routing",
       "runtime/runner/node_modules conditions in supervisor",
       "preload/renderer ingress",
+      "adapted native ingress/event delivery",
       "Node-less Moji app main boot",
       "signing/app identity"
     ],
@@ -657,6 +658,7 @@
     "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity, node_modules package exports(require/default)/main",
     "restart": "sequential second host start/hello/ready/shutdown; not an automatic restart policy",
     "bootstrap": "get-bootstrap-status observed/mainFrame/generation/index.html; preloadStatus=absent",
+    "adaptedAdapter": "get-adapted-status observed/documentStartBeforeLoad=true/ingress=absent; pageTitle=adapted-api-ok; page-local listeners and bounded queue fixture only",
     "retry": "initial start/handshake retries up to 3 with 100 ms backoff; flaky wrapper reaches attempts=2; no crash-after-ready restart policy"
   },
   "previewReadiness": {
@@ -681,7 +683,7 @@
   "verification": {
     "status": "NOT_READY",
     "report": "compatibility/reports/verification.json",
-    "checks": 13,
+    "checks": 14,
     "unexpectedFailures": 0,
     "note": "Expected NOT_READY; not app compatibility or release approval."
   },
@@ -690,10 +692,18 @@
     "compatible": false,
     "profile": "electron-nodeless-adapted-v1",
     "record": "compatibility/adapted-preload-v1.json",
+    "schema": 2,
     "adapter": "fixtures/native-app/adapted/page-api.js",
-    "adapterSHA256": "6050f951fa1ae9f0491d9516a82554298f3f18b98e50732d241c29e7f0736b34",
+    "adapterSHA256": "99b76fa74f66eb519868dc23189fe4da94144189f5d91efe8c8e8cd4682720bc",
     "injection": "page-world document-start",
+    "installationObservation": "native nonce before LoadComplete",
     "originalPreload": "NOT_EXECUTED",
-    "note": "Generated constant page API fixture only. No ipcRenderer/contextBridge, Moji preload adaptation, renderer ingress or app boot."
+    "topics": 3,
+    "calls": 2,
+    "queue": { "maxCalls": 4, "maxBytes": 16384, "readyTimeoutMs": 300 },
+    "listenerTable": "page-local",
+    "disposer": "synchronous-idempotent",
+    "ingress": "ABSENT",
+    "note": "Generated page-local listener and ingress-gated Promise-call fixture only. Native ingress, ipcRenderer/contextBridge, Moji preload adaptation and app boot remain absent."
   }
 }

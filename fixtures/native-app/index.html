@@ -4,8 +4,37 @@
 <body>
 <main id="app">native-app-fixture</main>
 <script>
-  document.title = window.api && typeof window.api.version === 'function' &&
-    window.api.version() === 'adapted-fixture' ? 'adapted-api-ok' : 'adapted-api-missing';
+(async function () {
+  const finish = (title) => { document.title = title; };
+  try {
+    const api = window.api;
+    if (!api || typeof api.version !== 'function' || api.version() !== 'adapted-fixture') {
+      return finish('adapted-api-missing');
+    }
+    const first = api.onOpenDocument(function () {});
+    const second = api.onOpenDocument(function () {});
+    if (typeof first !== 'function' || typeof second !== 'function') {
+      return finish('adapted-api-listener');
+    }
+    first();
+    first();
+    second();
+    const calls = [];
+    for (let index = 0; index < 7; index += 1) {
+      calls.push(index < 6 ? api.getSettings() : api.getUpdateState({ theme: 'light' }));
+    }
+    const results = await Promise.allSettled(calls);
+    const rejectedWith = (result, expected) => result.status === 'rejected' &&
+      result.reason && result.reason.code === expected;
+    const timedOut = results.slice(0, 4)
+      .every((result) => rejectedWith(result, 'ELECTRON_MBT_ADAPTER_INGRESS_TIMEOUT'));
+    const overflowed = results.slice(4)
+      .every((result) => rejectedWith(result, 'ELECTRON_MBT_ADAPTER_QUEUE_FULL'));
+    finish(timedOut && overflowed ? 'adapted-api-ok' : 'adapted-api-failed');
+  } catch (_) {
+    finish('adapted-api-error');
+  }
+})();
 </script>
 </body>
 </html>

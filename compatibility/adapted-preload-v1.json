@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "profile": "electron-nodeless-adapted-v1",
   "status": "fixture-only",
   "app": "native-app-fixture",
@@ -7,19 +7,38 @@
   "adapter": {
     "path": "fixtures/native-app/adapted/page-api.js",
     "manifest": "fixtures/native-app/adapted/api.json",
-    "sha256": "6050f951fa1ae9f0491d9516a82554298f3f18b98e50732d241c29e7f0736b34",
+    "sha256": "99b76fa74f66eb519868dc23189fe4da94144189f5d91efe8c8e8cd4682720bc",
     "world": "page",
-    "injection": "document-start"
+    "injection": "document-start",
+    "installationObservation": "native nonce, page-world message before LoadComplete"
   },
   "api": {
     "name": "api",
-    "methods": [{ "name": "version", "returns": "adapted-fixture" }]
+    "version": "adapted-fixture"
+  },
+  "topics": [
+    { "topic": "doc:open", "method": "onOpenDocument" },
+    { "topic": "app:request-close", "method": "onCloseRequest" },
+    { "topic": "update:state", "method": "onUpdateState" }
+  ],
+  "calls": [
+    { "name": "getSettings", "operation": "app:get-settings", "args": "none" },
+    { "name": "getUpdateState", "operation": "app:get-update-state", "args": "json" }
+  ],
+  "queue": {
+    "maxCalls": 4,
+    "maxBytes": 16384,
+    "readyTimeoutMs": 300
   },
   "semantics": {
     "syncContextBridge": false,
     "ipcRenderer": false,
     "originalPreloadExecuted": false,
-    "pageApi": "generated constant methods",
+    "pageApi": "generated page-local listeners and ingress-gated Promise calls",
+    "listenerTable": "page-local",
+    "disposer": "synchronous-idempotent",
+    "callQueue": "bounded-before-DocumentIngressReady",
+    "ingress": "ABSENT",
     "note": "Fixture adapter only. No main/renderer IPC, no Moji preload adaptation, no compatibility claim."
   }
 }

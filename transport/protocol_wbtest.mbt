@@ -462,3 +462,31 @@ test "What: adapted-adapter installation validates path and acknowledgement" {
   assert_true(validate(visibility_wire("install-adapted-adapter",
     "{\"installed\":false}", ",\"terminal\":\"success\"")) is Err(_))
 }
+
+///|
+fn adapted_status_wire(payload : String, suffix : String) -> String {
+  "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":2,\"generation\":1,\"operation\":\"get-adapted-status\",\"payload\":" +
+    payload + suffix + "}"
+}
+
+///|
+test "What: adapted installation status is bound to the current document and LoadComplete" {
+  assert_true(validate(adapted_status_wire("{}", "")) is Ok(_))
+  let session = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(session.register(adapted_status_wire("{}", "")) is Ok(_))
+  let completed = adapted_status_wire(
+    "{\"observed\":true,\"generation\":1,\"documentStartBeforeLoad\":true,\"ingress\":\"absent\"}",
+    ",\"terminal\":\"success\"",
+  )
+  assert_true(session.accept(completed) is Ok(_))
+  for malformed in [
+    "{\"observed\":true,\"generation\":2,\"documentStartBeforeLoad\":true,\"ingress\":\"absent\"}",
+    "{\"observed\":true,\"generation\":1,\"documentStartBeforeLoad\":false,\"ingress\":\"absent\"}",
+    "{\"observed\":false,\"generation\":1,\"documentStartBeforeLoad\":false,\"ingress\":\"native\"}",
+    "{\"observed\":true,\"generation\":1,\"documentStartBeforeLoad\":true}",
+    "{\"observed\":\"true\",\"generation\":1,\"documentStartBeforeLoad\":true,\"ingress\":\"absent\"}",
+  ] {
+    assert_true(validate(adapted_status_wire(malformed, ",\"terminal\":\"success\"")) is Err(_))
+  }
+  assert_true(validate(adapted_status_wire("{\"x\":1}", "")) is Err(_))
+}

@@ -152,6 +152,9 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic) long long preloadObservedGeneration;
 @property(nonatomic, copy) NSString *preloadSource;
 @property(nonatomic, copy) NSString *adaptedAdapterSource;
+@property(nonatomic, copy) NSString *adaptedAdapterNonce;
+@property(nonatomic) long long adaptedAdapterObservedGeneration;
+@property(nonatomic) BOOL adaptedAdapterBeforeLoad;
 @property(nonatomic, copy) NSString *preloadStatus;
 @property(nonatomic, copy) NSString *preloadDetail;
 @property(nonatomic, copy) NSString *preloadLastStatus;
@@ -192,6 +195,9 @@ static NSString *preloadDigest(NSData *data) {
     self.root = root;
     self.preloadSource = preloadSource;
     self.adaptedAdapterSource = nil;
+    self.adaptedAdapterNonce = nil;
+    self.adaptedAdapterObservedGeneration = 0;
+    self.adaptedAdapterBeforeLoad = NO;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -251,6 +257,9 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadFinishedGeneration = 0;
   self.preloadStatus = nil;
   self.preloadDetail = nil;
+  self.adaptedAdapterNonce = nil;
+  self.adaptedAdapterObservedGeneration = 0;
+  self.adaptedAdapterBeforeLoad = NO;
   WKUserContentController *controller = self.web.configuration.userContentController;
   [controller removeAllUserScripts];
   NSString *bootstrapSource = [NSString stringWithFormat:
@@ -261,7 +270,24 @@ static NSString *preloadDigest(NSData *data) {
     forMainFrameOnly:YES inContentWorld:self.bootstrapWorld];
   [controller addUserScript:bootstrap];
   if (self.adaptedAdapterSource) {
-    WKUserScript *adapted = [[WKUserScript alloc] initWithSource:self.adaptedAdapterSource
+    // The pinned adapter body is wrapped only to carry a per-document nonce and
+    // report its document-start execution. The nonce is lexical, so page scripts
+    // cannot replay the installation observation, and the observation grants no
+    // ingress authority.
+    self.adaptedAdapterNonce = [[NSUUID UUID] UUIDString];
+    NSString *wrapped = [NSString stringWithFormat:
+      @"(function (__electronMbtAdapterNonce) {\n%@\n"
+       "try {"
+       "const handler = window.webkit && window.webkit.messageHandlers && "
+       "window.webkit.messageHandlers.electronMbtAdapterInstalled;"
+       "if (handler) {"
+       "const reply = handler.postMessage({nonce: __electronMbtAdapterNonce});"
+       "if (reply && reply.catch) reply.catch(function () {});"
+       "}"
+       "} catch (_) {}\n"
+       "})(\"%@\");",
+      self.adaptedAdapterSource, self.adaptedAdapterNonce];
+    WKUserScript *adapted = [[WKUserScript alloc] initWithSource:wrapped
       injectionTime:WKUserScriptInjectionTimeAtDocumentStart
       forMainFrameOnly:YES inContentWorld:[WKContentWorld pageWorld]];
     [controller addUserScript:adapted];
@@ -330,8 +356,22 @@ static NSString *preloadDigest(NSData *data) {
     [preloadResult isKindOfClass:[NSString class]] &&
     [@[@"ok", @"unsupported", @"failed"] containsObject:preloadResult] &&
     [preloadDetail isKindOfClass:[NSString class]] && preloadDetail.length <= 128;
-  if (!bootstrap && !preload) {
+  BOOL adapted = common && [message.name isEqualToString:@"electronMbtAdapterInstalled"] &&
+    body.count == 1 && self.adaptedAdapterNonce != nil &&
+    self.adaptedAdapterObservedGeneration != self.generation &&
+    [nonce isEqualToString:self.adaptedAdapterNonce] &&
+    message.world == [WKContentWorld pageWorld];
+  if (!bootstrap && !preload && !adapted) {
     replyHandler(nil, @"ELECTRON_MBT_BOOTSTRAP_DENIED");
+    return;
+  }
+  if (adapted) {
+    // This is an installation observation only. It proves the pinned adapter
+    // body ran at document-start before LoadComplete; it is not a sender grant
+    // or permission for any later page message.
+    self.adaptedAdapterObservedGeneration = self.generation;
+    self.adaptedAdapterBeforeLoad = self.loadDone != nil;
+    replyHandler(@{@"ok": @YES}, nil);
     return;
   }
   if (bootstrap) self.bootstrapObservedGeneration = self.generation;
@@ -531,6 +571,9 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadStatus = nil;
   self.preloadFinishedGeneration = 0;
   self.adaptedAdapterSource = nil;
+  self.adaptedAdapterNonce = nil;
+  self.adaptedAdapterObservedGeneration = 0;
+  self.adaptedAdapterBeforeLoad = NO;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
   if (newlyTerminated && self.contentGone) self.contentGone(self.generation);
 }
@@ -547,9 +590,15 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadStatus = nil;
   self.preloadFinishedGeneration = 0;
   self.adaptedAdapterSource = nil;
+  self.adaptedAdapterNonce = nil;
+  self.adaptedAdapterObservedGeneration = 0;
+  self.adaptedAdapterBeforeLoad = NO;
   [self.web.configuration.userContentController removeAllUserScripts];
   [self.web.configuration.userContentController
     removeScriptMessageHandlerForName:@"electronMbtBootstrap" contentWorld:self.bootstrapWorld];
+  [self.web.configuration.userContentController
+    removeScriptMessageHandlerForName:@"electronMbtAdapterInstalled"
+    contentWorld:[WKContentWorld pageWorld]];
   if (self.preloadWorld) {
     [self.web.configuration.userContentController
       removeScriptMessageHandlerForName:@"electronMbtPreloadResult" contentWorld:self.preloadWorld];
@@ -701,7 +750,8 @@ static NSString *preloadDigest(NSData *data) {
   if ([operation isEqualToString:@"install-adapted-adapter"]) {
     NSString *file = payload[@"file"];
     if (payload.count != 1 || ![file isKindOfClass:[NSString class]] ||
-        window.generation != 0 || !window.contentAlive) {
+        window.generation != 0 || !window.contentAlive ||
+        window.adaptedAdapterSource != nil) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
       return;
     }
@@ -723,6 +773,10 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     window.adaptedAdapterSource = source;
+    // The installation receipt has its own page-world handler. It accepts only
+    // the per-document nonce and never routes application operations.
+    [window.web.configuration.userContentController addScriptMessageHandlerWithReply:window
+      contentWorld:[WKContentWorld pageWorld] name:@"electronMbtAdapterInstalled"];
     done(@"success", @{@"installed": @YES});
     return;
   }
@@ -743,6 +797,9 @@ static NSString *preloadDigest(NSData *data) {
     window.preloadObservedGeneration = 0;
     window.preloadStatus = nil;
     window.preloadFinishedGeneration = 0;
+    window.adaptedAdapterNonce = nil;
+    window.adaptedAdapterObservedGeneration = 0;
+    window.adaptedAdapterBeforeLoad = NO;
     [window.web.configuration.userContentController removeAllUserScripts];
     // Drop the old delegate token and settle its request before stopLoading
     // can deliver a late failure callback against a later generation.
@@ -952,6 +1009,20 @@ static NSString *preloadDigest(NSData *data) {
     NSString *status = window.preloadStatus ?: window.preloadLastStatus ?: @"absent";
     NSString *detail = window.preloadDetail ?: window.preloadLastDetail ?: @"";
     done(@"success", @{@"status": status, @"detail": detail});
+    return;
+  }
+  if ([operation isEqualToString:@"get-adapted-status"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    BOOL observed = window.contentAlive && window.generation > 0 &&
+      window.adaptedAdapterObservedGeneration == window.generation &&
+      window.adaptedAdapterNonce != nil && window.adaptedAdapterBeforeLoad;
+    done(@"success", @{@"observed": @(observed),
+      @"generation": @(window.generation),
+      @"documentStartBeforeLoad": @(window.adaptedAdapterBeforeLoad),
+      @"ingress": @"absent"});
     return;
   }
   if ([operation isEqualToString:@"get-window-min-size"] ||

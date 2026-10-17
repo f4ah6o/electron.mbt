@@ -155,6 +155,19 @@
     openPath: function () { return Promise.resolve(''); },
     openExternal: function () { return Promise.resolve(); },
   };
+  const exposed = Object.create(null);
+  const ipcRenderer = {
+    invoke: function () { return Promise.resolve(null); },
+    on: function () {},
+    once: function () {},
+    removeListener: function () {},
+  };
+  const contextBridge = {
+    exposeInMainWorld: function (name, api) { exposed[name] = api; },
+  };
+  const webUtils = {
+    getPathForFile: function () { return ''; },
+  };
   const electron = {
     app: app,
     BrowserWindow: BrowserWindow,
@@ -163,6 +176,9 @@
     Menu: Menu,
     screen: screen,
     shell: shell,
+    contextBridge: contextBridge,
+    ipcRenderer: ipcRenderer,
+    webUtils: webUtils,
   };
 
   const pathBuiltin = {
@@ -388,6 +404,21 @@
     call('updateState', 'update:get-state', []);
     call('confirmClose', 'app:confirm-close', [false]);
     call('readSample', 'file:read-sample', ['markdown-guide.en.md']);
+    try {
+      load('out/preload/preload.js', '');
+      const api = exposed.api;
+      results.preload = {
+        evaluated: true,
+        exposed: Object.keys(exposed),
+        methodCount: api ? Object.keys(api).length : 0,
+        methods: api ? Object.keys(api) : [],
+      };
+    } catch (error) {
+      results.preload = {
+        evaluated: false,
+        error: String(error && error.message || error),
+      };
+    }
     return Promise.all(pending).then(function () {
       const handlersOk = state.error === null &&
         results.settingsBefore && results.settingsBefore.previewTheme === 'dark' &&
@@ -408,6 +439,9 @@
         ipcHandlers: Object.keys(ipcHandlers).length,
         preloadPresent: typeof sources['out/preload/preload.js'] === 'string',
         preloadExecuted: false,
+        preloadVirtualExecuted: results.preload ? results.preload.evaluated : false,
+        preloadMethods: results.preload ? results.preload.methodCount : 0,
+        preloadExposed: results.preload ? results.preload.exposed : [],
         handlerResults: results,
         error: state.error === null ? null : String(state.error && state.error.message || state.error),
         compatible: false,

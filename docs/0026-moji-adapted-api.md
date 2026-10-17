@@ -126,8 +126,9 @@ The fixture QuickJS Main now uses an operation registry:
   NOT RUN, and document PDF/PNG rendering is unsupported
 - `getDroppedPath` (`webUtils.getPathForFile`) is unsupported by design
 - no file read/save broker, dialog, export, updater or OS service is connected
-- the Moji main boot is a virtual harness: no native window/renderer, no
-  handler invocation and no original preload execution
+- the Moji main boot is a virtual harness for the main/preload; the renderer
+  runs separately under the adapted adapter
+- the preload's virtual evaluation is not WebKit contextBridge evidence
 - no app scenario or verified row
 - `compatible:false`, adapted **partial** and strict **blocked** are unchanged
 

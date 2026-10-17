@@ -84,7 +84,8 @@ try {
     parsed.entry === 'out/main/main.js' && parsed.mainEvaluated === true &&
     parsed.whenReady === true && Number.isInteger(parsed.windows) && parsed.windows >= 1 &&
     parsed.ipcHandlers === 14 && parsed.preloadPresent === true &&
-    parsed.preloadExecuted === false && handlersOk && parsed.compatible === false;
+    parsed.preloadExecuted === false && parsed.preloadVirtualExecuted === true &&
+    parsed.preloadMethods === 18 && handlersOk && parsed.compatible === false;
   const report = {
     ...parsed,
     status: ok ? 'PASS' : 'FAIL',
@@ -94,7 +95,7 @@ try {
     harnessSHA256,
     bootGraphFiles: 4,
     compatible: false,
-    note: 'Moji main boot smoke in QuickJS with a virtual Electron facade; original preload NOT_EXECUTED.',
+    note: 'Moji main boot smoke in QuickJS with a virtual Electron facade; preload evaluated only in the virtual harness, not in WebKit.',
   };
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);

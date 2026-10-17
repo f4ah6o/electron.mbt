@@ -50,6 +50,11 @@ pending jobs (the `whenReady().then(...)` callback), then calls
 {"status":"PASS","probe":"moji-main-boot","mainEvaluated":true,"whenReady":true,"windows":1,"ipcHandlers":14,"preloadPresent":true,"preloadExecuted":false,"handlerResults":{"settingsBefore":{"previewTheme":"dark"},"settingsSet":{"previewTheme":"light"},"settingsAfter":{"previewTheme":"light"},"updateState":{"status":"unsupported"},"confirmClose":{"ok":true},"readSample":{"ok":true,"content":"# Markdown Guide\n"}},"compatible":false}
 ```
 
+The preload is additionally evaluated **virtually** with a stub
+`contextBridge`/`ipcRenderer`/`webUtils`; it exposes `api` with 18 methods. This
+is not WebKit execution and `preloadExecuted` remains `false`; see
+[docs/0035-moji-preload-virtual.md](0035-moji-preload-virtual.md).
+
 The report is stored at
 [compatibility/reports/moji-boot.json](compatibility/reports/moji-boot.json)
 and the readiness row `moji-main-boot` is PASS.
@@ -58,8 +63,9 @@ and the readiness row `moji-main-boot` is PASS.
 
 - this is a **virtual** boot: no native `BrowserWindow`, WKWebView, renderer,
   menu, dialog or real IPC handler invocation
-- the original preload is parsed only as a source asset; it is **NOT_EXECUTED**
-  and contextBridge/ipcRenderer remains the unresolved gate
+- the original preload is evaluated only in the virtual QuickJS harness; it is
+  **NOT_EXECUTED** in WebKit and contextBridge/ipcRenderer remains the
+  unresolved gate
 - `electron-updater`, `fs`, `zlib` and dialogs are virtual stubs; no update,
   file, save or export flow is connected
 - the handlers are invoked directly by the virtual harness; no renderer or IPC

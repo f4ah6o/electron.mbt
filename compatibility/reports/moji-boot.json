@@ -9,6 +9,11 @@
   "ipcHandlers": 14,
   "preloadPresent": true,
   "preloadExecuted": false,
+  "preloadVirtualExecuted": true,
+  "preloadMethods": 18,
+  "preloadExposed": [
+    "api"
+  ],
   "handlerResults": {
     "settingsBefore": {
       "theme": "dark",
@@ -50,9 +55,36 @@
     "confirmClose": {
       "ok": true
     },
+    "preload": {
+      "evaluated": true,
+      "exposed": [
+        "api"
+      ],
+      "methodCount": 18,
+      "methods": [
+        "getSettings",
+        "setSettings",
+        "openDialog",
+        "readPath",
+        "readImageAsDataUrl",
+        "openLocalPath",
+        "readSample",
+        "save",
+        "saveAs",
+        "exportAs",
+        "exportDiagramPng",
+        "confirmClose",
+        "getUpdateState",
+        "checkForUpdate",
+        "getDroppedPath",
+        "onOpenDocument",
+        "onCloseRequest",
+        "onUpdateState"
+      ]
+    },
     "readSample": {
       "ok": true,
-      "path": "/private/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-boot-HwIUKw/samples/markdown-guide.en.md",
+      "path": "/private/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-boot-BiFz4T/samples/markdown-guide.en.md",
       "content": "# Markdown Guide\n"
     }
   },
@@ -61,7 +93,7 @@
   "sourceRoot": "/tmp/electron-mbt-apps/moji",
   "mainSHA256": "41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e",
   "preloadSHA256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
-  "harnessSHA256": "c803dd2bb314213d62aba009c8ea88ce54ae0d80b9800e75d922ed89fe4b595b",
+  "harnessSHA256": "49549b7a1ee8b24f750148799edf16dc966257114e453585fd4d0f3d2c2f6833",
   "bootGraphFiles": 4,
-  "note": "Moji main boot smoke in QuickJS with a virtual Electron facade; original preload NOT_EXECUTED."
+  "note": "Moji main boot smoke in QuickJS with a virtual Electron facade; preload evaluated only in the virtual harness, not in WebKit."
 }

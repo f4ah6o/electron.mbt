@@ -140,6 +140,7 @@ function buildReport() {
     mojiBoot.preloadPresent === true && mojiBoot.preloadExecuted === false &&
     mojiBoot.mainSHA256 === mojiProvenance.hashes.main &&
     mojiBoot.harnessSHA256 === mojiHarnessHash &&
+    mojiBoot.preloadVirtualExecuted === true && mojiBoot.preloadMethods === 18 &&
     mojiBoot.handlerResults && mojiBoot.handlerResults.settingsBefore &&
     mojiBoot.handlerResults.settingsBefore.previewTheme === 'dark' &&
     mojiBoot.handlerResults.settingsSet &&
@@ -152,7 +153,7 @@ function buildReport() {
   checks.push(check('moji-main-boot', mojiBoot === null ? 'NOT_RUN' : (mojiBootOk ? 'PASS' : 'FAIL'),
     mojiBoot === null
       ? 'Moji main boot report is absent'
-      : `Moji main boot: entry=${mojiBoot.entry}, whenReady=${mojiBoot.whenReady}, windows=${mojiBoot.windows}, ipcHandlers=${mojiBoot.ipcHandlers}, handlers=${mojiBoot.handlerResults ? Object.keys(mojiBoot.handlerResults).length : 0}, preloadExecuted=${mojiBoot.preloadExecuted}, mainSHA256=${mojiBoot.mainSHA256}`));
+      : `Moji main boot: entry=${mojiBoot.entry}, whenReady=${mojiBoot.whenReady}, windows=${mojiBoot.windows}, ipcHandlers=${mojiBoot.ipcHandlers}, handlers=${mojiBoot.handlerResults ? Object.keys(mojiBoot.handlerResults).length : 0}, preloadExecuted=${mojiBoot.preloadExecuted}, preloadVirtual=${mojiBoot.preloadVirtualExecuted}, preloadMethods=${mojiBoot.preloadMethods}, mainSHA256=${mojiBoot.mainSHA256}`));
   let mojiNative = null;
   try { mojiNative = readJson('compatibility/reports/moji-adapted-native.json'); } catch {}
   const mojiNativeAdapterHash = require('node:crypto').createHash('sha256')

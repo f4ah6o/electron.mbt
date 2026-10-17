@@ -638,14 +638,14 @@
     "status": "prototype",
     "compatible": false,
     "probe": "scripts/m1-native-supervisor.cjs",
-    "result": "PASS: random session, hello/ready, window create/load/destroy, event notice, file-loaded QuickJS fixture main/title, shutdown, exit 0; fault probes PASS",
+    "result": "PASS: random session, hello/ready, package.json main resolution, window create/load/destroy, event notice, QuickJS fixture app main/title, shutdown, exit 0; fault probes PASS",
     "backend": "AppKit+WKWebView",
     "creator": "moonbit-native",
     "evidence": "hello/ready/shutdown handshake; child exit status 0",
     "open": [
       "restart/watchdog policy",
       "general event queue/close-request routing",
-      "runtime/runner module graph/package.json resolution in supervisor",
+      "runtime/runner module graph/exports conditions in supervisor",
       "preload/renderer ingress",
       "Node-less Moji app main boot",
       "signing/app identity"
@@ -653,6 +653,6 @@
     "faultProbe": "scripts/m1-native-supervisor-fault.cjs",
     "windowLoad": "fixtures/m1/index.html via load channel; didFinishLoad true",
     "event": "isolated-preload-attested read from event lane",
-    "appMain": "fixtures/native-app/main.js in linked QuickJS; appMain=native-fixture; appTitle=native-app-window; fixed path, no package.json resolution"
+    "appMain": "fixtures/native-app/package.json main=src/main.js; appMain=native-fixture; appTitle=native-app-window; basic main resolution only"
   }
 }

@@ -23,6 +23,7 @@ static int load_fd = -1;
 static int event_fd = -1;
 static char *supervisor_root = NULL;
 static char *supervisor_app_title = NULL;
+static char *supervisor_app_entry = NULL;
 
 static char *copy_bytes(moonbit_bytes_t bytes) {
   if (bytes == NULL) return NULL;
@@ -282,27 +283,80 @@ void moonbit_ebt_supervisor_kill(void) {
   supervisor_root = NULL;
   free(supervisor_app_title);
   supervisor_app_title = NULL;
+  free(supervisor_app_entry);
+  supervisor_app_entry = NULL;
+}
+
+static char *read_text_file(const char *path, size_t maximum, size_t *length_out) {
+  if (path == NULL || maximum == 0) return NULL;
+  FILE *file = fopen(path, "rb");
+  if (file == NULL) return NULL;
+  if (fseek(file, 0, SEEK_END) != 0) { fclose(file); return NULL; }
+  long size = ftell(file);
+  if (size <= 0 || (size_t)size > maximum || fseek(file, 0, SEEK_SET) != 0) {
+    fclose(file); return NULL;
+  }
+  char *text = (char *)malloc((size_t)size + 1);
+  if (text == NULL) { fclose(file); return NULL; }
+  if (fread(text, 1, (size_t)size, file) != (size_t)size) {
+    free(text); fclose(file); return NULL;
+  }
+  text[size] = '\0';
+  fclose(file);
+  if (length_out != NULL) *length_out = (size_t)size;
+  return text;
+}
+
+static char *join_root(const char *relative) {
+  if (supervisor_root == NULL || relative == NULL) return NULL;
+  size_t root_length = strlen(supervisor_root);
+  size_t relative_length = strlen(relative);
+  char *path = (char *)malloc(root_length + relative_length + 2);
+  if (path == NULL) return NULL;
+  memcpy(path, supervisor_root, root_length);
+  path[root_length] = '/';
+  memcpy(path + root_length + 1, relative, relative_length + 1);
+  return path;
+}
+
+static int valid_entry(const char *entry) {
+  size_t length = strlen(entry);
+  if (length == 0 || length > 256 || entry[0] == '/' || strstr(entry, "..") != NULL) return 0;
+  for (size_t i = 0; i < length; i++) if (entry[i] == '\\') return 0;
+  return 1;
 }
 
 int32_t moonbit_ebt_supervisor_app_main(void) {
   if (supervisor_root == NULL) return -1;
-  size_t root_length = strlen(supervisor_root);
-  const char *relative = "/main.js";
-  char *path = (char *)malloc(root_length + strlen(relative) + 1);
-  if (path == NULL) return -1;
-  memcpy(path, supervisor_root, root_length);
-  memcpy(path + root_length, relative, strlen(relative) + 1);
-  FILE *file = fopen(path, "rb");
-  free(path);
-  if (file == NULL) return -1;
-  if (fseek(file, 0, SEEK_END) != 0) { fclose(file); return -1; }
-  long size = ftell(file);
-  if (size <= 0 || size > 65536 || fseek(file, 0, SEEK_SET) != 0) { fclose(file); return -1; }
-  char *source = (char *)malloc((size_t)size + 1);
-  if (source == NULL) { fclose(file); return -1; }
-  if (fread(source, 1, (size_t)size, file) != (size_t)size) { free(source); fclose(file); return -1; }
-  source[size] = '\0';
-  fclose(file);
+  char entry[257];
+  snprintf(entry, sizeof(entry), "main.js");
+  char *package_path = join_root("package.json");
+  size_t package_length = 0;
+  char *package_json = package_path == NULL ? NULL : read_text_file(package_path, 65536, &package_length);
+  free(package_path);
+  JSRuntime *runtime = JS_NewRuntime();
+  if (runtime == NULL) { free(package_json); return -1; }
+  JS_SetMemoryLimit(runtime, 32 * 1024 * 1024);
+  JSContext *context = JS_NewContext(runtime);
+  if (context == NULL) { free(package_json); JS_FreeRuntime(runtime); return -1; }
+  if (package_json != NULL) {
+    JSValue metadata = JS_ParseJSON(context, package_json, package_length, "package.json");
+    if (!JS_IsException(metadata)) {
+      JSValue main_value = JS_GetPropertyStr(context, metadata, "main");
+      const char *main_text = JS_ToCString(context, main_value);
+      if (main_text != NULL && valid_entry(main_text)) snprintf(entry, sizeof(entry), "%s", main_text);
+      if (main_text != NULL) JS_FreeCString(context, main_text);
+      JS_FreeValue(context, main_value);
+    }
+    JS_FreeValue(context, metadata);
+  }
+  free(package_json);
+  if (!valid_entry(entry)) { JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
+  char *source_path = join_root(entry);
+  size_t source_length = 0;
+  char *source = source_path == NULL ? NULL : read_text_file(source_path, 65536, &source_length);
+  free(source_path);
+  if (source == NULL) { JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
   const char *prelude =
     "(function(){"
     "const electron={app:{name:'native-fixture',isPackaged:false}};"
@@ -312,16 +366,11 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
     "\n})(function(name){if(name==='electron')return electron;"
     "throw new Error('unknown module');},module,module.exports);"
     "})();";
-  size_t total = strlen(prelude) + (size_t)size + strlen(postlude) + 1;
+  size_t total = strlen(prelude) + source_length + strlen(postlude) + 1;
   char *wrapped = (char *)malloc(total);
-  if (wrapped == NULL) { free(source); return -1; }
+  if (wrapped == NULL) { free(source); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
   snprintf(wrapped, total, "%s%s%s", prelude, source, postlude);
   free(source);
-  JSRuntime *runtime = JS_NewRuntime();
-  if (runtime == NULL) { free(wrapped); return -1; }
-  JS_SetMemoryLimit(runtime, 32 * 1024 * 1024);
-  JSContext *context = JS_NewContext(runtime);
-  if (context == NULL) { free(wrapped); JS_FreeRuntime(runtime); return -1; }
   JSValue value = JS_Eval(context, wrapped, strlen(wrapped), "native-app/main.js", JS_EVAL_TYPE_GLOBAL);
   free(wrapped);
   int32_t ok = 0;
@@ -336,6 +385,8 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
         strcmp(title_text, "native-app-window") == 0) {
       free(supervisor_app_title);
       supervisor_app_title = strdup(title_text);
+      free(supervisor_app_entry);
+      supervisor_app_entry = strdup(entry);
       ok = 42;
     }
     if (main_text != NULL) JS_FreeCString(context, main_text);
@@ -348,6 +399,16 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
   JS_FreeContext(context);
   JS_FreeRuntime(runtime);
   return ok;
+}
+
+int32_t moonbit_ebt_supervisor_app_entry(moonbit_bytes_t buffer, int32_t capacity) {
+  if (buffer == NULL || capacity <= 0 || supervisor_app_entry == NULL ||
+      Moonbit_array_length(buffer) < capacity) return -1;
+  size_t length = strlen(supervisor_app_entry);
+  if (length + 1 > (size_t)capacity) return -1;
+  memcpy(buffer, supervisor_app_entry, length);
+  buffer[length] = 0;
+  return (int32_t)length;
 }
 
 int32_t moonbit_ebt_supervisor_app_title(moonbit_bytes_t buffer, int32_t capacity) {

@@ -26,8 +26,9 @@ complete supervisor, app launcher or Node-less app boot.
   its CJS-style body with a synthetic `electron` module; `mainEvaluated:true`
   requires `native-fixture`, and the main's title is read back and applied to
   the window
-- the fixture app has a `package.json`, but the prototype loader uses the fixed
-  `main.js` path; package.json/main resolution is **not implemented**
+- the prototype reads `package.json` with QuickJS `JSON.parse`, uses its
+  `main` (default `main.js`) and rejects absolute/`..`/backslash entries;
+  exports/imports, conditions and extension probing are **not implemented**
 - close/EOF and `waitpid` on finish; `SIGKILL` + wait on failure
 
 The supervisor uses the existing host directly; it does not use Node,
@@ -39,7 +40,7 @@ Node-API, `sync_channel.node` or the JS runner.
 the final JSON line:
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":80282,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"appMain":"native-fixture","appTitle":"native-app-window","creator":"moonbit-native","compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":81099,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","creator":"moonbit-native","compatible":false}
 ```
 
 Observed: real native host startup, `hello`/`ready` replies, window creation,
@@ -52,6 +53,8 @@ that sessions are 32 lowercase hex characters and differ between draws.
 
 - a dead child (`/usr/bin/false`) fails at the `hello` exchange
 - a missing app root fails before spawn (`ELECTRON_MBT_SUPERVISOR_START`)
+- a package `main` of `../outside.js` fails at app-main admission
+  (`ELECTRON_MBT_SUPERVISOR_APP_MAIN`)
 
 Both set `compatible:false` and do not leave the intended session running.
 
@@ -63,9 +66,10 @@ Both set `compatible:false` and do not leave the intended session running.
 - no restart/watchdog policy or orphan sweep beyond the 5s finish timeout and
   explicit kill; no event-loop ownership or broad fault injection
 - load/event channels are kept open but the prototype only uses control
-- the QuickJS app main is a C-linked fixture probe with a fixed `main.js`
-  path; it is not `runtime/runner`, a filesystem module graph,
-  package.json/main resolution, preload/contextBridge or Node-less Moji boot
+- the QuickJS app main is a C-linked fixture probe with basic
+  package.json/main resolution; it is not `runtime/runner`, a filesystem
+  module graph, exports/conditions, preload/contextBridge or Node-less Moji
+  boot
 - no window options beyond the fixed width/height/title/show payload; no
   preload or renderer ingress
 - QuickJS sources are linked through package-local symlinks; this is a probe,

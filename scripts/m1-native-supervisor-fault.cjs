@@ -22,4 +22,5 @@ function run(label, env) {
 const cases = [];
 cases.push(run('dead-child', { ELECTRON_MBT_SUPERVISOR_BINARY: '/usr/bin/false' }));
 cases.push(run('missing-root', { ELECTRON_MBT_SUPERVISOR_ROOT: '/tmp/electron-mbt-no-such-supervisor-root' }));
+cases.push(run('entry-traversal', { ELECTRON_MBT_SUPERVISOR_ROOT: path.join(root, 'fixtures/native-app-invalid') }));
 process.stdout.write(`${JSON.stringify({ status: 'PASS', probe: 'native-supervisor-fault', cases, compatible: false })}\n`);

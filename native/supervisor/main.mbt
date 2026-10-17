@@ -20,6 +20,10 @@ extern "C" fn supervisor_app_main() -> Int = "moonbit_ebt_supervisor_app_main"
 extern "C" fn supervisor_app_title(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_app_title"
 
 ///|
+#borrow(buffer)
+extern "C" fn supervisor_app_entry(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_app_entry"
+
+///|
 extern "C" fn supervisor_load_fd() -> Int = "moonbit_ebt_supervisor_load_fd"
 
 ///|
@@ -132,6 +136,14 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_READY\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let entry_buffer = Bytes::new(256)
+  let entry_length = supervisor_app_entry(entry_buffer, entry_buffer.length())
+  if entry_length <= 0 {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_APP_ENTRY\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let app_entry = @utf8.decode_lossy(entry_buffer[:entry_length])
   let title_buffer = Bytes::new(256)
   let title_length = supervisor_app_title(title_buffer, title_buffer.length())
   if title_length <= 0 {
@@ -215,6 +227,7 @@ fn main {
   println("{\"status\":\"PASS\",\"probe\":\"native-supervisor-window-load\",\"backend\":\"AppKit+WKWebView\",\"childPid\":" +
     child_pid.to_string() + ",\"exitStatus\":" + exit_status.to_string() +
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true," +
-    "\"appMain\":\"native-fixture\",\"appTitle\":\"" + json_path(app_title) +
+    "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
+    "\",\"appTitle\":\"" + json_path(app_title) +
     "\",\"creator\":\"moonbit-native\",\"compatible\":false}")
 }

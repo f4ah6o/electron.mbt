@@ -52,14 +52,15 @@ its BrowserWindow, applied the options, and then stopped during `loadFile`:
 ```text
 exit 1
 ELECTRON_MBT_PRELOAD_UNSUPPORTED_API
-Native load operation failed
+Preload requested unsupported API: contextBridge.exposeInMainWorld
 ```
 
-The Moji preload uses `contextBridge`/`ipcRenderer`, which the M1 preload world
-does not support. The failure is a structured stdout diagnostic. The Menu model
-does not install an NSMenu; `icon`/`autoHideMenuBar` are accepted but not
-applied. This is a real M1 facade boot blocker, not a Node-less boot and not app
-acceptance. It did not reach a shown window or app scenario.
+The native preload realm now records the first unsupported API rather than
+returning a generic failure. It deliberately exposes no fake contextBridge or
+ipcRenderer. The Menu model does not install an NSMenu; `icon`/`autoHideMenuBar`
+are accepted but not applied. This is a real M1 facade boot blocker, not a
+Node-less boot and not app acceptance. It did not reach a shown window or app
+scenario.
 
 ## Open
 

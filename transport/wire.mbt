@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -421,6 +421,31 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           min_size_value(values.get("width").unwrap_or(null)) &&
           min_size_value(values.get("height").unwrap_or(null)) => ()
         _ => raise BadProtocol("Invalid native window minimum size")
+      }
+    }
+  }
+  if operation == "get-preload-status" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid preload-status request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 2 => {
+          let status = values.get("status").unwrap_or(null)
+          let detail = values.get("detail").unwrap_or(null)
+          match status {
+            String(value) if value == "ok" || value == "unsupported" ||
+              value == "failed" || value == "absent" => ()
+            _ => raise BadProtocol("Invalid native preload status")
+          }
+          match detail {
+            String(value) if value.length() <= 128 => ()
+            _ => raise BadProtocol("Invalid native preload detail")
+          }
+        }
+        _ => raise BadProtocol("Invalid native preload status")
       }
     }
   }

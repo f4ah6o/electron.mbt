@@ -152,6 +152,9 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic) long long preloadObservedGeneration;
 @property(nonatomic, copy) NSString *preloadSource;
 @property(nonatomic, copy) NSString *preloadStatus;
+@property(nonatomic, copy) NSString *preloadDetail;
+@property(nonatomic, copy) NSString *preloadLastStatus;
+@property(nonatomic, copy) NSString *preloadLastDetail;
 @property(nonatomic) long long preloadFinishedGeneration;
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *loadedFile;
@@ -225,6 +228,9 @@ static NSString *preloadDigest(NSData *data) {
     self.preloadObservedGeneration = 0;
     self.preloadFinishedGeneration = 0;
     self.preloadStatus = nil;
+    self.preloadDetail = nil;
+    self.preloadLastStatus = nil;
+    self.preloadLastDetail = nil;
     self.contentAlive = YES;
     self.allowNextNavigation = NO;
     self.closeRequestOutstanding = NO;
@@ -242,6 +248,7 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadObservedGeneration = 0;
   self.preloadFinishedGeneration = 0;
   self.preloadStatus = nil;
+  self.preloadDetail = nil;
   WKUserContentController *controller = self.web.configuration.userContentController;
   [controller removeAllUserScripts];
   NSString *bootstrapSource = [NSString stringWithFormat:
@@ -264,15 +271,22 @@ static NSString *preloadDigest(NSData *data) {
       @"(function(){"
        "const h=window.webkit.messageHandlers.electronMbtPreloadResult;"
        "const report=h.postMessage.bind(h);"
-       "let status='ok',requestedUnsupported=false;"
-       "try{const module={exports:{}};"
-       "const deny=function(){requestedUnsupported=true;"
+       "let status='ok',requestedUnsupported=false,detail='';"
+       "const record=function(api){requestedUnsupported=true;detail=api;"
        "throw {code:'ELECTRON_MBT_REQUIRE_UNSUPPORTED'};};"
-       "(new Function('require','module','exports',%@))(deny,module,module.exports);}"
+       "const stub=function(prefix){return new Proxy(function(){}, {get:function(_target,key){"
+       "return function(){return record(prefix+'.'+String(key));};}});};"
+       "const electron={contextBridge:stub('contextBridge'),ipcRenderer:stub('ipcRenderer'),"
+       "webUtils:stub('webUtils')};"
+       "const require=function(name){if(name==='electron'){requestedUnsupported=true;"
+       "if(!detail)detail='require:electron';return electron;}"
+       "return record('require:'+name);};"
+       "try{const module={exports:{}};"
+       "(new Function('require','module','exports',%@))(require,module,module.exports);}"
        "catch(error){status=error&&error.code==='ELECTRON_MBT_REQUIRE_UNSUPPORTED'?"
        "'unsupported':'failed';}"
        "if(requestedUnsupported)status='unsupported';"
-       "report({nonce:'%@',preload:status}).catch(function(){});"
+       "report({nonce:'%@',preload:status,detail:detail.slice(0,128)}).catch(function(){});"
        "})();",
       quoted, self.preloadNonce];
     WKUserScript *preload = [[WKUserScript alloc] initWithSource:preloadScriptSource
@@ -299,13 +313,15 @@ static NSString *preloadDigest(NSData *data) {
     self.bootstrapObservedGeneration != self.generation &&
     [nonce isEqualToString:self.bootstrapNonce];
   NSString *preloadResult = body[@"preload"];
+  NSString *preloadDetail = body[@"detail"];
   BOOL preload = common && self.preloadSource != nil &&
     [message.name isEqualToString:@"electronMbtPreloadResult"] &&
-    body.count == 2 && self.preloadNonce != nil &&
+    body.count == 3 && self.preloadNonce != nil &&
     self.preloadObservedGeneration != self.generation &&
     [nonce isEqualToString:self.preloadNonce] &&
     [preloadResult isKindOfClass:[NSString class]] &&
-    [@[@"ok", @"unsupported", @"failed"] containsObject:preloadResult];
+    [@[@"ok", @"unsupported", @"failed"] containsObject:preloadResult] &&
+    [preloadDetail isKindOfClass:[NSString class]] && preloadDetail.length <= 128;
   if (!bootstrap && !preload) {
     replyHandler(nil, @"ELECTRON_MBT_BOOTSTRAP_DENIED");
     return;
@@ -314,6 +330,7 @@ static NSString *preloadDigest(NSData *data) {
   else {
     self.preloadObservedGeneration = self.generation;
     self.preloadStatus = preloadResult;
+    self.preloadDetail = preloadDetail;
   }
   replyHandler(@{@"ok": @YES}, nil);
   if (self.preloadSource && self.preloadFinishedGeneration == self.generation) {
@@ -427,6 +444,8 @@ static NSString *preloadDigest(NSData *data) {
       self.bootstrapObservedGeneration != self.generation ||
       self.preloadObservedGeneration != self.generation ||
       ![self isCurrentLoadNavigation:self.loadingNavigation]) return;
+  self.preloadLastStatus = self.preloadStatus;
+  self.preloadLastDetail = self.preloadDetail;
   NSString *reason = [self.preloadStatus isEqualToString:@"ok"] ? @"" :
     ([self.preloadStatus isEqualToString:@"unsupported"] ?
      @"ELECTRON_MBT_PRELOAD_UNSUPPORTED_API" : @"ELECTRON_MBT_PRELOAD_FAILED");
@@ -885,6 +904,16 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     done(@"success", observed);
+    return;
+  }
+  if ([operation isEqualToString:@"get-preload-status"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *status = window.preloadStatus ?: window.preloadLastStatus ?: @"absent";
+    NSString *detail = window.preloadDetail ?: window.preloadLastDetail ?: @"";
+    done(@"success", @{@"status": status, @"detail": detail});
     return;
   }
   if ([operation isEqualToString:@"get-window-min-size"] ||

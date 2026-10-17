@@ -70,8 +70,12 @@ test('What: actual CJS preload runs isolated and unsupported require fails close
     good.destroy();
 
     const denied = new runtime.BrowserWindow(preload('unsupported-preload.cjs'));
-    await assert.rejects(denied.loadFile('preload-page.html'),
-      { code: 'ELECTRON_MBT_PRELOAD_UNSUPPORTED_API' });
+    await assert.rejects(denied.loadFile('preload-page.html'), error =>
+      error.code === 'ELECTRON_MBT_PRELOAD_UNSUPPORTED_API' &&
+      error.message.includes('contextBridge.exposeInMainWorld'));
+    assert.deepEqual(runtime.host.request('get-preload-status', denied.id, denied._generation), {
+      status: 'unsupported', detail: 'contextBridge.exposeInMainWorld',
+    });
     assert.equal(runtime.host.request('get-bootstrap-status', denied.id, denied._generation).observed, false);
     assert.throws(() => runtime.bootstrapScopeForTrustedHost(denied, 'preload-read'),
       { code: 'ELECTRON_MBT_BRIDGE_NOT_READY' });

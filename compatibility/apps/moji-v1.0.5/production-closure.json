@@ -1066,11 +1066,12 @@
     "command": "ELECTRON_MBT_M1_USER_DATA_ROOT=<isolated-root> HOME=<isolated> TMPDIR=<isolated> node cmd/electron-mbt.cjs run <production-closure> --experimental-m1",
     "exitCode": 1,
     "code": "ELECTRON_MBT_PRELOAD_UNSUPPORTED_API",
-    "blocker": "Moji preload requires contextBridge/ipcRenderer, which the M1 preload world does not provide",
+    "blocker": "Preload requested unsupported API: contextBridge.exposeInMainWorld",
     "structured": true,
     "backend": "experimental M1 (Node-backed AppKit/WKWebView host)",
     "window": "created with position, min size and background colour applied; not shown",
     "userData": "isolated appData/userData root",
-    "note": "Structured M1 boot failure at preload after window creation. Not a Node-less boot or app acceptance."
+    "note": "Structured M1 boot failure at the preload capability gate after BrowserWindow creation. The preload realm returns recording proxies only; no contextBridge/ipcRenderer is exposed. Not a Node-less boot or app acceptance.",
+    "detail": "contextBridge.exposeInMainWorld"
   }
 }

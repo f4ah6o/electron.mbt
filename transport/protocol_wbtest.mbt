@@ -435,3 +435,17 @@ test "What: min-size and background operations validate exact payloads" {
     assert_true(validate(visibility_wire("set-window-background-color", bad, "")) is Err(_))
   }
 }
+
+///|
+test "What: preload-status operation validates empty requests and bounded ACKs" {
+  assert_true(validate(visibility_wire("get-preload-status", "{}", "")) is Ok(_))
+  assert_true(validate(visibility_wire("get-preload-status",
+    "{\"status\":\"unsupported\",\"detail\":\"contextBridge.exposeInMainWorld\"}",
+    ",\"terminal\":\"success\"")) is Ok(_))
+  for bad in ["{\"status\":\"bogus\",\"detail\":\"\"}", "{\"status\":\"ok\"}",
+    "{\"status\":\"ok\",\"detail\":5}", "{\"status\":\"ok\",\"detail\":\"" + "x".repeat(129) + "\"}"] {
+    assert_true(validate(visibility_wire("get-preload-status", bad,
+      ",\"terminal\":\"success\"")) is Err(_))
+  }
+  assert_true(validate(visibility_wire("get-preload-status", "{\"x\":1}", "")) is Err(_))
+}

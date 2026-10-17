@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "appId": "moji-v1.0.5",
+  "status": "GATE_RECORDED",
+  "preloadHash": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
+  "preloadFile": "out/preload/preload.js",
+  "requiredApis": [
+    "contextBridge.exposeInMainWorld",
+    "ipcRenderer.invoke",
+    "ipcRenderer.on",
+    "ipcRenderer.removeListener",
+    "webUtils.getPathForFile"
+  ],
+  "runtimeStatus": "NOT_IMPLEMENTED",
+  "m1Observation": {
+    "status": "FAIL",
+    "code": "ELECTRON_MBT_PRELOAD_UNSUPPORTED_API",
+    "detail": "contextBridge.exposeInMainWorld",
+    "note": "The native preload realm records the first unsupported API; it does not expose a fake contextBridge or ipcRenderer."
+  },
+  "note": "Preload API inventory is derived from the pinned built preload and the observed M1 refusal. This is not contextBridge/ipcRenderer compatibility evidence."
+}

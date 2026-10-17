@@ -365,8 +365,18 @@ class ExperimentalRuntime {
           },
           error => {
             this._loading = false;
-            if (!this._destroyed) this.webContents.emit('did-fail-load', error);
-            throw error;
+            let reported = error;
+            if (error && error.code === 'ELECTRON_MBT_PRELOAD_UNSUPPORTED_API' && !runtime.host.dead) {
+              try {
+                const status = runtime.host.request('get-preload-status', this.id, this._generation);
+                if (status.status === 'unsupported' && typeof status.detail === 'string' &&
+                    status.detail.length > 0 && status.detail.length <= 128) {
+                  reported = runtimeError(error.code, `Preload requested unsupported API: ${status.detail}`);
+                }
+              } catch {}
+            }
+            if (!this._destroyed) this.webContents.emit('did-fail-load', reported);
+            throw reported;
           },
         );
       }

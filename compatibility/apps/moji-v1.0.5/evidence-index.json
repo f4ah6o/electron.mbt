@@ -31,8 +31,14 @@
       "kind": "boot-attempt",
       "path": "production-closure.json",
       "status": "FAIL",
-      "note": "Structured M1 boot failure at preload after BrowserWindow creation/options"
+      "note": "Structured M1 boot failure at preload: contextBridge.exposeInMainWorld"
+    },
+    {
+      "id": "preload:moji-v1.0.5:gate",
+      "kind": "preload-capabilities",
+      "path": "preload-capabilities.json",
+      "status": "NOT_IMPLEMENTED"
     }
   ],
-  "note": "Build/source/production-closure evidence only. The M1 boot attempt failed at app.setName; no Node-less runtime or app-scenario acceptance is recorded."
+  "note": "Build/source/production-closure and preload-gate evidence only. No contextBridge/ipcRenderer or app-scenario acceptance is recorded."
 }

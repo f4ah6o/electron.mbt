@@ -599,5 +599,25 @@
       "compatibility/apps/jmd-v0.2.3/production-closure.json"
     ],
     "note": "Lock-driven production closure only. The M1 boot is not a Node-less boot or app acceptance."
+  },
+  "preload": {
+    "status": "gate-recorded",
+    "compatible": false,
+    "moji": {
+      "preloadHash": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
+      "requiredApis": [
+        "contextBridge.exposeInMainWorld",
+        "ipcRenderer.invoke",
+        "ipcRenderer.on",
+        "ipcRenderer.removeListener",
+        "webUtils.getPathForFile"
+      ],
+      "m1Blocker": "contextBridge.exposeInMainWorld",
+      "status": "NOT_IMPLEMENTED"
+    },
+    "evidence": [
+      "compatibility/apps/moji-v1.0.5/preload-capabilities.json"
+    ],
+    "note": "The M1 preload realm records the first unsupported API. It does not provide contextBridge/ipcRenderer or claim preload success."
   }
 }

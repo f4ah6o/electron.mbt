@@ -471,7 +471,7 @@
       ],
       "privilegedScheme": "jmd-file bypassCSP remains expected-rejection"
     },
-    "note": "Pinned source/build/production-closure provenance only. The isolated M1 boot passes app paths, single-instance and ipcMain registration and blocks at Menu with a structured diagnostic; Node-less boot, native runtime, preload/IPC and app scenarios remain NOT RUN."
+    "note": "Pinned source/build/production-closure provenance only. The isolated M1 boot passes app paths, single-instance, ipcMain and Menu template modeling and blocks at BrowserWindow.minWidth; Node-less boot, native runtime and app scenarios remain NOT RUN."
   },
   "cjsLoader": {
     "status": "partial",
@@ -583,8 +583,9 @@
       "productionPackages": 174,
       "packageFiles": 7165,
       "nativeAddons": 0,
-      "bootAttempt": "FAIL after app paths, single-instance and ipcMain: Menu is not implemented",
-      "bootStructured": true
+      "bootAttempt": "FAIL at BrowserWindow.minWidth after app paths, single-instance, ipcMain and bounded Menu model",
+      "bootStructured": true,
+      "menu": "main-local template model only; no native NSMenu/role/click acceptance"
     },
     "jmd": {
       "productionPackages": 88,

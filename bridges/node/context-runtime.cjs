@@ -2,6 +2,7 @@
 const session = require('./runtime-session.cjs');
 const { bindContextBridgeCore } = require('./context-bridge-registry.cjs');
 const { createIpcMain } = require('./ipc-main.cjs');
+const { createMenu } = require('./menu.cjs');
 const { runtimeError } = require('./errors.cjs');
 
 function checked(core, runtime, operation) {
@@ -24,15 +25,17 @@ class ExperimentalRuntime extends session.ExperimentalRuntime {
           `${name} is not available in the experimental M1 profile`);
       });
       this.ipcMain = this.ipc.ipcMain;
+      this.menuState = createMenu();
+      this.menu = this.menuState.menu;
     } catch (error) { this.abort(); throw error; }
   }
 
   invalidateHost(cause) {
-    try { this.ipc?.dispose(); } finally { super.invalidateHost(cause); }
+    try { this.ipc?.dispose(); this.menuState?.dispose(); } finally { super.invalidateHost(cause); }
   }
 
   quit() {
-    try { super.quit(); } finally { if (this.terminated) this.ipc?.dispose(); }
+    try { super.quit(); } finally { if (this.terminated) { this.ipc?.dispose(); this.menuState?.dispose(); } }
   }
 
   bootstrapScopeForTrustedHost(window, channel) {

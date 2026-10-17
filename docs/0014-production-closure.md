@@ -43,26 +43,29 @@ ELECTRON_MBT_M1_USER_DATA_ROOT=<isolated-root> \
 
 The facade implements `setName/getName/name/isPackaged/getLocale/getPath/setPath`
 over an isolated appData/userData root, a real single-instance lock file, typed
-unknown-app-property rejection, and the main-local `ipcMain` registration
-surface. Moji reached app-path setup, acquired the isolated single-instance
-lock, registered main-local handlers, and then stopped at:
+unknown-app-property rejection, the main-local `ipcMain` registration surface,
+and a bounded main-local `Menu` template model. Moji reached app-path setup,
+acquired the isolated single-instance lock, registered main-local handlers,
+built an application menu model, and then stopped at:
 
 ```text
 exit 1
 ELECTRON_MBT_UNSUPPORTED_API
-Electron API Menu is not available in the experimental M1 profile
+BrowserWindow.minWidth is not implemented in M1
 ```
 
-The failure is now a structured stdout diagnostic instead of an uncaught
-`whenReady` rejection. This is a real M1 facade boot blocker, not a Node-less
-boot and not app acceptance. It did not reach a window or app scenario.
+The failure is a structured stdout diagnostic. The Menu model does not install
+an NSMenu and does not prove native role/click identity. This is a real M1
+facade boot blocker, not a Node-less boot and not app acceptance. It did not
+reach a window or app scenario.
 
 ## Open
 
-- `Menu`/menu-item identity and roles, BrowserWindow option coverage, preload
-  and renderer IPC
-- the next Moji boot blockers after `Menu` (window options, preload, renderer
-  ingress, file dialogs)
+- native NSMenu/role/click identity; the current Menu is a main-local model only
+- BrowserWindow option coverage (`x`/`y`, min sizes, icon, background colour,
+  menu bar visibility) and native enforcement
+- the next Moji boot blockers after `BrowserWindow.minWidth` (window options,
+  preload, renderer ingress, file dialogs)
 - a disposable OS user for real app tests; the current isolated root is not a
   sandbox
 - Node-less runner boot with the QuickJS/CJS stack, not the Node-backed M1 host

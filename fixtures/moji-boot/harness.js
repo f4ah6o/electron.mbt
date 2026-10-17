@@ -333,12 +333,28 @@
         const args = Array.isArray(payload.args) ? payload.args : [];
         const value = handler({}, ...args);
         if (value && typeof value.then === 'function') {
+          state.pendingResult = null;
+          state.pendingDone = false;
+          value.then(function (resolved) {
+            state.pendingResult = JSON.stringify({
+              ok: true, result: resolved === undefined ? null : resolved,
+            });
+            state.pendingDone = true;
+          }).catch(function (error) {
+            state.pendingResult = JSON.stringify({
+              ok: false, code: String((error && error.code) || 'ELECTRON_MBT_MAIN_ERROR'),
+            });
+            state.pendingDone = true;
+          });
           return JSON.stringify({ ok: false, code: 'ELECTRON_MBT_MAIN_ASYNC_PENDING' });
         }
         return JSON.stringify({ ok: true, result: value === undefined ? null : value });
       } catch (error) {
         return JSON.stringify({ ok: false, code: 'ELECTRON_MBT_MAIN_ERROR' });
       }
+    };
+    globalThis.__mojiPendingResult = function () {
+      return state.pendingDone ? state.pendingResult : null;
     };
   };
 

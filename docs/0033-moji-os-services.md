@@ -19,13 +19,16 @@ grants/reads/writes the selected paths. The AppKit panel **UI is NOT RUN**.
 - `exportDiagramPng({dataUrl, baseName})` → writes the test-injected
   `renderer-export.png`.
 - `save`, `readPath`, `readSample` and `getSettings` continue to work.
+- `checkForUpdate()` awaits the async Moji handler and returns
+  `{status:"unsupported"}`; see
+  [docs/0034-async-main-dispatch.md](0034-async-main-dispatch.md).
 
 The renderer API probe reports:
 
 ```json
 {"state":"done","openOk":true,"saveAsOk":true,"exportOk":true,"pngOk":true,
  "pdfOk":true,"docPngOk":true,"saveOk":true,"readOk":true,"sampleOk":true,
- "settingsTheme":"dark"}
+ "settingsTheme":"dark","updateCheckOk":true}
 ```
 
 The supervisor also fixes zero-argument broker calls from the adapter
@@ -36,7 +39,8 @@ The supervisor also fixes zero-argument broker calls from the adapter
 `node scripts/m1-moji-renderer.cjs` → PASS. The report is
 [compatibility/reports/moji-renderer.json](compatibility/reports/moji-renderer.json);
 readiness `moji-renderer` requires `openOk`/`saveAsOk`/`exportOk`/`pngOk`/
-`pdfOk`/`docPngOk` in addition to the earlier save/read/sample checks.
+`pdfOk`/`docPngOk`/`updateCheckOk` in addition to the earlier save/read/sample
+checks.
 
 ## Deliberate limits
 

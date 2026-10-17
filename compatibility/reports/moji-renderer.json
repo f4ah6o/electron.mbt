@@ -9,7 +9,7 @@
   "mainHandlers": true,
   "pageTitle": "Moji v1.0.5",
   "pageText": "New Open Save   Preview Editor Export        Moji v1.0.5 A LIGHTWEIGHT, SIMPLE MARKDOWN READER  Open File New File or drop a .md file anywhere in this window  M",
-  "apiProbe": "{\"state\":\"done\",\"openOk\":true,\"openPath\":\"/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-renderer-oqNt7V/samples/markdown-guide.en.md\",\"saveAsOk\":true,\"exportOk\":true,\"pngOk\":true,\"pdfOk\":true,\"docPngOk\":true,\"saveOk\":true,\"readOk\":true,\"readContent\":\"# renderer save\\n\",\"sampleOk\":true,\"sampleContent\":\"# Complete Markdown Guide\\n\\nA practical Markdown reference for wr\",\"settingsTheme\":\"dark\"}",
+  "apiProbe": "{\"state\":\"done\",\"openOk\":true,\"openPath\":\"/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-renderer-qBXM0s/samples/markdown-guide.en.md\",\"saveAsOk\":true,\"exportOk\":true,\"pngOk\":true,\"pdfOk\":true,\"docPngOk\":true,\"saveOk\":true,\"readOk\":true,\"readContent\":\"# renderer save\\n\",\"sampleOk\":true,\"sampleContent\":\"# Complete Markdown Guide\\n\\nA practical Markdown reference for wr\",\"settingsTheme\":\"dark\",\"updateCheckOk\":true}",
   "rootChildren": 1,
   "rendererLoaded": true,
   "simpleProbe": false,
@@ -20,7 +20,7 @@
   "mainSHA256": "41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e",
   "preloadSHA256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
   "adapterSHA256": "bdfe8bddb4bc07389060e805464a554ff1b0a24d998a88512564c8a91dcc7501",
-  "harnessSHA256": "6c89061c920934eeffb275228698204dcceb8dc7c83832dd9b8a00e8e6042b65",
+  "harnessSHA256": "c803dd2bb314213d62aba009c8ea88ce54ae0d80b9800e75d922ed89fe4b595b",
   "bootGraphFiles": 113,
   "preloadExecuted": false,
   "note": "Pinned Moji renderer loaded under the adapted profile over a loopback asset server; original preload NOT_EXECUTED."

@@ -524,6 +524,7 @@ fn run_moji_app() -> Unit {
     api_probe.contains("\"pngOk\":true") &&
     api_probe.contains("\"pdfOk\":true") &&
     api_probe.contains("\"docPngOk\":true") &&
+    api_probe.contains("\"updateCheckOk\":true") &&
     api_probe.contains("\"saveOk\":true") &&
     api_probe.contains("\"readOk\":true") &&
     api_probe.contains("\"sampleOk\":true") &&

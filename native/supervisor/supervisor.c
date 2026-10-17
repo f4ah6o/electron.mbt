@@ -726,6 +726,37 @@ int32_t moonbit_ebt_supervisor_app_dispatch(
   const char *text = JS_ToCString(app_context, result);
   JS_FreeValue(app_context, result);
   if (text == NULL) return -3;
+  if (strstr(text, "ELECTRON_MBT_MAIN_ASYNC_PENDING") != NULL) {
+    JS_FreeCString(app_context, text);
+    JSContext *job_context = NULL;
+    int job_status = 0;
+    while ((job_status = JS_ExecutePendingJob(app_runtime, &job_context)) > 0) {}
+    JSValue pending_global = JS_GetGlobalObject(app_context);
+    JSValue pending_fn = JS_GetPropertyStr(app_context, pending_global, "__mojiPendingResult");
+    JSValue pending = JS_IsFunction(app_context, pending_fn) ?
+      JS_Call(app_context, pending_fn, pending_global, 0, NULL) : JS_UNDEFINED;
+    JS_FreeValue(app_context, pending_fn);
+    JS_FreeValue(app_context, pending_global);
+    if (job_status < 0 || JS_IsUndefined(pending) || JS_IsNull(pending)) {
+      JS_FreeValue(app_context, pending);
+      const char *error = "{\"ok\":false,\"code\":\"ELECTRON_MBT_MAIN_ASYNC_ERROR\"}";
+      size_t error_length = strlen(error);
+      if (error_length + 1 > (size_t)capacity) return -3;
+      memcpy(out, error, error_length + 1);
+      return (int32_t)error_length;
+    }
+    const char *pending_text = JS_ToCString(app_context, pending);
+    JS_FreeValue(app_context, pending);
+    if (pending_text == NULL) return -3;
+    size_t pending_length = strlen(pending_text);
+    if (pending_length + 1 > (size_t)capacity) {
+      JS_FreeCString(app_context, pending_text);
+      return -3;
+    }
+    memcpy(out, pending_text, pending_length + 1);
+    JS_FreeCString(app_context, pending_text);
+    return (int32_t)pending_length;
+  }
   size_t length = strlen(text);
   if (length + 1 > (size_t)capacity) {
     JS_FreeCString(app_context, text);

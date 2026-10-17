@@ -165,7 +165,7 @@ async function main() {
     try { api = JSON.parse(parsed.apiProbe || '{}'); } catch {}
     const apiOk = api.state === 'done' && api.openOk === true && api.saveAsOk === true &&
       api.exportOk === true && api.pngOk === true && api.pdfOk === true &&
-      api.docPngOk === true && api.saveOk === true &&
+      api.docPngOk === true && api.updateCheckOk === true && api.saveOk === true &&
       api.readOk === true && api.sampleOk === true && api.settingsTheme === 'dark';
     const ok = result.code === 0 && parsed.status === 'PASS' &&
       parsed.probe === 'moji-adapted-native' && parsed.rendererLoaded === true &&

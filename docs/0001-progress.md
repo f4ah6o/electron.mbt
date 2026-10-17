@@ -36,6 +36,7 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 29. The real Moji renderer also exercises open/save/export through the native broker with test-injected paths: `openDialog` returns the real sample document (`documents[0].content`), `saveAs` writes `renderer-save-as.md`, `exportAs` writes HTML and `exportDiagramPng` writes PNG (`openOk/saveAsOk/exportOk/pngOk:true`). The AppKit panel UI is still NOT RUN; PDF/PNG document rendering and async Main dispatch remain.
 30. The real renderer also exports a PDF document: `exportAs({format:'pdf', html})` renders the HTML in an offscreen WKWebView (`createPDF`) and writes a validated `%PDF` file to the test path (`pdfOk:true`). HTML, PDF and diagram PNG export pass; PNG document rendering, page-size/orientation fidelity, the real panel UI and async Main dispatch remain open.
 31. The real renderer also exports PNG documents: `exportAs({format:'png', html})` snapshots an offscreen WKWebView into a PNG file (`docPngOk:true`). HTML, PDF and PNG document export plus diagram PNG pass; page size/orientation fidelity, print-accurate multi-page output, the real panel UI and async Main dispatch remain open.
+32. Async Main dispatch now settles microtask-resolving Moji handlers: the harness records a pending JSON result, the C bridge drains QuickJS jobs and returns it. The real renderer's `checkForUpdate()` receives `{status:"unsupported"}` (`updateCheckOk:true`). Timers/native completion promises, cancellation and per-handler deadlines remain open.
 
 ## Ownership and unfinished wiring
 

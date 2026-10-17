@@ -2184,6 +2184,7 @@ static NSString *preloadDigest(NSData *data) {
       "const read=await window.api.readPath('renderer-save.md'); "
       "const sample=await window.api.readSample('markdown-guide.en.md'); "
       "const settings=await window.api.getSettings(); "
+      "const updateCheck=await window.api.checkForUpdate(); "
       "window.__mojiApiProbe={state:'done',"
       "openOk:!!(opened&&!opened.canceled&&opened.documents&&opened.documents.length===1&&"
       "opened.documents[0].content&&opened.documents[0].content.indexOf('# Complete Markdown Guide')===0),"
@@ -2194,7 +2195,8 @@ static NSString *preloadDigest(NSData *data) {
       "readOk:!!(read&&read.ok),readContent:read&&read.content?read.content.slice(0,64):'',"
       "sampleOk:!!(sample&&sample.ok),"
       "sampleContent:sample&&sample.content?sample.content.slice(0,64):'',"
-      "settingsTheme:settings&&settings.previewTheme}; "
+      "settingsTheme:settings&&settings.previewTheme,"
+      "updateCheckOk:!!(updateCheck&&updateCheck.status==='unsupported')}; "
       "} catch(e){ window.__mojiApiProbe={state:'error',code:String(e&&e.code||e)}; } })(); true;";
     [window.web evaluateJavaScript:script inFrame:nil inContentWorld:[WKContentWorld pageWorld]
       completionHandler:^(id _Nullable result, NSError * _Nullable error) {

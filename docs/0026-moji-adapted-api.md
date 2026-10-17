@@ -56,7 +56,7 @@ The pinned Moji renderer (112 files, ~13 MB) loads under the adapted API with a
 test-only loopback asset server and renders its real UI (`New`, `Open`, `Save`,
 `Preview`, `Editor`, `Export`, `Open File`, `New File`). Its programmatic
 `save`/`readPath`/`readSample`, open/save dialogs and HTML/PDF/PNG-document/diagram-PNG
-export calls reach the native broker; settings/update reach the QuickJS handlers; the original preload
+export calls reach the native broker; settings/update (including async `checkForUpdate`) reach the QuickJS handlers; the original preload
 remains **NOT_EXECUTED**. See
 [docs/0032-moji-renderer.md](0032-moji-renderer.md) and
 [docs/0033-moji-os-services.md](0033-moji-os-services.md).

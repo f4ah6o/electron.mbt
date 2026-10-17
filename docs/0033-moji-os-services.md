@@ -27,8 +27,8 @@ The renderer API probe reports:
 
 ```json
 {"state":"done","openOk":true,"saveAsOk":true,"exportOk":true,"pngOk":true,
- "pdfOk":true,"docPngOk":true,"saveOk":true,"readOk":true,"sampleOk":true,
- "settingsTheme":"dark","updateCheckOk":true}
+ "pdfOk":true,"pdfLandscapeOk":true,"docPngOk":true,"saveOk":true,
+ "readOk":true,"sampleOk":true,"settingsTheme":"dark","updateCheckOk":true}
 ```
 
 The supervisor also fixes zero-argument broker calls from the adapter
@@ -47,10 +47,11 @@ checks.
 - all dialog/export paths are **test-injected** through `set-dialog-result`;
   `NSOpenPanel`/`NSSavePanel` UI is compiled but not exercised
 - the open/save grant is test-only; no human consent flow
-- `doc:export` supports HTML, PDF and PNG documents; PDF/PNG use a fixed
-  A4-ish 794×1123 page and ignore `pageSize`/`pageOrientation`/`assetBaseUrl`
+- `doc:export` supports HTML, PDF and PNG documents; PDF/PNG honor
+  `pageSize` (A4/Letter/Legal) and `pageOrientation` (portrait/landscape)
+  for the page rect; `assetBaseUrl` is ignored
 - PDF/PNG document rendering uses an offscreen WKWebView/NSWindow; it is not a
-  print-accurate or multi-page export path
+  print-accurate or multi-page export path; page rects are fixed A4/Letter/Legal
 - `exportDiagramPng` writes the supplied PNG bytes
 - no human UI interaction beyond the programmatic probe
 - the original preload remains **NOT_EXECUTED**

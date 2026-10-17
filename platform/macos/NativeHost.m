@@ -119,6 +119,17 @@ static NSString *jsQuotedString(NSString *value) {
   return quoted;
 }
 
+static NSSize exportPageDimensions(NSString *pageSize, NSString *orientation) {
+  CGFloat width = 794;
+  CGFloat height = 1123;
+  if ([pageSize isEqualToString:@"Letter"]) { width = 816; height = 1056; }
+  else if ([pageSize isEqualToString:@"Legal"]) { width = 816; height = 1344; }
+  if ([orientation isEqualToString:@"landscape"]) {
+    CGFloat swap = width; width = height; height = swap;
+  }
+  return NSMakeSize(width, height);
+}
+
 static const NSUInteger MaxSnapshotBytes = 16 * 1024 * 1024;
 static const NSUInteger MaxSourceManifestBytes = 4 * 1024 * 1024;
 static const unsigned long long MaxSnapshotTotalBytes = 64ULL * 1024ULL * 1024ULL;
@@ -196,22 +207,28 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, strong) WKWebView *web;
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, copy) NSString *format;
+@property(nonatomic) CGFloat pageWidth;
+@property(nonatomic) CGFloat pageHeight;
 @property(nonatomic, copy) void (^completion)(NSData *, NSString *);
 - (void)renderHTML:(NSString *)html format:(NSString *)format
+  pageWidth:(CGFloat)pageWidth pageHeight:(CGFloat)pageHeight
   completion:(void (^)(NSData *, NSString *))completion;
 @end
 
 @implementation MBTExportRenderer
 - (void)renderHTML:(NSString *)html format:(NSString *)format
+  pageWidth:(CGFloat)pageWidth pageHeight:(CGFloat)pageHeight
   completion:(void (^)(NSData *, NSString *))completion {
   self.completion = completion;
   self.format = format;
+  self.pageWidth = pageWidth;
+  self.pageHeight = pageHeight;
   WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
   configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
-  self.web = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 794, 1123)
+  self.web = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, pageWidth, pageHeight)
     configuration:configuration];
   self.web.navigationDelegate = self;
-  self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(-10000, -10000, 794, 1123)
+  self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(-10000, -10000, pageWidth, pageHeight)
     styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
   self.window.contentView = self.web;
   self.window.ignoresMouseEvents = YES;
@@ -232,7 +249,7 @@ static NSString *preloadDigest(NSData *data) {
   __weak MBTExportRenderer *weakSelf = self;
   if ([self.format isEqualToString:@"png"]) {
     WKSnapshotConfiguration *configuration = [[WKSnapshotConfiguration alloc] init];
-    configuration.rect = NSMakeRect(0, 0, 794, 1123);
+    configuration.rect = NSMakeRect(0, 0, self.pageWidth, self.pageHeight);
     configuration.afterScreenUpdates = YES;
     [webView takeSnapshotWithConfiguration:configuration
       completionHandler:^(NSImage * _Nullable image, NSError * _Nullable error) {
@@ -250,7 +267,7 @@ static NSString *preloadDigest(NSData *data) {
     return;
   }
   WKPDFConfiguration *configuration = [[WKPDFConfiguration alloc] init];
-  configuration.rect = NSMakeRect(0, 0, 794, 1123);
+  configuration.rect = NSMakeRect(0, 0, self.pageWidth, self.pageHeight);
   [webView createPDFWithConfiguration:configuration
     completionHandler:^(NSData * _Nullable data, NSError * _Nullable error) {
       MBTExportRenderer *renderer = weakSelf;
@@ -713,6 +730,7 @@ static NSString *preloadDigest(NSData *data) {
     testPath:self.testExportPngPath reply:reply];
 }
 - (void)exportPdf:(NSString *)html baseName:(NSString *)baseName
+  pageWidth:(CGFloat)pageWidth pageHeight:(CGFloat)pageHeight
   reply:(void (^)(id, NSString *))reply {
   if (html.length > 1048576) {
     [self denyFile:@"ELECTRON_MBT_EXPORT_LIMIT" reply:reply];
@@ -723,7 +741,8 @@ static NSString *preloadDigest(NSData *data) {
   MBTExportRenderer *renderer = [[MBTExportRenderer alloc] init];
   [self.exportRenderers addObject:renderer];
   __weak MBTWindow *weakSelf = self;
-  [renderer renderHTML:html format:@"pdf" completion:^(NSData *data, NSString *error) {
+  [renderer renderHTML:html format:@"pdf" pageWidth:pageWidth pageHeight:pageHeight
+    completion:^(NSData *data, NSString *error) {
     MBTWindow *window = weakSelf;
     if (window == nil) return;
     [window.exportRenderers removeObject:renderer];
@@ -741,6 +760,7 @@ static NSString *preloadDigest(NSData *data) {
   }];
 }
 - (void)exportPngDocument:(NSString *)html baseName:(NSString *)baseName
+  pageWidth:(CGFloat)pageWidth pageHeight:(CGFloat)pageHeight
   reply:(void (^)(id, NSString *))reply {
   if (html.length > 1048576) {
     [self denyFile:@"ELECTRON_MBT_EXPORT_LIMIT" reply:reply];
@@ -751,7 +771,8 @@ static NSString *preloadDigest(NSData *data) {
   MBTExportRenderer *renderer = [[MBTExportRenderer alloc] init];
   [self.exportRenderers addObject:renderer];
   __weak MBTWindow *weakSelf = self;
-  [renderer renderHTML:html format:@"png" completion:^(NSData *data, NSString *error) {
+  [renderer renderHTML:html format:@"png" pageWidth:pageWidth pageHeight:pageHeight
+    completion:^(NSData *data, NSString *error) {
     MBTWindow *window = weakSelf;
     if (window == nil) return;
     [window.exportRenderers removeObject:renderer];
@@ -887,14 +908,21 @@ static NSString *preloadDigest(NSData *data) {
         baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
       return;
     }
+    NSString *pageSize = request[@"pageSize"];
+    NSString *pageOrientation = request[@"pageOrientation"];
+    NSSize page = exportPageDimensions(
+      [pageSize isKindOfClass:[NSString class]] ? pageSize : @"A4",
+      [pageOrientation isKindOfClass:[NSString class]] ? pageOrientation : @"portrait");
     if ([format isEqualToString:@"pdf"]) {
       [self exportPdf:html
-        baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
+        baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export"
+        pageWidth:page.width pageHeight:page.height reply:reply];
       return;
     }
     if ([format isEqualToString:@"png"]) {
       [self exportPngDocument:html
-        baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
+        baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export"
+        pageWidth:page.width pageHeight:page.height reply:reply];
       return;
     }
     [self denyFile:@"ELECTRON_MBT_EXPORT_UNSUPPORTED" reply:reply];
@@ -2179,6 +2207,7 @@ static NSString *preloadDigest(NSData *data) {
       "const exported=await window.api.exportAs({format:'html',html:'<h1>renderer export</h1>',baseName:'export'}); "
       "const png=await window.api.exportDiagramPng({dataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=',baseName:'diagram'}); "
       "const pdf=await window.api.exportAs({format:'pdf',html:'<h1>renderer pdf</h1>',baseName:'export'}); "
+      "const pdfLandscape=await window.api.exportAs({format:'pdf',html:'<h1>renderer landscape</h1>',baseName:'export',pageSize:'Letter',pageOrientation:'landscape'}); "
       "const docPng=await window.api.exportAs({format:'png',html:'<h1>renderer png document</h1>',baseName:'export'}); "
       "const saved=await window.api.save('renderer-save.md','# renderer save\\n'); "
       "const read=await window.api.readPath('renderer-save.md'); "
@@ -2190,7 +2219,8 @@ static NSString *preloadDigest(NSData *data) {
       "opened.documents[0].content&&opened.documents[0].content.indexOf('# Complete Markdown Guide')===0),"
       "openPath:opened&&opened.path?opened.path:'',"
       "saveAsOk:!!(savedAs&&savedAs.ok),exportOk:!!(exported&&exported.ok),"
-      "pngOk:!!(png&&png.ok),pdfOk:!!(pdf&&pdf.ok),docPngOk:!!(docPng&&docPng.ok),"
+      "pngOk:!!(png&&png.ok),pdfOk:!!(pdf&&pdf.ok),"
+      "pdfLandscapeOk:!!(pdfLandscape&&pdfLandscape.ok),docPngOk:!!(docPng&&docPng.ok),"
       "saveOk:!!(saved&&saved.ok),"
       "readOk:!!(read&&read.ok),readContent:read&&read.content?read.content.slice(0,64):'',"
       "sampleOk:!!(sample&&sample.ok),"

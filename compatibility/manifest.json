@@ -471,7 +471,7 @@
       ],
       "privilegedScheme": "jmd-file bypassCSP remains expected-rejection"
     },
-    "note": "Pinned source/build provenance only. Boot closure, native runtime, preload/IPC and app scenarios remain NOT RUN."
+    "note": "Pinned source/build provenance only. Boot closure is NOT RUN: the installed Moji workspace contains development .node artifacts; no production dependency pruner or disposable user-data root is established. Native runtime, preload/IPC and app scenarios remain NOT RUN."
   },
   "cjsLoader": {
     "status": "partial",

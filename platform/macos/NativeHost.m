@@ -192,6 +192,53 @@ static NSString *preloadDigest(NSData *data) {
   return [NSString stringWithUTF8String:hex];
 }
 
+@interface MBTExportRenderer : NSObject <WKNavigationDelegate>
+@property(nonatomic, strong) WKWebView *web;
+@property(nonatomic, copy) void (^completion)(NSData *, NSString *);
+- (void)renderHTML:(NSString *)html completion:(void (^)(NSData *, NSString *))completion;
+@end
+
+@implementation MBTExportRenderer
+- (void)renderHTML:(NSString *)html completion:(void (^)(NSData *, NSString *))completion {
+  self.completion = completion;
+  WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+  configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+  self.web = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 794, 1123)
+    configuration:configuration];
+  self.web.navigationDelegate = self;
+  [self.web loadHTMLString:html baseURL:nil];
+}
+- (void)finishData:(NSData *)data error:(NSString *)error {
+  void (^done)(NSData *, NSString *) = self.completion;
+  self.completion = nil;
+  self.web.navigationDelegate = nil;
+  if (done != nil) done(data, error);
+}
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+  (void)navigation;
+  WKPDFConfiguration *configuration = [[WKPDFConfiguration alloc] init];
+  configuration.rect = NSMakeRect(0, 0, 794, 1123);
+  __weak MBTExportRenderer *weakSelf = self;
+  [webView createPDFWithConfiguration:configuration
+    completionHandler:^(NSData * _Nullable data, NSError * _Nullable error) {
+      MBTExportRenderer *renderer = weakSelf;
+      if (renderer == nil) return;
+      [renderer finishData:(error == nil ? data : nil)
+        error:(error == nil ? nil : @"ELECTRON_MBT_EXPORT_RENDER")];
+    }];
+}
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation
+      withError:(NSError *)error {
+  (void)webView; (void)navigation; (void)error;
+  [self finishData:nil error:@"ELECTRON_MBT_EXPORT_RENDER"];
+}
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation
+      withError:(NSError *)error {
+  (void)webView; (void)navigation; (void)error;
+  [self finishData:nil error:@"ELECTRON_MBT_EXPORT_RENDER"];
+}
+@end
+
 @interface MBTWindow : NSObject <WKNavigationDelegate, NSWindowDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply>
 @property(nonatomic, strong) NSWindow *native;
 @property(nonatomic, strong) WKWebView *web;
@@ -252,6 +299,8 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, copy) NSString *testSaveDialogPath;
 @property(nonatomic, copy) NSString *testExportHtmlPath;
 @property(nonatomic, copy) NSString *testExportPngPath;
+@property(nonatomic, copy) NSString *testExportPdfPath;
+@property(nonatomic, strong) NSMutableArray<MBTExportRenderer *> *exportRenderers;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
                   preloadSource:(NSString *)preloadSource;
@@ -293,6 +342,8 @@ static NSString *preloadDigest(NSData *data) {
     self.testSaveDialogPath = nil;
     self.testExportHtmlPath = nil;
     self.testExportPngPath = nil;
+    self.testExportPdfPath = nil;
+    self.exportRenderers = [NSMutableArray array];
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -627,6 +678,34 @@ static NSString *preloadDigest(NSData *data) {
   [self writeExportData:data suggestedName:[name stringByAppendingString:@".png"]
     testPath:self.testExportPngPath reply:reply];
 }
+- (void)exportPdf:(NSString *)html baseName:(NSString *)baseName
+  reply:(void (^)(id, NSString *))reply {
+  if (html.length > 1048576) {
+    [self denyFile:@"ELECTRON_MBT_EXPORT_LIMIT" reply:reply];
+    return;
+  }
+  NSString *name = [baseName lastPathComponent];
+  if (name.length == 0 || name.length > 96) name = @"export";
+  MBTExportRenderer *renderer = [[MBTExportRenderer alloc] init];
+  [self.exportRenderers addObject:renderer];
+  __weak MBTWindow *weakSelf = self;
+  [renderer renderHTML:html completion:^(NSData *data, NSString *error) {
+    MBTWindow *window = weakSelf;
+    if (window == nil) return;
+    [window.exportRenderers removeObject:renderer];
+    if (error != nil || data == nil) {
+      [window denyFile:(error != nil ? error : @"ELECTRON_MBT_EXPORT_RENDER") reply:reply];
+      return;
+    }
+    if (data.length < 4 || data.length > 16777216 ||
+        memcmp(data.bytes, "%PDF", 4) != 0) {
+      [window denyFile:@"ELECTRON_MBT_EXPORT_RENDER" reply:reply];
+      return;
+    }
+    [window writeExportData:data suggestedName:[name stringByAppendingString:@".pdf"]
+      testPath:window.testExportPdfPath reply:reply];
+  }];
+}
 - (void)handleFileOperation:(NSString *)operation payload:(NSDictionary *)payload
   reply:(void (^)(id, NSString *))reply {
   id rawArgs = payload[@"args"];
@@ -735,13 +814,22 @@ static NSString *preloadDigest(NSData *data) {
     NSString *format = request[@"format"];
     NSString *html = request[@"html"];
     NSString *baseName = request[@"baseName"];
-    if (![format isKindOfClass:[NSString class]] || ![format isEqualToString:@"html"] ||
+    if (![format isKindOfClass:[NSString class]] ||
         ![html isKindOfClass:[NSString class]]) {
       [self denyFile:@"ELECTRON_MBT_EXPORT_UNSUPPORTED" reply:reply];
       return;
     }
-    [self exportHtml:html
-      baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
+    if ([format isEqualToString:@"html"]) {
+      [self exportHtml:html
+        baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
+      return;
+    }
+    if ([format isEqualToString:@"pdf"]) {
+      [self exportPdf:html
+        baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
+      return;
+    }
+    [self denyFile:@"ELECTRON_MBT_EXPORT_UNSUPPORTED" reply:reply];
     return;
   }
   if ([operation isEqualToString:@"diagram:export-png"]) {
@@ -2022,6 +2110,7 @@ static NSString *preloadDigest(NSData *data) {
       "const savedAs=await window.api.saveAs('# save-as\\n','save-as.md'); "
       "const exported=await window.api.exportAs({format:'html',html:'<h1>renderer export</h1>',baseName:'export'}); "
       "const png=await window.api.exportDiagramPng({dataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=',baseName:'diagram'}); "
+      "const pdf=await window.api.exportAs({format:'pdf',html:'<h1>renderer pdf</h1>',baseName:'export'}); "
       "const saved=await window.api.save('renderer-save.md','# renderer save\\n'); "
       "const read=await window.api.readPath('renderer-save.md'); "
       "const sample=await window.api.readSample('markdown-guide.en.md'); "
@@ -2030,7 +2119,8 @@ static NSString *preloadDigest(NSData *data) {
       "openOk:!!(opened&&!opened.canceled&&opened.documents&&opened.documents.length===1&&"
       "opened.documents[0].content&&opened.documents[0].content.indexOf('# Complete Markdown Guide')===0),"
       "openPath:opened&&opened.path?opened.path:'',"
-      "saveAsOk:!!(savedAs&&savedAs.ok),exportOk:!!(exported&&exported.ok),pngOk:!!(png&&png.ok),"
+      "saveAsOk:!!(savedAs&&savedAs.ok),exportOk:!!(exported&&exported.ok),"
+      "pngOk:!!(png&&png.ok),pdfOk:!!(pdf&&pdf.ok),"
       "saveOk:!!(saved&&saved.ok),"
       "readOk:!!(read&&read.ok),readContent:read&&read.content?read.content.slice(0,64):'',"
       "sampleOk:!!(sample&&sample.ok),"
@@ -2081,7 +2171,7 @@ static NSString *preloadDigest(NSData *data) {
     NSString *path = payload[@"path"];
     if (![kind isKindOfClass:[NSString class]] || !([kind isEqualToString:@"open"] ||
         [kind isEqualToString:@"save"] || [kind isEqualToString:@"export-html"] ||
-        [kind isEqualToString:@"export-png"]) ||
+        [kind isEqualToString:@"export-png"] || [kind isEqualToString:@"export-pdf"]) ||
         ![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
       return;
@@ -2094,7 +2184,8 @@ static NSString *preloadDigest(NSData *data) {
     if ([kind isEqualToString:@"open"]) window.testOpenDialogPath = canonical;
     else if ([kind isEqualToString:@"save"]) window.testSaveDialogPath = canonical;
     else if ([kind isEqualToString:@"export-html"]) window.testExportHtmlPath = canonical;
-    else window.testExportPngPath = canonical;
+    else if ([kind isEqualToString:@"export-png"]) window.testExportPngPath = canonical;
+    else window.testExportPdfPath = canonical;
     done(@"success", @{@"set": @YES, @"kind": kind, @"path": canonical});
     return;
   }

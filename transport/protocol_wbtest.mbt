@@ -573,6 +573,8 @@ test "What: dialog results accept only open/save with a bounded path" {
     "{\"kind\":\"open\",\"path\":\"samples/sample.md\"}", "")) is Ok(_))
   assert_true(validate(source_wire("set-dialog-result",
     "{\"kind\":\"export-png\",\"path\":\"broker-export.png\"}", "")) is Ok(_))
+  assert_true(validate(source_wire("set-dialog-result",
+    "{\"kind\":\"export-pdf\",\"path\":\"broker-export.pdf\"}", "")) is Ok(_))
   for malformed in [
     "{}",
     "{\"kind\":\"open\"}",

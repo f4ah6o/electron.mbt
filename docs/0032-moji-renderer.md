@@ -52,7 +52,7 @@ The broker now returns the Moji-shaped `ok`/`content` fields (while retaining
 
 Open/save/export from the same renderer probe also pass with test-injected
 paths: `openDialog` returns the sample document, `saveAs` writes a file,
-`exportAs` writes HTML and `exportDiagramPng` writes PNG. See
+`exportAs` writes HTML/PDF and `exportDiagramPng` writes PNG. See
 [docs/0033-moji-os-services.md](0033-moji-os-services.md).
 
 The report's `apiProbe` is

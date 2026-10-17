@@ -149,7 +149,7 @@
     {
       "id": "moji-renderer",
       "status": "PASS",
-      "detail": "Moji renderer: title=Moji v1.0.5, rootChildren=1, api=true, open=true, saveAs=true, export=true, png=true, save=true, read=true, sample=true, preloadExecuted=false"
+      "detail": "Moji renderer: title=Moji v1.0.5, rootChildren=1, api=true, open=true, saveAs=true, export=true, png=true, pdf=true, save=true, read=true, sample=true, preloadExecuted=false"
     },
     {
       "id": "node-less-moji-app-main",

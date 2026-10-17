@@ -12,6 +12,8 @@ grants/reads/writes the selected paths. The AppKit panel **UI is NOT RUN**.
   `renderer-save-as.md` and returns `{ok:true, path, bytes}`.
 - `exportAs({format:'html', html, baseName})` → writes the test-injected
   `renderer-export.html`.
+- `exportAs({format:'pdf', html, baseName})` → renders HTML in an offscreen
+  WKWebView and writes a `%PDF` document to `renderer-export.pdf`.
 - `exportDiagramPng({dataUrl, baseName})` → writes the test-injected
   `renderer-export.png`.
 - `save`, `readPath`, `readSample` and `getSettings` continue to work.
@@ -20,7 +22,7 @@ The renderer API probe reports:
 
 ```json
 {"state":"done","openOk":true,"saveAsOk":true,"exportOk":true,"pngOk":true,
- "saveOk":true,"readOk":true,"sampleOk":true,"settingsTheme":"dark"}
+ "pdfOk":true,"saveOk":true,"readOk":true,"sampleOk":true,"settingsTheme":"dark"}
 ```
 
 The supervisor also fixes zero-argument broker calls from the adapter
@@ -30,16 +32,18 @@ The supervisor also fixes zero-argument broker calls from the adapter
 
 `node scripts/m1-moji-renderer.cjs` → PASS. The report is
 [compatibility/reports/moji-renderer.json](compatibility/reports/moji-renderer.json);
-readiness `moji-renderer` requires `openOk`/`saveAsOk`/`exportOk`/`pngOk` in
-addition to the earlier save/read/sample checks.
+readiness `moji-renderer` requires `openOk`/`saveAsOk`/`exportOk`/`pngOk`/
+`pdfOk` in addition to the earlier save/read/sample checks.
 
 ## Deliberate limits
 
 - all dialog/export paths are **test-injected** through `set-dialog-result`;
   `NSOpenPanel`/`NSSavePanel` UI is compiled but not exercised
 - the open/save grant is test-only; no human consent flow
-- `doc:export` supports HTML only; PDF/PNG document rendering remains
-  unimplemented; `exportDiagramPng` writes the supplied PNG bytes
+- `doc:export` supports HTML and PDF; PDF uses a fixed A4-ish 794×1123 page
+  and ignores `pageSize`/`pageOrientation`/`assetBaseUrl`
+- PNG **document** rendering remains unimplemented; `exportDiagramPng` writes
+  the supplied PNG bytes
 - no human UI interaction beyond the programmatic probe
 - the original preload remains **NOT_EXECUTED**
 - no verified row; `compatible:false`, adapted **partial**, strict **blocked**

@@ -33,6 +33,9 @@ extern "C" fn supervisor_moji_app_mode() -> Int = "moonbit_ebt_supervisor_moji_a
 extern "C" fn supervisor_boot_root(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_boot_root"
 
 ///|
+extern "C" fn supervisor_moji_dialog_ui() -> Int = "moonbit_ebt_supervisor_moji_dialog_ui"
+
+///|
 #borrow(buffer)
 extern "C" fn supervisor_moji_page(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_moji_page"
 
@@ -315,6 +318,7 @@ fn run_moji_app() -> Unit {
     fail_moji_app("ELECTRON_MBT_MOJI_APP_PAGE")
   }
   let page = @utf8.decode_lossy(page_buffer[:page_length])
+  let dialog_ui = supervisor_moji_dialog_ui() == 1
   let (fd, session, attempts) = match start_ready(root, buffer) {
     Some(value) => value
     None => {
@@ -323,7 +327,8 @@ fn run_moji_app() -> Unit {
     }
   }
   let create = request_frame(session, 4, 1, 0, "create-window",
-    "{\"width\":800,\"height\":600,\"title\":\"Moji\",\"show\":false}")
+    "{\"width\":800,\"height\":600,\"title\":\"Moji\",\"show\":" +
+    (if dialog_ui { "true" } else { "false" }) + "}")
   let create_sent = send(fd, create)
   let create_reply = if create_sent { receive(fd, buffer) } else { None }
   if !create_sent || create_reply is None ||
@@ -363,14 +368,16 @@ fn run_moji_app() -> Unit {
     (57, "\"kind\":\"export-pdf\",\"path\":\"renderer-export.pdf\""),
     (58, "\"kind\":\"export-doc-png\",\"path\":\"renderer-export-doc.png\""),
   ]
-  for entry in dialogs {
-    let (id, body) = entry
-    let dialog = request_frame(session, id, 1, 0, "set-dialog-result", "{" + body + "}")
-    let dialog_sent = send(fd, dialog)
-    let dialog_reply = if dialog_sent { receive(fd, buffer) } else { None }
-    if !dialog_sent || dialog_reply is None ||
-      !dialog_reply.unwrap().contains("\"set\":true") {
-      fail_moji_app("ELECTRON_MBT_MOJI_APP_DIALOG")
+  if !dialog_ui {
+    for entry in dialogs {
+      let (id, body) = entry
+      let dialog = request_frame(session, id, 1, 0, "set-dialog-result", "{" + body + "}")
+      let dialog_sent = send(fd, dialog)
+      let dialog_reply = if dialog_sent { receive(fd, buffer) } else { None }
+      if !dialog_sent || dialog_reply is None ||
+        !dialog_reply.unwrap().contains("\"set\":true") {
+        fail_moji_app("ELECTRON_MBT_MOJI_APP_DIALOG")
+      }
     }
   }
   if supervisor_app_main(@utf8.encode(snapshot_root)) != 43 {
@@ -458,7 +465,8 @@ fn run_moji_app() -> Unit {
       if json_payload_field(probe_text, "text") is Some(value) {
         page_text = value
       }
-      if page_title.contains("moji-adapted-ready") {
+      if page_title.contains("moji-adapted-ready") ||
+        (dialog_ui && page_title.contains("moji-dialog-ui-ready")) {
         ready = true
         break
       }
@@ -473,7 +481,8 @@ fn run_moji_app() -> Unit {
     supervisor_sleep_ms(20)
   }
   let mut api_probe = ""
-  let simple_ok = page_title.contains("moji-adapted-ready:dark:unsupported")
+  let simple_ok = page_title.contains("moji-adapted-ready:dark:unsupported") ||
+    (dialog_ui && page_title.contains("moji-dialog-ui-ready"))
   let renderer_ok = api_present && root_children > 0
   let page_ok = ready && (simple_ok || renderer_ok)
   if !page_ok {
@@ -489,6 +498,57 @@ fn run_moji_app() -> Unit {
     println(fail_report)
     supervisor_kill()
     supervisor_exit(1)
+  }
+  if dialog_ui {
+    let open = request_frame(session, 39, 1, 1, "open-dialog-ui", "{}")
+    let open_sent = send(fd, open)
+    let open_reply = if open_sent { receive(fd, buffer) } else { None }
+    if !open_sent || open_reply is None ||
+      !open_reply.unwrap().contains("\"opened\":true") {
+      fail_moji_app("ELECTRON_MBT_MOJI_DIALOG_UI_OPEN")
+    }
+    supervisor_sleep_ms(500)
+    let cancel = request_frame(session, 40, 1, 1, "cancel-active-dialog", "{}")
+    let cancel_sent = send(fd, cancel)
+    let cancel_reply = if cancel_sent { receive(fd, buffer) } else { None }
+    if !cancel_sent || cancel_reply is None ||
+      !cancel_reply.unwrap().contains("\"canceled\":true") {
+      fail_moji_app("ELECTRON_MBT_MOJI_DIALOG_UI_CANCEL")
+    }
+    let mut panel_opened = false
+    let mut panel_completed = false
+    let mut panel_canceled = false
+    for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+      let status = request_frame(session, 41, 1, 1, "get-dialog-ui-status", "{}")
+      let status_sent = send(fd, status)
+      let status_reply = if status_sent { receive(fd, buffer) } else { None }
+      if status_reply is Some(_) {
+        let text = status_reply.unwrap()
+        panel_opened = json_payload_bool(text, "opened").unwrap_or(false) || panel_opened
+        panel_completed = json_payload_bool(text, "completed").unwrap_or(false)
+        panel_canceled = json_payload_bool(text, "canceled").unwrap_or(false)
+        if panel_completed {
+          break
+        }
+      }
+      supervisor_sleep_ms(50)
+    }
+    let dialog_ok = panel_opened && panel_completed && panel_canceled
+    let status = if dialog_ok { "PASS" } else { "FAIL" }
+    let report = ("{\"status\":\"" + status + "\",\"probe\":\"moji-dialog-ui\"," +
+      "\"backend\":\"AppKit\",\"panelOpened\":" +
+      (if panel_opened { "true" } else { "false" }) +
+      ",\"panelCompleted\":" + (if panel_completed { "true" } else { "false" }) +
+      ",\"panelCanceled\":" + (if panel_canceled { "true" } else { "false" }) +
+      ",\"selection\":false,\"attempts\":" + attempts.to_string() +
+      ",\"compatible\":false}")
+    println(report)
+    supervisor_kill()
+    if !dialog_ok {
+      supervisor_exit(1)
+    }
+    supervisor_exit(0)
+    return
   }
   if renderer_ok {
     let trigger = request_frame(session, 38, 1, 1, "trigger-renderer-api", "{}")

@@ -39,6 +39,7 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 32. Async Main dispatch now settles microtask-resolving Moji handlers: the harness records a pending JSON result, the C bridge drains QuickJS jobs and returns it. The real renderer's `checkForUpdate()` receives `{status:"unsupported"}` (`updateCheckOk:true`). Timers/native completion promises, cancellation and per-handler deadlines remain open.
 33. The pinned preload is evaluated virtually in the QuickJS harness with stub `contextBridge`/`ipcRenderer`/`webUtils`; it exposes `api` with 18 methods matching the adapted API (`preloadVirtualExecuted:true`, `preloadMethods:18`). It remains NOT_EXECUTED in WebKit and the M0 contextBridge gate is unresolved.
 34. PDF/PNG document export now honors Moji's `pageSize` (A4/Letter/Legal) and `pageOrientation` (portrait/landscape) for the offscreen page rect; a Letter-landscape PDF is exercised (`pdfLandscapeOk:true`). Multi-page/print-accurate rendering and `assetBaseUrl` remain open.
+35. A native dialog UI smoke opens the real `NSOpenPanel` as a sheet and programmatically cancels it (`panelOpened/panelCompleted/panelCanceled:true`, `selection:false`). Readiness `adapted-dialog-ui` is PASS for open/cancel; file selection, save panel UI, user consent and grant persistence remain open.
 
 ## Ownership and unfinished wiring
 

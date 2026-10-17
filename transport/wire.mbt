@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "set-dialog-result" | "probe-renderer" | "trigger-renderer-api" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "load-url" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "set-dialog-result" | "probe-renderer" | "trigger-renderer-api" | "open-dialog-ui" | "cancel-active-dialog" | "get-dialog-ui-status" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "load-url" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -627,6 +627,53 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Malformed source snapshot acknowledgement")
+      }
+    }
+  }
+  if operation == "open-dialog-ui" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid open-dialog-ui request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 1 => {
+          match values.get("opened") { Some(True) => (); _ => raise BadProtocol("Invalid open-dialog-ui acknowledgement") }
+        }
+        _ => raise BadProtocol("Malformed open-dialog-ui acknowledgement")
+      }
+    }
+  }
+  if operation == "cancel-active-dialog" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid cancel-active-dialog request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 1 => {
+          match values.get("canceled") { Some(True) => (); _ => raise BadProtocol("Invalid cancel-active-dialog acknowledgement") }
+        }
+        _ => raise BadProtocol("Malformed cancel-active-dialog acknowledgement")
+      }
+    }
+  }
+  if operation == "get-dialog-ui-status" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid dialog UI status request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 3 => {
+          match values.get("opened") { Some(True) | Some(False) => (); _ => raise BadProtocol("Invalid dialog UI opened") }
+          match values.get("completed") { Some(True) | Some(False) => (); _ => raise BadProtocol("Invalid dialog UI completed") }
+          match values.get("canceled") { Some(True) | Some(False) => (); _ => raise BadProtocol("Invalid dialog UI canceled") }
+        }
+        _ => raise BadProtocol("Malformed dialog UI status")
       }
     }
   }

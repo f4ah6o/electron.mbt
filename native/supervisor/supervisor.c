@@ -812,6 +812,11 @@ int32_t moonbit_ebt_supervisor_moji_url(moonbit_bytes_t buffer, int32_t capacity
   return (int32_t)length;
 }
 
+int32_t moonbit_ebt_supervisor_moji_dialog_ui(void) {
+  const char *value = getenv("ELECTRON_MBT_MOJI_DIALOG_UI");
+  return value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+}
+
 int32_t moonbit_ebt_supervisor_moji_page(moonbit_bytes_t buffer, int32_t capacity) {
   const char *page = getenv("ELECTRON_MBT_MOJI_PAGE");
   if (page == NULL || page[0] == 0) page = "index.html";

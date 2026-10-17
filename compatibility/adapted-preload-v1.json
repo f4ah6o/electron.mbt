@@ -191,7 +191,7 @@
       "saveBytes": 65536,
       "imageBytes": 1048576
     },
-    "dialogs": "test-injected grant path + AppKit NSOpenPanel/NSSavePanel compiled; UI NOT RUN",
+    "dialogs": "test-injected grant path + native NSOpenPanel open/cancel smoke; selection/consent NOT RUN",
     "export": "test-injected HTML + diagram PNG write; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED",
     "openLocalPath": "NOT_IMPLEMENTED",
     "dialogGrants": true,

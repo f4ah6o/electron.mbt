@@ -95,8 +95,15 @@ function buildReport() {
     /test-injected/.test(fileBroker.dialogs || '');
   checks.push(check('adapted-dialog-grant', dialogGrantOk ? 'PASS' : 'FAIL',
     `Dialog grant path: ${fileBroker.dialogs || 'none'}`));
-  checks.push(check('adapted-dialog-ui', 'NOT_RUN',
-    'NSOpenPanel/NSSavePanel UI is compiled but not exercised'));
+  let dialogUI = null;
+  try { dialogUI = readJson('compatibility/reports/moji-dialog-ui.json'); } catch {}
+  const dialogUIOk = dialogUI !== null && dialogUI.status === 'PASS' &&
+    dialogUI.panelOpened === true && dialogUI.panelCompleted === true &&
+    dialogUI.panelCanceled === true && dialogUI.selection === false;
+  checks.push(check('adapted-dialog-ui', dialogUI === null ? 'NOT_RUN' : (dialogUIOk ? 'PASS' : 'FAIL'),
+    dialogUI === null
+      ? 'Native NSOpenPanel/NSSavePanel UI is compiled but not exercised'
+      : `Native NSOpenPanel opened/canceled: opened=${dialogUI.panelOpened}, completed=${dialogUI.panelCompleted}, canceled=${dialogUI.panelCanceled}, selection=${dialogUI.selection}`));
   const exportMark = fileBroker.export || '';
   checks.push(check('adapted-export-html', /test-injected HTML/.test(exportMark) ? 'PASS' : 'FAIL',
     `Export HTML: ${exportMark || 'none'}`));

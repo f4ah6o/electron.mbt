@@ -11,9 +11,9 @@
   },
   "counts": {
     "checks": 31,
-    "pass": 23,
+    "pass": 24,
     "fail": 2,
-    "notRun": 6
+    "notRun": 5
   },
   "checks": [
     {
@@ -59,17 +59,17 @@
     {
       "id": "adapted-file-broker",
       "status": "PASS",
-      "detail": "File broker: read=1048576B, save=65536B, image=1048576B, grants=test-only grant-file control operation; production grants must come from dialogs; dialogs=test-injected grant path + AppKit NSOpenPanel/NSSavePanel compiled; UI NOT RUN; export=test-injected HTML + diagram PNG write; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED"
+      "detail": "File broker: read=1048576B, save=65536B, image=1048576B, grants=test-only grant-file control operation; production grants must come from dialogs; dialogs=test-injected grant path + native NSOpenPanel open/cancel smoke; selection/consent NOT RUN; export=test-injected HTML + diagram PNG write; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED"
     },
     {
       "id": "adapted-dialog-grant",
       "status": "PASS",
-      "detail": "Dialog grant path: test-injected grant path + AppKit NSOpenPanel/NSSavePanel compiled; UI NOT RUN"
+      "detail": "Dialog grant path: test-injected grant path + native NSOpenPanel open/cancel smoke; selection/consent NOT RUN"
     },
     {
       "id": "adapted-dialog-ui",
-      "status": "NOT_RUN",
-      "detail": "NSOpenPanel/NSSavePanel UI is compiled but not exercised"
+      "status": "PASS",
+      "detail": "Native NSOpenPanel opened/canceled: opened=true, completed=true, canceled=true, selection=false"
     },
     {
       "id": "adapted-export-html",

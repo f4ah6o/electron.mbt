@@ -217,9 +217,9 @@
         "status": "NOT_READY",
         "counts": {
           "checks": 31,
-          "pass": 23,
+          "pass": 24,
           "fail": 2,
-          "notRun": 6
+          "notRun": 5
         }
       }
     },

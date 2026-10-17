@@ -45,7 +45,9 @@ checks.
 ## Deliberate limits
 
 - all dialog/export paths are **test-injected** through `set-dialog-result`;
-  `NSOpenPanel`/`NSSavePanel` UI is compiled but not exercised
+  a separate UI smoke opens and programmatically cancels the native
+  `NSOpenPanel` (no selection/consent), see
+  [docs/0036-dialog-ui-smoke.md](0036-dialog-ui-smoke.md)
 - the open/save grant is test-only; no human consent flow
 - `doc:export` supports HTML, PDF and PNG documents; PDF/PNG honor
   `pageSize` (A4/Letter/Legal) and `pageOrientation` (portrait/landscape)

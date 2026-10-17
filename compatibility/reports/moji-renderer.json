@@ -9,7 +9,7 @@
   "mainHandlers": true,
   "pageTitle": "Moji v1.0.5",
   "pageText": "New Open Save   Preview Editor Export        Moji v1.0.5 A LIGHTWEIGHT, SIMPLE MARKDOWN READER  Open File New File or drop a .md file anywhere in this window  M",
-  "apiProbe": "{\"state\":\"done\",\"openOk\":true,\"openPath\":\"/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-renderer-K6XJVE/samples/markdown-guide.en.md\",\"saveAsOk\":true,\"exportOk\":true,\"pngOk\":true,\"pdfOk\":true,\"pdfLandscapeOk\":true,\"docPngOk\":true,\"saveOk\":true,\"readOk\":true,\"readContent\":\"# renderer save\\n\",\"sampleOk\":true,\"sampleContent\":\"# Complete Markdown Guide\\n\\nA practical Markdown reference for wr\",\"settingsTheme\":\"dark\",\"updateCheckOk\":true}",
+  "apiProbe": "{\"state\":\"done\",\"openOk\":true,\"openPath\":\"/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-renderer-DgZloJ/samples/markdown-guide.en.md\",\"saveAsOk\":true,\"exportOk\":true,\"pngOk\":true,\"pdfOk\":true,\"pdfLandscapeOk\":true,\"docPngOk\":true,\"saveOk\":true,\"readOk\":true,\"readContent\":\"# renderer save\\n\",\"sampleOk\":true,\"sampleContent\":\"# Complete Markdown Guide\\n\\nA practical Markdown reference for wr\",\"settingsTheme\":\"dark\",\"updateCheckOk\":true}",
   "rootChildren": 1,
   "rendererLoaded": true,
   "simpleProbe": false,

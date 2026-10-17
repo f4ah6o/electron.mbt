@@ -351,6 +351,10 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, copy) NSString *testExportPdfPath;
 @property(nonatomic, copy) NSString *testExportPngDocumentPath;
 @property(nonatomic, strong) NSMutableArray<MBTExportRenderer *> *exportRenderers;
+@property(nonatomic, strong) NSOpenPanel *activeOpenPanel;
+@property(nonatomic) BOOL dialogUIOpened;
+@property(nonatomic) BOOL dialogUICompleted;
+@property(nonatomic) BOOL dialogUICanceled;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
                   preloadSource:(NSString *)preloadSource;
@@ -395,6 +399,10 @@ static NSString *preloadDigest(NSData *data) {
     self.testExportPdfPath = nil;
     self.testExportPngDocumentPath = nil;
     self.exportRenderers = [NSMutableArray array];
+    self.activeOpenPanel = nil;
+    self.dialogUIOpened = NO;
+    self.dialogUICompleted = NO;
+    self.dialogUICanceled = NO;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -563,11 +571,20 @@ static NSString *preloadDigest(NSData *data) {
   panel.canChooseFiles = YES;
   panel.canChooseDirectories = NO;
   panel.allowsMultipleSelection = NO;
+  self.activeOpenPanel = panel;
+  self.dialogUIOpened = YES;
+  self.dialogUICompleted = NO;
+  self.dialogUICanceled = NO;
+  [NSApp activateIgnoringOtherApps:YES];
+  [self.native makeKeyAndOrderFront:nil];
   __weak MBTWindow *weakSelf = self;
   [panel beginSheetModalForWindow:self.native completionHandler:^(NSModalResponse response) {
     MBTWindow *window = weakSelf;
     if (window == nil) return;
+    window.activeOpenPanel = nil;
+    window.dialogUICompleted = YES;
     if (response != NSModalResponseOK || panel.URL == nil) {
+      window.dialogUICanceled = YES;
       [window denyFile:@"ELECTRON_MBT_FILE_CANCELED" reply:reply];
       return;
     }
@@ -2190,6 +2207,49 @@ static NSString *preloadDigest(NSData *data) {
       pending(nil, code);
     }
     done(@"success", @{@"delivered": @YES});
+    return;
+  }
+  if ([operation isEqualToString:@"open-dialog-ui"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive || window.generation <= 0 || window.testOpenDialogPath != nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_DIALOG_UI_DENIED"});
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [NSApp activateIgnoringOtherApps:YES];
+      [window.native makeKeyAndOrderFront:nil];
+      [window openDialogWithReply:^(id result, NSString *error) {
+        (void)result; (void)error;
+      }];
+    });
+    done(@"success", @{@"opened": @YES});
+    return;
+  }
+  if ([operation isEqualToString:@"cancel-active-dialog"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NSOpenPanel *panel = window.activeOpenPanel;
+      if (panel != nil) [panel cancel:nil];
+    });
+    done(@"success", @{@"canceled": @YES});
+    return;
+  }
+  if ([operation isEqualToString:@"get-dialog-ui-status"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      done(@"success", @{@"opened": @(window.dialogUIOpened),
+        @"completed": @(window.dialogUICompleted),
+        @"canceled": @(window.dialogUICanceled)});
+    });
     return;
   }
   if ([operation isEqualToString:@"trigger-renderer-api"]) {

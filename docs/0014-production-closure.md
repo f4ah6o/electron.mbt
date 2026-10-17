@@ -33,20 +33,27 @@ committed; only hashes/counts and package identities are retained.
 
 ## M1 boot attempt (failed, diagnostic only)
 
-With an isolated `HOME` and `TMPDIR`, the production Moji closure was launched as:
+With an isolated app-path root, `HOME` and `TMPDIR`, the production Moji
+closure was launched as:
 
 ```sh
-node cmd/electron-mbt.cjs run <moji-production-closure> --experimental-m1
+ELECTRON_MBT_M1_USER_DATA_ROOT=<isolated-root> \
+  node cmd/electron-mbt.cjs run <moji-production-closure> --experimental-m1
 ```
 
-Result: exit 1, `ELECTRON_MBT_IO`,
-`electron.app.setName is not a function`.
+The facade now implements `setName/getName/name/isPackaged/getLocale/getPath/setPath`
+over an isolated appData/userData root and fails typed for unknown app methods.
+Moji reached app-path setup (`appData/moji` was created under the isolated root)
+and then stopped at:
 
-This is a real M1 facade boot blocker. The facade currently exposes only
-`whenReady/isReady/quit/getName/getVersion/getAppPath`; `setName`, `getPath` and
-`setPath` are absent, so Moji stops before `userData` selection. The attempt did
-not reach app path selection or file writes. It is **not** a Node-less boot and
-does not count as app acceptance.
+```text
+exit 1
+ELECTRON_MBT_UNSUPPORTED_API
+app.requestSingleInstanceLock is not available in the experimental M1 profile
+```
+
+This is a real M1 facade boot blocker, not a Node-less boot and not app
+acceptance. It did not reach a window or app scenario.
 
 ## Open
 

@@ -30,7 +30,8 @@
       "id": "boot:moji-v1.0.5:m1",
       "kind": "boot-attempt",
       "path": "production-closure.json",
-      "status": "FAIL"
+      "status": "FAIL",
+      "note": "M1 app paths succeeded; blocked at app.requestSingleInstanceLock"
     }
   ],
   "note": "Build/source/production-closure evidence only. The M1 boot attempt failed at app.setName; no Node-less runtime or app-scenario acceptance is recorded."

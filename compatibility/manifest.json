@@ -471,7 +471,7 @@
       ],
       "privilegedScheme": "jmd-file bypassCSP remains expected-rejection"
     },
-    "note": "Pinned source/build/production-closure provenance only. The M1 boot attempt failed at electron.app.setName; Node-less boot, native runtime, preload/IPC and app scenarios remain NOT RUN."
+    "note": "Pinned source/build/production-closure provenance only. The isolated M1 boot passes app path setup and blocks at app.requestSingleInstanceLock; Node-less boot, native runtime, preload/IPC and app scenarios remain NOT RUN."
   },
   "cjsLoader": {
     "status": "partial",
@@ -583,7 +583,7 @@
       "productionPackages": 174,
       "packageFiles": 7165,
       "nativeAddons": 0,
-      "bootAttempt": "FAIL: app.setName is not a function"
+      "bootAttempt": "FAIL after isolated app paths: app.requestSingleInstanceLock is not implemented"
     },
     "jmd": {
       "productionPackages": 88,

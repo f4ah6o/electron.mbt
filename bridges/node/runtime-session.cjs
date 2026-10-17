@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { types } = require('node:util');
@@ -16,6 +17,13 @@ function checked(json) {
 }
 function supportedTitle(value) {
   return typeof value === 'string' && value.length <= 256 && value.isWellFormed();
+}
+function within(root, target) {
+  const relative = path.relative(root, target);
+  return relative === '' || (!path.isAbsolute(relative) && !relative.startsWith('..' + path.sep) && relative !== '..');
+}
+function safeAppName(value) {
+  return String(value || 'app').replace(/[^A-Za-z0-9._-]/g, '_') || 'app';
 }
 function validBoundsCoordinate(value) {
   return Number.isSafeInteger(value) && !Object.is(value, -0) && Math.abs(value) <= 1048576;
@@ -128,15 +136,69 @@ class ExperimentalRuntime {
     // The observable promise must reject, but must not trigger an unhandled
     // rejection simply because no user code had an opportunity to subscribe.
     this.readyPromise.catch(() => {});
-    const app = new EventEmitter();
+    const runtime = this;
+    const explicitRoot = options.userDataRoot || process.env.ELECTRON_MBT_M1_USER_DATA_ROOT;
+    this.userDataRoot = path.resolve(explicitRoot || fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-m1-')));
+    fs.mkdirSync(this.userDataRoot, { recursive: true });
+    this.appName = appInfo.name;
+    this.appPaths = {
+      appData: path.join(this.userDataRoot, 'appData'),
+      userData: path.join(this.userDataRoot, 'userData', safeAppName(appInfo.name)),
+      temp: path.join(this.userDataRoot, 'temp'),
+      home: path.join(this.userDataRoot, 'home'),
+      logs: path.join(this.userDataRoot, 'logs'),
+    };
+    for (const directory of Object.values(this.appPaths)) fs.mkdirSync(directory, { recursive: true });
+    const appTarget = new EventEmitter();
+    const app = new Proxy(appTarget, {
+      get(target, property, receiver) {
+        if (typeof property === 'symbol' || property in target) return Reflect.get(target, property, receiver);
+        fail('ELECTRON_MBT_UNSUPPORTED_API',
+          `app.${String(property)} is not available in the experimental M1 profile`);
+      },
+    });
     app.whenReady = () => this.readyPromise;
     app.isReady = () => this.ready;
     app.quit = () => this.quit();
-    app.getName = () => appInfo.name;
+    app.getName = () => this.appName;
     app.getVersion = () => appInfo.version;
     app.getAppPath = () => appInfo.root;
+    app.setName = name => {
+      if (typeof name !== 'string' || name.length === 0 || name.length > 256 || !name.isWellFormed()) {
+        fail('ELECTRON_MBT_INVALID_ARGUMENT', 'app.setName expects a non-empty well-formed string');
+      }
+      this.appName = name;
+    };
+    Object.defineProperty(app, 'name', { enumerable: true, get: () => this.appName });
+    Object.defineProperty(app, 'isPackaged', { enumerable: true, get: () => false });
+    app.getLocale = () => Intl.DateTimeFormat().resolvedOptions().locale;
+    app.getPath = name => {
+      if (typeof name !== 'string') fail('ELECTRON_MBT_INVALID_ARGUMENT', 'app.getPath expects a string');
+      if (name === 'exe') return process.execPath;
+      if (name === 'documents' || name === 'desktop' || name === 'downloads') {
+        const directory = path.join(this.appPaths.home, name);
+        fs.mkdirSync(directory, { recursive: true });
+        return directory;
+      }
+      if (!Object.hasOwn(this.appPaths, name)) fail('ELECTRON_MBT_INVALID_ARGUMENT', `Unknown app path ${name}`);
+      return this.appPaths[name];
+    };
+    app.setPath = (name, value) => {
+      if (name !== 'userData' && name !== 'logs' && name !== 'temp') {
+        fail('ELECTRON_MBT_INVALID_ARGUMENT', `app.setPath does not support ${String(name)} in the experimental M1 profile`);
+      }
+      if (typeof value !== 'string' || value.length === 0 || value.includes('\0') || !value.isWellFormed() || !path.isAbsolute(value)) {
+        fail('ELECTRON_MBT_INVALID_ARGUMENT', 'app.setPath expects an absolute well-formed path');
+      }
+      const resolved = path.resolve(value);
+      if (!within(this.userDataRoot, resolved) || resolved === this.userDataRoot) {
+        fail('ELECTRON_MBT_FILE_DENIED', 'app.setPath target is outside the isolated user-data root');
+      }
+      fs.mkdirSync(resolved, { recursive: true });
+      if (!fs.statSync(resolved).isDirectory()) fail('ELECTRON_MBT_INVALID_ARGUMENT', 'app.setPath target is not a directory');
+      this.appPaths[name] = resolved;
+    };
     this.app = app;
-    const runtime = this;
     this.BrowserWindow = class BrowserWindow extends EventEmitter {
       constructor(options) {
         super();

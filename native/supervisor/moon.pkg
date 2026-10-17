@@ -1,0 +1,12 @@
+import {
+  "moonbitlang/core/encoding/utf8" @utf8,
+}
+
+options(
+  "is-main": true,
+  "native-stub": ["supervisor.c"],
+  targets: {
+    "main.mbt": ["native"],
+    "main_js.mbt": ["js"],
+  },
+)

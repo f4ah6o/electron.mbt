@@ -633,5 +633,22 @@
       "path": "compatibility/apps/jmd-v0.2.3/sbom.cdx.json"
     },
     "note": "Flat production dependency closure with SHA-512 integrity. No license policy, signing, direct dependency graph or OS WebView component."
+  },
+  "nativeSupervisor": {
+    "status": "prototype",
+    "compatible": false,
+    "probe": "scripts/m1-native-supervisor.cjs",
+    "result": "PASS",
+    "backend": "AppKit+WKWebView",
+    "creator": "moonbit-native",
+    "evidence": "hello/ready/shutdown handshake; child exit status 0",
+    "open": [
+      "random session/root validation",
+      "watchdog/restart/faults",
+      "event/load routing",
+      "QuickJS runner ownership",
+      "Node-less app boot",
+      "signing/app identity"
+    ]
   }
 }

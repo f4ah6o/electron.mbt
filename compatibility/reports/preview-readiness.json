@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "status": "NOT_READY",
+  "compatible": false,
+  "gates": {
+    "G0": "partial",
+    "G1": "partial",
+    "G2": "NOT_RUN",
+    "G3": "NOT_RUN",
+    "G4": "partial"
+  },
+  "counts": {
+    "checks": 16,
+    "pass": 9,
+    "fail": 2,
+    "notRun": 5
+  },
+  "checks": [
+    {
+      "id": "no-verified-claims",
+      "status": "PASS",
+      "detail": "No verified rows found"
+    },
+    {
+      "id": "compatible-false",
+      "status": "PASS",
+      "detail": "manifest.compatible=false"
+    },
+    {
+      "id": "strict-profile-blocked",
+      "status": "PASS",
+      "detail": "electron-nodeless-v1 gate=blocked compatible=false"
+    },
+    {
+      "id": "adapted-profile-not-implemented",
+      "status": "NOT_RUN",
+      "detail": "electron-nodeless-adapted-v1 implementation=planned verification=not-run preloadMode=generated-adapter"
+    },
+    {
+      "id": "production-closure:moji-v1.0.5",
+      "status": "PASS",
+      "detail": "174 packages, nativeAddons=0"
+    },
+    {
+      "id": "sbom:moji-v1.0.5",
+      "status": "PASS",
+      "detail": "174 components, 174 with SHA-512"
+    },
+    {
+      "id": "production-closure:jmd-v0.2.3",
+      "status": "PASS",
+      "detail": "88 packages, nativeAddons=0"
+    },
+    {
+      "id": "sbom:jmd-v0.2.3",
+      "status": "PASS",
+      "detail": "88 components, 88 with SHA-512"
+    },
+    {
+      "id": "moji-preload-gate",
+      "status": "PASS",
+      "detail": "runtimeStatus=NOT_IMPLEMENTED; first blocker=contextBridge.exposeInMainWorld"
+    },
+    {
+      "id": "moji-preload-runtime",
+      "status": "FAIL",
+      "detail": "functional contextBridge/ipcRenderer is not implemented"
+    },
+    {
+      "id": "moji-m1-boot",
+      "status": "FAIL",
+      "detail": "ELECTRON_MBT_PRELOAD_UNSUPPORTED_API: Preload requested unsupported API: contextBridge.exposeInMainWorld"
+    },
+    {
+      "id": "supervisor-handshake",
+      "status": "PASS",
+      "detail": "PASS: random session, hello/ready, package.json main, local CJS + node_modules/exports fixture, window create/load/destroy, event notice, bootstrap status, no-preload status, QuickJS fixture app main/title, shutdown, second host restart, exit 0; 4 fault probes PASS"
+    },
+    {
+      "id": "node-less-moji-app-main",
+      "status": "NOT_RUN",
+      "detail": "Only a fixture app main is executed; Moji main is not booted"
+    },
+    {
+      "id": "preview-signing",
+      "status": "NOT_RUN",
+      "detail": "No Developer ID signing, notarization or clean-install evidence"
+    },
+    {
+      "id": "clean-install",
+      "status": "NOT_RUN",
+      "detail": "No clean machine install has been executed"
+    },
+    {
+      "id": "interactive-ime-ax",
+      "status": "NOT_RUN",
+      "detail": "No IME, focus or accessibility acceptance run"
+    }
+  ],
+  "note": "Readiness validator only; PASS means an invariant or honest record passed, not app compatibility. Overall NOT_READY blocks a preview claim."
+}

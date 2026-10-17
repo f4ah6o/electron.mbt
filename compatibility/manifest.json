@@ -657,5 +657,18 @@
     "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity, node_modules package exports(require/default)/main",
     "restart": "sequential second host start/hello/ready/shutdown; not an automatic restart policy",
     "bootstrap": "get-bootstrap-status observed/mainFrame/generation/index.html; preloadStatus=absent"
+  },
+  "previewReadiness": {
+    "status": "NOT_READY",
+    "compatible": false,
+    "report": "compatibility/reports/preview-readiness.json",
+    "gates": {
+      "G0": "partial",
+      "G1": "partial",
+      "G2": "NOT_RUN",
+      "G3": "NOT_RUN",
+      "G4": "partial"
+    },
+    "note": "Validator result; not app compatibility or a preview release."
   }
 }

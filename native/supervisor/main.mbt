@@ -13,6 +13,9 @@ extern "C" fn supervisor_read(fd : Int, buffer : Bytes, capacity : Int) -> Int =
 extern "C" fn supervisor_pid() -> Int = "moonbit_ebt_supervisor_pid"
 
 ///|
+extern "C" fn supervisor_timeout_ms() -> Int = "moonbit_ebt_supervisor_timeout_ms"
+
+///|
 extern "C" fn supervisor_app_main() -> Int = "moonbit_ebt_supervisor_app_main"
 
 ///|
@@ -76,8 +79,8 @@ fn send(fd : Int, frame : String) -> Bool {
 }
 
 ///|
-fn receive(fd : Int, buffer : Bytes) -> String? {
-  let length = supervisor_read(fd, buffer, buffer.length())
+fn receive_timeout(fd : Int, buffer : Bytes, timeout_ms : Int) -> String? {
+  let length = supervisor_read_timeout(fd, buffer, buffer.length(), timeout_ms)
   if length <= 0 {
     None
   } else {
@@ -87,6 +90,11 @@ fn receive(fd : Int, buffer : Bytes) -> String? {
       _ => None
     }
   }
+}
+
+///|
+fn receive(fd : Int, buffer : Bytes) -> String? {
+  receive_timeout(fd, buffer, supervisor_timeout_ms())
 }
 
 ///|
@@ -224,10 +232,60 @@ fn main {
   }
   let child_pid = supervisor_pid()
   let exit_status = supervisor_finish()
+  let second_session_buffer = Bytes::new(32)
+  if supervisor_session(second_session_buffer) != 32 {
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SESSION\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let second_session = @utf8.decode_lossy(second_session_buffer)
+  let second_fd = supervisor_start(
+    @utf8.encode("dist/electron-mbt-native-host"),
+    @utf8.encode("fixtures/native-app"),
+    @utf8.encode(second_session),
+  )
+  if second_fd < 0 {
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RESTART\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let second_hello = request_frame(second_session, 1, 0, 0, "hello", "{}")
+  let second_hello_sent = send(second_fd, second_hello)
+  let second_hello_reply = if second_hello_sent { receive(second_fd, buffer) } else { None }
+  if !second_hello_sent || second_hello_reply is None ||
+    !second_hello_reply.unwrap().contains("\"terminal\":\"success\"") ||
+    !second_hello_reply.unwrap().contains("AppKit+WKWebView") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RESTART\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let second_ready = request_frame(second_session, 2, 0, 0, "ready", "{}")
+  let second_ready_sent = send(second_fd, second_ready)
+  let second_ready_reply = if second_ready_sent { receive(second_fd, buffer) } else { None }
+  if !second_ready_sent || second_ready_reply is None ||
+    !second_ready_reply.unwrap().contains("\"terminal\":\"success\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RESTART\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let second_pid = supervisor_pid()
+  let second_shutdown = request_frame(second_session, 3, 0, 0, "shutdown", "{}")
+  let second_shutdown_sent = send(second_fd, second_shutdown)
+  let second_shutdown_reply = if second_shutdown_sent { receive(second_fd, buffer) } else { None }
+  if !second_shutdown_sent || second_shutdown_reply is None {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RESTART\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let second_exit_status = supervisor_finish()
+  if second_exit_status != 0 {
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RESTART_EXIT\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   println("{\"status\":\"PASS\",\"probe\":\"native-supervisor-window-load\",\"backend\":\"AppKit+WKWebView\",\"childPid\":" +
     child_pid.to_string() + ",\"exitStatus\":" + exit_status.to_string() +
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"creator\":\"moonbit-native\",\"compatible\":false}")
+    "\",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
+    ",\"secondExitStatus\":" + second_exit_status.to_string() +
+    ",\"creator\":\"moonbit-native\",\"compatible\":false}")
 }

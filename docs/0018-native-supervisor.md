@@ -19,7 +19,7 @@ complete supervisor, app launcher or Node-less app boot.
 - 4-byte big-endian length framing around canonical JSON envelopes
 - `hello` → `ready` → `create-window` → `begin-load` → `load-file` on the
   load lane → event-lane `isolated-preload-attested` → `destroy-window` →
-  `shutdown`
+  `shutdown` → a second host `hello`/`ready`/`shutdown` restart
 - the loaded file is resolved under the canonical app root by C and sent as a
   JSON path; the load ACK must contain `didFinishLoad:true` and `index.html`
 - a linked QuickJS runtime reads `fixtures/native-app/main.js` and evaluates
@@ -45,13 +45,14 @@ Node-API, `sync_channel.node` or the JS runner.
 the final JSON line:
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":83324,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"moduleGraph":true,"packageGraph":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","creator":"moonbit-native","compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":84610,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"moduleGraph":true,"packageGraph":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","restarts":1,"secondPid":84616,"secondExitStatus":0,"creator":"moonbit-native","compatible":false}
 ```
 
 Observed: real native host startup, `hello`/`ready` replies, window creation,
 `begin-load`, a load-channel `load-file` ACK with `didFinishLoad:true`, an
 event-channel `isolated-preload-attested` notice, a linked-QuickJS fixture app
-main, window destroy, `shutdown`, and child exit status 0. A native test also checks
+main, window destroy, `shutdown`, a second host start/stop, and both child
+exit statuses 0. A native test also checks
 that sessions are 32 lowercase hex characters and differ between draws.
 
 `node scripts/m1-native-supervisor-fault.cjs` passes two negative cases:
@@ -60,6 +61,8 @@ that sessions are 32 lowercase hex characters and differ between draws.
 - a missing app root fails before spawn (`ELECTRON_MBT_SUPERVISOR_START`)
 - a package `main` of `../outside.js` fails at app-main admission
   (`ELECTRON_MBT_SUPERVISOR_APP_MAIN`)
+- a sleeping child with `ELECTRON_MBT_SUPERVISOR_TIMEOUT_MS=500` hits the
+  bounded handshake timeout (`ELECTRON_MBT_SUPERVISOR_HELLO`)
 
 Both set `compatible:false` and do not leave the intended session running.
 
@@ -68,8 +71,10 @@ Both set `compatible:false` and do not leave the intended session running.
 - fixed default `fixtures/m1` root; test-only env overrides select a different
   binary/root. Production needs normal argument/config plumbing and must not
   accept arbitrary supervisor binary/root from ambient environment
-- no restart/watchdog policy or orphan sweep beyond the 5s finish timeout and
-  explicit kill; no event-loop ownership or broad fault injection
+- no automatic restart policy/backoff or orphan sweep beyond explicit
+  start/finish, the 5s finish reap and SIGKILL; the sequential second start is
+  a restart probe, not a resilience policy
+- no general event-loop ownership or broad fault injection
 - load/event channels are kept open but the prototype only uses control
 - the QuickJS app main and local CJS loader are a C/JS fixture probe over a
   fixed source list; they are not `runtime/runner`, a general node_modules

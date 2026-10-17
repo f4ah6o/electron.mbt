@@ -638,14 +638,14 @@
     "status": "prototype",
     "compatible": false,
     "probe": "scripts/m1-native-supervisor.cjs",
-    "result": "PASS: random session, hello/ready, package.json main, local CJS + node_modules/exports fixture graph, window create/load/destroy, event notice, QuickJS fixture app main/title, shutdown, exit 0; fault probes PASS",
+    "result": "PASS: random session, hello/ready, package.json main, local CJS + node_modules/exports fixture, window create/load/destroy, event notice, QuickJS fixture app main/title, shutdown, second host restart, exit 0; 4 fault probes PASS",
     "backend": "AppKit+WKWebView",
     "creator": "moonbit-native",
     "evidence": "hello/ready/shutdown handshake; child exit status 0",
     "open": [
-      "restart/watchdog policy",
+      "automatic restart/backoff/watchdog policy",
       "general event queue/close-request routing",
-      "runtime/runner/node_modules/exports conditions in supervisor",
+      "runtime/runner/node_modules conditions in supervisor",
       "preload/renderer ingress",
       "Node-less Moji app main boot",
       "signing/app identity"
@@ -654,6 +654,7 @@
     "windowLoad": "fixtures/m1/index.html via load channel; didFinishLoad true",
     "event": "isolated-preload-attested read from event lane",
     "appMain": "fixtures/native-app/package.json main=src/main.js; appMain=native-fixture; appTitle=native-app-window; basic main resolution only",
-    "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity, node_modules package exports(require/default)/main"
+    "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity, node_modules package exports(require/default)/main",
+    "restart": "sequential second host start/hello/ready/shutdown; not an automatic restart policy"
   }
 }

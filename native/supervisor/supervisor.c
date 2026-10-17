@@ -252,6 +252,16 @@ int32_t moonbit_ebt_supervisor_session(moonbit_bytes_t buffer) {
 
 int32_t moonbit_ebt_supervisor_pid(void) { return (int32_t)child_pid; }
 
+int32_t moonbit_ebt_supervisor_timeout_ms(void) {
+  const char *value = getenv("ELECTRON_MBT_SUPERVISOR_TIMEOUT_MS");
+  if (value != NULL) {
+    char *end = NULL;
+    long parsed = strtol(value, &end, 10);
+    if (end != value && *end == '\0' && parsed >= 100 && parsed <= 60000) return (int32_t)parsed;
+  }
+  return 15000;
+}
+
 int32_t moonbit_ebt_supervisor_finish(void) {
   if (control_fd >= 0) { close(control_fd); control_fd = -1; }
   if (load_fd >= 0) { close(load_fd); load_fd = -1; }

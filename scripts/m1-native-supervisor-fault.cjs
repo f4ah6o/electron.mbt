@@ -1,4 +1,6 @@
 'use strict';
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -19,8 +21,16 @@ function run(label, env) {
   }
   return { label, status: 'PASS', code: parsed.code };
 }
+const sleepDir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-supervisor-sleep-'));
+const sleepBinary = path.join(sleepDir, 'sleep.sh');
+fs.writeFileSync(sleepBinary, '#!/bin/sh\nexec sleep 30\n', { mode: 0o755 });
+process.once('exit', () => fs.rmSync(sleepDir, { recursive: true, force: true }));
 const cases = [];
 cases.push(run('dead-child', { ELECTRON_MBT_SUPERVISOR_BINARY: '/usr/bin/false' }));
 cases.push(run('missing-root', { ELECTRON_MBT_SUPERVISOR_ROOT: '/tmp/electron-mbt-no-such-supervisor-root' }));
 cases.push(run('entry-traversal', { ELECTRON_MBT_SUPERVISOR_ROOT: path.join(root, 'fixtures/native-app-invalid') }));
+cases.push(run('handshake-timeout', {
+  ELECTRON_MBT_SUPERVISOR_BINARY: sleepBinary,
+  ELECTRON_MBT_SUPERVISOR_TIMEOUT_MS: '500',
+}));
 process.stdout.write(`${JSON.stringify({ status: 'PASS', probe: 'native-supervisor-fault', cases, compatible: false })}\n`);

@@ -1,21 +1,21 @@
 # Adapted preload / generated page API (fixture)
 
-Status: **fixture-only, EP-13 partial**. This is the second implemented slice of
+Status: **fixture-only, EP-13 partial**. This is the third implemented slice of
 `electron-nodeless-adapted-v1` preload adaptation. It does **not** run the Moji
-preload, implement `contextBridge`/`ipcRenderer`, connect native renderer
-ingress or claim app compatibility.
+preload, implement `contextBridge`/`ipcRenderer`, connect native application
+ingress to Main or claim app compatibility.
 
 ## Contract
 
 - [compatibility/adapted-preload-v1.json](compatibility/adapted-preload-v1.json)
   records the adapted profile, `originalPreload: NOT_EXECUTED`, the generated
   adapter path/hash, page-world document-start injection, the fixed topic and
-  call tables, the bounded first-call queue and
-  `semantics.ingress: "ABSENT"`.
+  call tables, the bounded first-call queue, `semantics.ingress: "ABSENT"` and
+  the test-triggered native event path.
 - [scripts/adapted-preload-check.cjs](scripts/adapted-preload-check.cjs) rejects
   a mismatched profile or schema, a hash mismatch, an original preload, a
   non-page/document-start adapter, a topic/call/queue table that differs from
-  the adapter manifest, and unsupported bridge semantics.
+  the adapter manifest, a missing event path and unsupported bridge semantics.
 - [scripts/adapted-adapter.cjs](scripts/adapted-adapter.cjs) deterministically
   generates the adapter from `fixtures/native-app/adapted/api.json` (schema 2).
 - [scripts/adapted-api-check.cjs](scripts/adapted-api-check.cjs) executes the
@@ -49,56 +49,76 @@ signal cannot replay it. A later call rejects with
 `ELECTRON_MBT_ADAPTER_INGRESS_UNAVAILABLE`. These are page-leaf pending
 resolvers; native admission and revocation remain the authority.
 
-The generator accepts a host seam from `window.__electronMbtIngress` and deletes
-it before page scripts run. The test harness uses that seam for positive queue
-flush and event delivery. Production native code currently does not install a
-host, so the page path observes the bounded timeout and overflow behavior only.
+Local event delivery is independent of the RPC queue deadline. The native host
+installs a host object at document-start that exposes only a nonce-bound page
+dispatcher for the fixed topics; it does not signal `DocumentIngressReady`. The
+adapter captures that host and deletes the handoff global before page scripts
+run. The Node test host is still used for positive queue flush because no
+application ingress is wired.
 
 ## Native execution
 
 - `NativeHost.m` accepts `install-adapted-adapter` before the document load.
   The file is canonicalized under the app root, bounded to 65,536 bytes and
   required to be UTF-8.
-- `installBootstrapScript` wraps the pinned adapter body with a per-document
-  nonce and injects it at document start in `WKContentWorld.pageWorld`, before
-  the page's own scripts.
-- The wrapper reports `electronMbtAdapterInstalled` with the nonce. Native
-  accepts the receipt only from the current main-frame page-world document and
-  records whether it arrived before `LoadComplete`. This is an installation
-  observation, not a sender grant or ingress authorization.
+- `installBootstrapScript` injects a native host script and then the pinned
+  adapter body at document start in `WKContentWorld.pageWorld`, before the
+  page's own scripts. The host defines a non-configurable
+  `window.__electronMbtDispatch(nonce, topic, payload)` that throws on a wrong
+  nonce and otherwise calls the adapter's page-local emitter. The nonce is
+  lexical; page scripts can call the dispatcher but cannot read the nonce.
+- The adapter wrapper separately reports `electronMbtAdapterInstalled` with a
+  per-document nonce. Native accepts the receipt only from the current
+  main-frame page-world document and records whether it arrived before
+  `LoadComplete`. This is an installation observation, not a sender grant or
+  ingress authorization.
+- The private control lane exposes `dispatch-adapted-event` for the fixture. It
+  accepts only the three fixed topics, a bounded value and the current
+  generation; it requires an observed adapter installation and a completed
+  load. It then evaluates the page-world dispatcher and returns a correlated
+  `delivered` reply. It is a test trigger, not an application event route.
 - `fixtures/native-app/index.html` checks the page-local listener/disposer
-  shape and the queue timeout/overflow codes, then sets the title to
-  `adapted-api-ok`.
-- The supervisor verifies the title, `get-adapted-status`
-  (`observed`, `documentStartBeforeLoad`, `ingress: absent`) and the existing
-  window load, bootstrap and absent-preload observations.
+  shape, rejects a forged page nonce and checks the queue timeout/overflow
+  codes. The supervisor then delivers `doc:open` and verifies the page title
+  changes to `adapted-event-native-delivery`.
+- The supervisor explicitly loads generation 2, re-checks the adapter
+  installation, bootstrap and absent-preload observations, and delivers
+  `doc:open` again. The new document title becomes
+  `adapted-event-native-reload`; the old generation cannot receive the event.
+  Unknown topics and stale generations are rejected before any page effect.
 - A fresh document realm starts with an empty listener table. The existing
-  navigation policy still rejects an unrequested same-file reload, so native
-  reload event delivery remains untested.
+  navigation policy still rejects an unrequested same-file reload; the reload
+  probe uses an explicit `begin-load` and `load-file` for generation 2.
 
 Observed fixture probe (macOS, AppKit + WKWebView):
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"adapted-api-ok","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"adapted-api-ok","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","reloadGeneration":2,"compatible":false}
 ```
 
 Adapter hash:
-`99b76fa74f66eb519868dc23189fe4da94144189f5d91efe8c8e8cd4682720bc`.
+`49aeda61046df2110756c88dbf80a54564dc7d4382ab53a71c8129b88ae7728b`.
 
-The contract harness reports 13 cases, 0 failed, including duplicate listener
+The contract harness reports 14 cases, 0 failed, including duplicate listener
 records, emission snapshots, nested emission, listener throw, queue FIFO with
 call-time argument snapshots, count/byte overflow, ready timeout with late-ready
-rejection, single settlement, non-JSON argument rejection and fresh-realm
-isolation. It is a unit-level check, not native event-delivery evidence.
+rejection, single settlement, non-JSON argument rejection, fresh-realm
+isolation and local events after the RPC queue deadline. It is a unit-level
+check; the native probe is the real WebView evidence for the test-triggered
+event path.
 
 ## Deliberate limits
 
 - no original preload execution and no `contextBridge`/`ipcRenderer`
-- no native ingress, main/renderer IPC, invoke/reply or sender/document grant
-- no native event delivery; the positive event path uses a test host only
-- no `DocumentIngressReady` transition or first-call flush in native; only the
-  installation receipt, bounded timeout/overflow and fail-closed page API are
-  exercised on a real WKWebView
+- no native application ingress, Main dispatch, invoke/reply or sender/document
+  grant
+- native event delivery is a private-lane test trigger; there is no production
+  native event route, `webContents.send`, or Electron event-ordering evidence
+- no `DocumentIngressReady` transition or native first-call flush; only the
+  installation receipt, bounded timeout/overflow, fail-closed page API and the
+  test-triggered event path are exercised on a real WKWebView
+- event delivery is exercised after load; early native events and host-loss
+  delivery are untested
 - no Moji preload adaptation, no Moji app main or app scenario
 - this is not `electron-nodeless-v1` strict compatibility and must not be
   admitted as strict evidence
@@ -106,10 +126,10 @@ isolation. It is a unit-level check, not native event-delivery evidence.
 ## Next
 
 - connect the native application-message handler and actual sender/document
-  admission (EP-14) and replace the test host seam
+  admission to Main (EP-14) and replace the test host seam
 - define and observe the actual `DocumentIngressReady` transitions separately
   from `LoadComplete` (EP-15)
-- deliver fixed native topics to the page-local listener table and test
-  reload/host-loss revocation
+- turn the test-triggered event path into a production fixed-topic route and
+  test early events, host loss and listener exceptions natively
 - generate adapters from Moji's actual preload API and connection graphs
 - run Moji with the adapted profile and record app-scenario evidence

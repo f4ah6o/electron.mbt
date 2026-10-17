@@ -647,7 +647,7 @@
       "general event queue/close-request routing",
       "runtime/runner/node_modules conditions in supervisor",
       "preload/renderer ingress",
-      "adapted native ingress/event delivery",
+      "adapted native application ingress and production event routing",
       "Node-less Moji app main boot",
       "signing/app identity"
     ],
@@ -658,7 +658,7 @@
     "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity, node_modules package exports(require/default)/main",
     "restart": "sequential second host start/hello/ready/shutdown; not an automatic restart policy",
     "bootstrap": "get-bootstrap-status observed/mainFrame/generation/index.html; preloadStatus=absent",
-    "adaptedAdapter": "get-adapted-status observed/documentStartBeforeLoad=true/ingress=absent; pageTitle=adapted-api-ok; page-local listeners and bounded queue fixture only",
+    "adaptedAdapter": "get-adapted-status observed/documentStartBeforeLoad=true/ingress=absent; pageTitle=adapted-api-ok; dispatch-adapted-event delivers doc:open to the page listener after load and after a generation-2 reload; unknown topic and stale generation are rejected; a forged page nonce is rejected page-side",
     "retry": "initial start/handshake retries up to 3 with 100 ms backoff; flaky wrapper reaches attempts=2; no crash-after-ready restart policy"
   },
   "previewReadiness": {
@@ -694,7 +694,7 @@
     "record": "compatibility/adapted-preload-v1.json",
     "schema": 2,
     "adapter": "fixtures/native-app/adapted/page-api.js",
-    "adapterSHA256": "99b76fa74f66eb519868dc23189fe4da94144189f5d91efe8c8e8cd4682720bc",
+    "adapterSHA256": "49aeda61046df2110756c88dbf80a54564dc7d4382ab53a71c8129b88ae7728b",
     "injection": "page-world document-start",
     "installationObservation": "native nonce before LoadComplete",
     "originalPreload": "NOT_EXECUTED",
@@ -704,6 +704,8 @@
     "listenerTable": "page-local",
     "disposer": "synchronous-idempotent",
     "ingress": "ABSENT",
-    "note": "Generated page-local listener and ingress-gated Promise-call fixture only. Native ingress, ipcRenderer/contextBridge, Moji preload adaptation and app boot remain absent."
+    "eventDelivery": "native-test-triggered-fixed-topics",
+    "eventTrigger": "dispatch-adapted-event",
+    "note": "Generated page-local listener and ingress-gated Promise-call fixture only. Native event delivery is a private-lane test trigger; application ingress, ipcRenderer/contextBridge, Moji preload adaptation and app boot remain absent."
   }
 }

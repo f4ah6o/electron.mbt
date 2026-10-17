@@ -220,6 +220,20 @@ const cases = [
     secondHost.emit('doc:open', null);
     assert.equal(called, 1);
   }],
+  ['local events survive the RPC queue deadline', async () => {
+    const host = createHost();
+    const { api } = load(host);
+    const seen = [];
+    api.onOpenDocument(value => seen.push(value));
+    const expired = api.getSettings().then(
+      () => assert.fail('queued call unexpectedly resolved'),
+      error => error,
+    );
+    await wait(420);
+    assert.equal(code(await expired), 'ELECTRON_MBT_ADAPTER_INGRESS_TIMEOUT');
+    host.emit('doc:open', 'after-deadline');
+    assert.deepEqual(seen, ['after-deadline']);
+  }],
 ];
 
 async function run() {

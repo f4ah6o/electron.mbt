@@ -23,6 +23,7 @@ test('the generated adapted page adapter is deterministic and admitted', () => {
   assert.equal(admitted.topics, manifest.topics.length);
   assert.equal(admitted.calls, manifest.calls.length);
   assert.equal(admitted.ingress, 'ABSENT');
+  assert.equal(admitted.eventDelivery, 'native-test-triggered-fixed-topics');
   assert.deepEqual(admitted.errors, []);
 });
 

@@ -104,6 +104,21 @@ static NSString *canonicalPath(NSString *path) {
   return [NSString stringWithUTF8String:resolved];
 }
 
+static NSString *jsQuotedString(NSString *value) {
+  if (![value isKindOfClass:[NSString class]]) return nil;
+  NSError *error = nil;
+  NSData *data = [NSJSONSerialization dataWithJSONObject:@[value] options:0 error:&error];
+  NSString *encoded = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+  if (error || encoded.length < 2) return nil;
+  NSString *quoted = [encoded substringWithRange:NSMakeRange(1, encoded.length - 2)];
+  // U+2028/U+2029 are valid JSON but terminate a JavaScript string literal.
+  NSString *lineSeparator = [NSString stringWithFormat:@"%C", (unichar)0x2028];
+  NSString *paragraphSeparator = [NSString stringWithFormat:@"%C", (unichar)0x2029];
+  quoted = [quoted stringByReplacingOccurrencesOfString:lineSeparator withString:@"\\u2028"];
+  quoted = [quoted stringByReplacingOccurrencesOfString:paragraphSeparator withString:@"\\u2029"];
+  return quoted;
+}
+
 static NSColor *windowBackgroundColor(NSString *value) {
   if (![value isKindOfClass:[NSString class]] || value.length != 7 || ![value hasPrefix:@"#"]) return nil;
   NSString *hex = [value substringFromIndex:1];
@@ -153,6 +168,7 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, copy) NSString *preloadSource;
 @property(nonatomic, copy) NSString *adaptedAdapterSource;
 @property(nonatomic, copy) NSString *adaptedAdapterNonce;
+@property(nonatomic, copy) NSString *adaptedEventNonce;
 @property(nonatomic) long long adaptedAdapterObservedGeneration;
 @property(nonatomic) BOOL adaptedAdapterBeforeLoad;
 @property(nonatomic, copy) NSString *preloadStatus;
@@ -196,6 +212,7 @@ static NSString *preloadDigest(NSData *data) {
     self.preloadSource = preloadSource;
     self.adaptedAdapterSource = nil;
     self.adaptedAdapterNonce = nil;
+    self.adaptedEventNonce = nil;
     self.adaptedAdapterObservedGeneration = 0;
     self.adaptedAdapterBeforeLoad = NO;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
@@ -258,6 +275,7 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadStatus = nil;
   self.preloadDetail = nil;
   self.adaptedAdapterNonce = nil;
+  self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
   WKUserContentController *controller = self.web.configuration.userContentController;
@@ -270,6 +288,34 @@ static NSString *preloadDigest(NSData *data) {
     forMainFrameOnly:YES inContentWorld:self.bootstrapWorld];
   [controller addUserScript:bootstrap];
   if (self.adaptedAdapterSource) {
+    // The host object only installs a nonce-bound page dispatcher for fixed
+    // topics. It grants no native ingress, and the adapter deletes the global
+    // handoff before any page script can read it.
+    self.adaptedEventNonce = [[NSUUID UUID] UUIDString];
+    NSString *hostSource = [NSString stringWithFormat:
+      @"(function (__adaptedEventNonce) {\n"
+       "const host = Object.freeze({\n"
+       "  onEvent: function (emit) {\n"
+       "    Object.defineProperty(window, '__electronMbtDispatch', {\n"
+       "      value: function (nonce, topic, payload) {\n"
+       "        if (nonce !== __adaptedEventNonce) {\n"
+       "          throw new Error('ELECTRON_MBT_ADAPTER_EVENT_DENIED');\n"
+       "        }\n"
+       "        emit(topic, payload);\n"
+       "      },\n"
+       "      enumerable: false, configurable: false, writable: false\n"
+       "    });\n"
+       "  }\n"
+       "});\n"
+       "Object.defineProperty(window, '__electronMbtIngress', {\n"
+       "  value: host, enumerable: false, configurable: true, writable: false\n"
+       "});\n"
+       "})(\"%@\");",
+      self.adaptedEventNonce];
+    WKUserScript *host = [[WKUserScript alloc] initWithSource:hostSource
+      injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+      forMainFrameOnly:YES inContentWorld:[WKContentWorld pageWorld]];
+    [controller addUserScript:host];
     // The pinned adapter body is wrapped only to carry a per-document nonce and
     // report its document-start execution. The nonce is lexical, so page scripts
     // cannot replay the installation observation, and the observation grants no
@@ -572,6 +618,7 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadFinishedGeneration = 0;
   self.adaptedAdapterSource = nil;
   self.adaptedAdapterNonce = nil;
+  self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
@@ -591,6 +638,7 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadFinishedGeneration = 0;
   self.adaptedAdapterSource = nil;
   self.adaptedAdapterNonce = nil;
+  self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
   [self.web.configuration.userContentController removeAllUserScripts];
@@ -798,6 +846,7 @@ static NSString *preloadDigest(NSData *data) {
     window.preloadStatus = nil;
     window.preloadFinishedGeneration = 0;
     window.adaptedAdapterNonce = nil;
+    window.adaptedEventNonce = nil;
     window.adaptedAdapterObservedGeneration = 0;
     window.adaptedAdapterBeforeLoad = NO;
     [window.web.configuration.userContentController removeAllUserScripts];
@@ -1023,6 +1072,63 @@ static NSString *preloadDigest(NSData *data) {
       @"generation": @(window.generation),
       @"documentStartBeforeLoad": @(window.adaptedAdapterBeforeLoad),
       @"ingress": @"absent"});
+    return;
+  }
+  if ([operation isEqualToString:@"dispatch-adapted-event"]) {
+    if (payload.count != 2) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *topic = payload[@"topic"];
+    NSString *value = payload[@"value"];
+    if (![topic isKindOfClass:[NSString class]] ||
+        ![@[@"doc:open", @"app:request-close", @"update:state"] containsObject:topic] ||
+        ![value isKindOfClass:[NSString class]] || value.length == 0 || value.length > 256) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive || window.generation <= 0 ||
+        window.adaptedEventNonce == nil ||
+        window.adaptedAdapterObservedGeneration != window.generation ||
+        window.loadDone != nil || window.loadingNavigation != nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    NSError *jsonError = nil;
+    NSData *payloadData = [NSJSONSerialization dataWithJSONObject:
+      @{@"source": @"native", @"value": value} options:0 error:&jsonError];
+    NSString *payloadText = payloadData ?
+      [[NSString alloc] initWithData:payloadData encoding:NSUTF8StringEncoding] : nil;
+    NSString *nonce = jsQuotedString(window.adaptedEventNonce);
+    NSString *quotedTopic = jsQuotedString(topic);
+    NSString *quotedPayload = jsQuotedString(payloadText);
+    if (jsonError != nil || payloadText == nil || nonce == nil ||
+        quotedTopic == nil || quotedPayload == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
+      return;
+    }
+    // This is a private-lane fixture trigger, not an application event route.
+    // The page dispatcher also checks the nonce; a stale or destroyed document
+    // cannot receive the event even if the completion block runs late.
+    NSString *script = [NSString stringWithFormat:
+      @"window.__electronMbtDispatch(%@, %@, JSON.parse(%@));",
+      nonce, quotedTopic, quotedPayload];
+    long long eventGeneration = generation.longLongValue;
+    __weak MBTWindow *weakWindow = window;
+    [window.web evaluateJavaScript:script inFrame:nil
+      inContentWorld:[WKContentWorld pageWorld]
+      completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        (void)result;
+        MBTWindow *candidate = weakWindow;
+        if (error != nil || candidate == nil || !candidate.contentAlive ||
+            candidate.generation != eventGeneration ||
+            candidate.adaptedEventNonce == nil) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_ADAPTED_EVENT_FAILED"});
+          return;
+        }
+        done(@"success", @{@"delivered": @YES, @"topic": topic,
+          @"generation": @(eventGeneration)});
+      }];
     return;
   }
   if ([operation isEqualToString:@"get-window-min-size"] ||

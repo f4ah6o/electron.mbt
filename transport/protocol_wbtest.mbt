@@ -490,3 +490,38 @@ test "What: adapted installation status is bound to the current document and Loa
   }
   assert_true(validate(adapted_status_wire("{\"x\":1}", "")) is Err(_))
 }
+
+///|
+fn adapted_event_wire(payload : String, suffix : String) -> String {
+  "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":2,\"generation\":1,\"operation\":\"dispatch-adapted-event\",\"payload\":" +
+    payload + suffix + "}"
+}
+
+///|
+test "What: adapted event delivery is fixed-topic and generation-bound" {
+  assert_true(validate(adapted_event_wire("{\"topic\":\"doc:open\",\"value\":\"native\"}", "")) is Ok(_))
+  let session = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(session.register(adapted_event_wire("{\"topic\":\"doc:open\",\"value\":\"native\"}", "")) is Ok(_))
+  let completed = adapted_event_wire(
+    "{\"delivered\":true,\"topic\":\"doc:open\",\"generation\":1}",
+    ",\"terminal\":\"success\"",
+  )
+  assert_true(session.accept(completed) is Ok(_))
+  for malformed in [
+    "{}",
+    "{\"topic\":\"unknown\",\"value\":\"x\"}",
+    "{\"topic\":\"doc:open\",\"value\":\"\"}",
+    "{\"topic\":\"doc:open\",\"value\":123}",
+    "{\"topic\":\"doc:open\",\"value\":\"x\",\"extra\":1}",
+  ] {
+    assert_true(validate(adapted_event_wire(malformed, "")) is Err(_))
+  }
+  for malformed in [
+    "{\"delivered\":false,\"topic\":\"doc:open\",\"generation\":1}",
+    "{\"delivered\":true,\"topic\":\"doc:open\",\"generation\":2}",
+    "{\"delivered\":true,\"topic\":\"unknown\",\"generation\":1}",
+    "{\"delivered\":true,\"topic\":\"doc:open\"}",
+  ] {
+    assert_true(validate(adapted_event_wire(malformed, ",\"terminal\":\"success\"")) is Err(_))
+  }
+}

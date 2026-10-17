@@ -19,6 +19,29 @@
     first();
     first();
     second();
+    api.onOpenDocument(function (payload) {
+      if (payload && payload.source === 'native' && typeof payload.value === 'string') {
+        document.title = 'adapted-event-' + payload.value;
+      } else {
+        document.title = 'adapted-event-malformed';
+      }
+    });
+    const disposed = api.onOpenDocument(function () {
+      document.title = 'adapted-event-disposed';
+    });
+    disposed();
+    if (typeof window.__electronMbtDispatch !== 'function') {
+      return finish('adapted-dispatch-missing');
+    }
+    let forgedRejected = false;
+    try {
+      window.__electronMbtDispatch('forged', 'doc:open', { source: 'page', value: 'forged' });
+    } catch (_) {
+      forgedRejected = true;
+    }
+    if (!forgedRejected) {
+      return finish('adapted-forged-accepted');
+    }
     const calls = [];
     for (let index = 0; index < 7; index += 1) {
       calls.push(index < 6 ? api.getSettings() : api.getUpdateState({ theme: 'light' }));

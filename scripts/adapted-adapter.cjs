@@ -194,7 +194,6 @@ function buildAdapter(input) {
     };
   };
   const emit = function (topic, payload) {
-    if (terminated) return;
     if (TOPICS.indexOf(topic) < 0) throw adapterError('ELECTRON_MBT_ADAPTER_TOPIC', 'unknown adapted topic');
     const table = listeners.get(topic);
     if (!table || table.length === 0) return;

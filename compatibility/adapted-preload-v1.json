@@ -7,7 +7,7 @@
   "adapter": {
     "path": "fixtures/native-app/adapted/page-api.js",
     "manifest": "fixtures/native-app/adapted/api.json",
-    "sha256": "99b76fa74f66eb519868dc23189fe4da94144189f5d91efe8c8e8cd4682720bc",
+    "sha256": "49aeda61046df2110756c88dbf80a54564dc7d4382ab53a71c8129b88ae7728b",
     "world": "page",
     "injection": "document-start",
     "installationObservation": "native nonce, page-world message before LoadComplete"
@@ -39,6 +39,8 @@
     "disposer": "synchronous-idempotent",
     "callQueue": "bounded-before-DocumentIngressReady",
     "ingress": "ABSENT",
-    "note": "Fixture adapter only. No main/renderer IPC, no Moji preload adaptation, no compatibility claim."
+    "eventDelivery": "native-test-triggered-fixed-topics",
+    "eventTrigger": "dispatch-adapted-event",
+    "note": "Fixture adapter only. Native event delivery is a private-lane test trigger; no production native event route, main/renderer IPC, Moji preload adaptation or compatibility claim."
   }
 }

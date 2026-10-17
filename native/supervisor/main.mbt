@@ -255,7 +255,57 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PAGE_API\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let bootstrap = request_frame(session, 10, 1, 1, "get-bootstrap-status", "{}")
+  let unknown_event = request_frame(session, 13, 1, 1, "dispatch-adapted-event",
+    "{\"topic\":\"unknown\",\"value\":\"x\"}")
+  let unknown_event_sent = send(fd, unknown_event)
+  let unknown_event_reply = if unknown_event_sent { receive(fd, buffer) } else { None }
+  if !unknown_event_sent || unknown_event_reply is None ||
+    !unknown_event_reply.unwrap().contains("\"terminal\":\"failure\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTED_EVENT_TOPIC\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let stale_before = request_frame(session, 14, 1, 0, "dispatch-adapted-event",
+    "{\"topic\":\"doc:open\",\"value\":\"stale\"}")
+  let stale_before_sent = send(fd, stale_before)
+  let stale_before_reply = if stale_before_sent { receive(fd, buffer) } else { None }
+  if !stale_before_sent || stale_before_reply is None ||
+    !stale_before_reply.unwrap().contains("\"terminal\":\"failure\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTED_EVENT_STALE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let event = request_frame(session, 15, 1, 1, "dispatch-adapted-event",
+    "{\"topic\":\"doc:open\",\"value\":\"native-delivery\"}")
+  let event_sent = send(fd, event)
+  let event_reply = if event_sent { receive(fd, buffer) } else { None }
+  if !event_sent || event_reply is None ||
+    !event_reply.unwrap().contains("\"terminal\":\"success\"") ||
+    !event_reply.unwrap().contains("\"delivered\":true") ||
+    !event_reply.unwrap().contains("\"topic\":\"doc:open\"") ||
+    !event_reply.unwrap().contains("\"generation\":1") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTED_EVENT\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let mut event_title_ok = false
+  for _attempt = 0; _attempt < 40; _attempt = _attempt + 1 {
+    let event_title_request = request_frame(session, 16, 1, 1, "get-web-contents-title", "{}")
+    let event_title_sent = send(fd, event_title_request)
+    let event_title_reply = if event_title_sent { receive(fd, buffer) } else { None }
+    if event_title_sent && event_title_reply is Some(_) &&
+      event_title_reply.unwrap().contains("\"title\":\"adapted-event-native-delivery\"") {
+      event_title_ok = true
+      break
+    }
+    supervisor_sleep_ms(50)
+  }
+  if !event_title_ok {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTED_EVENT_TITLE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let bootstrap = request_frame(session, 17, 1, 1, "get-bootstrap-status", "{}")
   let bootstrap_sent = send(fd, bootstrap)
   let bootstrap_reply = if bootstrap_sent { receive(fd, buffer) } else { None }
   if !bootstrap_sent || bootstrap_reply is None ||
@@ -267,7 +317,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_BOOTSTRAP\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let preload = request_frame(session, 11, 1, 1, "get-preload-status", "{}")
+  let preload = request_frame(session, 18, 1, 1, "get-preload-status", "{}")
   let preload_sent = send(fd, preload)
   let preload_reply = if preload_sent { receive(fd, buffer) } else { None }
   if !preload_sent || preload_reply is None || !preload_reply.unwrap().contains("\"status\":\"absent\"") {
@@ -275,7 +325,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PRELOAD_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let adapted = request_frame(session, 12, 1, 1, "get-adapted-status", "{}")
+  let adapted = request_frame(session, 19, 1, 1, "get-adapted-status", "{}")
   let adapted_sent = send(fd, adapted)
   let adapted_reply = if adapted_sent { receive(fd, buffer) } else { None }
   if !adapted_sent || adapted_reply is None ||
@@ -286,7 +336,125 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTED_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let destroy = request_frame(session, 13, 1, 1, "destroy-window", "{}")
+  let reload_begin = request_frame(session, 20, 1, 2, "begin-load", "{}")
+  let reload_begin_sent = send(fd, reload_begin)
+  let reload_begin_reply = if reload_begin_sent { receive(fd, buffer) } else { None }
+  if !reload_begin_sent || reload_begin_reply is None ||
+    !reload_begin_reply.unwrap().contains("\"terminal\":\"success\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_BEGIN\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_load = request_frame(session, 21, 1, 2, "load-file",
+    "{\"file\":\"" + json_path(@utf8.decode_lossy(file_path[:path_length])) + "\"}")
+  let reload_load_sent = send(load_fd, reload_load)
+  let reload_load_reply = if reload_load_sent { receive(load_fd, buffer) } else { None }
+  if !reload_load_sent || reload_load_reply is None ||
+    !reload_load_reply.unwrap().contains("\"didFinishLoad\":true") ||
+    !reload_load_reply.unwrap().contains("index.html") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_LOAD\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_event_length = supervisor_read_timeout(event_fd, buffer, buffer.length(), 2000)
+  let reload_event_reply = if reload_event_length > 0 {
+    try { Some(@utf8.decode(buffer[:reload_event_length])) } catch { _ => None }
+  } else {
+    None
+  }
+  if reload_event_reply is None ||
+    !reload_event_reply.unwrap().contains("\"operation\":\"isolated-preload-attested\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_EVENT\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let mut reload_title_ok = false
+  for _attempt = 0; _attempt < 40; _attempt = _attempt + 1 {
+    let reload_title_request = request_frame(session, 22, 1, 2, "get-web-contents-title", "{}")
+    let reload_title_sent = send(fd, reload_title_request)
+    let reload_title_reply = if reload_title_sent { receive(fd, buffer) } else { None }
+    if reload_title_sent && reload_title_reply is Some(_) &&
+      reload_title_reply.unwrap().contains("\"title\":\"adapted-api-ok\"") {
+      reload_title_ok = true
+      break
+    }
+    supervisor_sleep_ms(50)
+  }
+  if !reload_title_ok {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_PAGE_API\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_bootstrap = request_frame(session, 23, 1, 2, "get-bootstrap-status", "{}")
+  let reload_bootstrap_sent = send(fd, reload_bootstrap)
+  let reload_bootstrap_reply = if reload_bootstrap_sent { receive(fd, buffer) } else { None }
+  if !reload_bootstrap_sent || reload_bootstrap_reply is None ||
+    !reload_bootstrap_reply.unwrap().contains("\"observed\":true") ||
+    !reload_bootstrap_reply.unwrap().contains("\"generation\":2") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_BOOTSTRAP\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_preload = request_frame(session, 24, 1, 2, "get-preload-status", "{}")
+  let reload_preload_sent = send(fd, reload_preload)
+  let reload_preload_reply = if reload_preload_sent { receive(fd, buffer) } else { None }
+  if !reload_preload_sent || reload_preload_reply is None ||
+    !reload_preload_reply.unwrap().contains("\"status\":\"absent\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_PRELOAD\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_adapted = request_frame(session, 25, 1, 2, "get-adapted-status", "{}")
+  let reload_adapted_sent = send(fd, reload_adapted)
+  let reload_adapted_reply = if reload_adapted_sent { receive(fd, buffer) } else { None }
+  if !reload_adapted_sent || reload_adapted_reply is None ||
+    !reload_adapted_reply.unwrap().contains("\"observed\":true") ||
+    !reload_adapted_reply.unwrap().contains("\"documentStartBeforeLoad\":true") ||
+    !reload_adapted_reply.unwrap().contains("\"generation\":2") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_ADAPTED\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_event = request_frame(session, 26, 1, 2, "dispatch-adapted-event",
+    "{\"topic\":\"doc:open\",\"value\":\"native-reload\"}")
+  let reload_event_sent = send(fd, reload_event)
+  let reload_event_dispatch_reply = if reload_event_sent { receive(fd, buffer) } else { None }
+  if !reload_event_sent || reload_event_dispatch_reply is None ||
+    !reload_event_dispatch_reply.unwrap().contains("\"terminal\":\"success\"") ||
+    !reload_event_dispatch_reply.unwrap().contains("\"delivered\":true") ||
+    !reload_event_dispatch_reply.unwrap().contains("\"generation\":2") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_EVENT_DISPATCH\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let mut reload_event_title_ok = false
+  for _attempt = 0; _attempt < 40; _attempt = _attempt + 1 {
+    let reload_event_title_request = request_frame(session, 27, 1, 2, "get-web-contents-title", "{}")
+    let reload_event_title_sent = send(fd, reload_event_title_request)
+    let reload_event_title_reply = if reload_event_title_sent { receive(fd, buffer) } else { None }
+    if reload_event_title_sent && reload_event_title_reply is Some(_) &&
+      reload_event_title_reply.unwrap().contains("\"title\":\"adapted-event-native-reload\"") {
+      reload_event_title_ok = true
+      break
+    }
+    supervisor_sleep_ms(50)
+  }
+  if !reload_event_title_ok {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_EVENT_TITLE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let stale_after = request_frame(session, 28, 1, 1, "dispatch-adapted-event",
+    "{\"topic\":\"doc:open\",\"value\":\"stale\"}")
+  let stale_after_sent = send(fd, stale_after)
+  let stale_after_reply = if stale_after_sent { receive(fd, buffer) } else { None }
+  if !stale_after_sent || stale_after_reply is None ||
+    !stale_after_reply.unwrap().contains("\"terminal\":\"failure\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_EVENT_STALE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let destroy = request_frame(session, 29, 1, 2, "destroy-window", "{}")
   let destroy_sent = send(fd, destroy)
   let destroy_reply = if destroy_sent { receive(fd, buffer) } else { None }
   if !destroy_sent || destroy_reply is None || !destroy_reply.unwrap().contains("\"destroyed\":true") {
@@ -294,7 +462,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_DESTROY\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let shutdown = request_frame(session, 14, 0, 0, "shutdown", "{}")
+  let shutdown = request_frame(session, 30, 0, 0, "shutdown", "{}")
   if !send(fd, shutdown) || receive(fd, buffer) is None {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SHUTDOWN\",\"compatible\":false}")
@@ -355,7 +523,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

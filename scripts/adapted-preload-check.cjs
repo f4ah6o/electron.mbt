@@ -45,6 +45,12 @@ function check() {
     errors.push('unsupported bridge semantics must stay false');
   }
   if (semantics.ingress !== 'ABSENT') errors.push('native ingress must be recorded as ABSENT');
+  if (typeof semantics.eventDelivery !== 'string' || semantics.eventDelivery.length === 0) {
+    errors.push('event delivery mode required');
+  }
+  if (typeof semantics.eventTrigger !== 'string' || semantics.eventTrigger.length === 0) {
+    errors.push('event trigger required');
+  }
   if (!record.adapter.installationObservation) errors.push('installation observation required');
   const source = adapter.toString('utf8');
   if (source.includes('contextBridge') || source.includes('ipcRenderer')) {
@@ -60,6 +66,7 @@ function check() {
     calls: Array.isArray(record.calls) ? record.calls.length : 0,
     queue: record.queue || null,
     ingress: semantics.ingress || null,
+    eventDelivery: semantics.eventDelivery || null,
     errors,
     compatible: false,
     note: 'Fixture adapter contract only; no Moji preload, native ingress or app boot.',

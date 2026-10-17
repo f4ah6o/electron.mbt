@@ -16,6 +16,10 @@ extern "C" fn supervisor_pid() -> Int = "moonbit_ebt_supervisor_pid"
 extern "C" fn supervisor_app_main() -> Int = "moonbit_ebt_supervisor_app_main"
 
 ///|
+#borrow(buffer)
+extern "C" fn supervisor_app_title(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_app_title"
+
+///|
 extern "C" fn supervisor_load_fd() -> Int = "moonbit_ebt_supervisor_load_fd"
 
 ///|
@@ -91,7 +95,7 @@ fn main {
   let session = @utf8.decode_lossy(session_buffer)
   let fd = supervisor_start(
     @utf8.encode("dist/electron-mbt-native-host"),
-    @utf8.encode("fixtures/m1"),
+    @utf8.encode("fixtures/native-app"),
     @utf8.encode(session),
   )
   if fd < 0 {
@@ -128,8 +132,16 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_READY\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let title_buffer = Bytes::new(256)
+  let title_length = supervisor_app_title(title_buffer, title_buffer.length())
+  if title_length <= 0 {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_APP_TITLE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let app_title = @utf8.decode_lossy(title_buffer[:title_length])
   let create = request_frame(session, 4, 1, 0, "create-window",
-    "{\"width\":640,\"height\":480,\"title\":\"native supervisor\",\"show\":false}")
+    "{\"width\":640,\"height\":480,\"title\":\"" + json_path(app_title) + "\",\"show\":false}")
   let create_sent = send(fd, create)
   let create_reply = if create_sent { receive(fd, buffer) } else { None }
   if !create_sent || create_reply is None || !create_reply.unwrap().contains("\"terminal\":\"success\"") ||
@@ -138,7 +150,15 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_WINDOW\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let begin = request_frame(session, 5, 1, 1, "begin-load", "{}")
+  let title_request = request_frame(session, 5, 1, 0, "get-window-title", "{}")
+  let title_sent = send(fd, title_request)
+  let title_reply = if title_sent { receive(fd, buffer) } else { None }
+  if !title_sent || title_reply is None || !title_reply.unwrap().contains("\"title\":\"" + json_path(app_title) + "\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_APP_TITLE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let begin = request_frame(session, 6, 1, 1, "begin-load", "{}")
   let begin_sent = send(fd, begin)
   let begin_reply = if begin_sent { receive(fd, buffer) } else { None }
   if !begin_sent || begin_reply is None || !begin_reply.unwrap().contains("\"terminal\":\"success\"") {
@@ -153,7 +173,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PATH\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let load = request_frame(session, 6, 1, 1, "load-file",
+  let load = request_frame(session, 7, 1, 1, "load-file",
     "{\"file\":\"" + json_path(@utf8.decode_lossy(file_path[:path_length])) + "\"}")
   let load_fd = supervisor_load_fd()
   let load_sent = send(load_fd, load)
@@ -176,7 +196,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_EVENT\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let destroy = request_frame(session, 7, 1, 1, "destroy-window", "{}")
+  let destroy = request_frame(session, 8, 1, 1, "destroy-window", "{}")
   let destroy_sent = send(fd, destroy)
   let destroy_reply = if destroy_sent { receive(fd, buffer) } else { None }
   if !destroy_sent || destroy_reply is None || !destroy_reply.unwrap().contains("\"destroyed\":true") {
@@ -184,7 +204,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_DESTROY\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let shutdown = request_frame(session, 8, 0, 0, "shutdown", "{}")
+  let shutdown = request_frame(session, 9, 0, 0, "shutdown", "{}")
   if !send(fd, shutdown) || receive(fd, buffer) is None {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SHUTDOWN\",\"compatible\":false}")
@@ -195,5 +215,6 @@ fn main {
   println("{\"status\":\"PASS\",\"probe\":\"native-supervisor-window-load\",\"backend\":\"AppKit+WKWebView\",\"childPid\":" +
     child_pid.to_string() + ",\"exitStatus\":" + exit_status.to_string() +
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true," +
-    "\"appMain\":\"native-fixture\",\"creator\":\"moonbit-native\",\"compatible\":false}")
+    "\"appMain\":\"native-fixture\",\"appTitle\":\"" + json_path(app_title) +
+    "\",\"creator\":\"moonbit-native\",\"compatible\":false}")
 }

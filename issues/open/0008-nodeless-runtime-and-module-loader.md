@@ -1,15 +1,27 @@
 # 0008: Node-less Main runtime・QuickJS FFI・module loader の実装設計
 
+Status: open
+Model: GPT-6 Astra Pro
+Created: 2026-10-17
+Updated: 2026-10-17
+Branch: feat/issue-0008-quickjs-runtime
+
+## 概要
+
+**性質:** engine/loaderの調査を含む実装親Issue。**利用者への影響:** 固定した既存CJS/TS-build MainをNodeなしで実行し、起動できない依存や保存policy差を場所付きで診断できるようにする。
+
 | 項目 | 内容 |
 | --- | --- |
-| 状態 | OPEN / design |
 | 優先度 | P0（N1a engine gate）、P1（CJS / 必要 Node subset）、P2（直接 ESM） |
-| 作成 / 更新 | 2026-10-17 |
 | 上位 | [0004 実用化ロードマップ](0004-production-readiness-roadmap.md) |
 | 依存 | [0006 runtime / profiles](0006-runtime-architecture-and-profiles.md)、[0014 実アプリ inventory](0014-real-app-acceptance.md) |
 | 関連 | [0007 bridge](0007-context-bridge-feasibility-and-security.md)、[0011 loading / storage](0011-app-loading-origin-and-storage.md)、[0012 OS services](0012-os-services-and-desktop-integration.md)、[0015 oracle / CI](0015-oracle-ci-and-evidence.md)、[0016 packaging](0016-packaging-release-and-updates.md) |
 
-## 1. 目的・現在地・既存作業との関係
+最初の限定作業はR1a / EP-08のQuickJS source pinとnative C ABI最小eval。R2のapp閉包やstrict bridgeが未確定でも、0006のprofile/ownership ADRを入力にしてengine probeを開始できる。
+
+## 背景
+
+### 1. 目的・現在地・既存作業との関係
 
 1. QuickJS を MoonBit native から制御し、既存 CJS とビルド済み JS main を Node なしで実行する。TypeScript はビルド時に JS へ変換する。
 2. `core/runtime.mbt` の lifecycle・ID・document generation・権限・bounded pending は再利用する。core の状態決定を JS に複製しない。
@@ -20,7 +32,17 @@
 
 既存 Node 方針と Node-less の適用範囲は 0006 に従う。初回実装差分で AGENTS の profile 別責務を明示し、無断の Node fallback や既存 Node track の削除を避ける。
 
-## 2. 実装後に新しく動くこと
+読取で確認した現行 [CJS loader](../../bridges/node/cjs-loader.cjs) はNodeの `registerHooks` / `createRequire`、[同期transport](../../bridges/node/sync_channel.c)はNode-APIを使用する。[loader tests](../../tests/loader.test.cjs)のfacade単一identity・ESM拒否・source不変、[transport tests](../../tests/transport.test.cjs)のnon-reentrant call・timeout後channel失効を、新engineへの移植時の契約入力とする。これらのNode実装をQuickJSへリンクしてNode-lessと表示しない。
+
+## 問題
+
+ECMAScript engineを組み込むだけではNodeのmodule解決、timers、I/O、Buffer、Electron lifecycleは提供されない。FFIの借用値をcallback後に保持するとGC/lifetimeが破綻し、Mainの同期待ちをUI threadへ移すと相互待ちが生じる。
+
+さらにMojiはexport/updateの操作前からzlib/Buffer/updaterをimportする。除外した画面機能だけを見てshimを選ぶと最初のwindow以前に停止する。CJS解決・実boot閉包・明示adaptation・file brokerを別の検証可能な単位にする必要がある。
+
+## 目標
+
+### 2. 実装後に新しく動くこと
 
 | 段階 | 利用者ができること | まだ主張しないこと |
 | --- | --- | --- |
@@ -31,7 +53,13 @@
 
 R1〜R4は本書内の実装順。製品stage S1のABI/jobsだけでPR #3のN1aを完了とせず、S2のEP-11でCJS cache/cycle/identity等の必要fixtureが揃った時点で判定する。対応は [0020](0020-implementation-work-packages.md) に従う。
 
-## 3. プロセス・言語・所有者
+## 対象外
+
+初版は任意npm、Node-API/native addon、Node/Bun/Denoの隠れたfallback、user-provided QuickJS bytecode、無制限network/stream、直接ESMの全面互換を含めない。TSはbuild時にJSへ変換し、rendererのDOMはOS WebViewへ委ねる。strict preload/renderer bridgeの成立は0007で別判定する。R4の必要ESM拡張は後続scopeとして保持する。
+
+## 提案する方針
+
+### 3. プロセス・言語・所有者
 
 | 部分 | 主所有者 | 責務・境界 |
 | --- | --- | --- |
@@ -47,7 +75,7 @@ runner と UI host は private な継承済み IPC handle を使用し、localho
 
 同じ core のコードを両プロセスへリンクしても、同じ window / grant 状態を双方で決定しない。UI host の正本と runner の確認済み mirror、API 呼出中の tentative state を区別する。
 
-## 4. QuickJS pin・ビルド入力・更新
+### 4. QuickJS pin・ビルド入力・更新
 
 1. engine は **QuickJS 2026-06-04** を初期候補として確定済み。公式公開版と MIT license を再確認した。[Q1]
 2. 新規 `vendor/quickjs/lock.json` に、source URL、tarball SHA-256、upstream commit が解決できる場合は commit、license hash、取り込む C/H 一覧、local patch hash を記録する。SHA-256 はまだ確定していない。架空値を置かない。
@@ -57,7 +85,7 @@ runner と UI host は private な継承済み IPC handle を使用し、localho
 6. engine の minor 修正でも、FFI / loader / scheduler / real-app の差分 suite を同じ candidate SHA で再実行する。pin の更新だけで既存 `verified` を継承しない。
 7. upstream source の取込不能、必須 fixture の誤動作、継続的な memory corruption、保守不能が確認された場合だけ ADR を更新して engine を再比較する。初期調査を毎回 engine 選定からやり直さない。
 
-## 5. C ABI の最小面
+### 5. C ABI の最小面
 
 以下は**新規提案 ABI**であり、既存の callable API ではない。生成される C header を pin した MoonBit runtime header と一緒にレビューする。
 
@@ -81,7 +109,7 @@ runner と UI host は private な継承済み IPC handle を使用し、localho
 6. engine の public call は同一 runner thread に限定する。worker I/O 完了は immutable bytes / IDs を queue に載せ、JSValue を別 thread で操作しない。外部 thread / supervisor からの interrupt は atomic な取消 flag または IPC に留め、QuickJS API を並行呼出しない。
 7. MoonBit の FFI ownership 既定値に依存せず `#borrow` / `#owned` を対象 compiler で明記する。外部 pointer が自動で参照カウントされるとは仮定しない。[M1]
 
-## 6. 値・GC・callback の所有権
+### 6. 値・GC・callback の所有権
 
 | 対象 | 取得時 | 保持期間 | 解放 |
 | --- | --- | --- | --- |
@@ -101,9 +129,9 @@ QuickJS の reference count、exception sentinel、finalizer 制約を前提に�
 5. app exit は orderly teardown を先に試み、deadline 後は supervisor が runner を終了させる。`JS_FreeRuntime` だけで OS handle や全 pending operation が清掃されたとは扱わない。
 6. C sanitizer と root count の両方を使い、正例だけでなく forced GC、cycle、throw、close、timeout の各出口を検証する。
 
-## 7. Promise・microtask・timer・I/O
+### 7. Promise・microtask・timer・I/O
 
-### 7.1 scheduler の正本
+#### 7.1 scheduler の正本
 
 MoonBit が以下を持つ。
 
@@ -115,7 +143,7 @@ MoonBit が以下を持つ。
 
 QuickJS は JS Promise job queue を持つ。MoonBit は `JS_IsJobPending` / `JS_ExecutePendingJob` を C adapter 経由で駆動し、Promise の内部状態を MoonBit で複製しない。[Q3]
 
-### 7.2 1 turn の設計
+#### 7.2 1 turn の設計
 
 1. main entry または 1 つの callback を実行する。
 2. 対象 profile が `process.nextTick` を公開するときだけ、独立した nextTick queue を checkpoint 規則に従い処理する。
@@ -127,7 +155,7 @@ JS budget 超過時に、途中の microtask queue の間へ通常 timer を挿�
 
 CJS と ESM では Node の nextTick / microtask の先後関係が異なる。CJS 用 checkpoint をそのまま ESM に移さず、R4 で ESM oracle trace を別に持つ。[N1]
 
-### 7.3 timer / event / error
+#### 7.3 timer / event / error
 
 | 機能 | 初版方針 | 必須試験 |
 | --- | --- | --- |
@@ -142,7 +170,7 @@ CJS と ESM では Node の nextTick / microtask の先後関係が異なる。C
 
 timer の厳密な発火時刻や、仕様が順序を保証しない独立 I/O の total order を oracle と同じにする要求は置かない。比較は仕様で保証される partial order と値・終端結果に限定する。[N2], [N3]
 
-### 7.4 初期 resource budget（提案値）
+#### 7.4 初期 resource budget（提案値）
 
 | 対象 | 初期値 | 超過時 |
 | --- | --- | --- |
@@ -156,7 +184,7 @@ timer の厳密な発火時刻や、仕様が順序を保証しない独立 I/O 
 
 これらは実測済み性能保証ではない。0014 の workload で値を変更する場合、manifest version と evidence を更新する。既存 core / transport の上限が小さい場合はそちらを優先し、黙って拡大しない。
 
-## 8. 同期 native API と deadlock 回避
+### 8. 同期 native API と deadlock 回避
 
 1. `BrowserWindow` constructor / 同期 getter は短い private request/reply を使用する。UI host の response を main runner が待つ間、通常の JS event loop を再入させない。
 2. UI host はこの request 中に main の JS callback を待たない。OS query / create の完了または typed error を返し、イベント通知は別 queue に積む。
@@ -167,9 +195,9 @@ timer の厳密な発火時刻や、仕様が順序を保証しない独立 I/O 
 
 Node の同期 socketpair probe の PASS は、この QuickJS ↔ native host 経路の実測を代替しない。
 
-## 9. CJS loader：最初に確定する有限仕様
+### 9. CJS loader：最初に確定する有限仕様
 
-### 9.1 module record
+#### 9.1 module record
 
 新規 MoonBit `ModuleRecord` は `moduleKey / sourceHash / kind / loadingState / parentEdges / diagnostic` を持つ。JS realm 内の record は `module.exports / exports alias / loaded / filename / id` と保持用 lease を持つ。state の所有区分を重複させない。
 
@@ -180,7 +208,7 @@ Node の同期 socketpair probe の PASS は、この QuickJS ↔ native host �
 5. 評価成功後に loaded を確定する。評価失敗時の cache cleanup と再 require は pinned Node oracle と比較する。
 6. source hash / filename / sourcemap を error に付け、wrapper の余分な行をアプリ位置へ補正する。
 
-### 9.2 resolution matrix
+#### 9.2 resolution matrix
 
 | 入力 | R2 | 判定 |
 | --- | --- | --- |
@@ -201,7 +229,7 @@ Node の cache は resolved filename に依存し、CJS cycle は途中の expor
 
 `require.cache` の全面書換え、`require.extensions`、`Module._load` monkey patch、`module.createRequire` は初版保証に含めない。アプリが実際に利用するなら named gap として追加する。
 
-## 10. Node subset：Moji の実物から優先する
+### 10. Node subset：Moji の実物から優先する
 
 [0014](0014-real-app-acceptance.md) の fixed source inventory は、Moji の起動閉包に `node:zlib` と `electron-updater` が含まれることを確認した。画面で export / update を押さないだけでは import が不要になるとは言えない。
 
@@ -221,7 +249,7 @@ Node の cache は resolved filename に依存し、CJS cycle は途中の expor
 
 Node `fs` / Buffer / URL の挙動は API 名だけでなく、encoding、exception fields、return type を単位に検証する。[N5], [N6], [N7]
 
-### 10.1 権限との接続
+#### 10.1 権限との接続
 
 1. main JS は固定した信頼済みアプリ principal とする。renderer が main source を差し替えることや任意関数を実行する経路を提供しない。
 2. renderer 起点操作は native ingress で window / document / operation / path grant を検証した後で main handler に渡す。generic `readPath` を無検証転送しない。
@@ -230,7 +258,7 @@ Node `fs` / Buffer / URL の挙動は API 名だけでなく、encoding、except
 5. main の信頼・app 単位 grant と、renderer の document 単位権限を区別する。request 単位の実行権限を Promise / timer 後まで強く継承する場合は、context 伝播の実装と interleaving 負例を別 gate とする。
 6. reload 後に旧結果を新 page へ配達しない。認可済み I/O の取消・commit point・完了の扱いは 0011 で固定する。取消要求だけで write が rollback したとは扱わず、commit 前の failure と commit 後の committed / unknown を区別し、自動 retry しない。
 
-### 10.2 Node の書込契約と明示した保存 adaptation
+#### 10.2 Node の書込契約と明示した保存 adaptation
 
 1. fs shim が受け付ける path / data / options の形、encoding、flags、同期 return / throw と Promise resolve / reject、error fields を symbol manifest へ固定する。対応していない descriptor、append、stream、options を通常の文字列置換へ読み替えない。[N5]
 2. 汎用 subset の `node-write-file` は、対応する Node の truncate / write、inode / hardlink、creation mode、途中失敗の観測を oracle と比較する。temporary file + rename へ黙って置換せず、失敗時に元 bytes が必ず残るとは宣言しない。
@@ -239,7 +267,7 @@ Node `fs` / Buffer / URL の挙動は API 名だけでなく、encoding、except
 5. atomic mode は初期受入の単一 link regular file、許可した metadata と競合保護範囲に限定する。非対応 metadata / hardlink / flags は実書込前に拒否する。普通の rename を expected inode 付き CAS と称さず、commit record、metadata、check 後の差替、flush / reply 喪失を別に観測する。
 6. settings の `writeFileSync` と文書の `fs/promises.writeFile` に同じ mode が適用されると推測しない。選択した signature / 対象ごとの mode を記録し、両者の error、readback、復旧結果をそれぞれ評価する。fake broker での facade 成功は、0011 の実 file / grant 受入の代用にしない。
 
-## 11. TypeScript / Prepared JS / ESM の実装順
+### 11. TypeScript / Prepared JS / ESM の実装順
 
 | mode | 最初の入口 | provenance |
 | --- | --- | --- |
@@ -255,7 +283,7 @@ Node `fs` / Buffer / URL の挙動は API 名だけでなく、encoding、except
 6. R4 の直接 ESM は QuickJS module loader の pin、URL-based identity、package conditions、dynamic import、TLA、CJS namespace interop を個別実装する。
 7. R4 でも preload は別 loader。Electron では sandboxed preload の ESM に制約があるため、main で ESM が動いた結果を preload へ転記しない。[E1]
 
-## 12. 診断・実装ファイル・分割 PR
+### 12. 診断・実装ファイル・分割 PR
 
 | 分割 | 新規実装予定 | 完了時の証拠 |
 | --- | --- | --- |
@@ -272,7 +300,16 @@ Node `fs` / Buffer / URL の挙動は API 名だけでなく、encoding、except
 
 `unsupported`、`policy_denied`、`engine_exception`、`module_not_found`、`host_lost`、`limit_exceeded`、`not_run` は別 code にする。`unsupported` を空 object / false / success に変換しない。
 
-## 13. What 受入テスト
+#### 最初の限定PRと着手条件
+
+1. 0006 / EP-06のnative owner・profile ADRを確認し、QuickJS 2026-06-04の取得元、実tarball SHA、license/build flagsを `vendor/quickjs/lock.json` に記録する。未確定checksumの採取はこの作業の入力固定であり、engineの再選定ではない。
+2. `bridges/embedded-js/`へcreate/context/eval/value-release/destroyだけのC ABIとnative MoonBit wrapperを追加し、QJS-01/02/05の必要部分を実行する。Node addonを経由しない。
+3. partial-create、throw、forced GC、stale/cross-context handleの結果・root balanceを保存し、ABI ownership reviewを受ける。jobs/timersはR1b、module cacheはR2aの別PRへ進める。
+4. 後続で公開するABI/`.mbti`、source/build/profile manifestと互換を変える差分は同じPRでversion・移行対象を記録する。
+
+## 受け入れ条件
+
+### 13. What 受入テスト
 
 | ID | Given / When | Then |
 | --- | --- | --- |
@@ -297,7 +334,7 @@ Node `fs` / Buffer / URL の挙動は API 名だけでなく、encoding、except
 
 実装後、Linux は portable / engine 契約に使用し、macOS arm64 は native runtime / WebView / real-app の判定に使用する。既存 `npm test` の PASS は Node-less 受入へ移さない。
 
-## 14. 完了条件・未実行事項
+### 14. 完了条件・未実行事項
 
 1. R1〜R3 の必要 surface と失敗条件が実装され、0014 の選定済みシナリオへ接続できる。
 2. 全 ABI ownership exit と process cleanup の証跡が candidate SHA に結び付く。
@@ -308,7 +345,57 @@ Node `fs` / Buffer / URL の挙動は API 名だけでなく、encoding、except
 
 **設計時検証状態:** source / upstream API の読取を実施。QuickJS build、FFI tests、Node-less runner、Moji build / E2E、macOS native test、release audit は **未実行**。
 
-## 15. 一次資料
+- [ ] Given vendor pinとnative toolchainが固定されている, when 最小ABIでeval/throw/retain/releaseを実行する, then QJS-01/02/05の実結果とC ABI reviewが同じSHAに結び付く。
+- [ ] Given R2のselected emitted module graph, when CJS/Node subsetでbootする, then MOD-01〜04とeager import失敗を観測し、未実装を空moduleで隠さない。
+- [ ] Given explicit atomic-save adaptation, when FS-02/03を比較する, then Node書込と強い保存policyの違い、grant更新、committed/unknownが別reportになる。
+
+## テスト計画
+
+| 段階 | entry / fixture | 成功としないもの |
+| --- | --- | --- |
+| 現行MoonBit回帰 | `moon test --target js`、`moon test --target native` | core成功だけでC ABIを認定しない |
+| 現行Node境界 | `npm run build` 後 `node --test tests/loader.test.cjs tests/transport.test.cjs tests/manifest.test.cjs` | Node-API socketpair/Node loaderをNode-less実行へ転記しない |
+| R1a/R1b新規 | `fixtures/nodeless/engine/`にQJS/LOOPのgolden・故障fixture。native build/test entryは実装PRでREADME/CIへ追加 | compile-only、GCを伴わないpositiveだけは不足。現時点NOT_RUN |
+| R2新規 | `fixtures/nodeless/node-subset/`とmodule fixture、fixed Node oracle | CJSとESM、signature別fs、same package instanceを別判定 |
+| R3実機 | SYNC/FSと0014のMoji scenario、actual WKWebView/QuickJS | Linux portableまたはfake brokerだけでは未受入 |
+| release | FREE-01、0016のlink/bundle/process/clean-OS監査 | PATH上でnodeが見えないことだけでは不十分 |
+
+toolchain・source・実行command・exit・必要observationを0015のevidenceへ記録する。sanitizerは対象compilerが提供するbuildで実行し、その構成と未実行範囲を示す。既存commandは上記の回帰用、新規commandは実装前に存在すると案内しない。
+
+## リスク
+
+| リスク | 観測・対処 |
+| --- | --- |
+| FFI borrow/owned、GC mark、thread affinityの誤り | QJS-02/03/05、sanitizer、root台帳。memory corruptionを残して次stageへ進まない |
+| jobs/nextTick/例外の順序をNodeと取り違える | CJS/将来ESMを分けたpartial-order oracle。長いjobでUIが停止しないことを測る |
+| updater/zlibの実閉包が初期subsetを越える | EP-05でemitted graphとtraceを取得し、実装範囲または明示adapterを再見積り |
+| atomic saveをNode fsの同等実装と表示する | 10.2・FS-02/03でmode/metadata/commitを分離し、source hashだけで無変更を主張しない |
+| engine pin更新でABI/bytecode/挙動が変わる | source/header/build hashと全必要fixtureを再検証。以前のverifiedを自動継承しない |
+
+## 未解決の質問
+
+| 判断が必要な点 | 判断owner / 必要な証拠 | 再開条件・依存scope |
+| --- | --- | --- |
+| Mojiのemitted boot閉包に対しupdater/zlibを本当に実装するか、依存adapterを採るか | app/loader担当＋profile owner。0014/EP-05の実build・import chain・first-use traceとbehavior差分 | ADRとrequired symbols/adapter hashが揃った閉包だけR2b/R3へ接続。R1a/R1bのprobeは着手可能 |
+| uncaught exception / unhandled rejectionのどの観測を初期profileで約束するか | engine担当＋oracle担当。boot・timer・IPC・late rejection handlerを固定Node/app版で比較 | process-fatalとrequest-localの境界、tracker checkpoint、公開するprocess surfaceをfixture化してR1bを受入。未定義のpolicyを成功として公開しない |
+
+## 変更履歴
+
+- 2026-10-17: QuickJS pin/FFI ownership、scheduler、CJS/subset、TS build、fs semantics、QJS/MOD/LOOP/SYNC/FS/BUILD/FREE/ESMの受入IDを設計。
+- 2026-10-17: `polish-issue`で関連Node実装・テストと照合し、R1aの限定PR、具体的な回帰entry、判断ownerとscope別準備状態を追加。必須metadata/構成へ再配置し、API/limits/固定SHA/出典/受入IDは保持。runtime codeや既存PRは変更していない。
+
+## 注記
+
+- **将来の非blocking候補:** request-bound authorityをPromise/timer後まで引き継ぐ拡張は、初期実装の必須判断ではない。初期は10.1のtrusted Main/app grantモデルを採用する。security/app担当が複数documentのinterleavingと元appの呼出traceから追加の必要性を確認した場合だけ、明示context設計と独立gateを追加する。global currentSenderで代用しない。
+
+- **状態・配置:** 整備前後とも `Status: open`、`issues/open` を維持する。現repositoryにはこの状態ディレクトリがあり、今回の指定先でもある。`polished` / 保留用ディレクトリを新設せず、本文の準備状態とruntimeのverifiedを別に記録する。
+- **準備状態:** EP-06の共有ADRを入力にR1aのpin採取・ABI probeへ着手可能。Moji向けR2b/R3は実boot閉包/adapter判断を要し、strict bridgeは別gateのまま。engine未実装という理由で調査全体を停止しない。
+- **再開・復帰先:** 未解決事項は「未解決の質問」の証拠・担当roleで判断し、解決後も既存 `issues/open` の同pathへ記録する。将来repositoryの状態遷移を採用する場合は、その規約を確認してから遷移する。
+- **ブランチ:** `Branch` の `feat/issue-0008-quickjs-runtime` は実装時の提案名であり、この整備で作成したbranchではない。既存PRの履歴を消さず、小さい統合PRへ分ける。
+- **確認基点:** 本整備のmainは `8177cf051976b8d7b9eca25ae7ad8820bb04a719`。初回設計の `30c6fc97186e7ecfc8397c799525f00c8e4f0f65` と各PR/appの固定SHAは履歴根拠として保持する。mainへのPR統合・runtime実装・native E2E完了を意味しない。
+- **検証の範囲:** 2026-10-17のpolishはIssueと関連source/testの読取・文書整合を対象とする。下記のruntime/GUI/配布試験は、この本文更新では実行していない。実行する際はcommand、対象SHA、環境とPASS / FAIL / NOT_RUNを別記録にする。
+
+### 15. 一次資料
 
 - [Q1: QuickJS 公式公開版・license](https://bellard.org/quickjs/) — 2026-10-17 確認、2026-06-04。
 - [Q2: QuickJS C embedding manual](https://bellard.org/quickjs/quickjs.html#QuickJS-C-API) — ownership / exception / limits / bytecode の設計根拠。性能保証には使用しない。

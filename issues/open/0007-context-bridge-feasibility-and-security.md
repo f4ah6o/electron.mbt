@@ -1,10 +1,20 @@
 # 0007: contextBridge の技術成立条件・renderer 安全境界・adapted bridge 設計
 
+Status: open
+Model: GPT-6 Astra Pro
+Created: 2026-10-17
+Updated: 2026-10-17
+Branch: research/context-bridge-sender-oracle
+
+## 概要
+
+同期 contextBridge の成立調査と、Moji 用 adapted bridge の実装契約を分ける調査・設計 issue。P0 の理由は、特権境界と同期戻り値を誤認した実装が全 renderer の安全性・起動可否を左右するためである。利用者に見える成果は、最初の page script から API が使え、同期 disposer と Promise RPC が契約どおり動き、未知の方式を厳密互換と誤表示しないこと。
+
+**最初の着手単位は B1 の sender/relay oracle と判定 schema。着手可能であり、strict の新しい解法を先に発見する必要はない。** native 実装へ許可を発行する B3/B4 と、strict の採用判断は後述の技術 gate に従う。
+
 | 項目 | 内容 |
 | --- | --- |
-| Status | OPEN / design。runtime 実装、native 適合試験は本書では実行していない |
 | Priority | P0 |
-| 作成日 | 2026-10-17 JST |
 | Dependencies | [0005: 既存成果と統合](0005-existing-work-and-integration.md)、[0006: architecture / profiles](0006-runtime-architecture-and-profiles.md) |
 | 上位計画 | [0004: 実用化ロードマップ](0004-production-readiness-roadmap.md) |
 | 既存成果 | [PR #3: Node-less ADR](https://github.com/f4ah6o/electron.mbt/pull/3)、[PR #10: contextBridge prerequisites](https://github.com/f4ah6o/electron.mbt/pull/10)、[PR #13: native attestation event](https://github.com/f4ah6o/electron.mbt/pull/13) |
@@ -12,9 +22,11 @@
 | 後続設計 | [0010: IPC・値・flow control](0010-ipc-values-and-flow-control.md) |
 | 完了条件 | strict の bounded feasibility 判定、adapted の独立 security acceptance、native evidence、未対応範囲の記録 |
 
-## 1. 現在の事実と本書の決定
+## 背景
 
-### 1.1 調査した事実
+### 1. 現在の事実と本書の決定
+
+#### 1.1 調査した事実
 
 | 対象 | 固定した HEAD / 状態 | 到達点 | 未実装・未証明 |
 | --- | --- | --- | --- |
@@ -25,14 +37,26 @@
 
 PR 本文が報告する既存 CI 成功は、当該 PR の証跡である。本書作成時にその runtime/native tests を再実行したとは扱わない。`compatible:false`、`contextBridge:NOT_IMPLEMENTED`、M0 OPEN、通常 `run`/`pack` の fail-closed を維持する。
 
-### 1.2 本書が維持する設計判断
+#### 1.2 本書が維持する設計判断
 
 1. **strict Electron contextBridge は初版 No-Go / blocked。** public WKWebView で安全な同期 cross-realm proxy が未証明であることが理由であり、数学的な不可能性の主張ではない。
 2. **Node-less の実用経路は PR #3 の adapted profile を独立して進める。** `preload adapted` / `App Scenario Supported` と表示し、元 preload の任意 closure を厳密互換として扱わない。
 3. **strict の再調査は範囲と終了条件を固定した spike にする。** 同じ診断を繰り返して通常開発を無期限に止めない。新しい public primitive、変更した threat model、再現可能な根拠があるときだけ再開する。
 4. **既存 Node profile と Node-less profile の証跡を分ける。** main engine の置換、renderer realm の隔離、同期 proxy の成立は独立の問題である。
 
-## 2. Goal / Non-goal
+今回の読み直しでも `bridges/node/electron-facade.cjs` は `contextBridge / ipcRenderer` を unsupported としており、同期 private socketpair のテストは renderer bridge の証拠ではない。[現 main facade](https://github.com/f4ah6o/electron.mbt/blob/8177cf051976b8d7b9eca25ae7ad8820bb04a719/bridges/node/electron-facade.cjs)
+
+## 問題
+
+現在の core/facade と private Main transport は、page/preload を跨ぐ同期 function proxy を提供しない。PR #13 の bootstrap/preload/load event だけでも、任意の renderer request の発信 document を証明できない。
+
+さらに、全 adapted event を `Promise<disposer>` にすると Moji の同期 cleanup と合わず、full-load 後まで first RPC を待たせると初期化の循環を作り得る。これらは §6〜§8 の独立契約で扱い、strict 研究の終了と adapted の完了を同じ verdict にしない。
+
+## 目標
+
+最初の B1 では、固定 Electron 44.7.0 の direct child / authorized parent relay / shared-DOM reply 改ざんを同一 fixture で記録し、期待する native sender、許可 operation、実 effect を別 field にする。Moji の disposer/イベント基準は app の locked Electron 43.1.0 と区別する。全体の目標と対象外は旧 §2 を保持する。
+
+### 2. Goal / Non-goal
 
 1. Goal: privileged native control、host-installed bootstrap、app preload、page の責務と ownership を固定し、PR #10/#13 の安全な前提を再利用する。
 2. Goal: strict を再評価できる oracle/attack matrix と go/no-go を作り、初版の adapted bridge に実装可能な Promise/イベント/寿命契約を与える。
@@ -41,9 +65,26 @@ PR 本文が報告する既存 CI 成功は、当該 PR の証跡である。本
 5. Non-goal: arbitrary malicious main/preload を実行する汎用 sandbox。Electron 型アプリの trusted main/preload と compromised renderer の間の境界を対象にする。
 6. Non-goal: IPC 全体の Structured Clone、queue/deadline、main handler 実装の詳細。そちらは [0010](0010-ipc-values-and-flow-control.md) が所有する。
 
-## 3. ADR: 直接の sender と親 page による relay
+## 対象外
 
-### 3.1 修正する曖昧さ
+旧 §2 の Non-goal を適用する。B1 は既存 runtime の通常 `run/pack` を開く変更、元 preload の書換え、strict shim の完成を含まない。新しい public primitive を試す B5 は、B1 と fixture を共有して独立に着手する。
+
+## 提案する方針
+
+### 最初の bounded slice と変更箇所
+
+1. `fixtures/oracle/preload.cjs` の同期値/throw/Promise/Set callback fixture と `scripts/oracle.cjs` の source hash 保全を読み、direct-sender/relay の観測を追加する小さい PR を作る。
+2. 既存 `core/runtime.mbt` / `core/runtime_wbtest.mbt` の generation・grant・取消契約は保持する。B1 の expected/observed schema と不足 field の拒否を MoonBit の判定側へ追加し、native sender は人工値で検証済みとしない。
+3. `docs/adr/` の sender decision、`fixtures/worlds/` の攻撃 fixture、`compatibility/` の scope/required observations は追加予定の成果物。B3 以降の `bridges/preload/` / native installation code は本 slice の完了へ混ぜない。
+4. B1 は EP-06 の必須共有 ADR/oracle として独立に進め、EP-07 の strict 成功に依存させない。B5 は strict feasibility、B6 は strict Go 後の実装とする。B7 は profile 別の verification であり、adapted は B3/B4、strict は B6 の後に独立して実施する。
+
+### 互換性と移行
+
+既存 Node-backed の facade、M0 OPEN、strict の同期 signature を維持する。新 observation は versioned variant とし、旧 report に存在しない field を default の成功値で補完しない。generated adapter、元 preload 未実行、Moji の renderer bytes、native operation policy を別 hash/field で記録する。
+
+### 3. ADR: 直接の sender と親 page による relay
+
+#### 3.1 修正する曖昧さ
 
 既存 M0 は、sandboxed child が parent に `postMessage` し、parent の公開経路が main-frame isolated handler を起動すると、native が元 child を識別できないことを負例として記録している。[R2] これは重要な観測だが、「直接の sender」と「過去の因果的な呼出し元」を同じ要求にしてはならない。
 
@@ -56,7 +97,7 @@ Electron も incoming IPC の sender/frame 検証を求める一方、app が公
 | Parent relay | app の公開 wrapper | child の `MessageEvent.source/origin` を使う場合、その検証を wrapper が実施する。native-attested causal origin と表示しない |
 | Response integrity | bridge/runtime | source realm の結果/例外を page の DOM listener が偽造できない。単なる page からの呼出し可否とは別の必須条件 |
 
-### 3.2 ADR acceptance
+#### 3.2 ADR acceptance
 
 1. pinned Electron `44.7.0` と候補で、direct child、opaque-origin child、cross-origin child、same-origin frame、parent の明示 relay を同じ fixture で実行する。
 2. 観測した `senderFrame`/origin、authorized method、native effect を分けて保存する。page が記述した `origin` や `source` label を native evidence に昇格しない。
@@ -64,7 +105,7 @@ Electron も incoming IPC の sender/frame 検証を求める一方、app が公
 4. oracle より強い制約を採るなら explicit profile restriction として記録する。既存の shared-DOM reply forgery は、この ADR で解決済みにならない。
 5. ADR の native/oracle 証跡と独立レビューが揃うまで M0 判定を変更しない。
 
-## 4. realm / process / ownership
+### 4. realm / process / ownership
 
 | 所有者 | 保有する状態 | 禁止する結合 |
 | --- | --- | --- |
@@ -82,7 +123,7 @@ Electron も incoming IPC の sender/frame 検証を求める一方、app が公
 5. native control lane、attestation lane、application RPC lane を別権限にする。protocol の形式が同じ JSON でも `activate/grant/destroy` 等を renderer operation に追加しない。
 6. 生の関数 reference は作成された realm が所有する。MoonBit は metadata のみ所有し、JS に二重の grant/ID/quota state machine を作らない。
 
-## 5. public API の可否と strict の bounded 再調査
+### 5. public API の可否と strict の bounded 再調査
 
 | 候補 | 一次資料/既存実測で分かること | strict 判断 / 次の作業 |
 | --- | --- | --- |
@@ -95,7 +136,7 @@ Electron も incoming IPC の sender/frame 検証を求める一方、app が公
 | WebKitGTK web process extension | frame/world の JSCContext を public API で取得できる。[L1] | Linux の別 spike 候補。macOS WKWebView へ類推しない |
 | pageWorld preload / private API / CEF fallback | 既存の isolation・public API・非同梱要件から外れる | 本書では no-go。別 ADR なしに採用しない |
 
-### 5.1 調査の上限
+#### 5.1 調査の上限
 
 1. 再調査を始める PR は、検証する public primitive を 1 つ、失敗を覆せる仮説を 1 つ、再現 fixture と終了判断を先に記載する。
 2. 最初の checkpoint は、unchanged preload の同期 return/throw を最初の page script で実行し、page による response forgery が失敗すること。ここで失敗すれば機能追加へ進まない。
@@ -103,9 +144,9 @@ Electron も incoming IPC の sender/frame 検証を求める一方、app が公
 4. 2 checkpoint の判定後に `go` / `no-go` / `blocked by named missing evidence` のいずれかを必ず残す。OS/compiler がない場合は未実行であり、技術的不可能を結論にしない。
 5. no-go なら原因、失敗 fixture、対応 public API、再開に必要な新情報を ADR に残し、初版 adapted の作業を継続する。期限が来たことを理由に safety gate を通さない。
 
-## 6. native attestation と document lease
+### 6. native attestation と document lease
 
-### 6.1 PR #13 の再利用
+#### 6.1 PR #13 の再利用
 
 `isolated-preload-attested` は current generation の通知であり、load ACK と race し得る。[R5] 既存 event は native navigation 完了と restricted preload の観測後に出る。MoonBit の既存 state machine に correlation を加え、JS で別の権限正本を作らない。この event の受信と、将来の bridge 呼出し admission を同じ状態にしない。
 
@@ -128,7 +169,7 @@ Electron も incoming IPC の sender/frame 検証を求める一方、app が公
 
 上表の preload status は既存 restricted-preload 経路を表す。adapted profile が元 preload を実行しない場合、PR #13 の event を偽って生成しない。B3 で adapter installation の別 event/observation variant と required conditions を定義する。page proxy 自身の設置報告は functional observation とし、native sender/operation 認可の代わりにしない。`originalPreloadExecuted:false` と adapter/source hashes を証跡へ残す。
 
-### 6.2 adapted の ingress と load 完了を分離する
+#### 6.2 adapted の ingress と load 完了を分離する
 
 以下は B3 で追加する状態であり、PR #13 に実装済みの能力ではない。document の authorization と load outcome を独立した state とし、`Loaded → Attested → Authorized` の一本道を全 profile に強制しない。
 
@@ -146,13 +187,13 @@ Electron も incoming IPC の sender/frame 検証を求める一方、app が公
 5. ingress 後に load が失敗したら document を失効させ、pending/late reply を処理する。既に Main が受理した操作の副作用を取り消したとは主張しない。Main app principal と document grant の違いは [0010](0010-ipc-values-and-flow-control.md) / [0011](0011-app-loading-origin-and-storage.md) に従う。
 6. first module の `await bridgeCall()` は実 WebKit の ordering fixture にする。ただし top-level await 単体が必ず window load / WK navigation 完了を止めるとは断定しない。[H1], [H2] 確実な循環待ち負例は、初回 RPC 応答まで load-blocking resource を完了させない fixture と state-machine の依存注入で別に再現する。
 
-### 6.3 navigation の未決定部分
+#### 6.3 navigation の未決定部分
 
 same-document hash/history、failed provisional navigation、redirect、back/forward cache、WebContent process replacement は別 fixture にする。URL が変わっただけで旧 document を破棄したり、URL が同じだけで新 document を旧世代と認めたりしない。権限停止・最終失効の時点は pinned oracle と native lifecycle に合わせる。
 
-## 7. adapted bridge の具体設計
+### 7. adapted bridge の具体設計
 
-### 7.1 公開契約
+#### 7.1 公開契約
 
 PR #3 の `electron-nodeless-adapted-v1` は、目的別 Promise RPC と page 内の callback/disposer を使う。[R1] これは future implementation contract であり、現時点で利用可能な API ではない。
 
@@ -166,7 +207,7 @@ PR #3 の `electron-nodeless-adapted-v1` は、目的別 Promise RPC と page �
 
 first-call queue は call 時に accepted codec で引数を snapshot し、後から mutable object を読み直さない。queue の件数、累積 byte、ready deadline を adapter manifest の必須数値とし、[0010](0010-ipc-values-and-flow-control.md) の document/runtime 合計予算内に収める。quota / validation / ready timeout は各 Promise を一度だけ reject し、暗黙 retry はしない。page leaf の pending resolver/local queue は authority ではなく、native admission と revoke の正本は MoonBit に置く。ready 通知後の送信にも actual sender/document の検証を必須とする。
 
-### 7.2 イベントと同期 disposer
+#### 7.2 イベントと同期 disposer
 
 Moji の元 preload は `onOpenDocument/onCloseRequest/onUpdateState` から同期に disposer を返し、renderer はそれを effect cleanup で直接呼ぶ。[M1], [M2] Promise に変えると renderer 契約が変わるため、次の variant を分ける。
 
@@ -188,9 +229,9 @@ diagnostic は `phase / reason / profileHash / adapterVariant / documentEpoch / 
 
 strict の「任意 preload 関数が任意関数を返す」と、この用途限定 page 内 disposer は別能力である。名称を合わせただけで strict `contextBridge` の callback/return profile を通過させない。
 
-## 8. strict bridge の型・identity・error・Promise
+### 8. strict bridge の型・identity・error・Promise
 
-### 8.1 二つの codec
+#### 8.1 二つの codec
 
 `contextBridge` は Function proxy と copied/frozen data を持ち、IPC は Structured Clone 制約を持つ。[E1], [E4] `BridgeValue` と `IpcValue` の設計を分離し、詳細な clone/transport は [0010](0010-ipc-values-and-flow-control.md) に委譲する。
 
@@ -203,7 +244,7 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 | numeric / binary / graph types | undefined/holes/-0/NaN/BigInt/buffer/cycle 等を型ごとに支持/拒否 | tiny JSON へ無音に縮退させない |
 | class/prototype/Symbol/DOM等 | exact Electron version の profile で明示 | 最新文書の型追加を無試験で受理しない |
 
-### 8.2 function identity と寿命
+#### 8.2 function identity と寿命
 
 1. PR #10 の MoonBit registry が authority、kind、monotonic non-reused ID、256/document・4096/runtime の quota を所有する。[R3] 制限拡大は別の測定/変更とする。
 2. JS registry は actual closure/resolver を所有する。source の関数 body を文字列化して別 realm に再評価しない。
@@ -211,7 +252,7 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 4. `this`、bound function、function returning function、callback returning value、再帰、callback内throwを別 case にする。class/constructor proxy は初期対象に加えない。
 5. invoke 前後で authority/lifetime を再確認する。関数実行中に navigation/release/destroy が起きたら stale result/throw を新 document へ返さない。
 
-### 8.3 Error / Promise
+#### 8.3 Error / Promise
 
 1. 同期 throw は page の同じ turn の try/catch に届く必要がある。trusted Node main の同一 realm で throw しただけでは証明にならない。
 2. Error の stack は許容する正規化だけ行い、name/message/tag/page-realm instanceof の期待を pinned oracle に保存する。native path/token を debug payload として page へ出さない。
@@ -219,29 +260,21 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 4. thenable assimilation と microtask ordering を exact oracle で確認する。source/target Promise が同じ object identity を持つとは仮定しない。
 5. revocation は pending Promise を typed failure にするが、source の既に始まった副作用を取り消したことにはならない。timeout による暗黙 retry を加えない。
 
-### 8.4 getters / Proxy / primordials
+#### 8.4 getters / Proxy / primordials
 
 1. PR #10 の現在の JS leaf は trusted Node main 内であり、ブラウザ realm の実装ではない。[R3] Node 固有の型検査が JSC/QuickJS でも利用可能とは仮定しない。
 2. arbitrary Proxy を純 JS だけで trap 実行なしに完全検出/拒否できる保証を置かない。`Object.getOwnPropertyDescriptors` 等も Proxy trap を起こし得る。
 3. getters、revoked Proxy、callable thenable、prototype-sensitive key、cyclic graph を oracle に入れ、side effect と失敗時点を記録する。参考 runtime より強い制約は profile limitation として表示する。
 4. realm-local primordials を早期取得しただけで安全証明とはしない。captured builtin に attacker-controlled object を渡した場合までレビューする。
 
-### 8.5 strict preload module shim
+#### 8.5 strict preload module shim
 
 1. B5 go の後でのみ、sandboxed CJS の `require('electron')` と対象 globals/modules を追加する。Electron の sandboxed preload は全 Node 環境ではなく、通常の複数ファイル CJS loader とも異なる。[E3]
 2. PR #10 の app-root containment、UTF-8、64 KiB 上限、source SHA の native 再照合を再利用する。`module.exports` wrapper の実行だけを Electron module support としない。
 3. `Buffer/process/timers/events/url`、exports alias、entry path、unsupported require が catch された場合を個別 fixture にする。対応していない module に空 object を返さない。
 4. `exposeInMainWorld` の duplicate/reserved apiKey、部分失敗、nested function、first-script ordering を検証する。登録途中の API を残さず、source の文字列置換で適合させない。
 
-## 9. cleanup / failure / 停止性
-
-1. navigation/invalidate/destroy/stop で MoonBit record と realm-local reference を同じ transition で撤去する。public callback が実行中の場合は返答前の再検証で stale delivery を防ぐ。
-2. close/quit の保留中は利用を止め、cancel で復帰する既存仕様を保持する。authorization error をすべて永久 revoke と扱わない。
-3. host SIGKILL、main death、WebContent termination で pending を一度だけ失敗させる。異常終了から normal `closed` を合成しない。
-4. registry 件数 0 は GC 完了の証明ではない。repeated reload/subscription で retained count、native allocation、RSSを別記録する。
-5. native/control request timeout とユーザー操作・任意 async app handler の完了期限を区別する。詳細は [0010](0010-ipc-values-and-flow-control.md)。同期 bridge のために UI thread を無期限停止させない。
-
-## 10. 実装場所と PR 分割
+### 10. 実装場所と PR 分割
 
 以下は新規実装先の提案。既存 PR の path/exports を確認して統合し、同じ registry/validator を別ファイルに複製しない。
 
@@ -260,7 +293,18 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 3. B3 は typed fixture による安全性、B4 は lifetime、B7 は実アプリ操作と配布profileを検証し、成功段階を分ける。
 4. この文書追加で既存 PR の merge、通常 run/pack の有効化、manifest verified への昇格は行わない。
 
-## 11. Given / When / Then acceptance
+## 受け入れ条件
+
+### 最初の slice の完了条件
+
+- [ ] Given 固定 oracle と unchanged fixture、when direct child と明示 parent relay を実行、then sender observation と app の公開能力を区別した trace が残る。
+- [ ] Given 同じ fixture の shared-DOM reply 改ざん、when 比較器を実行、then authentic result と forged value の差を記録し、sender ADR への賛成だけで forgery を解消扱いにしない。
+- [ ] Given 必須観測を削除・null・wrong-type にした report、when validation、then invalid evidence とし、candidate の verified を生成しない。
+- [ ] Given B1 の結果が FAIL / NOT RUN、when 台帳を更新、then不足条件と適用 scope を保持し、研究の完了と strict の成立を分ける。
+
+次の 33 case は whole-issue の受入であり、B1 単独で全件 PASS を要求しない。
+
+### 11. Given / When / Then acceptance
 
 全項目が本書作成時 **未実行**。既存の PASS は exact revision の証跡として再利用し、profile の required case を欠いたまま集約しない。
 
@@ -300,7 +344,23 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 | N21 | fixed native event / 他window、旧epoch、未知topic、bad schema | 配送前に拒否し、他listenerへcallbackしない。診断にpayload/secretを出さない |
 | N22 | local event emission / callback中に他listener解除、再登録、throw | pinned app oracleと順序/arity/例外を照合。未来eventの解除と実行中snapshotを区別 |
 
-## 12. 証跡・go/no-go・終了条件
+## テスト計画
+
+### 確認した entry と実行計画
+
+今回読んだ実装は `fixtures/oracle/preload.cjs`、`core/runtime.mbt`、`scripts/macos-probe.cjs`、`tests/macos-probe-validation.test.cjs`。fixture の `syncValue / syncThrow / promiseValue / add / remove` と、`observed:{}` を既存テストが受理する入力を確認した。source 読取は native 実測ではない。
+
+| command / 手順 | 前提と確認範囲 | 今回 |
+| --- | --- | --- |
+| `node --test tests/macos-probe-validation.test.cjs` | B1/EP-01 の欠測負例を追加後に実行。既存 clean-PASS テストだけでは改修完了にならない | NOT RUN |
+| `moon test --target js`、`moon test --target native` | 固定 toolchain。core generation/grant/terminal の回帰 | NOT RUN |
+| `node scripts/oracle.cjs "$ELECTRON_MBT_ORACLE_EXE"` | shell 変数へ別途取得した Electron 44.7.0 の絶対 executable path を設定。reference のみ | NOT RUN |
+| `node scripts/macos-probe.cjs --build-only` | macOS SDK/Xcode。3 probe の compile のみ | NOT RUN |
+| B3/B4 の actual native admission / event case | 実装 PR で runner と command を追加する。現在の probe を production acceptance command と呼ばない | NOT RUN |
+
+runtime を変更しない文書整備のため、ここでは runtime/oracle/GUI コマンドを実行していない。`scripts/m0-bridge-probe.cjs` 等の PR 内 entry は該当 HEAD の統合後に確認し、現在の main に存在する entry と区別する。
+
+### 12. 証跡・go/no-go・終了条件
 
 1. evidence は profile ID/hash、source mode、adapter variant/hash、original-preload実行有無、renderer/source/generated hashes、required observations、oracle/candidate exact revision、OS/SDK/CPU/WebKit/engine、command、各 observation、native effect、exit status、`PASS/FAIL/NOT_RUN/SKIP` を持つ。秘密の nonce/session は記録しない。
 2. 既存 `scripts/m0-bridge-probe.cjs` の diagnostic PASS、`scripts/oracle.cjs` の reference PASS、native candidate acceptance PASS を別の欄にする。Linux で macOS test を SKIP した結果は macOS PASS ではない。
@@ -310,7 +370,45 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 6. adapted no-go: false sender authorization、forged reply、stale document delivery、hidden original preload downgrade、無期限UI停止、unbounded resource retentionのいずれかが残る。profileをverifiedにしない。
 7. 終了時は「何が新しく動くか」「許されるsource/config adaptation」「依然unsupportedなAPI」「実行したnative test」をprofileごとに記載する。通常run/pack/リリースの最終判断は[0004](0004-production-readiness-roadmap.md)のgateへ戻す。
 
-## 13. 参照
+## リスク
+
+実 world / frame / document と page の自己申告を混同すると、正規 API の範囲を超える grant と stale reply を発生させる。B1 の比較結果をもとに責務を固定し、public API の可能性が不明な箇所は次表の scope だけを保留する。native pending の取消と Main が受理済みの副作用は別の状態である。
+
+### 9. cleanup / failure / 停止性
+
+1. navigation/invalidate/destroy/stop で MoonBit record と realm-local reference を同じ transition で撤去する。public callback が実行中の場合は返答前の再検証で stale delivery を防ぐ。
+2. close/quit の保留中は利用を止め、cancel で復帰する既存仕様を保持する。authorization error をすべて永久 revoke と扱わない。
+3. host SIGKILL、main death、WebContent termination で pending を一度だけ失敗させる。異常終了から normal `closed` を合成しない。
+4. registry 件数 0 は GC 完了の証明ではない。repeated reload/subscription で retained count、native allocation、RSSを別記録する。
+5. native/control request timeout とユーザー操作・任意 async app handler の完了期限を区別する。詳細は [0010](0010-ipc-values-and-flow-control.md)。同期 bridge のために UI thread を無期限停止させない。
+
+## 未解決の質問
+
+| 質問 / 精確な保留 scope | Owner role | 必要な根拠・再開条件 |
+| --- | --- | --- |
+| 現 public WKWebView API で同期 return/throw・callback・result integrity を同時に満たす primitive はあるか。strict の有効化を blocked に保つ | WebView / security | B5 の 2 checkpoint、旧負例への反証、同一方式の callback/Promise/lifetime trace。失敗は理由付き No-Go、実機不足は NOT RUN |
+| full load 完了前に native actual document と current epoch を結べるか。adapted production RPC admission の有効化だけを保留 | native / core | §6.2、N16〜N21 の actual WKWebView evidence と独立 review。page-ready report や WKFrameInfo pointer を代用品にしない |
+| provisional failure / same-document / BFCache / WebContent replacement でいつ pause/revoke/restore するか。該当 navigation variant の認可を保留 | native lifecycle / security | §6.3 の oracle と実 native event correlation、旧 handle が復活しない負例。未実証 variant は許可しない |
+
+B1 oracle、B2 統合、local listener/codec の contract 実装、拒否専用の native ingress の準備は上記と並行して着手できる。
+
+## 変更履歴
+
+- 2026-10-17: polish-issue により metadata と必須構成を統一し、B1 の最初の slice、実在 command、scope 別の未解決事項、source/PR の読取根拠を追加した。旧 §1〜§13、S/A/N の全 33 ID、SHA・一次資料・Moji disposer と file authority の境界を保持した。 runtime/API の実装変更や互換状態の昇格は行っていない。
+
+## 注記
+
+### 準備状態・格納先・確認基点
+
+初回 B1 と contract/negative fixture の作業は着手可能。strict production と adapted early native ingress は上の技術条件を満たすまで保留する。既存 PR 未統合は通常の統合依存として追跡し、調査を始められない理由へ広げない。
+
+`Status: open` と `issues/open` は、[AGENTS.md](../../AGENTS.md) の「runtime の受入まで issue を open に保つ」規約と、今回の指定格納先に合わせる。整備済みの初回作業は着手してよく、未知の実験結果や後続実装の未完成だけを調査開始の blocker にしない。`polished` への移動や新しい保留状態は追加しない。将来の状態変更は同規約の受入と状態遷移を確認し、元状態 `open`・復帰先 `issues/open/0007-context-bridge-feasibility-and-security.md` を基準に判断する。
+
+Branch は最初の実装 PR の候補名である。今回の本文整備は main 向けで、ブランチ作成済みという意味ではない。旧番号付き節を小見出しとして保持したため、既存の § 番号と fixture ID を引き続き参照できる。
+
+文書の取得基点は main `8177cf051976b8d7b9eca25ae7ad8820bb04a719`。2026-10-17 の runtime 調査基点 `30c6fc97186e7ecfc8397c799525f00c8e4f0f65` と既存 PR の固定 HEAD は、履歴上の根拠として維持する。本文の公式文書引用は contract の参照であり、実装済み・native PASS の代用ではない。
+
+### 13. 参照
 
 公式文書は取得時点の contract 理解に用い、互換判定は exact Electron oracle を使う。Apple 文書が JavaScript 要求で本文取得に制約がある箇所は、Apple が公開する WebKit header を読んだ。将来 OS 用 API を現在のminimum OSで使用可能とは仮定しない。
 
@@ -337,4 +435,3 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 [M2]: https://github.com/alexishida/Moji/blob/b7b1d585d61772a0f791f165c8d07a420443b65b/src/App.tsx
 [H1]: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
 [H2]: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
-

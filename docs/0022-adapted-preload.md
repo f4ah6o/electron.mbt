@@ -138,8 +138,9 @@ event path.
 - no general application ingress, Main loader, invoke/reply or sender/document
   grant; the page-world ingress and queue release are test-only, and Main is a
   fixed QuickJS fixture graph
-- the Moji adapted API is generated shape only; its original preload and main
-  handlers are not run
+- the Moji adapted API is generated shape only; its original preload is
+  NOT_EXECUTED and its main runs only in a virtual boot smoke
+  ([docs/0030-moji-main-boot.md](0030-moji-main-boot.md))
 - the file broker is partial: grants are test-only, dialog UI is NOT RUN, and
   document PDF/PNG rendering and `openLocalPath` are not implemented
   ([docs/0027-file-broker.md](0027-file-broker.md),
@@ -161,8 +162,8 @@ event path.
 
 ## Next
 
-- add document PDF/PNG rendering and exercise the real dialog/save panel UI,
-  then boot Moji main/preload with the adapted API
+- add document PDF/PNG rendering and exercise the real dialog/save panel UI;
+  connect the adapted API to the booted Moji handlers and a real renderer
 - make the CJS loader dynamic over a verified graph and add the remaining Node
   symbol layers (EP-11/12); define the production `DocumentIngressReady`
   transition

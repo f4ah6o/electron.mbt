@@ -25,6 +25,7 @@ static char *supervisor_root = NULL;
 static char *supervisor_app_title = NULL;
 static char *supervisor_app_entry = NULL;
 static char *app_source_root = NULL;
+static char *app_boot_report = NULL;
 static JSRuntime *app_runtime = NULL;
 static JSContext *app_context = NULL;
 static void release_app(void);
@@ -360,10 +361,14 @@ static void release_app(void) {
   if (app_runtime != NULL) { JS_FreeRuntime(app_runtime); app_runtime = NULL; }
   free(app_source_root);
   app_source_root = NULL;
+  free(app_boot_report);
+  app_boot_report = NULL;
 }
 
 int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
-  if (supervisor_root == NULL) return -1;
+  const char *boot_env = getenv("ELECTRON_MBT_MOJI_BOOT");
+  int moji_boot = boot_env != NULL && strcmp(boot_env, "1") == 0;
+  if (supervisor_root == NULL && !moji_boot) return -1;
   release_app();
   char *root = copy_bytes(root_bytes);
   if (root == NULL) return -1;
@@ -376,6 +381,10 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
     return -1;
   }
   app_source_root = absolute_root;
+  if (supervisor_root == NULL) {
+    supervisor_root = strdup(absolute_root);
+    if (supervisor_root == NULL) { free(absolute_root); return -1; }
+  }
   char entry[257];
   snprintf(entry, sizeof(entry), "main.js");
   char *package_path = join_app_root("package.json");
@@ -462,6 +471,86 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
   }
   JS_FreeValue(context, files);
   JS_FreeValue(context, manifest);
+  if (moji_boot) {
+    JSValue global = JS_GetGlobalObject(context);
+    JS_SetPropertyStr(context, global, "__nativeSources", sources);
+    JS_SetPropertyStr(context, global, "__nativeMainId", JS_NewString(context, entry));
+    JS_SetPropertyStr(context, global, "__nativeAppRoot", JS_NewString(context, supervisor_root));
+    char *harness_path = join_app_root("harness.js");
+    size_t harness_length = 0;
+    char *harness = harness_path == NULL ? NULL :
+      read_text_file(harness_path, 262144, &harness_length);
+    free(harness_path);
+    if (harness == NULL) {
+      JS_FreeValue(context, global); JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JSValue harness_value = JS_Eval(context, harness, harness_length,
+      "moji-boot/harness.js", JS_EVAL_TYPE_GLOBAL);
+    free(harness);
+    if (JS_IsException(harness_value)) {
+      JS_FreeValue(context, harness_value); JS_FreeValue(context, global);
+      JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JS_FreeValue(context, harness_value);
+    JSValue boot = JS_GetPropertyStr(context, global, "__mojiBoot");
+    if (!JS_IsFunction(context, boot)) {
+      JS_FreeValue(context, boot); JS_FreeValue(context, global);
+      JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JSValue boot_value = JS_Call(context, boot, JS_UNDEFINED, 0, NULL);
+    JS_FreeValue(context, boot);
+    if (JS_IsException(boot_value)) {
+      JS_FreeValue(context, boot_value); JS_FreeValue(context, global);
+      JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JS_FreeValue(context, boot_value);
+    JSContext *job_context = NULL;
+    int job_status = 0;
+    while ((job_status = JS_ExecutePendingJob(runtime, &job_context)) > 0) {}
+    if (job_status < 0) {
+      JS_FreeValue(context, global); JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JSValue finish = JS_GetPropertyStr(context, global, "__mojiBootFinish");
+    if (!JS_IsFunction(context, finish)) {
+      JS_FreeValue(context, finish); JS_FreeValue(context, global);
+      JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JSValue finish_value = JS_Call(context, finish, JS_UNDEFINED, 0, NULL);
+    JS_FreeValue(context, finish);
+    if (JS_IsException(finish_value)) {
+      JS_FreeValue(context, finish_value); JS_FreeValue(context, global);
+      JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JS_FreeValue(context, finish_value);
+    JSValue report = JS_GetPropertyStr(context, global, "__nativeBootReport");
+    const char *report_text = JS_ToCString(context, report);
+    if (report_text == NULL) {
+      JS_FreeValue(context, report); JS_FreeValue(context, global);
+      JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    free(app_boot_report);
+    app_boot_report = strdup(report_text);
+    JS_FreeCString(context, report_text);
+    JS_FreeValue(context, report);
+    free(supervisor_app_entry);
+    supervisor_app_entry = strdup(entry);
+    free(supervisor_app_title);
+    supervisor_app_title = strdup("Moji");
+    JS_FreeValue(context, global);
+    int32_t boot_ok = app_boot_report != NULL &&
+      strstr(app_boot_report, "\"status\":\"PASS\"") != NULL;
+    JS_FreeContext(context);
+    JS_FreeRuntime(runtime);
+    return boot_ok ? 43 : -1;
+  }
   const char *loader =
     "(function(){"
     "const electron={app:{name:'native-fixture',isPackaged:false}};"
@@ -634,6 +723,32 @@ int32_t moonbit_ebt_supervisor_app_title(moonbit_bytes_t buffer, int32_t capacit
   size_t length = strlen(supervisor_app_title);
   if (length + 1 > (size_t)capacity) return -1;
   memcpy(buffer, supervisor_app_title, length);
+  buffer[length] = 0;
+  return (int32_t)length;
+}
+
+int32_t moonbit_ebt_supervisor_boot_mode(void) {
+  const char *value = getenv("ELECTRON_MBT_MOJI_BOOT");
+  return value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+}
+
+int32_t moonbit_ebt_supervisor_boot_root(moonbit_bytes_t buffer, int32_t capacity) {
+  const char *root = getenv("ELECTRON_MBT_MOJI_BOOT_ROOT");
+  if (buffer == NULL || capacity <= 0 || root == NULL ||
+      Moonbit_array_length(buffer) < capacity) return -1;
+  size_t length = strlen(root);
+  if (length + 1 > (size_t)capacity) return -1;
+  memcpy(buffer, root, length);
+  buffer[length] = 0;
+  return (int32_t)length;
+}
+
+int32_t moonbit_ebt_supervisor_boot_report(moonbit_bytes_t buffer, int32_t capacity) {
+  if (buffer == NULL || capacity <= 0 || app_boot_report == NULL ||
+      Moonbit_array_length(buffer) < capacity) return -1;
+  size_t length = strlen(app_boot_report);
+  if (length + 1 > (size_t)capacity) return -1;
+  memcpy(buffer, app_boot_report, length);
   buffer[length] = 0;
   return (int32_t)length;
 }

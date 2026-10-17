@@ -50,6 +50,14 @@ The schema-3 generator emits the declared arity, snapshots the actual argument
 array at call time and applies the queue count/byte bounds. The adapter never
 exposes `contextBridge`, `ipcRenderer` or a generic `send(channel, ...)`.
 
+## Moji main boot smoke
+
+Moji's bundled `out/main/main.js` now evaluates in QuickJS against a virtual
+Electron/Node facade. It reaches `whenReady`, creates one virtual window and
+registers 14 IPC handlers; the preload is present but **NOT_EXECUTED**. See
+[docs/0030-moji-main-boot.md](0030-moji-main-boot.md). The handlers are not yet
+connected to the adapted API or a renderer.
+
 ## Fixture Main handlers
 
 The fixture QuickJS Main now uses an operation registry:
@@ -92,14 +100,16 @@ The fixture QuickJS Main now uses an operation registry:
   NOT RUN, and document PDF/PNG rendering is unsupported
 - `getDroppedPath` (`webUtils.getPathForFile`) is unsupported by design
 - no file read/save broker, dialog, export, updater or OS service is connected
-- no Moji main boot, renderer boot, app scenario or verified row
+- the Moji main boot is a virtual harness: no native window/renderer, no
+  handler invocation and no original preload execution
+- no app scenario or verified row
 - `compatible:false`, adapted **partial** and strict **blocked** are unchanged
 
 ## Next
 
 - add open/save dialogs and export, then replace the fixture settings/updater
   with Moji's real main handlers
-- boot Moji's real main/preload graph with the adapted API and record an app
-  scenario
+- connect the adapted API to the registered Moji handlers and load a real
+  renderer window; record an app scenario
 - add Node builtins required by Moji main (`node:url`, `node:zlib`; `node:fs`
   through the file broker)

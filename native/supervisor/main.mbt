@@ -23,6 +23,17 @@ extern "C" fn supervisor_sleep_ms(milliseconds : Int) = "moonbit_ebt_supervisor_
 extern "C" fn supervisor_app_main(root : Bytes) -> Int = "moonbit_ebt_supervisor_app_main"
 
 ///|
+extern "C" fn supervisor_boot_mode() -> Int = "moonbit_ebt_supervisor_boot_mode"
+
+///|
+#borrow(buffer)
+extern "C" fn supervisor_boot_root(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_boot_root"
+
+///|
+#borrow(buffer)
+extern "C" fn supervisor_boot_report(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_boot_report"
+
+///|
 #borrow(buffer)
 extern "C" fn supervisor_app_title(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_app_title"
 
@@ -230,6 +241,28 @@ fn start_ready(buffer : Bytes) -> (Int, String, Int)? {
 
 ///|
 fn main {
+  if supervisor_boot_mode() == 1 {
+    let boot_root_buffer = Bytes::new(4096)
+    let boot_root_length = supervisor_boot_root(boot_root_buffer, boot_root_buffer.length())
+    if boot_root_length <= 0 {
+      println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_MOJI_BOOT_ROOT\",\"compatible\":false}")
+      supervisor_exit(1)
+    }
+    let boot_root = @utf8.decode_lossy(boot_root_buffer[:boot_root_length])
+    if supervisor_app_main(@utf8.encode(boot_root)) != 43 {
+      println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_MOJI_BOOT_MAIN\",\"compatible\":false}")
+      supervisor_exit(1)
+    }
+    let boot_report_buffer = Bytes::new(65536)
+    let boot_report_length = supervisor_boot_report(boot_report_buffer, boot_report_buffer.length())
+    if boot_report_length <= 0 {
+      println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_MOJI_BOOT_REPORT\",\"compatible\":false}")
+      supervisor_exit(1)
+    }
+    println(@utf8.decode_lossy(boot_report_buffer[:boot_report_length]))
+    supervisor_exit(0)
+    return
+  }
   let buffer = Bytes::new(65536)
   let event_buffer = Bytes::new(65536)
   let (fd, session, attempts) = match start_ready(buffer) {

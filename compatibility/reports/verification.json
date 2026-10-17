@@ -32,7 +32,7 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Finished. moon: ran 3 tasks, now up to date (56 warnings, 0 errors)"
+      "detail": "Finished. moon: no work to do"
     },
     {
       "id": "native-host-build",
@@ -216,8 +216,8 @@
       "detail": {
         "status": "NOT_READY",
         "counts": {
-          "checks": 28,
-          "pass": 19,
+          "checks": 29,
+          "pass": 20,
           "fail": 2,
           "notRun": 7
         }

@@ -129,7 +129,19 @@ function buildReport() {
     boot.code ? `${boot.code}: ${boot.blocker}` : 'No boot attempt'));
   checks.push(check('supervisor-handshake', String(manifest.nativeSupervisor.result).startsWith('PASS') ? 'PASS' : 'FAIL',
     manifest.nativeSupervisor.result));
-  checks.push(check('node-less-moji-app-main', 'NOT_RUN', 'Only a fixture app main is executed; Moji main is not booted'));
+  const mojiProvenance = readJson('compatibility/apps/moji-v1.0.5/build-provenance.json');
+  let mojiBoot = null;
+  try { mojiBoot = readJson('compatibility/reports/moji-boot.json'); } catch {}
+  const mojiBootOk = mojiBoot !== null && mojiBoot.status === 'PASS' &&
+    mojiBoot.mainEvaluated === true && mojiBoot.whenReady === true &&
+    mojiBoot.windows >= 1 && mojiBoot.ipcHandlers === 14 &&
+    mojiBoot.preloadPresent === true && mojiBoot.preloadExecuted === false &&
+    mojiBoot.mainSHA256 === mojiProvenance.hashes.main;
+  checks.push(check('moji-main-boot', mojiBoot === null ? 'NOT_RUN' : (mojiBootOk ? 'PASS' : 'FAIL'),
+    mojiBoot === null
+      ? 'Moji main boot report is absent'
+      : `Moji main boot: entry=${mojiBoot.entry}, whenReady=${mojiBoot.whenReady}, windows=${mojiBoot.windows}, ipcHandlers=${mojiBoot.ipcHandlers}, preloadExecuted=${mojiBoot.preloadExecuted}, mainSHA256=${mojiBoot.mainSHA256}`));
+  checks.push(check('node-less-moji-app-main', 'NOT_RUN', 'Moji main boots in a virtual QuickJS harness; no real app window/renderer or preload execution'));
   checks.push(check('preview-signing', 'NOT_RUN', 'No Developer ID signing, notarization or clean-install evidence'));
   checks.push(check('clean-install', 'NOT_RUN', 'No clean machine install has been executed'));
   checks.push(check('interactive-ime-ax', 'NOT_RUN', 'No IME, focus or accessibility acceptance run'));

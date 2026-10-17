@@ -13,6 +13,13 @@ extern "C" fn supervisor_read(fd : Int, buffer : Bytes, capacity : Int) -> Int =
 extern "C" fn supervisor_pid() -> Int = "moonbit_ebt_supervisor_pid"
 
 ///|
+extern "C" fn supervisor_load_fd() -> Int = "moonbit_ebt_supervisor_load_fd"
+
+///|
+#borrow(buffer, name)
+extern "C" fn supervisor_file(buffer : Bytes, capacity : Int, name : Bytes) -> Int = "moonbit_ebt_supervisor_file"
+
+///|
 #borrow(buffer)
 extern "C" fn supervisor_session(buffer : Bytes) -> Int = "moonbit_ebt_supervisor_session"
 
@@ -26,9 +33,22 @@ extern "C" fn supervisor_kill() = "moonbit_ebt_supervisor_kill"
 extern "C" fn supervisor_exit(code : Int) = "moonbit_ebt_supervisor_exit"
 
 ///|
-fn request_frame(session : String, request : Int, operation : String, payload : String) -> String {
+fn request_frame(
+  session : String,
+  request : Int,
+  window : Int,
+  generation : Int,
+  operation : String,
+  payload : String,
+) -> String {
   "{\"version\":1,\"session\":\"" + session + "\",\"request\":" + request.to_string() +
-  ",\"window\":0,\"generation\":0,\"operation\":\"" + operation + "\",\"payload\":" + payload + "}"
+  ",\"window\":" + window.to_string() + ",\"generation\":" + generation.to_string() +
+  ",\"operation\":\"" + operation + "\",\"payload\":" + payload + "}"
+}
+
+///|
+fn json_path(value : String) -> String {
+  value.replace_all(old="\\", new="\\\\").replace_all(old="\"", new="\\\"")
 }
 
 ///|
@@ -69,7 +89,7 @@ fn main {
     supervisor_exit(1)
   }
   let buffer = Bytes::new(65536)
-  let hello = request_frame(session, 1, "hello", "{}")
+  let hello = request_frame(session, 1, 0, 0, "hello", "{}")
   if !send(fd, hello) {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_WRITE\",\"compatible\":false}")
@@ -87,13 +107,57 @@ fn main {
       reply_text + ",\"exitStatus\":" + exit_status.to_string() + ",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let ready = request_frame(session, 2, "ready", "{}")
+  let ready = request_frame(session, 2, 0, 0, "ready", "{}")
   if !send(fd, ready) || receive(fd, buffer) is None {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_READY\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let shutdown = request_frame(session, 3, "shutdown", "{}")
+  let create = request_frame(session, 4, 1, 0, "create-window",
+    "{\"width\":640,\"height\":480,\"title\":\"native supervisor\",\"show\":false}")
+  let create_sent = send(fd, create)
+  let create_reply = if create_sent { receive(fd, buffer) } else { None }
+  if !create_sent || create_reply is None || !create_reply.unwrap().contains("\"terminal\":\"success\"") ||
+    !create_reply.unwrap().contains("\"webViewAttached\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_WINDOW\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let begin = request_frame(session, 5, 1, 1, "begin-load", "{}")
+  let begin_sent = send(fd, begin)
+  let begin_reply = if begin_sent { receive(fd, buffer) } else { None }
+  if !begin_sent || begin_reply is None || !begin_reply.unwrap().contains("\"terminal\":\"success\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_BEGIN_LOAD\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let file_path = Bytes::new(4096)
+  let path_length = supervisor_file(file_path, file_path.length(), @utf8.encode("index.html"))
+  if path_length <= 0 {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PATH\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let load = request_frame(session, 6, 1, 1, "load-file",
+    "{\"file\":\"" + json_path(@utf8.decode_lossy(file_path[:path_length])) + "\"}")
+  let load_fd = supervisor_load_fd()
+  let load_sent = send(load_fd, load)
+  let load_reply = if load_sent { receive(load_fd, buffer) } else { None }
+  if !load_sent || load_reply is None || !load_reply.unwrap().contains("\"didFinishLoad\":true") ||
+    !load_reply.unwrap().contains("index.html") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_LOAD\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let destroy = request_frame(session, 7, 1, 1, "destroy-window", "{}")
+  let destroy_sent = send(fd, destroy)
+  let destroy_reply = if destroy_sent { receive(fd, buffer) } else { None }
+  if !destroy_sent || destroy_reply is None || !destroy_reply.unwrap().contains("\"destroyed\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_DESTROY\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let shutdown = request_frame(session, 8, 0, 0, "shutdown", "{}")
   if !send(fd, shutdown) || receive(fd, buffer) is None {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SHUTDOWN\",\"compatible\":false}")
@@ -101,7 +165,7 @@ fn main {
   }
   let child_pid = supervisor_pid()
   let exit_status = supervisor_finish()
-  println("{\"status\":\"PASS\",\"probe\":\"native-supervisor-handshake\",\"backend\":\"AppKit+WKWebView\",\"childPid\":" +
+  println("{\"status\":\"PASS\",\"probe\":\"native-supervisor-window-load\",\"backend\":\"AppKit+WKWebView\",\"childPid\":" +
     child_pid.to_string() + ",\"exitStatus\":" + exit_status.to_string() +
-    ",\"creator\":\"moonbit-native\",\"compatible\":false}")
+    ",\"windowLoaded\":true,\"creator\":\"moonbit-native\",\"compatible\":false}")
 }

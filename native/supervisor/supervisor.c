@@ -20,6 +20,7 @@ static pid_t child_pid = -1;
 static int control_fd = -1;
 static int load_fd = -1;
 static int event_fd = -1;
+static char *supervisor_root = NULL;
 
 static char *copy_bytes(moonbit_bytes_t bytes) {
   if (bytes == NULL) return NULL;
@@ -164,6 +165,8 @@ int32_t moonbit_ebt_supervisor_start(
   control_fd = control[0];
   load_fd = load[0];
   event_fd = events[0];
+  free(supervisor_root);
+  supervisor_root = strdup(root);
   free(binary); free(root); free(session);
   return control_fd;
 }
@@ -187,6 +190,41 @@ int32_t moonbit_ebt_supervisor_read_frame(int32_t fd, moonbit_bytes_t buffer, in
   uint32_t length = ntohl(header);
   if (length == 0 || length > (uint32_t)capacity || (int32_t)capacity > Moonbit_array_length(buffer)) return -1;
   if (read_all(fd, buffer, length) != 0) return -1;
+  return (int32_t)length;
+}
+
+int32_t moonbit_ebt_supervisor_load_fd(void) { return load_fd; }
+
+int32_t moonbit_ebt_supervisor_file(
+    moonbit_bytes_t buffer,
+    int32_t capacity,
+    moonbit_bytes_t name_bytes) {
+  if (buffer == NULL || capacity <= 0 || name_bytes == NULL ||
+      supervisor_root == NULL || Moonbit_array_length(buffer) < capacity) return -1;
+  char *name = copy_bytes(name_bytes);
+  if (name == NULL) return -1;
+  size_t root_length = strlen(supervisor_root);
+  size_t name_length = strlen(name);
+  if (name_length == 0 || strstr(name, "..") != NULL) { free(name); return -1; }
+  char *joined = (char *)malloc(root_length + name_length + 2);
+  if (joined == NULL) { free(name); return -1; }
+  memcpy(joined, supervisor_root, root_length);
+  joined[root_length] = '/';
+  memcpy(joined + root_length + 1, name, name_length + 1);
+  free(name);
+  char *canonical = realpath(joined, NULL);
+  free(joined);
+  if (canonical == NULL) return -1;
+  if (strncmp(canonical, supervisor_root, root_length) != 0 ||
+      canonical[root_length] != '/') {
+    free(canonical);
+    return -1;
+  }
+  size_t length = strlen(canonical);
+  if (length + 1 > (size_t)capacity) { free(canonical); return -1; }
+  memcpy(buffer, canonical, length);
+  buffer[length] = 0;
+  free(canonical);
   return (int32_t)length;
 }
 
@@ -231,6 +269,8 @@ void moonbit_ebt_supervisor_kill(void) {
   if (control_fd >= 0) { close(control_fd); control_fd = -1; }
   if (load_fd >= 0) { close(load_fd); load_fd = -1; }
   if (event_fd >= 0) { close(event_fd); event_fd = -1; }
+  free(supervisor_root);
+  supervisor_root = NULL;
 }
 
 void moonbit_ebt_supervisor_exit(int32_t code) {

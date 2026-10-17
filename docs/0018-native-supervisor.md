@@ -1,8 +1,9 @@
 # MoonBit-native supervisor handshake (EP-10 prototype)
 
-Status: **prototype PASS for the private handshake only**. This is the first
-MoonBit-native process that spawns and controls the real AppKit/WKWebView host
-without Node. It is not a complete supervisor, app launcher or Node-less boot.
+Status: **prototype PASS for private handshake plus a real window/file load**.
+This is the first MoonBit-native process that spawns, creates a window in and
+loads a file through the real AppKit/WKWebView host without Node. It is not a
+complete supervisor, app launcher or Node-less app boot.
 
 ## Shape
 
@@ -14,7 +15,10 @@ without Node. It is not a complete supervisor, app launcher or Node-less boot.
 - absolute app root + a fresh 32-hex session from `arc4random_buf` in
   `ELECTRON_MBT_HOST_SESSION`
 - 4-byte big-endian length framing around canonical JSON envelopes
-- `hello` → `ready` → `shutdown`
+- `hello` → `ready` → `create-window` → `begin-load` → `load-file` on the
+  load lane → `destroy-window` → `shutdown`
+- the loaded file is resolved under the canonical app root by C and sent as a
+  JSON path; the load ACK must contain `didFinishLoad:true` and `index.html`
 - close/EOF and `waitpid` on finish; `SIGKILL` + wait on failure
 
 The supervisor uses the existing host directly; it does not use Node,
@@ -26,11 +30,12 @@ Node-API, `sync_channel.node` or the JS runner.
 the final JSON line:
 
 ```json
-{"status":"PASS","probe":"native-supervisor-handshake","backend":"AppKit+WKWebView","childPid":73832,"exitStatus":0,"creator":"moonbit-native","compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":77566,"exitStatus":0,"windowLoaded":true,"creator":"moonbit-native","compatible":false}
 ```
 
-Observed: real native host startup, `hello` reply with `AppKit+WKWebView`,
-`ready` reply, `shutdown` reply, child exit status 0. A native test also checks
+Observed: real native host startup, `hello`/`ready` replies, window creation,
+`begin-load`, a load-channel `load-file` ACK with `didFinishLoad:true`, window
+destroy, `shutdown`, and child exit status 0. A native test also checks
 that sessions are 32 lowercase hex characters and differ between draws.
 
 `node scripts/m1-native-supervisor-fault.cjs` passes two negative cases:
@@ -48,8 +53,9 @@ Both set `compatible:false` and do not leave the intended session running.
 - no restart/watchdog policy or orphan sweep beyond the 5s finish timeout and
   explicit kill; no event-loop ownership or broad fault injection
 - load/event channels are kept open but the prototype only uses control
-- no window creation, preload/contextBridge, app main, QuickJS runner or
-  Node-less Moji boot
+- no preload/contextBridge, app main, QuickJS runner or Node-less Moji boot
+- no window options beyond the fixed width/height/title/show payload; no
+  preload or renderer ingress
 - no signature, app ID, user-data isolation or update policy
 - host stderr may include macOS keyboard-layout diagnostics
 

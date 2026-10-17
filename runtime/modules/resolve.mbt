@@ -16,6 +16,7 @@ pub struct FileIndex {
   files : Map[String, Bool]
   directories : Map[String, Bool]
   package_mains : Map[String, String]
+  package_dirs : Map[String, Bool]
 }
 
 ///|
@@ -24,6 +25,7 @@ pub fn FileIndex::new() -> FileIndex {
     files: {},
     directories: {},
     package_mains: {},
+    package_dirs: {},
   }
 }
 
@@ -97,10 +99,135 @@ pub fn FileIndex::add_package_main(
     return Err(UnsupportedSpecifier)
   }
   self.package_mains[normalized] = main
+  self.package_dirs[normalized] = true
   if normalized.length() > 0 {
     self.directories[normalized] = true
   }
   Ok(())
+}
+
+///|
+// Register a resolvable package directory. An empty main means the directory
+// uses index resolution; it is not a missing package.
+pub fn FileIndex::add_package(
+  self : FileIndex,
+  name : String,
+  directory : String,
+  main? : String = "",
+) -> Result[Unit, ResolveError] {
+  let parts : Array[String] = []
+  for part in name.split("/") {
+    let text = part.to_owned()
+    if text.length() == 0 {
+      return Err(UnsupportedSpecifier)
+    }
+    parts.push(text)
+  }
+  if parts.length() == 0 || name.has_prefix(".") || name.has_prefix("/") ||
+    name.has_prefix("\\") {
+    return Err(UnsupportedSpecifier)
+  }
+  let normalized = match resolve_normalize(directory) {
+    Some(value) => value
+    None => return Err(EscapesRoot)
+  }
+  if normalized.length() == 0 {
+    return Err(UnsupportedSpecifier)
+  }
+  if main.length() > 0 {
+    match self.add_package_main(normalized, main) {
+      Ok(_) => ()
+      Err(error) => return Err(error)
+    }
+  } else {
+    self.package_dirs[normalized] = true
+    self.directories[normalized] = true
+  }
+  Ok(())
+}
+
+///|
+fn resolve_parent_directory(path : String) -> String {
+  let parts : Array[String] = []
+  for part in path.split("/") {
+    parts.push(part.to_owned())
+  }
+  if parts.length() <= 1 {
+    return ""
+  }
+  let out : Array[String] = []
+  for i = 0; i < parts.length() - 1; i = i + 1 {
+    out.push(parts[i])
+  }
+  out.join("/")
+}
+
+///|
+fn split_package_specifier(specifier : String) -> (String, String)? {
+  let parts : Array[String] = []
+  for part in specifier.split("/") {
+    parts.push(part.to_owned())
+  }
+  if parts.length() == 0 {
+    return None
+  }
+  let name_length = if parts[0].has_prefix("@") { 2 } else { 1 }
+  if parts.length() < name_length {
+    return None
+  }
+  let name_parts : Array[String] = []
+  for i = 0; i < name_length; i = i + 1 {
+    if parts[i].length() == 0 {
+      return None
+    }
+    name_parts.push(parts[i])
+  }
+  let sub_parts : Array[String] = []
+  for i = name_length; i < parts.length(); i = i + 1 {
+    if parts[i].length() > 0 {
+      sub_parts.push(parts[i])
+    }
+  }
+  Some((name_parts.join("/"), sub_parts.join("/")))
+}
+
+///|
+fn FileIndex::resolve_package(
+  self : FileIndex,
+  parent : String,
+  specifier : String,
+) -> Result[String, ResolveError] {
+  let (name, subpath) = match split_package_specifier(specifier) {
+    Some(value) => value
+    None => return Err(UnsupportedSpecifier)
+  }
+  let mut current = parent
+  while true {
+    let candidate = if current.length() == 0 {
+      "node_modules/" + name
+    } else {
+      current + "/node_modules/" + name
+    }
+    if self.package_dirs.contains(candidate) {
+      if subpath.length() == 0 {
+        return self.resolve_candidate(candidate, 0)
+      }
+      let combined = candidate + "/" + subpath
+      let target = match resolve_normalize(combined) {
+        Some(value) => value
+        None => return Err(EscapesRoot)
+      }
+      if !target.has_prefix(candidate + "/") {
+        return Err(EscapesRoot)
+      }
+      return self.resolve_candidate(target, 0)
+    }
+    if current.length() == 0 {
+      break
+    }
+    current = resolve_parent_directory(current)
+  }
+  Err(NotFound)
 }
 
 ///|
@@ -151,7 +278,12 @@ fn FileIndex::resolve_candidate(
     match self.package_mains.get(base) {
       Some(main) =>
         return match resolve_normalize(base + "/" + main) {
-          Some(target) => self.resolve_candidate(target, depth + 1)
+          Some(target) =>
+            if target.has_prefix(base + "/") {
+              self.resolve_candidate(target, depth + 1)
+            } else {
+              Err(EscapesRoot)
+            }
           None => Err(EscapesRoot)
         }
       None => ()
@@ -184,12 +316,15 @@ pub fn FileIndex::resolve(
   if specifier.has_prefix("/") || specifier.has_prefix("\\") {
     return Err(AbsoluteSpecifier)
   }
-  if !specifier.has_prefix(".") {
-    return Err(UnsupportedSpecifier)
-  }
   let parent_normalized = match resolve_normalize(parent) {
     Some(value) => value
     None => return Err(EscapesRoot)
+  }
+  if specifier.has_prefix("node:") {
+    return Err(UnsupportedSpecifier)
+  }
+  if !specifier.has_prefix(".") {
+    return self.resolve_package(parent_normalized, specifier)
   }
   let combined = if parent_normalized.length() == 0 {
     specifier

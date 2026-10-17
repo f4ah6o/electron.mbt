@@ -40,6 +40,8 @@ state machine.
 
 - exact `.js`/`.cjs`/`.json`, extension probing and directory index
 - package `main` metadata for a directory candidate
+- package specifiers and subpaths through registered `node_modules` directories, including scoped names and nested packages
+- package-main/subpath escape rejection
 - path normalization, root-escape rejection and unsupported `.node`/TS rejection
 - a 16-step package-main recursion bound
 
@@ -58,13 +60,14 @@ pass:
 - JSON module
 - duplicate ID, missing entry, missing dependency and syntax-error rejection
 - relative file/extension/directory/package-main resolution and escape/unsupported rejection
+- root/nested/scoped package resolution over a registered `node_modules` index
 
 `moon test --target js`/native also pass the pure `ModuleRegistry` contract
 tests for duplicate/unknown/limit/state transitions and cycle edges.
 
 ## Open
 
-- package specifiers, nested `node_modules`, exports/imports and conditional resolution
+- exports/imports, conditional resolution, symlinked package identity and live package discovery
 - filesystem source acquisition, source hashes and source maps
 - `require('electron')` identity, Node builtin allowlist and unsupported-symbol diagnostics
 - dynamic/computed require, package exports/imports and ESM

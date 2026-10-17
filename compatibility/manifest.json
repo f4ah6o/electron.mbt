@@ -487,15 +487,16 @@
       "module.exports reassignment",
       "JSON module",
       "duplicate/missing dependency/syntax rejection",
-      "relative/extension/index/package-main resolution and escape rejection"
+      "relative/extension/index/package-main resolution and escape rejection",
+      "root/nested/scoped node_modules resolution"
     ],
     "open": [
-      "package specifiers/node_modules",
       "Node builtins",
       "dynamic require",
+      "conditional exports/imports",
+      "live package discovery/symlink identity",
       "pinned Node oracle",
-      "actual Moji/jmd graph",
-      "conditional exports/imports"
+      "actual Moji/jmd graph"
     ],
     "note": "Pre-resolved in-memory graph only. No app loader or Node compatibility claim."
   },

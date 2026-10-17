@@ -12,7 +12,26 @@ const script = path.join(root, 'scripts/oracle.cjs');
 
 function observed() {
   return {
-    status: 'completed', moduleIdentity: true, trace: [['quit']], observation: { syncValue: 42 },
+    status: 'completed', moduleIdentity: true, trace: [['quit']],
+    observation: {
+      availableAtFirstScript: true,
+      syncValue: 42,
+      syncThrow: true,
+      syncThrowError: { name: 'Error', typeofValue: 'object', objectTag: '[object Error]', pageRealmInstance: true },
+      returnsPromise: true,
+      promiseValue: 43,
+      promiseReject: true,
+      promiseRejectError: { name: 'Error', typeofValue: 'object', objectTag: '[object Error]', pageRealmInstance: true },
+      dataFrozen: true,
+      dataUnchanged: true,
+      callbackValues: ['first', 'second'],
+      callbackRemovalByOriginalIdentity: false,
+      disposerIsFunction: true,
+      disposeOnce: true,
+      disposeTwice: false,
+      subscriptionValues: ['sub-first'],
+      primordialIntact: true,
+    },
     versions: { electron: manifest.versions.electronOracle, node: manifest.versions.nodeOracle },
     platform: 'darwin', arch: 'arm64',
   };

@@ -5,6 +5,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { snapshot } = require('../bridges/node/app-files.cjs');
 const manifest = require('../compatibility/manifest.json');
+const { validateM0ElectronOracleObservation } = require('./m0-electron-oracle-evidence.cjs');
 const root = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
 const executable = args[0];
@@ -33,8 +34,11 @@ try {
   const report = { schema: 1, status: 'baseline-collected', compatible: false, fixtureHash: before.sha256, fileHashes: before.files, observed, note: 'Reference runtime observations only. No electron.mbt differential result or size claim.' };
   const raw = JSON.stringify(report);
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
+  // Admission runs before the M0-specific observation check so malformed
+  // shape/pin failures keep their typed baseline fields.
   const admission = JSON.parse(core.validate_baseline(serialized, manifest.versions.electronOracle, manifest.versions.nodeOracle, before.sha256));
   if (admission.ok !== true) throw new Error(`baseline rejected: ${admission.code} (${admission.field || 'payload'})`);
+  validateM0ElectronOracleObservation(observed.observation);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, serialized);
   console.log(raw);

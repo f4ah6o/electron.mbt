@@ -51,10 +51,9 @@ function admitProfile(selection) {
   let raw;
   try { raw = fs.readFileSync(profileConfigPath, 'utf8'); }
   catch (error) { throw runtimeError('ELECTRON_MBT_PROFILE_CONFIG', `Cannot read the profile contract: ${error.message}`); }
-  const result = JSON.parse(core().validate_profile(
+  return JSON.parse(core().validate_profile(
     raw, selection.profile, selection.inputMode, selection.preloadMode, selection.runtime,
   ));
-  return result;
 }
 
 function main(argv) {
@@ -63,9 +62,14 @@ function main(argv) {
     report({
       usage: 'electron-mbt <doctor|snapshot|compat-check|run|pack> <app-dir> [--profile <id>] [--input-mode <mode>] [--preload-mode <mode>] [--runtime <runtime>]',
       profiles: 'compatibility/runtime-profiles-v1.json',
-      run: 'not implemented: M0 gates remain open',
+      run: 'not implemented by default: optional --experimental-m1 enables a constrained macOS CJS native-host profile',
       pack: 'not implemented: no distributable runtime',
     }); return 0;
+  }
+  // The experimental native host is an explicit opt-in. Unflagged run/pack
+  // remain fail-closed and are not aliases for this constrained profile.
+  if (argv.length === 3 && argv[0] === 'run' && argv[2] === '--experimental-m1') {
+    return require('./m1-runner.cjs').run(argv[1]);
   }
   const { command, appDir, extra, profile, inputMode, preloadMode, runtime } = parseArgs(argv);
   if (!commands.includes(command) || !appDir || extra.length) {
@@ -104,6 +108,7 @@ function main(argv) {
     environment: { node: process.versions.node, platform: process.platform, arch: process.arch },
     inventory: { nativeAddons: app.nativeAddons, asar: app.asar },
     gates: manifest.gates,
+    experimentalM1: manifest.experimentalM1 || null,
     limitation: 'Static inventory does not execute the app, establish runtime compatibility, or replace differential/native tests.',
   });
   return 2;

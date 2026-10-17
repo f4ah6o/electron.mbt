@@ -446,3 +446,10 @@ cross-world sync の不成立、実 native sender の誤認、未bounded request
 [S12]: https://webkitgtk.org/
 [S13]: https://github.com/gpui-mbt/gpui.mbt/blob/008b3c73d50108d6ed1e6c02ad9e12e930e843ec/docs/status.md
 [S14]: https://github.com/gpui-mbt/gpui.mbt/blob/008b3c73d50108d6ed1e6c02ad9e12e930e843ec/docs/architecture.md
+
+### 19. 2026-10-11 M0 public WebKit synchronous-bridge increment (PR #2)
+
+A separate macOS-only, test-only `WKContentWorld` harness was added to compare a synchronous shared-DOM `dispatchEvent` candidate with `WKScriptMessageHandlerWithReply`'s Promise behavior. The page's first script and isolated world are observed independently, with an explicit page-side DOM response tampering attempt and real document reload. A successful harness run is **not** `contextBridge` acceptance. Its security-critical negative case makes clear that page-owned DOM attributes, callback IDs and CustomEvents do not authenticate a native sender or trusted reply.
+
+Evidence is written to `evidence/m0-bridge-feasibility.json` in the macOS CI artifact. See `docs/0003-m0-contextbridge-feasibility.md` for each of the six unchanged Electron fixture requirements versus measured and still-missing contracts. Until an actual sandboxed preload with synchronous function proxies, native-attested frame/document authority, callback identity, Promise/rejection behavior, frozen copies and stale generation revocation works, M0 remains OPEN; the experimental M1 runner remains opt-in, `compatible:false`, and normal `run`/`pack` fail closed.
+

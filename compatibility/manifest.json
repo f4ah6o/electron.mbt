@@ -49,16 +49,39 @@
   "mainListenerProfile": {
     "name": "main-local-listeners-v1",
     "status": "partial",
-    "methods": ["on", "addListener", "once", "off", "removeListener", "removeAllListeners", "listeners", "rawListeners", "listenerCount", "emit"],
-    "deniedChannels": ["error", "newListener", "removeListener"],
+    "methods": [
+      "on",
+      "addListener",
+      "once",
+      "off",
+      "removeListener",
+      "removeAllListeners",
+      "listeners",
+      "rawListeners",
+      "listenerCount",
+      "emit"
+    ],
+    "deniedChannels": [
+      "error",
+      "newListener",
+      "removeListener"
+    ],
     "rendererIngress": false,
     "note": "Ordinary non-empty string channels only. Emit is trusted main-local dispatch, not renderer IPC. Symbols, borrowed/mutated emitter methods, custom wrapper mutation and remaining EventEmitter methods are not a compatibility claim."
   },
   "mainInvokeProfile": {
     "name": "invoke-json-undefined-v1",
     "status": "partial",
-    "methods": ["handle", "handleOnce", "removeHandler"],
-    "additionalInvokeValues": ["undefined", "undefined-in-dense-array", "undefined-in-plain-record"],
+    "methods": [
+      "handle",
+      "handleOnce",
+      "removeHandler"
+    ],
+    "additionalInvokeValues": [
+      "undefined",
+      "undefined-in-dense-array",
+      "undefined-in-plain-record"
+    ],
     "rendererIngress": false,
     "senderAttestation": "not_implemented",
     "implicitHandlerTimeout": false,
@@ -66,22 +89,292 @@
   },
   "valueProfile": {
     "name": "tiny-json-tree-v1",
-    "supported": ["null", "boolean", "string", "finite-number-except-negative-zero", "dense-array", "plain-enumerable-data-record"],
-    "rejected": ["undefined", "negative-zero", "nonfinite-number", "bigint", "symbol", "function", "accessor", "proxy", "sparse-array", "extra-array-properties", "nonenumerable-property", "custom-prototype", "Date", "Map", "Set", "ArrayBuffer", "typed-array", "Error", "cycle", "repeated-object-reference"],
+    "supported": [
+      "null",
+      "boolean",
+      "string",
+      "finite-number-except-negative-zero",
+      "dense-array",
+      "plain-enumerable-data-record"
+    ],
+    "rejected": [
+      "undefined",
+      "negative-zero",
+      "nonfinite-number",
+      "bigint",
+      "symbol",
+      "function",
+      "accessor",
+      "proxy",
+      "sparse-array",
+      "extra-array-properties",
+      "nonenumerable-property",
+      "custom-prototype",
+      "Date",
+      "Map",
+      "Set",
+      "ArrayBuffer",
+      "typed-array",
+      "Error",
+      "cycle",
+      "repeated-object-reference"
+    ],
     "structuredCloneCompatible": false
   },
   "rows": [
-    {"id":"A","scope":"CJS resolution and immutable source inventory","status":"partial","tests":["tests/loader.test.cjs","tests/facade.test.cjs"],"evidence":[],"gap":"Runtime-owned facade declares the app surface; not an Electron compatibility proof or a real packaged app run."},
-    {"id":"B","scope":"lifecycle and synchronous main API","status":"partial","tests":["core/runtime_wbtest.mbt","tests/transport.test.cjs","tests/core-integration.test.cjs","tests/facade.test.cjs","tests/differential.test.cjs"],"evidence":["evidence/differential.json"],"gap":"MoonBit lifecycle drives the facade and a real socketpair probe. The unchanged full fixture passes listener registration and reaches readiness, then reports failed/ready-rejected with exitCode 1. No native host or BrowserWindow API in this branch."},
-    {"id":"C","scope":"isolated preload and synchronous contextBridge","status":"partial","tests":["tests/differential.test.cjs","scripts/macos-probe.cjs"],"evidence":["evidence/wkcontentworld.json","evidence/wksyncbridge.json"],"gap":"Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute."},
-    {"id":"D","scope":"application IPC","status":"partial","tests":["tests/clone.test.cjs","core/runtime_wbtest.mbt","core/ipc_listeners_wbtest.mbt","core/ipc_handlers_wbtest.mbt","tests/ipc-listeners.test.cjs","tests/ipc-handlers.test.cjs","tests/candidate-observation.test.cjs","tests/differential.test.cjs","scripts/ipc-listener-oracle.cjs","scripts/ipc-handler-oracle.cjs"],"evidence":["evidence/differential.json","evidence/ipc-main-listeners.json","evidence/ipc-main-handlers.json"],"gap":"Bounded main listeners, invoke-handler registration and private invocation kernel are implemented. Handler comparison uses real Electron renderer IPC versus a synthetic trusted-host candidate driver, not native candidate E2E. Production renderer ingress, native sender attestation, ipcRenderer and event replies remain unimplemented."},
-    {"id":"E","scope":"dialog files clipboard","status":"planned","tests":[],"evidence":[],"gap":"OS service adapters not implemented."},
-    {"id":"F","scope":"sender and document authority","status":"partial","tests":["core/runtime_wbtest.mbt","core/ipc_listeners_wbtest.mbt","core/ipc_handlers_wbtest.mbt","tests/ipc-handlers.test.cjs"],"evidence":[],"gap":"No native sender-attestation adapter; caller-supplied metadata is not authentication. Registration grants no renderer authority. Core invocation tickets bind completion to the originally authorized document; native invalidation/reconcile wiring is still required."},
-    {"id":"G","scope":"IME focus accessibility DPI","status":"partial","tests":["scripts/macos-probe.cjs"],"evidence":["evidence/wknative.json"],"gap":"Executed: resize/DPI observation, DOM-synthesized vs trusted posted-event input, native pasteboard, in-process AX role. NOT_RUN: focus/blur (no key status in session), OS paste, IME composition, VoiceOver traversal, hardware keys, second-display DPI. DOM clipboard probe stalled on the web process. Interactive acceptance still required."},
-    {"id":"H","scope":"process crash and cleanup","status":"partial","tests":["tests/transport.test.cjs"],"evidence":[],"gap":"Child probe only; full host/Node/WebView process ledger remains open."},
-    {"id":"I","scope":"release size and cold/warm metrics","status":"planned","tests":[],"evidence":[],"gap":"No release bundle, fixed Node payload, signing or comparable measurements."},
-    {"id":"J","scope":"unchanged real Electron application","status":"planned","tests":[],"evidence":[],"gap":"No real application selected or executed."}
+    {
+      "id": "A",
+      "scope": "CJS resolution and immutable source inventory",
+      "status": "partial",
+      "tests": [
+        "scripts/m1-app-smoke.cjs",
+        "tests/facade.test.cjs",
+        "tests/loader.test.cjs"
+      ],
+      "evidence": [],
+      "gap": "Runtime-owned facade declares the app surface; not an Electron compatibility proof or a real packaged app run. Real CJS main and dependency share the facade in a macOS fixture; broad dependency graphs and arbitrary apps are not yet accepted."
+    },
+    {
+      "id": "B",
+      "scope": "lifecycle and synchronous main API",
+      "status": "partial",
+      "tests": [
+        "core/runtime_wbtest.mbt",
+        "scripts/m1-app-smoke.cjs",
+        "scripts/m1-begin-load-failure.cjs",
+        "scripts/m1-load-deadline.cjs",
+        "scripts/m1-load-event-chain.cjs",
+        "scripts/m1-macos-smoke.cjs",
+        "scripts/m1-native-close-race.cjs",
+        "scripts/m1-native-close.cjs",
+        "scripts/m1-slow-load.cjs",
+        "tests/core-integration.test.cjs",
+        "tests/differential.test.cjs",
+        "tests/facade.test.cjs",
+        "tests/runtime-bounds.test.cjs",
+        "tests/runtime-quit.test.cjs",
+        "tests/runtime-title.test.cjs",
+        "tests/runtime-webcontents-url.test.cjs",
+        "tests/transport.test.cjs"
+      ],
+      "evidence": [
+        "evidence/differential.json"
+      ],
+      "gap": "MoonBit lifecycle drives the facade and a real socketpair probe. The unchanged full fixture passes listener registration and reaches readiness, then reports failed/ready-rejected with exitCode 1. No native host or BrowserWindow API in this branch. Native AppKit close gestures and app.quit before-quit/close/will-quit cancellation are mediated by native ACKs and MoonBit state. Queued stale notifications are ignored in deterministic tests. Host-loss fault injection prevents false normal-quit events; real macOS CJS tests validate quit event arguments. Experimental outer-frame size/position array getter and setter aliases reuse native bounds ACKs and preserve unmodified axes. Renderer beforeunload/unload, human physical UI, multi-display geometry and complete Electron event ordering remain unverified."
+    },
+    {
+      "id": "C",
+      "scope": "isolated preload and synchronous contextBridge",
+      "status": "partial",
+      "tests": [
+        "scripts/m0-bridge-probe.cjs",
+        "scripts/macos-probe.cjs",
+        "scripts/oracle.cjs",
+        "tests/differential.test.cjs",
+        "tests/m0-bridge-evidence.test.cjs",
+        "tests/m0-electron-oracle-evidence.test.cjs"
+      ],
+      "evidence": [
+        "evidence/wkcontentworld.json",
+        "evidence/wksyncbridge.json"
+      ],
+      "gap": "Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute. Separately pinned sandboxed Electron 44.7.0 preload baseline now validates first-script sync/Promise/frozen-data and documents callback identity vs disposer behavior; this is oracle evidence only. Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, test-only native document-grant issue/rotation/replay denial, direct child-frame native rejection with isolated Promise confirmation (not original page-initiator authentication), native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open."
+    },
+    {
+      "id": "D",
+      "scope": "application IPC",
+      "status": "partial",
+      "tests": [
+        "core/ipc_handlers_wbtest.mbt",
+        "core/ipc_listeners_wbtest.mbt",
+        "core/runtime_wbtest.mbt",
+        "scripts/ipc-handler-oracle.cjs",
+        "scripts/ipc-listener-oracle.cjs",
+        "tests/candidate-observation.test.cjs",
+        "tests/clone.test.cjs",
+        "tests/differential.test.cjs",
+        "tests/ipc-handlers.test.cjs",
+        "tests/ipc-listeners.test.cjs"
+      ],
+      "evidence": [
+        "evidence/differential.json",
+        "evidence/ipc-main-handlers.json",
+        "evidence/ipc-main-listeners.json"
+      ],
+      "gap": "Bounded main listeners, invoke-handler registration and private invocation kernel are implemented. Handler comparison uses real Electron renderer IPC versus a synthetic trusted-host candidate driver, not native candidate E2E. Production renderer ingress, native sender attestation, ipcRenderer and event replies remain unimplemented. Bounded tree codec and request ledger, not ipcRenderer/ipcMain implementations."
+    },
+    {
+      "id": "E",
+      "scope": "dialog files clipboard",
+      "status": "planned",
+      "tests": [],
+      "evidence": [],
+      "gap": "OS service adapters not implemented."
+    },
+    {
+      "id": "F",
+      "scope": "sender and document authority",
+      "status": "partial",
+      "tests": [
+        "core/ipc_handlers_wbtest.mbt",
+        "core/ipc_listeners_wbtest.mbt",
+        "core/runtime_wbtest.mbt",
+        "scripts/m1-invalid-wire.cjs",
+        "scripts/m1-renderer-delegate-sim.cjs",
+        "scripts/m1-webkit-process-kill.cjs",
+        "tests/ipc-handlers.test.cjs"
+      ],
+      "evidence": [],
+      "gap": "No native sender-attestation adapter; caller-supplied metadata is not authentication. Registration grants no renderer authority. Core invocation tickets bind completion to the originally authorized document; native invalidation/reconcile wiring is still required. Private native events revoke MoonBit document grants and malformed native identity frames fail closed; a separate test-only WebKit private selector now triggers genuine content-process termination and public delegate delivery on macOS. Unassisted renderer crashes, native sender attestation and complete renderer/frame origin policy remain open."
+    },
+    {
+      "id": "G",
+      "scope": "IME focus accessibility DPI",
+      "status": "partial",
+      "tests": [
+        "scripts/macos-probe.cjs"
+      ],
+      "evidence": [
+        "evidence/wknative.json"
+      ],
+      "gap": "Executed: resize/DPI observation, DOM-synthesized vs trusted posted-event input, native pasteboard, in-process AX role. NOT_RUN: focus/blur (no key status in session), OS paste, IME composition, VoiceOver traversal, hardware keys, second-display DPI. DOM clipboard probe stalled on the web process. Interactive acceptance still required. Requires interactive native WebView acceptance."
+    },
+    {
+      "id": "H",
+      "scope": "process crash and cleanup",
+      "status": "partial",
+      "tests": [
+        "scripts/m1-host-init-fault.cjs",
+        "scripts/m1-host-loss.cjs",
+        "scripts/m1-load-deadline.cjs",
+        "scripts/m1-macos-smoke.cjs",
+        "scripts/m1-renderer-delegate-sim.cjs",
+        "scripts/m1-webkit-process-kill.cjs",
+        "tests/transport.test.cjs"
+      ],
+      "evidence": [],
+      "gap": "Child probe only; full host/Node/WebView process ledger remains open. Native spawn/host loss, worker/FD cleanup and test-triggered real WebKit content-process termination via a private selector were exercised. Unassisted process crashes, external OS SIGKILL, GPU/multiprocess tree accounting, and long-run recovery acceptance remain unverified."
+    },
+    {
+      "id": "I",
+      "scope": "release size and cold/warm metrics",
+      "status": "planned",
+      "tests": [],
+      "evidence": [],
+      "gap": "No release bundle, fixed Node payload, signing or comparable measurements."
+    },
+    {
+      "id": "J",
+      "scope": "unchanged real Electron application",
+      "status": "planned",
+      "tests": [],
+      "evidence": [],
+      "gap": "No real application selected or executed."
+    }
   ],
-  "unsupported": ["run", "pack", "BrowserWindow", "contextBridge", "ipcMain renderer ingress", "ipcRenderer", "ESM electron imports", "electron subpaths", "nodeIntegration:true", "contextIsolation:false", "sandbox:false", "webSecurity:false", "sendSync", "ASAR", "native addon ABI", "autoUpdater", "Windows backend", "Linux backend"],
-  "gates": {"versions":"open","syncMainApi":"open","syncIsolatedContextBridge":"open","electronDifferential":"open","nativeAcceptance":"open","releaseMeasurement":"open"}
+  "unsupported": [
+    "run",
+    "pack",
+    "BrowserWindow",
+    "contextBridge",
+    "ipcMain renderer ingress",
+    "ipcRenderer",
+    "ESM electron imports",
+    "electron subpaths",
+    "nodeIntegration:true",
+    "contextIsolation:false",
+    "sandbox:false",
+    "webSecurity:false",
+    "sendSync",
+    "ASAR",
+    "native addon ABI",
+    "autoUpdater",
+    "Windows backend",
+    "Linux backend",
+    "run without --experimental-m1"
+  ],
+  "gates": {
+    "versions": "open",
+    "syncMainApi": "open",
+    "syncIsolatedContextBridge": "open",
+    "electronDifferential": "open",
+    "nativeAcceptance": "open",
+    "releaseMeasurement": "open"
+  },
+  "experimentalM1": {
+    "status": "partial",
+    "platform": "darwin",
+    "invocation": "electron-mbt run <app-dir> --experimental-m1",
+    "compatible": false,
+    "engine": "AppKit/WKWebView system engine",
+    "tests": [
+      "scripts/m1-macos-smoke.cjs",
+      "scripts/m1-app-smoke.cjs",
+      "scripts/m1-invalid-wire.cjs",
+      "scripts/m1-slow-load.cjs",
+      "scripts/m1-renderer-delegate-sim.cjs",
+      "scripts/m1-webkit-process-kill.cjs",
+      "scripts/m1-host-init-fault.cjs",
+      "scripts/m1-load-event-chain.cjs",
+      "scripts/m1-load-deadline.cjs",
+      "scripts/m1-begin-load-failure.cjs",
+      "scripts/m1-host-loss.cjs",
+      "scripts/m1-native-close.cjs",
+      "scripts/m1-native-close-race.cjs"
+    ],
+    "exposed": [
+      "app.whenReady",
+      "app.isReady",
+      "app.quit",
+      "app.getName",
+      "app.getVersion",
+      "app.getAppPath",
+      "BrowserWindow synchronous constructor",
+      "BrowserWindow.loadFile",
+      "BrowserWindow.show",
+      "BrowserWindow.hide",
+      "BrowserWindow.isVisible",
+      "BrowserWindow.getBounds",
+      "BrowserWindow.setBounds (partial nonanimated subset)",
+      "BrowserWindow.close cancellable",
+      "BrowserWindow.destroy",
+      "BrowserWindow.isDestroyed",
+      "BrowserWindow.getAllWindows",
+      "webContents.did-finish-load",
+      "webContents.getURL",
+      "webContents.getTitle"
+    ],
+    "caveats": [
+      "synchronous isolated contextBridge unsupported",
+      "no renderer IPC or privileged preload",
+      "native AppKit close requests are cancellable in a performClose CI simulation; physical UI and full Electron ordering are not verified",
+      "loadFile is worker-backed and tested against a slow WebKit page; full Electron event ordering remains unverified",
+      "no gpui.mbt integration or native sender attestation",
+      "no third-party Electron app acceptance",
+      "no full security/release/size evidence",
+      "concurrent loadFile is fail-closed with ELECTRON_MBT_NAVIGATION_IN_PROGRESS",
+      "test-only native WebKit private selector drives a real content-process termination in CI; spontaneous crash and process-tree kill acceptance remain open",
+      "one serialized native load worker, with a per-request monotonic deadline from enqueue",
+      "worker and native host process cleanup tested for injected faults, not full process-tree verification",
+      "native close cancel ACK carries monotonic event identity, stale queued close notifications are ignored",
+      "native NSWindow-backed visibility is implemented; Electron show/hide events, focus and Page Visibility API parity are unverified",
+      "webContents.getURL synchronously reads the WKWebView URL with strict native ACK validation, but full Electron navigation semantics are unverified",
+      "webContents.getTitle reads the actual WKWebView document title independently of NSWindow.title; full Electron document-title event semantics are unverified",
+      "BrowserWindow.getBounds reads actual NSWindow.frame as bounded integer coordinates relative to the primary screen top-left; multi-display and geometry-change event parity are unverified",
+      "BrowserWindow.setBounds changes the real NSWindow frame with conservative partial integer inputs; animated changes, arbitrary manual move/resize events, tray clamping and multi-display Electron parity are unverified",
+      "app.quit respects native-backed close, before-quit and will-quit cancellation, supplies (event, exitCode=0), and suppresses normal quit after host loss; renderer beforeunload/unload is not implemented"
+    ],
+    "experimentalSignals": [
+      "runtime-web-content-gone (not an Electron render-process-gone event)",
+      "native-close-request (private OS-to-Node signal; distinct from the standard window close event)"
+    ],
+    "watchdog": {
+      "defaultMs": 12000,
+      "maximumMs": 60000,
+      "queueTimeIncluded": true,
+      "sessionAbortedOnTimeout": true,
+      "workerInterruptedBeforeFdRelease": true,
+      "evidence": "scripts/m1-load-deadline.cjs"
+    }
+  }
 }

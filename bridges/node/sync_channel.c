@@ -112,6 +112,21 @@ static napi_value close_channel(napi_env env, napi_callback_info info) {
   return result;
 }
 
+static napi_value interrupt_channel(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1], result;
+  int32_t fd;
+  if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok ||
+      argc != 1 || !int_arg(env, argv[0], &fd))
+    return fail(env, "ELECTRON_MBT_INVALID_ARGUMENT", "Expected a private channel");
+  // Closing an fd while a worker polls it can reuse the number beneath that
+  // worker. SHUT_RDWR wakes the blocked request without releasing ownership.
+  if (shutdown(fd, SHUT_RDWR) != 0 && errno != ENOTCONN)
+    return fail(env, "ELECTRON_MBT_TRANSPORT_CLOSED", "Cannot interrupt private channel");
+  napi_get_undefined(env, &result);
+  return result;
+}
+
 static napi_value request(napi_env env, napi_callback_info info) {
   size_t argc = 3;
   napi_value argv[3];
@@ -176,8 +191,9 @@ static napi_value init(napi_env env, napi_value exports) {
     {"pair", NULL, pair, NULL, NULL, NULL, napi_default, NULL},
     {"request", NULL, request, NULL, NULL, NULL, napi_default, NULL},
     {"close", NULL, close_channel, NULL, NULL, NULL, napi_default, NULL},
+    {"interrupt", NULL, interrupt_channel, NULL, NULL, NULL, napi_default, NULL},
   };
-  napi_define_properties(env, exports, 3, descriptors);
+  napi_define_properties(env, exports, 4, descriptors);
   return exports;
 }
 NAPI_MODULE(NODE_GYP_MODULE_NAME, init)

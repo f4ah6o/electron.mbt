@@ -1,8 +1,9 @@
 # Moji adapted API (generated)
 
-Status: **API shape generated, runtime NOT_IMPLEMENTED**. This is the first
-slice that derives an adapted adapter from Moji's real preload contract. The
-original preload is not executed and no Moji main handler is connected.
+Status: **API shape generated, fixture handlers partial, runtime
+NOT_IMPLEMENTED**. This is the first slice that derives an adapted adapter from
+Moji's real preload contract and registers a few fixture-only Main handlers.
+The original preload and Moji main are not executed.
 
 ## Source of truth
 
@@ -49,6 +50,19 @@ The schema-3 generator emits the declared arity, snapshots the actual argument
 array at call time and applies the queue count/byte bounds. The adapter never
 exposes `contextBridge`, `ipcRenderer` or a generic `send(channel, ...)`.
 
+## Fixture Main handlers
+
+The fixture QuickJS Main now uses an operation registry:
+
+- registered: `settings:get`, `settings:set`, `update:get-state`,
+  `update:check`, `app:confirm-close` (fixture in-memory settings and idle
+  updater state);
+- unregistered: `file:*`, `doc:export`, `diagram:export-png` — these fail
+  closed with `ELECTRON_MBT_MAIN_UNKNOWN_OPERATION`;
+- the native `settings:get` / `settings:set` / `settings:get` /
+  `update:get-state` / `app:confirm-close` sequence resolves with Main values,
+  while `file:read-path` remains typed unknown.
+
 ## Evidence
 
 - `node scripts/moji-adapted-check.cjs` → PASS: preload hash, adapter hash,
@@ -59,14 +73,16 @@ exposes `contextBridge`, `ipcRenderer` or a generic `send(channel, ...)`.
 - The native fixture routes a Moji-shaped `settings:get` request through the
   `electronMbtApp` prefix allowlist into QuickJS Main; the unregistered
   operation fails closed with `ELECTRON_MBT_MAIN_UNKNOWN_OPERATION`, observed as
-  `mojiOperationRouted: true` in the supervisor probe.
+  `mojiOperationRouted: true` and `mojiHandlers: true` in the supervisor probe.
 
 ## Deliberate limits
 
 - the original Moji preload is **NOT_EXECUTED**; this is not contextBridge or
   ipcRenderer compatibility
-- no Moji main handler is registered; `settings:get` is an unknown operation in
-  the fixture Main
+- the registered handlers are fixture-only; settings are in-memory and the
+  updater returns an idle fixture state, not Moji's updater
+- `file:*`, `doc:export` and `diagram:export-png` remain unregistered and fail
+  closed
 - `getDroppedPath` (`webUtils.getPathForFile`) is unsupported by design
 - no file read/save broker, dialog, export, updater or OS service is connected
 - no Moji main boot, renderer boot, app scenario or verified row
@@ -74,8 +90,8 @@ exposes `contextBridge`, `ipcRenderer` or a generic `send(channel, ...)`.
 
 ## Next
 
-- register the 14 Moji operations in the Main handler registry and implement
-  file/dialog/export handlers through EP-16/EP-18
+- implement the remaining file/dialog/export handlers through EP-16/EP-18 and
+  replace the fixture settings/updater with Moji's real main handlers
 - boot Moji's real main/preload graph with the adapted API and record an app
   scenario
 - add Node builtins required by Moji main (`node:url`, `node:zlib`; `node:fs`

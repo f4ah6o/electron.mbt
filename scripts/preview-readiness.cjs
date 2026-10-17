@@ -84,7 +84,7 @@ function buildReport() {
     mojiAdapterHash === mojiAdapted.adapter.sha256 &&
     mojiAdapted.semantics.runtime === 'NOT_IMPLEMENTED';
   checks.push(check('adapted-moji-api', mojiApiOk ? 'PASS' : 'FAIL',
-    `Moji ${mojiAdapted.appId}: calls=${mojiAdapted.api.calls}, topics=${mojiAdapted.api.topics}, unsupported=${(mojiAdapted.api.unsupported || []).join(',')}, runtime=${mojiAdapted.semantics.runtime}, originalPreload=${mojiAdapted.originalPreload}`));
+    `Moji ${mojiAdapted.appId}: calls=${mojiAdapted.api.calls}, topics=${mojiAdapted.api.topics}, unsupported=${(mojiAdapted.api.unsupported || []).join(',')}, handlers=${mojiAdapted.semantics.applicationHandlers || 'none'}, runtime=${mojiAdapted.semantics.runtime}, originalPreload=${mojiAdapted.originalPreload}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',
     'Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected'));
 

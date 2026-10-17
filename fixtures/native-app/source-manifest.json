@@ -5,8 +5,8 @@
   "files": [
     {
       "path": "index.html",
-      "sha256": "ebfabf9061ba58fda46824598ae4c7c79f161b713704ef8308cc82368760877c",
-      "bytes": 5455
+      "sha256": "dbe5c5e5f8bc84886eb41885a80b3c252e9af49f608923ef956dab4f34cb50a7",
+      "bytes": 6995
     },
     {
       "path": "adapted/page-api.js",
@@ -20,8 +20,8 @@
     },
     {
       "path": "src/main.js",
-      "sha256": "d5549ffdd9b595b57578ccefede89eaf448fa0fa988e1f22b532201839bea2b2",
-      "bytes": 1731
+      "sha256": "40017efbbf6ef0e87683ff629217a24198b2bac5c81fa4678b4b64efb24610a3",
+      "bytes": 3076
     },
     {
       "path": "src/lib/index.js",

@@ -21,7 +21,9 @@
     "version": "moji-adapted-v1",
     "calls": 14,
     "topics": 3,
-    "unsupported": ["getDroppedPath"]
+    "unsupported": [
+      "getDroppedPath"
+    ]
   },
   "queue": {
     "maxCalls": 8,
@@ -34,7 +36,23 @@
     "webUtils": false,
     "originalPreloadExecuted": false,
     "runtime": "NOT_IMPLEMENTED",
-    "applicationHandlers": "NOT_IMPLEMENTED",
+    "applicationHandlers": "FIXTURE_ONLY",
     "note": "Generated API shape from the pinned Moji preload. The original preload is not executed; calls are not connected to Moji main handlers."
+  },
+  "applicationHandlers": {
+    "status": "FIXTURE_ONLY",
+    "registered": [
+      "settings:get",
+      "settings:set",
+      "update:get-state",
+      "update:check",
+      "app:confirm-close"
+    ],
+    "unregistered": [
+      "file:*",
+      "doc:export",
+      "diagram:export-png"
+    ],
+    "note": "Fixture QuickJS Main handlers; not Moji main execution."
   }
 }

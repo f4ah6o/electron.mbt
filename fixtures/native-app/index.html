@@ -44,13 +44,46 @@ window.__electronMbtIngressProbe = async function () {
     });
     const builtinRejected = builtin && builtin.code === 'ELECTRON_MBT_UNSUPPORTED_BUILTIN: node:fs';
     if (!builtinRejected) { document.title = 'adapted-ingress-builtin-accepted'; return; }
-    let mojiRejected = false;
-    try {
-      await handler.postMessage({ operation: 'settings:get', payload: { args: [] } });
-    } catch (error) {
-      mojiRejected = String(error).includes('ELECTRON_MBT_MAIN_UNKNOWN_OPERATION');
+    await handler.postMessage({
+      operation: 'settings:set', payload: { args: [{ theme: 'light' }] },
+    });
+    const settingsInitial = await handler.postMessage({
+      operation: 'settings:get', payload: { args: [] },
+    });
+    if (!settingsInitial || !settingsInitial.settings || settingsInitial.settings.theme !== 'light') {
+      document.title = 'adapted-ingress-settings-get'; return;
     }
-    if (!mojiRejected) { document.title = 'adapted-ingress-moji-op-accepted'; return; }
+    const settingsSet = await handler.postMessage({
+      operation: 'settings:set', payload: { args: [{ theme: 'dark' }] },
+    });
+    if (!settingsSet || !settingsSet.settings || settingsSet.settings.theme !== 'dark') {
+      document.title = 'adapted-ingress-settings-set'; return;
+    }
+    const settingsAgain = await handler.postMessage({
+      operation: 'settings:get', payload: { args: [] },
+    });
+    if (!settingsAgain || !settingsAgain.settings || settingsAgain.settings.theme !== 'dark') {
+      document.title = 'adapted-ingress-settings-persist'; return;
+    }
+    const updateState = await handler.postMessage({
+      operation: 'update:get-state', payload: { args: [] },
+    });
+    if (!updateState || updateState.state !== 'idle') {
+      document.title = 'adapted-ingress-update-state'; return;
+    }
+    const closeDecision = await handler.postMessage({
+      operation: 'app:confirm-close', payload: { args: [true] },
+    });
+    if (!closeDecision || closeDecision.shouldClose !== true) {
+      document.title = 'adapted-ingress-confirm-close'; return;
+    }
+    let fileRejected = false;
+    try {
+      await handler.postMessage({ operation: 'file:read-path', payload: { args: ['/tmp/x'] } });
+    } catch (error) {
+      fileRejected = String(error).includes('ELECTRON_MBT_MAIN_UNKNOWN_OPERATION');
+    }
+    if (!fileRejected) { document.title = 'adapted-ingress-file-handler'; return; }
     document.title = 'adapted-ingress-ok';
   } catch (error) {
     document.title = 'adapted-ingress-denied';
@@ -114,7 +147,8 @@ window.__electronMbtIngressProbe = async function () {
     const fulfilled = (result) => result.status === 'fulfilled' && result.value &&
       result.value.source === 'quickjs-main';
     const settings = results.slice(0, 3)
-      .every((result) => fulfilled(result) && result.value.theme === 'light' &&
+      .every((result) => fulfilled(result) &&
+        (result.value.theme === 'light' || result.value.theme === 'dark') &&
         result.value.scenarioPath === 'src/lib/scenario.js');
     const state = fulfilled(results[3]) && results[3].value.state === 'ready';
     const overflowed = results.slice(4)

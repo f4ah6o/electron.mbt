@@ -25,6 +25,11 @@ no Node, no general app loader and no Moji compatibility.
   with the Main error code, and removes the pending entry.
 - Pending Main replies are failed on begin-load, WebContent termination and
   window teardown. A five-second native timeout also rejects a stuck reply.
+- The fixture Main exposes a registry: `app:get-settings`,
+  `app:get-update-state`, `settings:get`, `settings:set`, `update:get-state`,
+  `update:check`, `app:confirm-close` and the builtin selftest are registered.
+  Unregistered operations, including `file:*`, `doc:export` and
+  `diagram:export-png`, return `ELECTRON_MBT_MAIN_UNKNOWN_OPERATION`.
 
 ## Fixture scenario
 
@@ -57,7 +62,7 @@ delivered after the generation-2 reload.
 The supervisor reports:
 
 ```json
-{"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"appScenario":"nodeless-fixture","pageTitle":"nodeless-app-ready","closeRequest":true,"closeRequestReload":true}
+{"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"mojiHandlers":true,"appScenario":"nodeless-fixture","pageTitle":"nodeless-app-ready","closeRequest":true,"closeRequestReload":true}
 ```
 
 The page verifies that the first three results are Main settings with

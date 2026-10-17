@@ -15,7 +15,7 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 146, passed: 146, failed: 0."
+      "detail": "────╯"
     },
     {
       "id": "npm-test",

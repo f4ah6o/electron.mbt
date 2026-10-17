@@ -44,7 +44,7 @@
     {
       "id": "adapted-source-snapshot",
       "status": "PASS",
-      "detail": "private staging files=11; entry=index.html; hash=ebfabf9061ba58fda46824598ae4c7c79f161b713704ef8308cc82368760877c"
+      "detail": "private staging files=11; entry=index.html; hash=dbe5c5e5f8bc84886eb41885a80b3c252e9af49f608923ef956dab4f34cb50a7"
     },
     {
       "id": "adapted-native-ingress",
@@ -59,7 +59,7 @@
     {
       "id": "adapted-moji-api",
       "status": "PASS",
-      "detail": "Moji moji-v1.0.5: calls=14, topics=3, unsupported=getDroppedPath, runtime=NOT_IMPLEMENTED, originalPreload=NOT_EXECUTED"
+      "detail": "Moji moji-v1.0.5: calls=14, topics=3, unsupported=getDroppedPath, handlers=FIXTURE_ONLY, runtime=NOT_IMPLEMENTED, originalPreload=NOT_EXECUTED"
     },
     {
       "id": "adapted-moji-runtime",

@@ -734,6 +734,21 @@
       "getDroppedPath"
     ],
     "runtime": "NOT_IMPLEMENTED",
-    "note": "Generated API shape only; original preload and Moji main handlers are not executed."
+    "note": "Generated API shape plus fixture-only settings/update/confirm-close handlers. Original preload and Moji main are not executed; file/dialog/export handlers remain unregistered.",
+    "handlers": {
+      "status": "FIXTURE_ONLY",
+      "registered": [
+        "settings:get",
+        "settings:set",
+        "update:get-state",
+        "update:check",
+        "app:confirm-close"
+      ],
+      "unregistered": [
+        "file:*",
+        "doc:export",
+        "diagram:export-png"
+      ]
+    }
   }
 }

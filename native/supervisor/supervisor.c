@@ -396,7 +396,7 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
   free(package_path);
   JSRuntime *runtime = JS_NewRuntime();
   if (runtime == NULL) { free(package_json); return -1; }
-  JS_SetMemoryLimit(runtime, 32 * 1024 * 1024);
+  JS_SetMemoryLimit(runtime, 128 * 1024 * 1024);
   JSContext *context = JS_NewContext(runtime);
   if (context == NULL) { free(package_json); JS_FreeRuntime(runtime); return -1; }
   if (package_json != NULL) {
@@ -415,7 +415,7 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
   char *manifest_path = join_root("source-manifest.json");
   size_t manifest_length = 0;
   char *manifest_text = manifest_path == NULL ? NULL :
-    read_text_file(manifest_path, 65536, &manifest_length);
+    read_text_file(manifest_path, 4 * 1024 * 1024, &manifest_length);
   free(manifest_path);
   if (manifest_text == NULL) {
     JS_FreeContext(context); JS_FreeRuntime(runtime); return -1;
@@ -429,7 +429,7 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
   JSValue length_value = JS_GetPropertyStr(context, files, "length");
   uint32_t file_count = 0;
   if (JS_ToUint32(context, &file_count, length_value) != 0 ||
-      file_count == 0 || file_count > 64) {
+      file_count == 0 || file_count > 4096) {
     JS_FreeValue(context, length_value); JS_FreeValue(context, files);
     JS_FreeValue(context, manifest); JS_FreeContext(context); JS_FreeRuntime(runtime);
     return -1;
@@ -449,7 +449,7 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
     }
     char *full_path = join_app_root(path);
     size_t source_length = 0;
-    char *text = full_path == NULL ? NULL : read_text_file(full_path, 65536, &source_length);
+    char *text = full_path == NULL ? NULL : read_text_file(full_path, 16 * 1024 * 1024, &source_length);
     free(full_path);
     if (text == NULL) {
       JS_FreeCString(context, path);
@@ -768,6 +768,28 @@ int32_t moonbit_ebt_supervisor_moji_app_mode(void) {
 int32_t moonbit_ebt_supervisor_boot_mode(void) {
   const char *value = getenv("ELECTRON_MBT_MOJI_BOOT");
   return value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+}
+
+int32_t moonbit_ebt_supervisor_moji_url(moonbit_bytes_t buffer, int32_t capacity) {
+  const char *url = getenv("ELECTRON_MBT_MOJI_URL");
+  if (url == NULL || url[0] == 0) return 0;
+  if (buffer == NULL || capacity <= 0 || Moonbit_array_length(buffer) < capacity) return -1;
+  size_t length = strlen(url);
+  if (length + 1 > (size_t)capacity) return -1;
+  memcpy(buffer, url, length);
+  buffer[length] = 0;
+  return (int32_t)length;
+}
+
+int32_t moonbit_ebt_supervisor_moji_page(moonbit_bytes_t buffer, int32_t capacity) {
+  const char *page = getenv("ELECTRON_MBT_MOJI_PAGE");
+  if (page == NULL || page[0] == 0) page = "index.html";
+  if (buffer == NULL || capacity <= 0 || Moonbit_array_length(buffer) < capacity) return -1;
+  size_t length = strlen(page);
+  if (length + 1 > (size_t)capacity) return -1;
+  memcpy(buffer, page, length);
+  buffer[length] = 0;
+  return (int32_t)length;
 }
 
 int32_t moonbit_ebt_supervisor_boot_root(moonbit_bytes_t buffer, int32_t capacity) {

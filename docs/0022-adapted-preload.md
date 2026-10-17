@@ -142,7 +142,8 @@ event path.
   NOT_EXECUTED, its main runs in a virtual boot smoke and a focused native probe
   reaches the settings/update handlers
   ([docs/0030-moji-main-boot.md](0030-moji-main-boot.md),
-  [docs/0031-moji-adapted-native.md](0031-moji-adapted-native.md))
+  [docs/0031-moji-adapted-native.md](0031-moji-adapted-native.md),
+  [docs/0032-moji-renderer.md](0032-moji-renderer.md))
 - the file broker is partial: grants are test-only, dialog UI is NOT RUN, and
   document PDF/PNG rendering and `openLocalPath` are not implemented
   ([docs/0027-file-broker.md](0027-file-broker.md),

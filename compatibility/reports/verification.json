@@ -216,10 +216,10 @@
       "detail": {
         "status": "NOT_READY",
         "counts": {
-          "checks": 30,
-          "pass": 21,
+          "checks": 31,
+          "pass": 23,
           "fail": 2,
-          "notRun": 7
+          "notRun": 6
         }
       }
     },

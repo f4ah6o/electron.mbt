@@ -169,7 +169,24 @@ function buildReport() {
     mojiNative === null
       ? 'Moji adapted native E2E report is absent'
       : `Moji page adapter -> native ingress -> Moji handlers: page=${mojiNative.pageLoaded}, api=${mojiNative.apiPresent}, settings=${mojiNative.settingsTheme}, update=${mojiNative.updateStatus}, preloadExecuted=${mojiNative.preloadExecuted}`));
-  checks.push(check('node-less-moji-app-main', 'NOT_RUN', 'Moji main boots in a virtual QuickJS harness; no real app window/renderer or preload execution'));
+  let mojiRenderer = null;
+  try { mojiRenderer = readJson('compatibility/reports/moji-renderer.json'); } catch {}
+  const mojiRendererOk = mojiRenderer !== null && mojiRenderer.status === 'PASS' &&
+    mojiRenderer.rendererLoaded === true && mojiRenderer.apiPresent === true &&
+    mojiRenderer.rootChildren >= 1 && typeof mojiRenderer.pageText === 'string' &&
+    mojiRenderer.pageText.length > 0 && mojiRenderer.preloadExecuted === false &&
+    mojiRenderer.mainSHA256 === mojiProvenance.hashes.main &&
+    mojiRenderer.preloadSHA256 === mojiProvenance.hashes.preload &&
+    mojiRenderer.adapterSHA256 === mojiNativeAdapterHash &&
+    mojiRenderer.harnessSHA256 === mojiHarnessHash;
+  checks.push(check('moji-renderer', mojiRenderer === null ? 'NOT_RUN' : (mojiRendererOk ? 'PASS' : 'FAIL'),
+    mojiRenderer === null
+      ? 'Moji renderer report is absent'
+      : `Moji renderer: title=${mojiRenderer.pageTitle}, rootChildren=${mojiRenderer.rootChildren}, api=${mojiRenderer.apiPresent}, preloadExecuted=${mojiRenderer.preloadExecuted}`));
+  checks.push(check('node-less-moji-app-main', mojiRendererOk ? 'PASS' : 'NOT_RUN',
+    mojiRendererOk
+      ? 'Moji main boots and the adapted Moji renderer loads; original preload NOT_EXECUTED'
+      : 'Moji main boots in a virtual QuickJS harness; no real app window/renderer or preload execution'));
   checks.push(check('preview-signing', 'NOT_RUN', 'No Developer ID signing, notarization or clean-install evidence'));
   checks.push(check('clean-install', 'NOT_RUN', 'No clean machine install has been executed'));
   checks.push(check('interactive-ime-ax', 'NOT_RUN', 'No IME, focus or accessibility acceptance run'));

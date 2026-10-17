@@ -10,10 +10,10 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 30,
-    "pass": 21,
+    "checks": 31,
+    "pass": 23,
     "fail": 2,
-    "notRun": 7
+    "notRun": 6
   },
   "checks": [
     {
@@ -147,9 +147,14 @@
       "detail": "Moji page adapter -> native ingress -> Moji handlers: page=true, api=true, settings=dark, update=unsupported, preloadExecuted=false"
     },
     {
+      "id": "moji-renderer",
+      "status": "PASS",
+      "detail": "Moji renderer: title=Moji v1.0.5, rootChildren=1, api=true, preloadExecuted=false"
+    },
+    {
       "id": "node-less-moji-app-main",
-      "status": "NOT_RUN",
-      "detail": "Moji main boots in a virtual QuickJS harness; no real app window/renderer or preload execution"
+      "status": "PASS",
+      "detail": "Moji main boots and the adapted Moji renderer loads; original preload NOT_EXECUTED"
     },
     {
       "id": "preview-signing",

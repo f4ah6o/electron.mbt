@@ -34,6 +34,14 @@ extern "C" fn supervisor_boot_root(buffer : Bytes, capacity : Int) -> Int = "moo
 
 ///|
 #borrow(buffer)
+extern "C" fn supervisor_moji_page(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_moji_page"
+
+///|
+#borrow(buffer)
+extern "C" fn supervisor_moji_url(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_moji_url"
+
+///|
+#borrow(buffer)
 extern "C" fn supervisor_boot_report(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_boot_report"
 
 ///|
@@ -92,6 +100,48 @@ fn request_frame(
 ///|
 fn json_path(value : String) -> String {
   value.replace_all(old="\\", new="\\\\").replace_all(old="\"", new="\\\"")
+}
+
+///|
+fn json_line(value : String) -> String {
+  value.replace_all(old="\r", new=" ")
+    .replace_all(old="\n", new=" ")
+    .replace_all(old="\t", new=" ")
+}
+
+///|
+fn json_payload_number(raw : String, field : String) -> Int? {
+  let parsed = @json.parse(raw) catch {
+    _ => return None
+  }
+  match parsed {
+    Object(fields) => match fields.get("payload") {
+      Some(Object(payload)) => match payload.get(field) {
+        Some(Number(value, ..)) => Some(value.to_int())
+        _ => None
+      }
+      _ => None
+    }
+    _ => None
+  }
+}
+
+///|
+fn json_payload_bool(raw : String, field : String) -> Bool? {
+  let parsed = @json.parse(raw) catch {
+    _ => return None
+  }
+  match parsed {
+    Object(fields) => match fields.get("payload") {
+      Some(Object(payload)) => match payload.get(field) {
+        Some(True) => Some(true)
+        Some(False) => Some(false)
+        _ => None
+      }
+      _ => None
+    }
+    _ => None
+  }
 }
 
 ///|
@@ -259,6 +309,12 @@ fn run_moji_app() -> Unit {
     fail_moji_app("ELECTRON_MBT_MOJI_APP_ROOT")
   }
   let root = @utf8.decode_lossy(root_buffer[:root_length])
+  let page_buffer = Bytes::new(512)
+  let page_length = supervisor_moji_page(page_buffer, page_buffer.length())
+  if page_length <= 0 {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_PAGE")
+  }
+  let page = @utf8.decode_lossy(page_buffer[:page_length])
   let (fd, session, attempts) = match start_ready(root, buffer) {
     Some(value) => value
     None => {
@@ -274,7 +330,8 @@ fn run_moji_app() -> Unit {
     !create_reply.unwrap().contains("\"webViewAttached\":true") {
     fail_moji_app("ELECTRON_MBT_MOJI_APP_WINDOW")
   }
-  let prepare = request_frame(session, 31, 1, 0, "prepare-source", "{\"file\":\"index.html\"}")
+  let prepare = request_frame(session, 31, 1, 0, "prepare-source",
+    "{\"file\":\"" + json_path(page) + "\"}")
   let prepare_sent = send(fd, prepare)
   let prepare_reply = if prepare_sent { receive(fd, buffer) } else { None }
   if !prepare_sent || prepare_reply is None ||
@@ -310,17 +367,35 @@ fn run_moji_app() -> Unit {
   if !begin_sent || begin_reply is None || !begin_reply.unwrap().contains("\"terminal\":\"success\"") {
     fail_moji_app("ELECTRON_MBT_MOJI_APP_BEGIN")
   }
-  let file_path = Bytes::new(4096)
-  let path_length = supervisor_file(file_path, file_path.length(), @utf8.encode("index.html"))
-  if path_length <= 0 {
-    fail_moji_app("ELECTRON_MBT_MOJI_APP_PAGE_PATH")
+  let url_buffer = Bytes::new(2048)
+  let url_length = supervisor_moji_url(url_buffer, url_buffer.length())
+  let mut load_ok = false
+  if url_length > 0 {
+    let url = @utf8.decode_lossy(url_buffer[:url_length])
+    let load = request_frame(session, 8, 1, 1, "load-url",
+      "{\"url\":\"" + json_path(url) + "\"}")
+    let load_sent = send(fd, load)
+    let load_reply = if load_sent { receive(fd, buffer) } else { None }
+    if load_sent && load_reply is Some(_) &&
+      load_reply.unwrap().contains("\"didFinishLoad\":true") {
+      load_ok = true
+    }
+  } else {
+    let file_path = Bytes::new(4096)
+    let path_length = supervisor_file(file_path, file_path.length(), @utf8.encode(page))
+    if path_length > 0 {
+      let load = request_frame(session, 8, 1, 1, "load-file",
+        "{\"file\":\"" + json_path(@utf8.decode_lossy(file_path[:path_length])) + "\"}")
+      let load_fd = supervisor_load_fd()
+      let load_sent = send(load_fd, load)
+      let load_reply = if load_sent { receive(load_fd, buffer) } else { None }
+      if load_sent && load_reply is Some(_) &&
+        load_reply.unwrap().contains("\"didFinishLoad\":true") {
+        load_ok = true
+      }
+    }
   }
-  let load = request_frame(session, 8, 1, 1, "load-file",
-    "{\"file\":\"" + json_path(@utf8.decode_lossy(file_path[:path_length])) + "\"}")
-  let load_fd = supervisor_load_fd()
-  let load_sent = send(load_fd, load)
-  let load_reply = if load_sent { receive(load_fd, buffer) } else { None }
-  if !load_sent || load_reply is None || !load_reply.unwrap().contains("\"didFinishLoad\":true") {
+  if !load_ok {
     fail_moji_app("ELECTRON_MBT_MOJI_APP_LOAD")
   }
   let release = request_frame(session, 34, 1, 1, "release-adapted-ingress", "{}")
@@ -331,32 +406,70 @@ fn run_moji_app() -> Unit {
   }
   let event_fd = supervisor_event_fd()
   let mut ready = false
-  let mut title = ""
-  for _attempt = 0; _attempt < 150; _attempt = _attempt + 1 {
+  let mut api_present = false
+  let mut root_children = 0
+  let mut page_title = ""
+  let mut page_text = ""
+  for _attempt = 0; _attempt < 300; _attempt = _attempt + 1 {
     let _ = pump_app_requests(fd, event_fd, buffer, event_buffer, session, 1, 1)
-    let title_request = request_frame(session, 36, 1, 1, "get-web-contents-title", "{}")
-    let title_sent = send(fd, title_request)
-    let title_reply = if title_sent { receive(fd, buffer) } else { None }
-    if title_reply is Some(_) {
-      title = title_reply.unwrap()
-      if title.contains("moji-adapted-ready") {
+    let probe = request_frame(session, 37, 1, 1, "probe-renderer", "{}")
+    let probe_sent = send(fd, probe)
+    let probe_reply = if probe_sent { receive(fd, buffer) } else { None }
+    if probe_reply is Some(_) {
+      let probe_text = probe_reply.unwrap()
+      if json_payload_bool(probe_text, "api") == Some(true) {
+        api_present = true
+      }
+      let children = json_payload_number(probe_text, "rootChildren").unwrap_or(0)
+      if children > root_children {
+        root_children = children
+      }
+      if json_payload_field(probe_text, "title") is Some(value) {
+        page_title = value
+      }
+      if json_payload_field(probe_text, "text") is Some(value) {
+        page_text = value
+      }
+      if page_title.contains("moji-adapted-ready") {
         ready = true
         break
       }
-      if title.contains("moji-adapted-failed") || title.contains("moji-adapted-bad") {
+      if page_title.contains("moji-adapted-failed") || page_title.contains("moji-adapted-bad") {
+        break
+      }
+      if api_present && root_children > 0 {
+        ready = true
         break
       }
     }
     supervisor_sleep_ms(20)
   }
-  if !ready || !title.contains("moji-adapted-ready:dark:unsupported") {
-    fail_moji_app("ELECTRON_MBT_MOJI_APP_PAGE")
+  let simple_ok = page_title.contains("moji-adapted-ready:dark:unsupported")
+  let renderer_ok = api_present && root_children > 0
+  let page_ok = ready && (simple_ok || renderer_ok)
+  if !page_ok {
+    let fail_report = ("{\"status\":\"FAIL\",\"probe\":\"moji-adapted-native\"," +
+      "\"pageLoaded\":true,\"apiPresent\":" + (if api_present { "true" } else { "false" }) +
+      ",\"pageTitle\":\"" + json_path(page_title) + "\"," +
+      "\"pageText\":\"" + json_path(json_line(page_text)) + "\"," +
+      "\"rootChildren\":" + root_children.to_string() +
+      ",\"rendererLoaded\":" + (if renderer_ok { "true" } else { "false" }) +
+      ",\"simpleProbe\":" + (if simple_ok { "true" } else { "false" }) +
+      ",\"attempts\":" + attempts.to_string() + ",\"compatible\":false}")
+    println(fail_report)
+    supervisor_kill()
+    supervisor_exit(1)
   }
   let report = ("{\"status\":\"PASS\",\"probe\":\"moji-adapted-native\"," +
-    "\"backend\":\"AppKit+WKWebView\",\"pageLoaded\":true,\"apiPresent\":true," +
-    "\"settingsTheme\":\"dark\",\"updateStatus\":\"unsupported\"," +
-    "\"mainHandlers\":true,\"attempts\":" + attempts.to_string() +
-    ",\"compatible\":false}")
+    "\"backend\":\"AppKit+WKWebView\",\"pageLoaded\":true,\"apiPresent\":" +
+    (if api_present { "true" } else { "false" }) +
+    ",\"settingsTheme\":\"dark\",\"updateStatus\":\"unsupported\"," +
+    "\"mainHandlers\":true,\"pageTitle\":\"" + json_path(page_title) + "\"," +
+    "\"pageText\":\"" + json_path(json_line(page_text)) + "\"," +
+    "\"rootChildren\":" + root_children.to_string() +
+    ",\"rendererLoaded\":" + (if renderer_ok { "true" } else { "false" }) +
+    ",\"simpleProbe\":" + (if simple_ok { "true" } else { "false" }) +
+    ",\"attempts\":" + attempts.to_string() + ",\"compatible\":false}")
   println(report)
   supervisor_kill()
   supervisor_exit(0)

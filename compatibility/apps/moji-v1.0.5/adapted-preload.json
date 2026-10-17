@@ -82,6 +82,7 @@
     "updateStatus": "unsupported",
     "mainHandlers": true,
     "preloadExecuted": false,
-    "rendererLoaded": false
+    "rendererLoaded": true,
+    "assetServer": "loopback-http-test-only"
   }
 }

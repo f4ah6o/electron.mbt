@@ -557,9 +557,9 @@ test "What: source snapshot preparation validates the manifest shape" {
     "{\"prepared\":false,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":2,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
     "{\"prepared\":true,\"sha256\":\"short\",\"bytes\":2246,\"files\":2,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
     "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":0,\"files\":2,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
-    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":1048577,\"files\":2,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":16777217,\"files\":2,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
     "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":0,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
-    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":33,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":4097,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
     "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":2,\"manifestSHA256\":\"short\",\"root\":\"/tmp/electron-mbt-snapshot-test\"}",
     "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":2,\"manifestSHA256\":\"" + manifest + "\",\"root\":\"\"}",
   ] {

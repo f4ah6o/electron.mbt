@@ -119,8 +119,9 @@ static NSString *jsQuotedString(NSString *value) {
   return quoted;
 }
 
-static const NSUInteger MaxSnapshotBytes = 1048576;
-static const NSUInteger MaxSourceManifestBytes = 65536;
+static const NSUInteger MaxSnapshotBytes = 16 * 1024 * 1024;
+static const NSUInteger MaxSourceManifestBytes = 4 * 1024 * 1024;
+static const unsigned long long MaxSnapshotTotalBytes = 64ULL * 1024ULL * 1024ULL;
 
 static BOOL safeRelativePath(NSString *path) {
   if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 256 ||
@@ -884,23 +885,25 @@ static NSString *preloadDigest(NSData *data) {
   NSString *nonce = body[@"nonce"];
   NSURL *url = message.frameInfo.request.URL;
   NSString *file = url.isFileURL ? canonicalPath(url.path) : nil;
+  BOOL loadedTarget = url.isFileURL ? [file isEqualToString:self.loadedFile] :
+    [url.absoluteString isEqualToString:self.loadedFile];
   BOOL common = controller == self.web.configuration.userContentController &&
     message.webView == self.web && self.contentAlive &&
     self.generation > 0 && self.generation == self.loadedGeneration &&
     self.loadedFile != nil && message.frameInfo.isMainFrame &&
-    [nonce isKindOfClass:[NSString class]] &&
-    [file isEqualToString:self.loadedFile];
+    [nonce isKindOfClass:[NSString class]] && loadedTarget;
   if ([message.name isEqualToString:@"electronMbtApp"]) {
     NSDictionary *request = [message.body isKindOfClass:[NSDictionary class]] ? message.body : nil;
     BOOL mainFrame = message.frameInfo.isMainFrame;
     BOOL pageWorld = message.world == [WKContentWorld pageWorld];
     NSURL *requestURL = message.frameInfo.request.URL;
     NSString *requestFile = requestURL.isFileURL ? canonicalPath(requestURL.path) : nil;
+    BOOL requestTarget = requestURL.isFileURL ? [requestFile isEqualToString:self.loadedFile] :
+      [requestURL.absoluteString isEqualToString:self.loadedFile];
     BOOL current = controller == self.web.configuration.userContentController &&
       message.webView == self.web && self.contentAlive &&
       self.generation > 0 && self.generation == self.loadedGeneration &&
-      self.loadedFile != nil && requestFile != nil &&
-      [requestFile isEqualToString:self.loadedFile] &&
+      self.loadedFile != nil && requestTarget &&
       self.adaptedAdapterObservedGeneration == self.generation;
     if (!mainFrame || !pageWorld || !current) {
       self.ingressDenied++;
@@ -1101,9 +1104,10 @@ static NSString *preloadDigest(NSData *data) {
   (void)webView;
   NSURL *url = action.request.URL;
   NSString *canonical = url.isFileURL ? canonicalPath(url.path) : nil;
+  BOOL loadedTarget = url.isFileURL ? [canonical isEqualToString:self.loadedFile] :
+    [url.absoluteString isEqualToString:self.loadedFile];
   BOOL allowed = self.allowNextNavigation && self.contentAlive &&
-                 action.targetFrame.isMainFrame && self.loadedFile != nil &&
-                 [canonical isEqualToString:self.loadedFile];
+                 action.targetFrame.isMainFrame && self.loadedFile != nil && loadedTarget;
   // An unrequested reload creates a new document without MoonBit generation
   // revocation. Reject it instead of allowing stale callback authority.
   if (allowed) self.allowNextNavigation = NO;
@@ -1505,6 +1509,36 @@ static NSString *preloadDigest(NSData *data) {
     done(@"success", @{@"generation": generation});
     return;
   }
+  if ([operation isEqualToString:@"load-url"]) {
+    NSString *raw = payload[@"url"];
+    NSURL *url = [raw isKindOfClass:[NSString class]] ? [NSURL URLWithString:raw] : nil;
+    BOOL loopback = url != nil && [url.scheme isEqualToString:@"http"] &&
+      ([url.host isEqualToString:@"127.0.0.1"] || [url.host isEqualToString:@"localhost"]) &&
+      url.port != nil && url.user == nil && url.password == nil;
+    if (![raw isKindOfClass:[NSString class]] || raw.length == 0 || raw.length > 2048 || !loopback ||
+        generation.longLongValue != window.generation ||
+        generation.longLongValue <= window.loadedGeneration ||
+        window.loadDone != nil || !window.contentAlive) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_LOAD_URL_DENIED"});
+      return;
+    }
+    window.loadedGeneration = generation.longLongValue;
+    window.loadedFile = url.absoluteString;
+    [window installBootstrapScript];
+    window.allowNextNavigation = YES;
+    window.loadDone = ^(BOOL ok, NSString *reason) {
+      if (ok) done(@"success", @{@"didFinishLoad": @YES, @"url": url.absoluteString});
+      else done(@"failure", @{@"code": reason});
+    };
+    window.loadingNavigationGeneration = generation.longLongValue;
+    window.loadingNavigation = [window.web loadRequest:[NSURLRequest requestWithURL:url]];
+    if (!window.loadingNavigation) {
+      window.allowNextNavigation = NO;
+      window.loadDone = nil;
+      done(@"failure", @{@"code": @"ELECTRON_MBT_LOAD_URL_FAILED"});
+    }
+    return;
+  }
   if ([operation isEqualToString:@"load-file"]) {
     NSString *file = payload[@"file"];
     NSString *canonical = canonicalPath(file);
@@ -1757,12 +1791,13 @@ static NSString *preloadDigest(NSData *data) {
         CFGetTypeID((__bridge CFTypeRef)schema) == CFBooleanGetTypeID() ||
         ![app isKindOfClass:[NSString class]] || app.length == 0 || app.length > 128 ||
         !safeRelativePath(entry) || ![entry isEqualToString:file] ||
-        ![files isKindOfClass:[NSArray class]] || files.count == 0 || files.count > 32) {
+        ![files isKindOfClass:[NSArray class]] || files.count == 0 || files.count > 4096) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_MANIFEST"});
       return;
     }
     NSMutableDictionary<NSString *, NSData *> *sourceData = [NSMutableDictionary dictionary];
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    unsigned long long totalBytes = 0;
     BOOL entrySeen = NO;
     for (id item in files) {
       if (![item isKindOfClass:[NSDictionary class]] || ((NSDictionary *)item).count != 3) {
@@ -1797,6 +1832,11 @@ static NSString *preloadDigest(NSData *data) {
         return;
       }
       NSData *data = [NSData dataWithContentsOfFile:source options:0 error:nil];
+      totalBytes += (unsigned long long)data.length;
+      if (totalBytes > MaxSnapshotTotalBytes) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_MANIFEST"});
+        return;
+      }
       if (!data || data.length == 0 || data.length > MaxSnapshotBytes ||
           data.length != expectedBytes.unsignedLongLongValue) {
         done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_MISMATCH"});
@@ -1931,6 +1971,29 @@ static NSString *preloadDigest(NSData *data) {
       pending(nil, code);
     }
     done(@"success", @{@"delivered": @YES});
+    return;
+  }
+  if ([operation isEqualToString:@"probe-renderer"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive || window.generation <= 0 || window.loadedFile == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    NSString *script = @"(function(){ const root=document.getElementById('root'); "
+      "return {api: !!(window.api && typeof window.api.getSettings === 'function'), "
+      "rootChildren: root ? root.childElementCount : 0, title: document.title, "
+      "text: (document.body && document.body.innerText || '').slice(0, 160)}; })()";
+    [window.web evaluateJavaScript:script inFrame:nil inContentWorld:[WKContentWorld pageWorld]
+      completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        if (error != nil || ![result isKindOfClass:[NSDictionary class]]) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_RENDERER_PROBE"});
+          return;
+        }
+        done(@"success", result);
+      }];
     return;
   }
   if ([operation isEqualToString:@"set-dialog-result"]) {

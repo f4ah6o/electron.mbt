@@ -28,7 +28,7 @@ general app loader or a signed application build.
   equal the manifest entry.
 - Every listed file is canonicalized under the app root. Native rejects an
   absolute or `..` request, a path outside the root, a non-regular file, a
-  symlink escape, a duplicate path and a file larger than 1 MiB.
+  symlink escape, a duplicate path and a file larger than 16 MiB; the whole graph is bounded to 64 MiB and 4096 files.
 - Native reads each file once and compares its actual SHA-256 and byte length
   with the manifest. It then writes the same byte buffers to a private staging
   directory under `NSTemporaryDirectory()`, preserving relative paths
@@ -64,6 +64,8 @@ after shutdown.
 
 - the manifest is a **preloaded file list**; dynamic `require` of files outside
   the list, ESM and arbitrary package resolution are not general yet
+- the raised asset bounds (16 MiB/file, 64 MiB total, 4096 files) exist for the
+  Moji renderer graph; they are not a general unlimited asset policy
 - the Main loader supports the fixture's relative/package/JSON graph and a
   bounded `node:path` subset only; other Node builtins fail closed
 - the source manifest is an app-root input, not a signature; a writer who can

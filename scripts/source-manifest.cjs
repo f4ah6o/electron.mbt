@@ -3,8 +3,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const MAX_BYTES = 1048576;
-const MAX_FILES = 32;
+const MAX_BYTES = 16 * 1024 * 1024;
+const MAX_FILES = 4096;
+const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
 
 function fail(message) { throw new Error(`ELECTRON_MBT_SOURCE_MANIFEST: ${message}`); }
 
@@ -46,10 +47,13 @@ function buildSourceManifest(root, entry, app, files) {
   const ordered = [entry, ...requested.filter(item => item !== entry)];
   const built = [];
   const seen = new Set();
+  let totalBytes = 0;
   for (const relative of ordered) {
     const file = canonicalEntry(canonicalRoot, relative);
     if (seen.has(file.path)) fail(`duplicate resolved file: ${relative}`);
     seen.add(file.path);
+    totalBytes += file.bytes;
+    if (totalBytes > MAX_TOTAL_BYTES) fail('total file bytes out of bounds');
     built.push(file);
   }
   return {
@@ -88,4 +92,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { buildSourceManifest, writeSourceManifest, MAX_BYTES, MAX_FILES };
+module.exports = { buildSourceManifest, writeSourceManifest, MAX_BYTES, MAX_FILES, MAX_TOTAL_BYTES };

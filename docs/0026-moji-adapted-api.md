@@ -50,6 +50,14 @@ The schema-3 generator emits the declared arity, snapshots the actual argument
 array at call time and applies the queue count/byte bounds. The adapter never
 exposes `contextBridge`, `ipcRenderer` or a generic `send(channel, ...)`.
 
+## Real renderer
+
+The pinned Moji renderer (112 files, ~13 MB) loads under the adapted API with a
+test-only loopback asset server and renders its real UI (`New`, `Open`, `Save`,
+`Preview`, `Editor`, `Export`, `Open File`, `New File`). The original preload
+remains **NOT_EXECUTED**. See
+[docs/0032-moji-renderer.md](0032-moji-renderer.md).
+
 ## Native adapted E2E
 
 A focused native probe installs the generated Moji adapter in a page, calls
@@ -105,8 +113,10 @@ The fixture QuickJS Main now uses an operation registry:
 
 - the original Moji preload is **NOT_EXECUTED**; this is not contextBridge or
   ipcRenderer compatibility
-- the native E2E uses a small probe page, not Moji's renderer; only synchronous
-  settings/update calls cross the bridge
+- the real renderer is loaded through a test-only loopback asset server, not a
+  production loading path
+- only synchronous settings/update calls cross the bridge; file/dialog/export
+  handlers are async and currently return `ELECTRON_MBT_MAIN_ASYNC_PENDING`
 - file/dialog/export handlers are async and currently return
   `ELECTRON_MBT_MAIN_ASYNC_PENDING` through the page bridge
 - the file broker is partial: grants are test-only, dialog/save-panel UI is
@@ -122,7 +132,7 @@ The fixture QuickJS Main now uses an operation registry:
 
 - add open/save dialogs and export, then replace the fixture settings/updater
   with Moji's real main handlers
-- load the real Moji renderer and add async handler dispatch; record an app
-  scenario
+- add async handler dispatch and real file/dialog/export interactions to the
+  renderer; record an app scenario
 - add Node builtins required by Moji main (`node:url`, `node:zlib`; `node:fs`
   through the file broker)

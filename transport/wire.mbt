@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "set-dialog-result" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "set-dialog-result" | "probe-renderer" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "load-url" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -610,11 +610,11 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
             _ => raise BadProtocol("Invalid source snapshot hash")
           }
           let bytes = identifier(values.get("bytes").unwrap_or(null))
-          if bytes <= 0L || bytes > 1048576L {
+          if bytes <= 0L || bytes > 16777216L {
             raise BadProtocol("Invalid source snapshot size")
           }
           let files = identifier(values.get("files").unwrap_or(null))
-          if files <= 0L || files > 32L {
+          if files <= 0L || files > 4096L {
             raise BadProtocol("Invalid source snapshot file count")
           }
           match values.get("manifestSHA256") {
@@ -627,6 +627,36 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Malformed source snapshot acknowledgement")
+      }
+    }
+  }
+  if operation == "probe-renderer" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid renderer probe request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 4 => {
+          match values.get("api") {
+            Some(True) | Some(False) => ()
+            _ => raise BadProtocol("Invalid renderer probe api")
+          }
+          let children = identifier(values.get("rootChildren").unwrap_or(null))
+          if children < 0L || children > 100000L {
+            raise BadProtocol("Invalid renderer probe child count")
+          }
+          match values.get("title") {
+            Some(String(title)) if title.length() <= 256 => ()
+            _ => raise BadProtocol("Invalid renderer probe title")
+          }
+          match values.get("text") {
+            Some(String(text)) if text.length() <= 1024 => ()
+            _ => raise BadProtocol("Invalid renderer probe text")
+          }
+        }
+        _ => raise BadProtocol("Malformed renderer probe acknowledgement")
       }
     }
   }

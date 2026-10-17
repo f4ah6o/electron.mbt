@@ -7,6 +7,11 @@
   "settingsTheme": "dark",
   "updateStatus": "unsupported",
   "mainHandlers": true,
+  "pageTitle": "moji-adapted-ready:dark:unsupported",
+  "pageText": "moji-adapted-ready:dark:unsupported",
+  "rootChildren": 0,
+  "rendererLoaded": false,
+  "simpleProbe": true,
   "attempts": 1,
   "compatible": false,
   "sourceRoot": "/tmp/electron-mbt-apps/moji",
@@ -16,6 +21,5 @@
   "harnessSHA256": "6c89061c920934eeffb275228698204dcceb8dc7c83832dd9b8a00e8e6042b65",
   "bootGraphFiles": 6,
   "preloadExecuted": false,
-  "rendererLoaded": false,
   "note": "Moji page-world adapted API → native ingress → QuickJS Moji settings/update handlers; original preload NOT_EXECUTED."
 }

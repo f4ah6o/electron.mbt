@@ -5,3 +5,5 @@ evidence/
 node_modules/
 .mooncakes/
 .DS_Store
+!fixtures/native-app/node_modules/
+!fixtures/native-app/node_modules/**

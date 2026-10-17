@@ -354,6 +354,8 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
   if (!valid_entry(entry)) { JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
   const char *fixture_files[] = {
     "src/main.js", "src/lib/index.js", "src/lib/greet.js", "src/lib/data.json",
+    "node_modules/fixture-pkg/package.json", "node_modules/fixture-pkg/cjs.js",
+    "node_modules/fixture-pkg/index.js",
   };
   JSValue sources = JS_NewObject(context);
   for (size_t i = 0; i < sizeof(fixture_files) / sizeof(fixture_files[0]); i++) {
@@ -386,21 +388,46 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
     "for(const part of parts){if(!part||part==='.')continue;"
     "if(part==='..'){if(!out.length)throw new Error('require escape');out.pop();}else out.push(part);}"
     "return out.join('/');}"
+    "function packageSpec(spec){"
+    "if(spec.startsWith('@')){const parts=spec.split('/');if(parts.length<2)throw new Error('bad package');"
+    "return {name:parts[0]+'/'+parts[1],subpath:parts.length===2?'.':'./'+parts.slice(2).join('/')};}"
+    "const parts=spec.split('/');return {name:parts[0],subpath:parts.length===1?'.':'./'+parts.slice(1).join('/')};}"
+    "function resolveBare(from,spec){"
+    "const info=packageSpec(spec);"
+    "let current=from.includes('/')?from.slice(0,from.lastIndexOf('/')):'';"
+    "while(true){const pkgDir=(current?current+'/':'')+'node_modules/'+info.name;"
+    "const metaId=pkgDir+'/package.json';"
+    "if(sources[metaId]!==undefined){const meta=JSON.parse(sources[metaId]);let target=null;"
+    "const exp=meta.exports;"
+    "if(info.subpath==='.'&&typeof exp==='string')target=exp;"
+    "else if(info.subpath==='.'&&exp&&typeof exp==='object'){"
+    "const key=exp['.']!==undefined?exp['.']:exp;"
+    "if(typeof key==='string')target=key;"
+    "else if(key&&typeof key==='object')target=key.require!==undefined?key.require:(key.default!==undefined?key.default:null);}"
+    "if(info.subpath==='.')target=target!==null?target:(meta.main!==undefined?meta.main:'index.js');"
+    "if(target===null||!target.startsWith('./'))throw new Error('bad package target');"
+    "return normalize(metaId,target);}"
+    "if(!current)break;const cut=current.lastIndexOf('/');current=cut>=0?current.slice(0,cut):'';}"
+    "throw new Error('package not found: '+spec);}"
     "function tryId(id){if(sources[id]!==undefined)return id;"
     "for(const ext of ['.js','.cjs','.json'])if(sources[id+ext]!==undefined)return id+ext;"
     "for(const index of ['/index.js','/index.cjs','/index.json'])if(sources[id+index]!==undefined)return id+index;"
     "return null;}"
-    "function load(id){if(id==='electron')return electron;const resolved=tryId(id);"
+    "function load(id,parent){if(id==='electron')return electron;"
+    "let target;"
+    "if((parent||'')===''&&sources[id]!==undefined)target=id;"
+    "else if(id.startsWith('.'))target=normalize(parent||'',id);"
+    "else target=resolveBare(parent||'',id);"
+    "const resolved=tryId(target);"
     "if(resolved===null)throw new Error('module not found: '+id);"
     "if(cache[resolved])return cache[resolved].exports;"
     "const module={exports:{}};cache[resolved]=module;"
     "if(resolved.endsWith('.json')){module.exports=JSON.parse(sources[resolved]);return module.exports;}"
-    "const dir=resolved.includes('/')?resolved.slice(0,resolved.lastIndexOf('/')):'';"
     "const fn=new Function('require','module','exports',sources[resolved]);"
-    "fn(spec=>spec==='electron'?electron:load(normalize(resolved,spec)),module,module.exports);"
+    "fn(spec=>load(spec,resolved),module,module.exports);"
     "return module.exports;}"
     "globalThis.__nativeEntry=globalThis.__nativeMainId;"
-    "const main=load(globalThis.__nativeMainId);"
+    "const main=load(globalThis.__nativeMainId,'');"
     "if(!main||main.title!=='native-app-window')throw new Error('bad main exports');"
     "})();";
   JSValue global = JS_GetGlobalObject(context);

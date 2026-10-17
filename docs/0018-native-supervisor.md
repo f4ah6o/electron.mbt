@@ -32,6 +32,8 @@ complete supervisor, app launcher or Node-less app boot.
 - a local CJS loader over a preloaded fixture source map resolves relative
   specifiers, `.js`/`.cjs`/`.json`, directory `index.*`, caches module identity
   and parses JSON modules; the fixture asserts direct/index cache identity
+- a bare `fixture-pkg` resolves through `node_modules`, package.json `exports`
+  (`require` then `default`), `main` fallback and package cache identity
 - close/EOF and `waitpid` on finish; `SIGKILL` + wait on failure
 
 The supervisor uses the existing host directly; it does not use Node,
@@ -43,7 +45,7 @@ Node-API, `sync_channel.node` or the JS runner.
 the final JSON line:
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":82392,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"moduleGraph":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","creator":"moonbit-native","compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":83324,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"moduleGraph":true,"packageGraph":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","creator":"moonbit-native","compatible":false}
 ```
 
 Observed: real native host startup, `hello`/`ready` replies, window creation,
@@ -70,8 +72,9 @@ Both set `compatible:false` and do not leave the intended session running.
   explicit kill; no event-loop ownership or broad fault injection
 - load/event channels are kept open but the prototype only uses control
 - the QuickJS app main and local CJS loader are a C/JS fixture probe over a
-  fixed source list; they are not `runtime/runner`, node_modules/exports
-  resolution, preload/contextBridge or Node-less Moji boot
+  fixed source list; they are not `runtime/runner`, a general node_modules
+  resolver, full exports conditions, preload/contextBridge or Node-less Moji
+  boot
 - no window options beyond the fixed width/height/title/show payload; no
   preload or renderer ingress
 - QuickJS sources are linked through package-local symlinks; this is a probe,

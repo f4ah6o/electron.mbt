@@ -638,7 +638,7 @@
     "status": "prototype",
     "compatible": false,
     "probe": "scripts/m1-native-supervisor.cjs",
-    "result": "PASS: random session, hello/ready, package.json main, local CJS graph, window create/load/destroy, event notice, QuickJS fixture app main/title, shutdown, exit 0; fault probes PASS",
+    "result": "PASS: random session, hello/ready, package.json main, local CJS + node_modules/exports fixture graph, window create/load/destroy, event notice, QuickJS fixture app main/title, shutdown, exit 0; fault probes PASS",
     "backend": "AppKit+WKWebView",
     "creator": "moonbit-native",
     "evidence": "hello/ready/shutdown handshake; child exit status 0",
@@ -654,6 +654,6 @@
     "windowLoad": "fixtures/m1/index.html via load channel; didFinishLoad true",
     "event": "isolated-preload-attested read from event lane",
     "appMain": "fixtures/native-app/package.json main=src/main.js; appMain=native-fixture; appTitle=native-app-window; basic main resolution only",
-    "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity"
+    "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity, node_modules package exports(require/default)/main"
   }
 }

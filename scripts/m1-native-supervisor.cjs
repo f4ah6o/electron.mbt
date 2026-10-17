@@ -23,7 +23,7 @@ const ok = result.status === 0 && parsed.status === 'PASS' &&
   parsed.probe === 'native-supervisor-window-load' &&
   parsed.backend === 'AppKit+WKWebView' &&
   Number.isInteger(parsed.childPid) && parsed.childPid > 0 &&
-  parsed.exitStatus === 0 && parsed.windowLoaded === true && parsed.event === 'isolated-preload-attested' && parsed.mainEvaluated === true && parsed.moduleGraph === true && parsed.appMain === 'native-fixture' && parsed.appEntry === 'src/main.js' && parsed.appTitle === 'native-app-window' && parsed.creator === 'moonbit-native' &&
+  parsed.exitStatus === 0 && parsed.windowLoaded === true && parsed.event === 'isolated-preload-attested' && parsed.mainEvaluated === true && parsed.moduleGraph === true && parsed.packageGraph === true && parsed.appMain === 'native-fixture' && parsed.appEntry === 'src/main.js' && parsed.appTitle === 'native-app-window' && parsed.creator === 'moonbit-native' &&
   parsed.compatible === false;
 if (!ok) {
   process.stderr.write(`ELECTRON_MBT_NATIVE_SUPERVISOR: invalid report ${JSON.stringify(parsed)}\n`);

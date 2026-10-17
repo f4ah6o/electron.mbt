@@ -13,7 +13,7 @@ function boundedInteger(value, max) {
 }
 
 function validate(manifest) {
-  if (!manifest || manifest.schema !== 2) fail('expected schema 2');
+  if (!manifest || (manifest.schema !== 2 && manifest.schema !== 3)) fail('expected schema 2 or 3');
   if (!validName(manifest.name)) fail('invalid API name');
   if (!boundedString(manifest.version, 128)) fail('invalid API version');
   if (!Array.isArray(manifest.topics) || manifest.topics.length === 0 || manifest.topics.length > 16) {
@@ -36,11 +36,31 @@ function validate(manifest) {
   for (const entry of manifest.calls) {
     if (!entry || !validName(entry.name)) fail('invalid call');
     if (!boundedString(entry.operation, 128)) fail('invalid call operation');
-    if (entry.args !== 'none' && entry.args !== 'json') fail('invalid call args');
+    const args = entry.args === undefined ? 'none' : entry.args;
+    if (args !== 'none' && args !== 'json' && args !== 'json-list') fail('invalid call args');
+    if (args === 'json-list') {
+      if (manifest.schema !== 3) fail('json-list requires schema 3');
+      if (!Number.isInteger(entry.arity) || entry.arity < 1 || entry.arity > 4) fail('invalid call arity');
+    } else if (entry.arity !== undefined) {
+      fail('call arity requires json-list');
+    }
     if (callNames.has(entry.name)) fail('duplicate call');
     if (operations.has(entry.operation)) fail('duplicate operation');
     callNames.add(entry.name);
     operations.add(entry.operation);
+  }
+  const unsupportedNames = new Set();
+  if (manifest.unsupported !== undefined) {
+    if (manifest.schema !== 3) fail('unsupported requires schema 3');
+    if (!Array.isArray(manifest.unsupported) || manifest.unsupported.length > 32) {
+      fail('invalid unsupported list');
+    }
+    for (const entry of manifest.unsupported) {
+      if (!entry || !validName(entry.name) || !boundedString(entry.code, 128) ||
+          !boundedString(entry.reason, 256)) fail('invalid unsupported call');
+      if (unsupportedNames.has(entry.name)) fail('duplicate unsupported call');
+      unsupportedNames.add(entry.name);
+    }
   }
   const queue = manifest.queue;
   if (!queue || !boundedInteger(queue.maxCalls, 256) ||
@@ -48,11 +68,14 @@ function validate(manifest) {
       !boundedInteger(queue.readyTimeoutMs, 60000)) {
     fail('invalid queue limits');
   }
-  for (const name of [...topicMethods, ...callNames]) {
+  for (const name of [...topicMethods, ...callNames, ...unsupportedNames]) {
     if (name === 'version') fail('reserved API name');
   }
-  for (const name of callNames) {
+  for (const name of [...callNames, ...unsupportedNames]) {
     if (topicMethods.has(name)) fail('duplicate API member');
+  }
+  for (const name of unsupportedNames) {
+    if (callNames.has(name)) fail('duplicate API member');
   }
   return manifest;
 }
@@ -60,13 +83,25 @@ function validate(manifest) {
 function buildAdapter(input) {
   const manifest = validate(input);
   const topicList = manifest.topics.map(entry => JSON.stringify(entry.topic)).join(', ');
+  const callMembers = manifest.calls.map(entry => {
+    const args = entry.args === undefined ? 'none' : entry.args;
+    if (args === 'none') {
+      return `    ${entry.name}: function () { return invoke(${JSON.stringify(entry.operation)}, null, false); }`;
+    }
+    if (args === 'json') {
+      return `    ${entry.name}: function (value) { return invoke(${JSON.stringify(entry.operation)}, value, true); }`;
+    }
+    const params = Array.from({ length: entry.arity }, (_, index) => `arg${index}`).join(', ');
+    return `    ${entry.name}: function (${params}) { return invoke(${JSON.stringify(entry.operation)}, Array.prototype.slice.call(arguments), true); }`;
+  });
+  const unsupportedMembers = (manifest.unsupported || []).map(entry =>
+    `    ${entry.name}: function () { return Promise.reject(adapterError(${JSON.stringify(entry.code)}, ${JSON.stringify(entry.reason)})); }`);
   const members = [
     `    version: function () { return ${JSON.stringify(manifest.version)}; }`,
     ...manifest.topics.map(entry =>
       `    ${entry.method}: function (callback) { return addListener(${JSON.stringify(entry.topic)}, callback); }`),
-    ...manifest.calls.map(entry => entry.args === 'json'
-      ? `    ${entry.name}: function (value) { return invoke(${JSON.stringify(entry.operation)}, value, true); }`
-      : `    ${entry.name}: function () { return invoke(${JSON.stringify(entry.operation)}, null, false); }`),
+    ...callMembers,
+    ...unsupportedMembers,
   ];
   const source = `'use strict';
 (function () {

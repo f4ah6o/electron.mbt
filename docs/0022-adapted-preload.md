@@ -85,6 +85,11 @@ application ingress is wired.
   generation; it requires an observed adapter installation and a completed
   load. It then evaluates the page-world dispatcher and returns a correlated
   `delivered` reply. It is a test trigger, not an application event route.
+- A Moji-shaped adapted API is generated from the pinned preload contract:
+  [fixtures/moji-adapted/page-api.js](fixtures/moji-adapted/page-api.js)
+  exposes 14 IPC calls, 3 events and a typed unsupported `getDroppedPath`.
+  The original preload remains `NOT_EXECUTED`; Moji main handlers are not
+  connected. See [docs/0026-moji-adapted-api.md](0026-moji-adapted-api.md).
 - A page-world `electronMbtApp` handler is registered with the adapter. It
   admits only `selftest:identity`, derives the sender from the actual
   `WKScriptMessage` frame/document/generation, ignores the payload's claimed
@@ -113,7 +118,7 @@ application ingress is wired.
 Observed fixture probe (macOS, AppKit + WKWebView):
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"closeRequest":true,"closeRequestReload":true,"reloadGeneration":2,"compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"mojiOperationRouted":true,"closeRequest":true,"closeRequestReload":true,"reloadGeneration":2,"compatible":false}
 ```
 
 Adapter hash:
@@ -133,6 +138,8 @@ event path.
 - no general application ingress, Main loader, invoke/reply or sender/document
   grant; the page-world ingress and queue release are test-only, and Main is a
   fixed QuickJS fixture graph
+- the Moji adapted API is generated shape only; its original preload, main
+  handlers, file/dialog/export services and app scenario are not run
 - the source snapshot covers the fixture entry, adapter, package metadata and
   preloaded module graph, but is not a signed or dynamically discovered app
   graph; the Main loader cannot require arbitrary files or builtins
@@ -149,9 +156,11 @@ event path.
 
 ## Next
 
+- register the 14 Moji operations in the Main handler registry and connect the
+  file/dialog/export services; boot Moji main/preload with the adapted API
 - make the CJS loader dynamic over a verified graph and add the remaining Node
   symbol layers (EP-11/12); define the production `DocumentIngressReady`
-  transition; replace the event-only close with a Main/native close decision
+  transition
 - define and observe the actual `DocumentIngressReady` transitions separately
   from `LoadComplete` (EP-15)
 - extend the entry+adapter source snapshot to the complete boot graph, with

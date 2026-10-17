@@ -683,7 +683,7 @@
   "verification": {
     "status": "NOT_READY",
     "report": "compatibility/reports/verification.json",
-    "checks": 15,
+    "checks": 16,
     "unexpectedFailures": 0,
     "note": "Expected NOT_READY; not app compatibility or release approval."
   },
@@ -716,6 +716,24 @@
     "nativeQueue": "test-release; four calls reach native and reject NO_HANDLER, three overflow calls reject QUEUE_FULL",
     "mainDispatch": "quickjs-fixture; app:get-settings/get-update-state via app-request/app-reply",
     "appScenario": "nodeless-fixture; Main settings/state drive the page document title nodeless-app-ready; a delivered app:request-close event sets nodeless-close-requested",
-    "mainLoader": "manifest-preloaded-cjs over the 11-file source snapshot; node:path subset; unsupported builtins fail closed"
+    "mainLoader": "manifest-preloaded-cjs over the 11-file source snapshot; node:path subset; unsupported builtins fail closed",
+    "checks": null
+  },
+  "adaptedMojiApi": {
+    "status": "api-generated",
+    "compatible": false,
+    "profile": "electron-nodeless-adapted-v1",
+    "record": "compatibility/apps/moji-v1.0.5/adapted-preload.json",
+    "adapter": "fixtures/moji-adapted/page-api.js",
+    "adapterSHA256": "28fe7607d62dc7695e7d7dccb9740c85ef4f0709e50219ae3567423c4fa13a9c",
+    "preloadSHA256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
+    "originalPreload": "NOT_EXECUTED",
+    "calls": 14,
+    "topics": 3,
+    "unsupported": [
+      "getDroppedPath"
+    ],
+    "runtime": "NOT_IMPLEMENTED",
+    "note": "Generated API shape only; original preload and Moji main handlers are not executed."
   }
 }

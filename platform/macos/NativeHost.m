@@ -392,7 +392,9 @@ static NSString *preloadDigest(NSData *data) {
        "    if (!handler) {\n"
        "      return Promise.reject(new Error('ELECTRON_MBT_INGRESS_UNAVAILABLE'));\n"
        "    }\n"
-       "    const payload = args === null ? {} : JSON.parse(args);\n"
+       "    const parsed = args === null ? null : JSON.parse(args);\n"
+       "    const payload = parsed && typeof parsed === 'object' && !Array.isArray(parsed)\n"
+       "      ? parsed : { args: parsed };\n"
        "    return handler.postMessage({ operation: operation, payload: payload }).catch(function (error) {\n"
        "      const message = String((error && error.message) || error || '');\n"
        "      const match = message.match(/ELECTRON_MBT_[A-Z0-9_]+/);\n"
@@ -530,8 +532,9 @@ static NSString *preloadDigest(NSData *data) {
     }
     BOOL known = [operation isEqualToString:@"selftest:identity"] ||
                  [operation isEqualToString:@"selftest:unsupported-builtin"] ||
-                 [operation isEqualToString:@"app:get-settings"] ||
-                 [operation isEqualToString:@"app:get-update-state"];
+                 [operation hasPrefix:@"app:"] || [operation hasPrefix:@"settings:"] ||
+                 [operation hasPrefix:@"file:"] || [operation hasPrefix:@"doc:"] ||
+                 [operation hasPrefix:@"diagram:"] || [operation hasPrefix:@"update:"];
     if (!known) {
       self.ingressDenied++;
       self.ingressLastCode = @"ELECTRON_MBT_INGRESS_UNKNOWN_OPERATION";
@@ -539,6 +542,15 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     if (![operation isEqualToString:@"selftest:identity"]) {
+      NSError *payloadError = nil;
+      NSData *payloadData = [NSJSONSerialization dataWithJSONObject:requestPayload
+        options:0 error:&payloadError];
+      if (payloadError != nil || payloadData == nil || payloadData.length > 65536) {
+        self.ingressDenied++;
+        self.ingressLastCode = @"ELECTRON_MBT_INGRESS_LIMIT";
+        replyHandler(nil, @"ELECTRON_MBT_INGRESS_LIMIT");
+        return;
+      }
       if (self.publishAppRequest == nil) {
         self.ingressDenied++;
         self.ingressLastCode = @"ELECTRON_MBT_MAIN_UNAVAILABLE";

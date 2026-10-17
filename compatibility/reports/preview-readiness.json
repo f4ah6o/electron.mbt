@@ -10,8 +10,8 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 21,
-    "pass": 14,
+    "checks": 22,
+    "pass": 15,
     "fail": 2,
     "notRun": 5
   },
@@ -44,7 +44,7 @@
     {
       "id": "adapted-source-snapshot",
       "status": "PASS",
-      "detail": "private staging files=11; entry=index.html; hash=fc9a8207a96366db6a364c6c9d6ff2c60e9a2f5745e6910a68b6bd2379983fa2"
+      "detail": "private staging files=11; entry=index.html; hash=ebfabf9061ba58fda46824598ae4c7c79f161b713704ef8308cc82368760877c"
     },
     {
       "id": "adapted-native-ingress",
@@ -55,6 +55,11 @@
       "id": "adapted-main-roundtrip",
       "status": "PASS",
       "detail": "QuickJS Main fixture dispatches app:get-settings,app:get-update-state; loader=manifest-preloaded-cjs; builtins=node:path; scenario=nodeless-fixture; close=native-event-observed"
+    },
+    {
+      "id": "adapted-moji-api",
+      "status": "PASS",
+      "detail": "Moji moji-v1.0.5: calls=14, topics=3, unsupported=getDroppedPath, runtime=NOT_IMPLEMENTED, originalPreload=NOT_EXECUTED"
     },
     {
       "id": "adapted-moji-runtime",

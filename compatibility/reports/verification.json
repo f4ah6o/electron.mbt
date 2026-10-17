@@ -200,6 +200,15 @@
       }
     },
     {
+      "id": "moji-adapted",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "status": "PASS"
+      }
+    },
+    {
       "id": "readiness",
       "status": "NOT_READY",
       "exit": 2,
@@ -207,8 +216,8 @@
       "detail": {
         "status": "NOT_READY",
         "counts": {
-          "checks": 21,
-          "pass": 14,
+          "checks": 22,
+          "pass": 15,
           "fail": 2,
           "notRun": 5
         }

@@ -73,6 +73,18 @@ function buildReport() {
     `page-world electronMbtApp selftest=${adaptedRecord.nativeIngress?.operation || 'absent'}; queue=${adaptedRecord.nativeIngress?.queueRelease || 'absent'}; application RPC ingress=${adaptedRecord.semantics.ingress}`));
   checks.push(check('adapted-main-roundtrip', adaptedRecord.mainDispatch?.mode === 'quickjs-fixture' ? 'PASS' : 'FAIL',
     `QuickJS Main fixture dispatches ${adaptedRecord.mainDispatch?.applicationOperations?.join(',') || 'none'}; loader=${adaptedRecord.mainDispatch?.loader || 'none'}; builtins=${adaptedRecord.mainDispatch?.builtins?.join(',') || 'none'}; scenario=${adaptedRecord.mainDispatch?.appScenario || 'none'}; close=${adaptedRecord.mainDispatch?.closeRequest || 'none'}`));
+  const mojiAdapted = readJson('compatibility/apps/moji-v1.0.5/adapted-preload.json');
+  const mojiManifest = readJson(mojiAdapted.adapter.manifest);
+  const mojiAdapterHash = require('node:crypto').createHash('sha256')
+    .update(fs.readFileSync(path.join(root, mojiAdapted.adapter.path))).digest('hex');
+  const mojiApiOk = mojiAdapted.originalPreload === 'NOT_EXECUTED' &&
+    mojiManifest.schema === 3 &&
+    Array.isArray(mojiManifest.calls) && mojiManifest.calls.length === mojiAdapted.api.calls &&
+    Array.isArray(mojiManifest.topics) && mojiManifest.topics.length === mojiAdapted.api.topics &&
+    mojiAdapterHash === mojiAdapted.adapter.sha256 &&
+    mojiAdapted.semantics.runtime === 'NOT_IMPLEMENTED';
+  checks.push(check('adapted-moji-api', mojiApiOk ? 'PASS' : 'FAIL',
+    `Moji ${mojiAdapted.appId}: calls=${mojiAdapted.api.calls}, topics=${mojiAdapted.api.topics}, unsupported=${(mojiAdapted.api.unsupported || []).join(',')}, runtime=${mojiAdapted.semantics.runtime}, originalPreload=${mojiAdapted.originalPreload}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',
     'Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected'));
 

@@ -7,7 +7,7 @@ It exits 0 only when every command behaves as expected, including the expected
 
 ## Result
 
-15 checks, 0 unexpected failures:
+16 checks, 0 unexpected failures:
 
 - `moon test --target js`
 - `moon test --target native`
@@ -22,6 +22,7 @@ It exits 0 only when every command behaves as expected, including the expected
 - `scripts/m1-source-snapshot.cjs`
 - `scripts/adapted-preload-check.cjs`
 - `scripts/adapted-api-check.cjs`
+- `scripts/moji-adapted-check.cjs`
 - `scripts/preview-readiness.cjs` (expected exit 2, NOT_READY)
 - `scripts/gate-report.cjs`
 

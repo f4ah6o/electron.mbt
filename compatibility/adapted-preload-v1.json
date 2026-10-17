@@ -23,8 +23,8 @@
     "files": [
       {
         "path": "index.html",
-        "sha256": "fc9a8207a96366db6a364c6c9d6ff2c60e9a2f5745e6910a68b6bd2379983fa2",
-        "bytes": 5128
+        "sha256": "ebfabf9061ba58fda46824598ae4c7c79f161b713704ef8308cc82368760877c",
+        "bytes": 5455
       },
       {
         "path": "adapted/page-api.js",

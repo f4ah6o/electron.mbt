@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "profile": "electron-nodeless-adapted-v1",
+  "appId": "moji-v1.0.5",
+  "status": "api-generated",
+  "originalPreload": "NOT_EXECUTED",
+  "preload": {
+    "path": "out/preload/preload.js",
+    "sha256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
+    "hashSource": "compatibility/apps/moji-v1.0.5/build-provenance.json"
+  },
+  "adapter": {
+    "manifest": "fixtures/moji-adapted/api.json",
+    "path": "fixtures/moji-adapted/page-api.js",
+    "sha256": "28fe7607d62dc7695e7d7dccb9740c85ef4f0709e50219ae3567423c4fa13a9c",
+    "world": "page",
+    "injection": "document-start"
+  },
+  "api": {
+    "name": "api",
+    "version": "moji-adapted-v1",
+    "calls": 14,
+    "topics": 3,
+    "unsupported": ["getDroppedPath"]
+  },
+  "queue": {
+    "maxCalls": 8,
+    "maxBytes": 65536,
+    "readyTimeoutMs": 300
+  },
+  "semantics": {
+    "contextBridge": false,
+    "ipcRenderer": false,
+    "webUtils": false,
+    "originalPreloadExecuted": false,
+    "runtime": "NOT_IMPLEMENTED",
+    "applicationHandlers": "NOT_IMPLEMENTED",
+    "note": "Generated API shape from the pinned Moji preload. The original preload is not executed; calls are not connected to Moji main handlers."
+  }
+}

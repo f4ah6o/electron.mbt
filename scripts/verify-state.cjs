@@ -18,6 +18,7 @@ const checks = [
   { id: 'source-snapshot', command: 'node', args: ['scripts/m1-source-snapshot.cjs'], expect: 0 },
   { id: 'adapted-preload', command: 'node', args: ['scripts/adapted-preload-check.cjs'], expect: 0 },
   { id: 'adapted-api', command: 'node', args: ['scripts/adapted-api-check.cjs'], expect: 0 },
+  { id: 'moji-adapted', command: 'node', args: ['scripts/moji-adapted-check.cjs'], expect: 0 },
   { id: 'readiness', command: 'node', args: ['scripts/preview-readiness.cjs'], expect: 2 },
   { id: 'gate-report', command: 'node', args: ['scripts/gate-report.cjs'], expect: 0 },
 ];

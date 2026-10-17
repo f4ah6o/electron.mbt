@@ -23,7 +23,7 @@ const ok = result.status === 0 && parsed.status === 'PASS' &&
   parsed.probe === 'native-supervisor-window-load' &&
   parsed.backend === 'AppKit+WKWebView' &&
   Number.isInteger(parsed.childPid) && parsed.childPid > 0 &&
-  parsed.exitStatus === 0 && parsed.windowLoaded === true && parsed.event === 'isolated-preload-attested' && parsed.mainEvaluated === true && parsed.moduleGraph === true && parsed.packageGraph === true && parsed.appMain === 'native-fixture' && parsed.appEntry === 'src/main.js' && parsed.appTitle === 'native-app-window' && parsed.restarts === 1 &&
+  parsed.exitStatus === 0 && parsed.windowLoaded === true && parsed.event === 'isolated-preload-attested' && parsed.mainEvaluated === true && parsed.moduleGraph === true && parsed.packageGraph === true && parsed.appMain === 'native-fixture' && parsed.appEntry === 'src/main.js' && parsed.appTitle === 'native-app-window' && parsed.bootstrapObserved === true && parsed.preloadStatus === 'absent' && parsed.restarts === 1 &&
   Number.isInteger(parsed.secondPid) && parsed.secondPid > 0 &&
   parsed.secondExitStatus === 0 && parsed.creator === 'moonbit-native' &&
   parsed.compatible === false;

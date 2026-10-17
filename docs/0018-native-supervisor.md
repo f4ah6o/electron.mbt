@@ -29,6 +29,9 @@ complete supervisor, app launcher or Node-less app boot.
 - the prototype reads `package.json` with QuickJS `JSON.parse`, uses its
   `main` (default `main.js`) and rejects absolute/`..`/backslash entries;
   exports/imports and conditions are **not implemented**
+- after load, `get-bootstrap-status` must report `observed/mainFrame`, the
+  document generation and `index.html`; `get-preload-status` must report
+  `absent` because this fixture has no preload
 - a local CJS loader over a preloaded fixture source map resolves relative
   specifiers, `.js`/`.cjs`/`.json`, directory `index.*`, caches module identity
   and parses JSON modules; the fixture asserts direct/index cache identity
@@ -45,7 +48,7 @@ Node-API, `sync_channel.node` or the JS runner.
 the final JSON line:
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":84610,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"moduleGraph":true,"packageGraph":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","restarts":1,"secondPid":84616,"secondExitStatus":0,"creator":"moonbit-native","compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":85570,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"moduleGraph":true,"packageGraph":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","bootstrapObserved":true,"preloadStatus":"absent","restarts":1,"secondPid":85576,"secondExitStatus":0,"creator":"moonbit-native","compatible":false}
 ```
 
 Observed: real native host startup, `hello`/`ready` replies, window creation,
@@ -80,6 +83,8 @@ Both set `compatible:false` and do not leave the intended session running.
   fixed source list; they are not `runtime/runner`, a general node_modules
   resolver, full exports conditions, preload/contextBridge or Node-less Moji
   boot
+- no preload is exercised; `preloadStatus:absent` is a negative/empty result,
+  not preload compatibility
 - no window options beyond the fixed width/height/title/show payload; no
   preload or renderer ingress
 - QuickJS sources are linked through package-local symlinks; this is a probe,

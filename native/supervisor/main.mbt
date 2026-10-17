@@ -216,7 +216,27 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_EVENT\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let destroy = request_frame(session, 8, 1, 1, "destroy-window", "{}")
+  let bootstrap = request_frame(session, 8, 1, 1, "get-bootstrap-status", "{}")
+  let bootstrap_sent = send(fd, bootstrap)
+  let bootstrap_reply = if bootstrap_sent { receive(fd, buffer) } else { None }
+  if !bootstrap_sent || bootstrap_reply is None ||
+    !bootstrap_reply.unwrap().contains("\"observed\":true") ||
+    !bootstrap_reply.unwrap().contains("\"mainFrame\":true") ||
+    !bootstrap_reply.unwrap().contains("\"generation\":1") ||
+    !bootstrap_reply.unwrap().contains("index.html") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_BOOTSTRAP\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let preload = request_frame(session, 9, 1, 1, "get-preload-status", "{}")
+  let preload_sent = send(fd, preload)
+  let preload_reply = if preload_sent { receive(fd, buffer) } else { None }
+  if !preload_sent || preload_reply is None || !preload_reply.unwrap().contains("\"status\":\"absent\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PRELOAD_STATUS\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let destroy = request_frame(session, 10, 1, 1, "destroy-window", "{}")
   let destroy_sent = send(fd, destroy)
   let destroy_reply = if destroy_sent { receive(fd, buffer) } else { None }
   if !destroy_sent || destroy_reply is None || !destroy_reply.unwrap().contains("\"destroyed\":true") {
@@ -224,7 +244,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_DESTROY\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let shutdown = request_frame(session, 9, 0, 0, "shutdown", "{}")
+  let shutdown = request_frame(session, 11, 0, 0, "shutdown", "{}")
   if !send(fd, shutdown) || receive(fd, buffer) is None {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SHUTDOWN\",\"compatible\":false}")
@@ -285,7 +305,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")
 }

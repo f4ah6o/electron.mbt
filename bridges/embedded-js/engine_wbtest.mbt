@@ -31,6 +31,39 @@ test "QJS-02 value leases can be duplicated and released independently" {
 }
 
 ///|
+test "QJS-02 a released lease fails closed without dereferencing freed memory" {
+  let engine = Engine::new()
+  let context = Context::new(engine)
+  let lease = context.eval_raw("({ stale: true })", "qjs-02-stale.js")
+  lease.release()
+  assert_eq(lease.kind(), -1)
+  assert_eq(lease.text(), "released value handle")
+  let duplicate = lease.dup()
+  assert_eq(duplicate.kind(), -1)
+  duplicate.release()
+  context.destroy()
+  engine.destroy()
+}
+
+///|
+test "QJS-05 invalid UTF-8 and a low memory limit fail as typed engine errors" {
+  let engine = Engine::new_with_limit(1048576L)
+  let context = Context::new(engine)
+  let invalid = context.eval_bytes(b"\xff\xfe", b"qjs-05-invalid.js")
+  assert_eq(invalid.kind(), 1)
+  let invalid_text = invalid.text()
+  assert_true(invalid_text.length() > 0)
+  invalid.release()
+  let oom = context.eval_script("new Array(10000000).fill(0)", "qjs-05-oom.js")
+  assert_true(oom.status is Exception)
+  let after = context.eval_script("6 * 7", "qjs-05-after.js")
+  assert_true(after.status is Value)
+  assert_eq(after.text, "42")
+  context.destroy()
+  engine.destroy()
+}
+
+///|
 test "QJS-03 pending Promise jobs execute through the adapter" {
   let engine = Engine::new()
   let context = Context::new(engine)

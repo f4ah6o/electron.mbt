@@ -13,6 +13,7 @@
 typedef struct {
   JSRuntime *rt;
   volatile int interrupted;
+  int64_t memory_limit;
 } EmbEngine;
 
 typedef struct {
@@ -26,6 +27,37 @@ typedef struct {
   int is_exception;
   int alive;
 } EmbValue;
+
+#define EMB_MAX_LIVE 4096
+static EmbValue *emb_live[EMB_MAX_LIVE];
+static int emb_live_count = 0;
+
+// A small live-lease registry lets stale IDs fail closed without dereferencing
+// freed memory. It is single-runner-thread state; the QuickJS API is not
+// thread-safe and this adapter does not promise concurrent callers.
+static int emb_register_value(EmbValue *value) {
+  if (value == NULL || emb_live_count >= EMB_MAX_LIVE) return 0;
+  emb_live[emb_live_count++] = value;
+  return 1;
+}
+
+static int emb_value_live(EmbValue *value) {
+  if (value == NULL) return 0;
+  for (int i = 0; i < emb_live_count; i++) {
+    if (emb_live[i] == value) return 1;
+  }
+  return 0;
+}
+
+static void emb_unregister_value(EmbValue *value) {
+  for (int i = 0; i < emb_live_count; i++) {
+    if (emb_live[i] == value) {
+      emb_live[i] = emb_live[emb_live_count - 1];
+      emb_live_count -= 1;
+      return;
+    }
+  }
+}
 
 static int emb_interrupt_handler(JSRuntime *rt, void *opaque) {
   (void)rt;
@@ -46,7 +78,7 @@ static moonbit_bytes_t emb_literal(const char *text) {
 }
 
 MOONBIT_FFI_EXPORT
-void *moonbit_emb_engine_create(void) {
+void *moonbit_emb_engine_create_with_limit(int64_t memory_limit) {
   EmbEngine *engine = (EmbEngine *)calloc(1, sizeof(EmbEngine));
   if (engine == NULL) return NULL;
   engine->rt = JS_NewRuntime();
@@ -55,10 +87,32 @@ void *moonbit_emb_engine_create(void) {
     return NULL;
   }
   // These are the initial profile limits from 0008 §7.4, not measured claims.
-  JS_SetMemoryLimit(engine->rt, (size_t)128 * 1024 * 1024);
+  engine->memory_limit = memory_limit > 0 ? memory_limit : (int64_t)128 * 1024 * 1024;
+  JS_SetMemoryLimit(engine->rt, (size_t)engine->memory_limit);
   JS_SetMaxStackSize(engine->rt, (size_t)1 * 1024 * 1024);
   JS_SetInterruptHandler(engine->rt, emb_interrupt_handler, engine);
   return engine;
+}
+
+MOONBIT_FFI_EXPORT
+void *moonbit_emb_engine_create(void) {
+  return moonbit_emb_engine_create_with_limit((int64_t)128 * 1024 * 1024);
+}
+
+MOONBIT_FFI_EXPORT
+void moonbit_emb_collect(void *raw_engine) {
+  EmbEngine *engine = (EmbEngine *)raw_engine;
+  if (engine != NULL && engine->rt != NULL) JS_RunGC(engine->rt);
+}
+
+MOONBIT_FFI_EXPORT
+int64_t moonbit_emb_memory_used(void *raw_engine) {
+  EmbEngine *engine = (EmbEngine *)raw_engine;
+  if (engine == NULL || engine->rt == NULL) return -1;
+  JSMemoryUsage usage;
+  memset(&usage, 0, sizeof(usage));
+  JS_ComputeMemoryUsage(engine->rt, &usage);
+  return (int64_t)usage.malloc_size;
 }
 
 MOONBIT_FFI_EXPORT
@@ -121,14 +175,19 @@ void *moonbit_emb_eval(void *raw_context, moonbit_bytes_t source, moonbit_bytes_
   if (context->ctx == NULL) {
     result->is_exception = 1;
     result->value = JS_UNDEFINED;
-    return result;
-  }
-  JSValue value = JS_Eval(context->ctx, source_text, (size_t)source_len, filename_text, JS_EVAL_TYPE_GLOBAL);
-  if (JS_IsException(value)) {
-    result->is_exception = 1;
-    result->value = JS_GetException(context->ctx);
   } else {
-    result->value = value;
+    JSValue value = JS_Eval(context->ctx, source_text, (size_t)source_len, filename_text, JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(value)) {
+      result->is_exception = 1;
+      result->value = JS_GetException(context->ctx);
+    } else {
+      result->value = value;
+    }
+  }
+  if (!emb_register_value(result)) {
+    if (result->ctx != NULL) JS_FreeValue(result->ctx, result->value);
+    free(result);
+    return NULL;
   }
   return result;
 }
@@ -136,7 +195,7 @@ void *moonbit_emb_eval(void *raw_context, moonbit_bytes_t source, moonbit_bytes_
 MOONBIT_FFI_EXPORT
 int32_t moonbit_emb_value_kind(void *raw) {
   EmbValue *value = (EmbValue *)raw;
-  if (value == NULL || !value->alive) return -1;
+  if (value == NULL || !emb_value_live(value) || !value->alive) return -1;
   return value->is_exception ? 1 : 0;
 }
 
@@ -145,7 +204,7 @@ int32_t moonbit_emb_value_kind(void *raw) {
 MOONBIT_FFI_EXPORT
 moonbit_bytes_t moonbit_emb_value_text(void *raw) {
   EmbValue *value = (EmbValue *)raw;
-  if (value == NULL || !value->alive) return emb_literal("released value handle");
+  if (value == NULL || !emb_value_live(value) || !value->alive) return emb_literal("released value handle");
   JSContext *ctx = value->ctx;
   if (ctx == NULL) return emb_literal("evaluation failed: no context");
   JSValue printable = JS_UNDEFINED;
@@ -183,20 +242,26 @@ moonbit_bytes_t moonbit_emb_value_text(void *raw) {
 MOONBIT_FFI_EXPORT
 void *moonbit_emb_value_dup(void *raw) {
   EmbValue *value = (EmbValue *)raw;
-  if (value == NULL || !value->alive) return NULL;
+  if (value == NULL || !emb_value_live(value) || !value->alive) return NULL;
   EmbValue *copy = (EmbValue *)calloc(1, sizeof(EmbValue));
   if (copy == NULL) return NULL;
   copy->ctx = value->ctx;
   copy->is_exception = value->is_exception;
   copy->alive = 1;
   copy->value = JS_DupValue(value->ctx, value->value);
+  if (!emb_register_value(copy)) {
+    JS_FreeValue(copy->ctx, copy->value);
+    free(copy);
+    return NULL;
+  }
   return copy;
 }
 
 MOONBIT_FFI_EXPORT
 void moonbit_emb_value_release(void *raw) {
   EmbValue *value = (EmbValue *)raw;
-  if (value == NULL) return;
+  if (value == NULL || !emb_value_live(value)) return;
+  emb_unregister_value(value);
   if (value->alive) {
     if (value->ctx != NULL) JS_FreeValue(value->ctx, value->value);
     value->alive = 0;

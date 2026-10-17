@@ -48,18 +48,19 @@ is not imported by the JS bridge.
 `moon test --target native -p bridges/embedded-js` passes:
 
 - primitive/object eval and synchronous throw text (QJS-01 partial)
-- duplicated and independently released value leases (QJS-02 partial)
+- duplicated and independently released value leases; released/stale lease IDs fail closed through a bounded live-lease registry (QJS-02 partial)
 - pending Promise job execution and a later-evaluation check (QJS-03 partial)
 - interrupt of an unbounded loop and recovery (QJS-04 partial)
+- invalid UTF-8 source and a 1 MiB heap limit produce typed exceptions without aborting later evaluation (QJS-05 partial)
 
 `moon test --target native` passes the complete native suite including these
 tests. A compile-only result is not acceptance.
 
 ## Open before R1b/R2
 
-- QJS-05: forced OOM, invalid UTF-8 input, callback/OOM exit and sanitizer run
-- stale/cross-context lease rejection and a root-count ledger
-- callback trampolines, finalizer/gc_mark review and ownership review
+- QJS-05: callback/OOM exit, forced-GC root-count evidence and an ASAN/sanitizer run
+- cross-context lease rejection and a complete root-count ledger
+- callback trampolines, finalizer/gc_mark review and independent ownership review
 - nextTick/timer ordering, unhandled-rejection policy and host-loss cancellation
 - CJS module cache/cycle/identity and Node subset; these are not implied by eval
 - a real Node-free runner and process cleanup audit

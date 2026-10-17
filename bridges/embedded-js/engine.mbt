@@ -18,6 +18,9 @@ type ValueLease
 extern "C" fn emb_engine_create() -> Engine = "moonbit_emb_engine_create"
 
 ///|
+extern "C" fn emb_engine_create_with_limit(memory_limit : Int64) -> Engine = "moonbit_emb_engine_create_with_limit"
+
+///|
 extern "C" fn emb_engine_destroy(engine : Engine) = "moonbit_emb_engine_destroy"
 
 ///|
@@ -59,6 +62,12 @@ extern "C" fn emb_execute_one_job(engine : Engine) -> Int = "moonbit_emb_execute
 extern "C" fn emb_job_pending(engine : Engine) -> Int = "moonbit_emb_job_pending"
 
 ///|
+extern "C" fn emb_collect(engine : Engine) = "moonbit_emb_collect"
+
+///|
+extern "C" fn emb_memory_used(engine : Engine) -> Int64 = "moonbit_emb_memory_used"
+
+///|
 pub(all) enum EvalStatus {
   Value
   Exception
@@ -73,6 +82,11 @@ pub struct EvalResult {
 ///|
 pub fn Engine::new() -> Engine {
   emb_engine_create()
+}
+
+///|
+pub fn Engine::new_with_limit(memory_limit : Int64) -> Engine {
+  emb_engine_create_with_limit(memory_limit)
 }
 
 ///|
@@ -101,6 +115,16 @@ pub fn Engine::job_pending(self : Engine) -> Bool {
 }
 
 ///|
+pub fn Engine::collect(self : Engine) -> Unit {
+  emb_collect(self)
+}
+
+///|
+pub fn Engine::memory_used(self : Engine) -> Int64 {
+  emb_memory_used(self)
+}
+
+///|
 pub fn Context::new(engine : Engine) -> Context {
   emb_context_create(engine)
 }
@@ -117,6 +141,15 @@ pub fn Context::eval_raw(
   filename : String,
 ) -> ValueLease {
   emb_eval(self, @utf8.encode(source), @utf8.encode(filename))
+}
+
+///|
+pub fn Context::eval_bytes(
+  self : Context,
+  source : Bytes,
+  filename : Bytes,
+) -> ValueLease {
+  emb_eval(self, source, filename)
 }
 
 ///|

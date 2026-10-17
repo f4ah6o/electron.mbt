@@ -1,5 +1,10 @@
 'use strict';
 const { app } = require('electron');
+const direct = require('./lib/greet');
+const viaIndex = require('./lib');
+const data = require('./lib/data.json');
+if (direct !== viaIndex) throw new Error('module cache identity lost');
+if (data.kind !== 'fixture') throw new Error('JSON module failed');
 globalThis.__nativeMain = app.name;
-globalThis.__nativeTitle = 'native-app-window';
-module.exports = { name: app.name, title: globalThis.__nativeTitle };
+globalThis.__nativeTitle = direct;
+module.exports = { name: app.name, title: direct };

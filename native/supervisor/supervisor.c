@@ -352,30 +352,63 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
   }
   free(package_json);
   if (!valid_entry(entry)) { JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
-  char *source_path = join_root(entry);
-  size_t source_length = 0;
-  char *source = source_path == NULL ? NULL : read_text_file(source_path, 65536, &source_length);
-  free(source_path);
-  if (source == NULL) { JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
-  const char *prelude =
+  const char *fixture_files[] = {
+    "src/main.js", "src/lib/index.js", "src/lib/greet.js", "src/lib/data.json",
+  };
+  JSValue sources = JS_NewObject(context);
+  for (size_t i = 0; i < sizeof(fixture_files) / sizeof(fixture_files[0]); i++) {
+    char *path = join_root(fixture_files[i]);
+    size_t length = 0;
+    char *text = path == NULL ? NULL : read_text_file(path, 65536, &length);
+    free(path);
+    if (text == NULL) { JS_FreeValue(context, sources); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
+    JSValue source_value = JS_NewStringLen(context, text, length);
+    free(text);
+    if (JS_IsException(source_value)) { JS_FreeValue(context, sources); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
+    JS_SetPropertyStr(context, sources, fixture_files[i], source_value);
+  }
+  char *entry_path = join_root(entry);
+  size_t entry_length = 0;
+  char *entry_source = entry_path == NULL ? NULL : read_text_file(entry_path, 65536, &entry_length);
+  free(entry_path);
+  if (entry_source == NULL) { JS_FreeValue(context, sources); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
+  JS_SetPropertyStr(context, sources, entry, JS_NewStringLen(context, entry_source, entry_length));
+  free(entry_source);
+  const char *loader =
     "(function(){"
     "const electron={app:{name:'native-fixture',isPackaged:false}};"
-    "const module={exports:{}};"
-    "(function(require,module,exports){";
-  const char *postlude =
-    "\n})(function(name){if(name==='electron')return electron;"
-    "throw new Error('unknown module');},module,module.exports);"
+    "const sources=globalThis.__nativeSources;"
+    "const cache=Object.create(null);"
+    "function normalize(from,spec){"
+    "if(typeof spec!=='string'||!spec.startsWith('.')||spec.includes(String.fromCharCode(92)))throw new Error('bad require');"
+    "const base=from.includes('/')?from.slice(0,from.lastIndexOf('/')):'';"
+    "const parts=(base+'/'+spec).split('/');const out=[];"
+    "for(const part of parts){if(!part||part==='.')continue;"
+    "if(part==='..'){if(!out.length)throw new Error('require escape');out.pop();}else out.push(part);}"
+    "return out.join('/');}"
+    "function tryId(id){if(sources[id]!==undefined)return id;"
+    "for(const ext of ['.js','.cjs','.json'])if(sources[id+ext]!==undefined)return id+ext;"
+    "for(const index of ['/index.js','/index.cjs','/index.json'])if(sources[id+index]!==undefined)return id+index;"
+    "return null;}"
+    "function load(id){if(id==='electron')return electron;const resolved=tryId(id);"
+    "if(resolved===null)throw new Error('module not found: '+id);"
+    "if(cache[resolved])return cache[resolved].exports;"
+    "const module={exports:{}};cache[resolved]=module;"
+    "if(resolved.endsWith('.json')){module.exports=JSON.parse(sources[resolved]);return module.exports;}"
+    "const dir=resolved.includes('/')?resolved.slice(0,resolved.lastIndexOf('/')):'';"
+    "const fn=new Function('require','module','exports',sources[resolved]);"
+    "fn(spec=>spec==='electron'?electron:load(normalize(resolved,spec)),module,module.exports);"
+    "return module.exports;}"
+    "globalThis.__nativeEntry=globalThis.__nativeMainId;"
+    "const main=load(globalThis.__nativeMainId);"
+    "if(!main||main.title!=='native-app-window')throw new Error('bad main exports');"
     "})();";
-  size_t total = strlen(prelude) + source_length + strlen(postlude) + 1;
-  char *wrapped = (char *)malloc(total);
-  if (wrapped == NULL) { free(source); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
-  snprintf(wrapped, total, "%s%s%s", prelude, source, postlude);
-  free(source);
-  JSValue value = JS_Eval(context, wrapped, strlen(wrapped), "native-app/main.js", JS_EVAL_TYPE_GLOBAL);
-  free(wrapped);
+  JSValue global = JS_GetGlobalObject(context);
+  JS_SetPropertyStr(context, global, "__nativeSources", sources);
+  JS_SetPropertyStr(context, global, "__nativeMainId", JS_NewString(context, entry));
+  JSValue value = JS_Eval(context, loader, strlen(loader), "native-app/loader.js", JS_EVAL_TYPE_GLOBAL);
   int32_t ok = 0;
   if (!JS_IsException(value)) {
-    JSValue global = JS_GetGlobalObject(context);
     JSValue nativeMain = JS_GetPropertyStr(context, global, "__nativeMain");
     JSValue nativeTitle = JS_GetPropertyStr(context, global, "__nativeTitle");
     const char *main_text = JS_ToCString(context, nativeMain);
@@ -393,9 +426,9 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
     if (title_text != NULL) JS_FreeCString(context, title_text);
     JS_FreeValue(context, nativeTitle);
     JS_FreeValue(context, nativeMain);
-    JS_FreeValue(context, global);
   }
   JS_FreeValue(context, value);
+  JS_FreeValue(context, global);
   JS_FreeContext(context);
   JS_FreeRuntime(runtime);
   return ok;

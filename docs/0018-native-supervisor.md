@@ -1,8 +1,8 @@
 # MoonBit-native supervisor handshake (EP-10 prototype)
 
 Status: **prototype PASS for private handshake, a real window/file load, one
-event notice and a file-loaded linked-QuickJS fixture app main whose title is
-applied to the native window**.
+event notice, and a file-loaded linked-QuickJS fixture app main with a local
+CJS module graph whose title is applied to the native window**.
 This is the first MoonBit-native process that spawns, creates a window in and
 loads a file through the real AppKit/WKWebView host without Node. It is not a
 complete supervisor, app launcher or Node-less app boot.
@@ -28,7 +28,10 @@ complete supervisor, app launcher or Node-less app boot.
   the window
 - the prototype reads `package.json` with QuickJS `JSON.parse`, uses its
   `main` (default `main.js`) and rejects absolute/`..`/backslash entries;
-  exports/imports, conditions and extension probing are **not implemented**
+  exports/imports and conditions are **not implemented**
+- a local CJS loader over a preloaded fixture source map resolves relative
+  specifiers, `.js`/`.cjs`/`.json`, directory `index.*`, caches module identity
+  and parses JSON modules; the fixture asserts direct/index cache identity
 - close/EOF and `waitpid` on finish; `SIGKILL` + wait on failure
 
 The supervisor uses the existing host directly; it does not use Node,
@@ -40,7 +43,7 @@ Node-API, `sync_channel.node` or the JS runner.
 the final JSON line:
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":81099,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","creator":"moonbit-native","compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":82392,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","mainEvaluated":true,"moduleGraph":true,"appMain":"native-fixture","appEntry":"src/main.js","appTitle":"native-app-window","creator":"moonbit-native","compatible":false}
 ```
 
 Observed: real native host startup, `hello`/`ready` replies, window creation,
@@ -66,10 +69,9 @@ Both set `compatible:false` and do not leave the intended session running.
 - no restart/watchdog policy or orphan sweep beyond the 5s finish timeout and
   explicit kill; no event-loop ownership or broad fault injection
 - load/event channels are kept open but the prototype only uses control
-- the QuickJS app main is a C-linked fixture probe with basic
-  package.json/main resolution; it is not `runtime/runner`, a filesystem
-  module graph, exports/conditions, preload/contextBridge or Node-less Moji
-  boot
+- the QuickJS app main and local CJS loader are a C/JS fixture probe over a
+  fixed source list; they are not `runtime/runner`, node_modules/exports
+  resolution, preload/contextBridge or Node-less Moji boot
 - no window options beyond the fixed width/height/title/show payload; no
   preload or renderer ingress
 - QuickJS sources are linked through package-local symlinks; this is a probe,

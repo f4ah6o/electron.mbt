@@ -226,7 +226,7 @@ fn main {
   let exit_status = supervisor_finish()
   println("{\"status\":\"PASS\",\"probe\":\"native-supervisor-window-load\",\"backend\":\"AppKit+WKWebView\",\"childPid\":" +
     child_pid.to_string() + ",\"exitStatus\":" + exit_status.to_string() +
-    ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true," +
+    ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
     "\",\"creator\":\"moonbit-native\",\"compatible\":false}")

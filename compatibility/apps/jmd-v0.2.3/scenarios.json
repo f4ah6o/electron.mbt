@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "appId": "jmd-v0.2.3",
+  "status": "not-run",
+  "scenarios": [],
+  "negativeScenarios": [
+    "J1",
+    "APP-N09"
+  ],
+  "note": "J1 is a negative diagnostic, not a positive app scenario."
+}

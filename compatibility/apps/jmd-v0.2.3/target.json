@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "appId": "jmd-v0.2.3",
+  "sourceUrl": "https://github.com/jojonki/jmd",
+  "revision": "f875fc616feb89ea803a0fc140ec770a2ade041e",
+  "license": "MIT",
+  "inputMode": "original-cjs",
+  "preloadMode": "original",
+  "package": {
+    "name": "jmd",
+    "version": "0.2.3",
+    "main": "electron/main.js"
+  },
+  "entryType": "commonjs",
+  "collectedAt": "2026-10-17T00:00:00Z",
+  "lockedElectron": "35.7.5",
+  "lockedElectronUpdater": "6.8.9"
+}

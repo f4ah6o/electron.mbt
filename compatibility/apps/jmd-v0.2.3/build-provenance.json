@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "appId": "jmd-v0.2.3",
+  "status": "NOT_RUN",
+  "commands": [
+    "npm ci",
+    "npm run build"
+  ],
+  "exitCodes": [],
+  "hashes": {},
+  "note": "Not executed. jmd has no independent typecheck script; do not claim one."
+}

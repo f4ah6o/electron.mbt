@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/f4ah6o/electron.mbt/compatibility/evidence-schema-v2.json",
+  "title": "electron.mbt evidence bundle v2",
+  "description": "Versioned evidence admission contract. Specialized baseline/probe readers remain authoritative for their own reports; this bundle is the future gate-aggregation contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "evidenceId", "identity", "profile", "source", "candidate", "oracle", "environment", "execution", "observations", "verdict", "integrity"],
+  "properties": {
+    "schema": { "const": 2 },
+    "evidenceId": { "type": "string", "minLength": 1 },
+    "identity": {
+      "type": "object",
+      "required": ["runId", "attempt", "job", "collectedAt", "artifactDigest"],
+      "properties": {
+        "runId": { "type": "string", "minLength": 1 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "job": { "type": "string", "minLength": 1 },
+        "collectedAt": { "type": "string", "minLength": 1 },
+        "artifactDigest": { "type": "string", "minLength": 1 }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": ["profileId", "profileHash", "inputMode", "preloadMode", "dependencyAdaptations", "comparisonMode"],
+      "properties": {
+        "profileId": { "enum": ["desktop-core-v1", "electron-nodeless-v1", "electron-nodeless-adapted-v1", "moonbit-native-v1"] },
+        "profileHash": { "type": "string", "minLength": 1 },
+        "inputMode": { "enum": ["original-cjs", "prepared-js", "ts-build", "moonbit-source"] },
+        "preloadMode": { "enum": ["original", "generated-adapter", "none"] },
+        "dependencyAdaptations": { "type": "array", "items": { "type": "object" } },
+        "adaptationManifestHash": { "type": ["string", "null"] },
+        "comparisonMode": { "enum": ["strict", "adapted", "unit", "negative"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["repoSha", "tree", "fixtureHash", "mainHash", "preloadHash", "assetsHash"],
+      "properties": {
+        "repoSha": { "type": "string", "minLength": 1 },
+        "tree": { "type": "string", "minLength": 1 },
+        "fixtureHash": { "type": "string", "minLength": 1 },
+        "appCommit": { "type": ["string", "null"] },
+        "mainHash": { "type": "string", "minLength": 1 },
+        "preloadHash": { "type": "string", "minLength": 1 },
+        "assetsHash": { "type": "string", "minLength": 1 },
+        "lockHash": { "type": ["string", "null"] },
+        "buildHash": { "type": ["string", "null"] },
+        "adapterHash": { "type": ["string", "null"] }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["runtimeCommit", "compiledCoreHash", "nativeBinaryHash", "engineSource"],
+      "properties": {
+        "runtimeCommit": { "type": "string", "minLength": 1 },
+        "compiledCoreHash": { "type": "string", "minLength": 1 },
+        "nativeBinaryHash": { "type": "string", "minLength": 1 },
+        "engineSource": { "type": "string", "minLength": 1 },
+        "buildFlags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "required": ["electronVersion", "sourceCommit", "embeddedNodeVersion", "binaryHash"],
+      "properties": {
+        "electronVersion": { "type": "string", "minLength": 1 },
+        "sourceCommit": { "type": "string", "minLength": 1 },
+        "embeddedNodeVersion": { "type": "string", "minLength": 1 },
+        "binaryHash": { "type": "string", "minLength": 1 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["os", "arch", "sdk", "webViewVersion", "guiAvailable"],
+      "properties": {
+        "os": { "type": "string", "minLength": 1 },
+        "arch": { "type": "string", "minLength": 1 },
+        "sdk": { "type": "string", "minLength": 1 },
+        "webViewVersion": { "type": "string", "minLength": 1 },
+        "guiAvailable": { "type": "boolean" },
+        "display": { "type": ["string", "null"] }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["command", "argv", "exitCode", "signal", "timeout", "startedAt", "finishedAt", "driverScope"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "argv": { "type": "array", "items": { "type": "string" } },
+        "exitCode": { "type": ["integer", "null"] },
+        "signal": { "type": ["string", "null"] },
+        "timeout": { "type": "boolean" },
+        "startedAt": { "type": "string", "minLength": 1 },
+        "finishedAt": { "type": "string", "minLength": 1 },
+        "driverScope": { "enum": ["unit", "kernel", "native-ingress", "app-scenario", "release"] }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["stepId", "status"],
+        "properties": {
+          "stepId": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["observed", "rejected", "expected-rejection", "not-run", "stalled"] },
+          "value": {},
+          "exception": { "type": ["string", "null"] },
+          "detail": { "type": ["object", "null"] }
+        }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "required": ["harness", "semantic", "supportedScope", "gate", "missingEvidence", "compatible"],
+      "properties": {
+        "harness": { "enum": ["completed", "failed", "not-run", "invalid-evidence"] },
+        "semantic": { "enum": ["equivalent", "diverged", "expected-rejection", "not-run"] },
+        "supportedScope": { "enum": ["unit", "kernel", "native-ingress", "app-scenario", "release"] },
+        "gate": { "enum": ["open", "blocked", "satisfied"] },
+        "missingEvidence": { "type": "array", "items": { "type": "string" } },
+        "compatible": { "const": false }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "required": ["sourceHashBefore", "sourceHashAfter", "rawLogHash", "reportHash"],
+      "properties": {
+        "sourceHashBefore": { "type": "string", "minLength": 1 },
+        "sourceHashAfter": { "type": "string", "minLength": 1 },
+        "rawLogHash": { "type": "string", "minLength": 1 },
+        "reportHash": { "type": "string", "minLength": 1 },
+        "normalizationId": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

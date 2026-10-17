@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "appId": "moji-v1.0.5",
+  "status": "NOT_RUN",
+  "commands": [
+    "npm ci",
+    "npm run typecheck",
+    "npm run build"
+  ],
+  "exitCodes": [],
+  "hashes": {},
+  "note": "Not executed. Typecheck and emit/build must remain separate results."
+}

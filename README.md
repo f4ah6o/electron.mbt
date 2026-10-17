@@ -9,8 +9,9 @@ MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/p
 | Path | What works now | What it does not prove |
 | --- | --- | --- |
 | `core/` | MoonBit lifecycle, monotonic handles, native-ack state, close/quit cancellation, document generations, grants, bounded requests, exactly-once terminal bookkeeping, pinned-baseline admission | Electron event ordering, native sender authentication or a connected desktop host |
-| `bridge/` | Compiled MoonBit CJS exports, state and diagnostic contracts, structured window/document/request envelopes, `validate_baseline` | A handwritten JS replacement for the core |
-| `scripts/` | Bounded saved-baseline admission and probe-report validation; missing/null/mistyped observations fail closed | Actual Electron, native, app or compatibility evidence by itself |
+| `bridge/` | Compiled MoonBit CJS exports, state and diagnostic contracts, structured window/document/request envelopes, `validate_baseline`, `validate_profile` | A handwritten JS replacement for the core |
+| `scripts/` | Bounded saved-baseline admission, probe-report validation, profile/manifest/evidence admission, app inventory and governance validation; missing/null/mistyped observations fail closed | Actual Electron, native, app or compatibility evidence by itself |
+| `compatibility/` | Runtime profiles, evidence schema v2, app records for Moji/jmd, decision/risk/component ledgers; schema 1 manifest remains active | A verified profile, app scenario, SBOM or release |
 | `bridges/node/` | Real Node CJS module identity probe, runtime-owned `electron` facade declaring the app surface, bounded tiny-tree codec, source inventory, real private synchronous socketpair control calls | BrowserWindow, general Structured Clone, preload or renderer IPC |
 | `platform/macos/` | An AppKit/WKWebView world-isolation probe with a deadline and machine-readable observations | A synchronous function-proxy bridge, full sandbox audit, IME or accessibility acceptance |
 | `fixtures/oracle/` | Unchanged main/preload/renderer fixture for a separately installed pinned Electron oracle | A matching electron.mbt execution or size improvement |
@@ -60,9 +61,12 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
 node cmd/electron-mbt.cjs snapshot fixtures/cjs
 node cmd/electron-mbt.cjs doctor fixtures/cjs
 node cmd/electron-mbt.cjs compat-check fixtures/cjs
+node cmd/electron-mbt.cjs doctor fixtures/cjs --profile desktop-core-v1 --input-mode original-cjs --preload-mode original --runtime node-backed
 ```
 
-`snapshot` exits 0 on a successful inventory. `doctor` and `compat-check` currently exit 2 with `compatible:false` and `ELECTRON_MBT_M0_INCOMPLETE`; they inspect but never evaluate the app. Usage, I/O and missing-build failures exit 1. `run` and `pack` exit 1 with the open M0 gate instead of launching a reduced or insecure substitute.
+`snapshot` exits 0 on a successful inventory. `doctor` and `compat-check` currently exit 2 with `compatible:false` and `ELECTRON_MBT_M0_INCOMPLETE`; they inspect but never evaluate the app. They accept an optional `--profile <id>` with `--input-mode`, `--preload-mode` and `--runtime`; unknown or mismatched profile tuples are rejected before app evaluation with a typed diagnostic. Usage, I/O and missing-build failures exit 1. `run` and `pack` exit 1 with the open M0 gate instead of launching a reduced or insecure substitute.
+
+Runtime profile admission is defined in [runtime-profiles-v1.json](compatibility/runtime-profiles-v1.json); the schema-1 [manifest](compatibility/manifest.json) remains the active compatibility matrix until the native CLI migration. [App records](compatibility/apps) are pinned source/build inputs, not executed app results.
 
 The inventory hashes files and symlink targets, bounds traversal and reads, rejects stable root escapes/cycles and detects some concurrent file changes. It is **not an atomic filesystem snapshot or a security boundary against an adversarial filesystem**. Run it on quiescent, trusted app sources. Privileged file-service authorization is not implemented.
 
@@ -70,6 +74,8 @@ The inventory hashes files and symlink targets, bounds traversal and reads, reje
 
 The tiny value profile rejects lossy values, accessors, proxies, sparse arrays, cycles and repeated object references. It is intentionally not Electron Structured Clone. JavaScript handles JS descriptors and module hooks; the lifecycle/authority/diagnostic implementation is MoonBit. The private C control transport accepts runtime-owned descriptors and serial calls only; it must not be exposed to renderers. Its watchdog is a transport failure detector, not an application IPC handler timeout.
 
-Saved baselines are admitted only when the compiled core confirms completion, the manifest Electron/Node pins, the current fixture hash, and a non-empty trace and measurement payload. Probe reports are admitted only when every executed candidate/trace carries its required observations; `NOT_RUN` and stalled entries need a reason and remain warnings, never acceptance evidence. These are admission checks, not native or compatibility proof.
+Saved baselines are admitted only when the compiled core confirms completion, the manifest Electron/Node pins, the current fixture hash, and a non-empty trace and measurement payload. Probe reports are admitted only when every executed candidate/trace carries its required observations; `NOT_RUN` and stalled entries need a reason and remain warnings, never acceptance evidence. Evidence bundles v2 require identity, profile, source, candidate, oracle, environment, execution, observations, verdict and integrity fields; cross-profile, stale, partial or `compatible:true` evidence is rejected. These are admission checks, not native or compatibility proof.
+
+App inventory records are static-source records. Moji/jmd builds, boot traces and scenario results are `NOT_RUN` until an isolated build and native lane actually record them. The governance ledgers record unresolved license/signing/owner decisions as blocked; they do not make the project distributable.
 
 [The machine-readable manifest](compatibility/manifest.json) keeps acceptance A–J partial/planned, with no verified compatibility rows. [Implementation progress and remaining work](docs/0001-progress.md) distinguish the probes from the production architecture. No release artifact, signing, Node bundle, size saving or complete crash/process ledger is claimed.

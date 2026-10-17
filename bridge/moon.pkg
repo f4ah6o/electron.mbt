@@ -12,6 +12,7 @@ options(
         "diagnose",
         "compare_observations",
         "validate_baseline",
+        "validate_profile",
       ],
       "format": "cjs",
     },

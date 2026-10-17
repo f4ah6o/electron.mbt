@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "status": "source-reviewed",
+  "completeness": "static-source-only",
+  "inputMode": "original-cjs",
+  "scannedFiles": 0,
+  "scannedBytes": 0,
+  "builtins": [
+    "node:fs",
+    "node:fs/promises",
+    "node:path",
+    "node:url"
+  ],
+  "packages": [
+    "electron"
+  ],
+  "localImports": [
+    "./updater"
+  ],
+  "dynamicImport": "unknown",
+  "computedRequire": "unknown",
+  "note": "Source-review metadata only. The pinned checkout and emitted build output have not been collected in this environment."
+}

@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "appId": "moji-v1.0.5",
+  "sourceUrl": "https://github.com/alexishida/Moji",
+  "revision": "b7b1d585d61772a0f791f165c8d07a420443b65b",
+  "license": "MIT",
+  "inputMode": "ts-build",
+  "preloadMode": "generated-adapter",
+  "package": {
+    "name": "moji",
+    "version": "1.0.5",
+    "main": "out/main/main.js"
+  },
+  "entryType": "commonjs",
+  "collectedAt": "2026-10-17T00:00:00Z",
+  "lockedElectron": "43.1.0",
+  "lockedElectronUpdater": "6.8.9"
+}

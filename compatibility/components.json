@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "description": "Component and license inventory inputs. This is not a final SBOM. Unknown licenses/components keep the release gate blocked.",
+  "components": [
+    {
+      "id": "moonbit-toolchain",
+      "kind": "build-only",
+      "source": "MoonBit CLI",
+      "version": "0.1.20261012 / moonc v0.10.15+943464bfa",
+      "hash": "manifest versions.moonbit.binarySha256",
+      "license": {"status": "unknown", "expression": null, "source": null},
+      "distribution": false,
+      "releaseGate": "open",
+      "blockedReason": null,
+      "updateOwnerRole": "Build"
+    },
+    {
+      "id": "electron-mbt-core",
+      "kind": "runtime",
+      "source": "this repository",
+      "version": "0.0.1",
+      "hash": null,
+      "license": {"status": "unknown", "expression": null, "source": null},
+      "distribution": true,
+      "releaseGate": "blocked",
+      "blockedReason": "root repository license is undecided (DEC-10)",
+      "updateOwnerRole": "Maintainer"
+    },
+    {
+      "id": "quickjs",
+      "kind": "runtime",
+      "source": "https://bellard.org/quickjs/",
+      "version": "2026-06-04",
+      "hash": null,
+      "license": {"status": "known", "expression": "MIT", "source": "upstream QuickJS license"},
+      "distribution": true,
+      "releaseGate": "blocked",
+      "blockedReason": "source tarball SHA-256 and build flags are not captured (DEC-02)",
+      "updateOwnerRole": "Engine / Build"
+    },
+    {
+      "id": "apple-wkwebview",
+      "kind": "runtime",
+      "source": "macOS system",
+      "version": "system WebKit",
+      "hash": null,
+      "license": {"status": "known", "expression": "Apple system component, not redistributed", "source": "macOS"},
+      "distribution": false,
+      "releaseGate": "open",
+      "blockedReason": null,
+      "updateOwnerRole": "Platform"
+    },
+    {
+      "id": "node-oracle",
+      "kind": "test-only",
+      "source": "Node.js",
+      "version": "24.21.0",
+      "hash": null,
+      "license": {"status": "known", "expression": "MIT", "source": "Node.js"},
+      "distribution": false,
+      "releaseGate": "open",
+      "blockedReason": null,
+      "updateOwnerRole": "Evidence"
+    },
+    {
+      "id": "electron-oracle",
+      "kind": "test-only",
+      "source": "https://www.electronjs.org/",
+      "version": "44.7.0",
+      "hash": null,
+      "license": {"status": "known", "expression": "MIT", "source": "Electron"},
+      "distribution": false,
+      "releaseGate": "open",
+      "blockedReason": null,
+      "updateOwnerRole": "Evidence"
+    },
+    {
+      "id": "gpui",
+      "kind": "planned-adapter",
+      "source": "gpui.mbt",
+      "version": "008b3c73d50108d6ed1e6c02ad9e12e930e843ec",
+      "hash": null,
+      "license": {"status": "unknown", "expression": null, "source": null},
+      "distribution": false,
+      "releaseGate": "open",
+      "blockedReason": null,
+      "updateOwnerRole": "Platform"
+    },
+    {
+      "id": "moji-v1.0.5",
+      "kind": "test-only",
+      "source": "https://github.com/alexishida/Moji",
+      "version": "b7b1d585d61772a0f791f165c8d07a420443b65b",
+      "hash": null,
+      "license": {"status": "known", "expression": "MIT", "source": "upstream LICENSE"},
+      "distribution": false,
+      "releaseGate": "blocked",
+      "blockedReason": "pinned build/provenance has not been collected (EP-05)",
+      "updateOwnerRole": "App / QA"
+    },
+    {
+      "id": "jmd-v0.2.3",
+      "kind": "test-only",
+      "source": "https://github.com/jojonki/jmd",
+      "version": "f875fc616feb89ea803a0fc140ec770a2ade041e",
+      "hash": null,
+      "license": {"status": "known", "expression": "MIT", "source": "upstream LICENSE"},
+      "distribution": false,
+      "releaseGate": "blocked",
+      "blockedReason": "pinned build/provenance has not been collected (EP-05)",
+      "updateOwnerRole": "App / QA"
+    }
+  ]
+}

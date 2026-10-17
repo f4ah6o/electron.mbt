@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "description": "Runtime profile admission contract for electron.mbt. A profile identifies the engine, bridge and input mode; it does not claim compatibility. The full compatibility matrix remains compatibility/manifest.json.",
+  "profiles": {
+    "desktop-core-v1": {
+      "engine": "node",
+      "runtime": "node-backed",
+      "implementation": "partial",
+      "verification": "not-run",
+      "gate": "open",
+      "compatible": false,
+      "inputMode": ["original-cjs", "prepared-js", "ts-build"],
+      "preloadMode": ["original"],
+      "scope": ["kernel", "native-probe"],
+      "blockedReason": null
+    },
+    "electron-nodeless-v1": {
+      "engine": "quickjs",
+      "runtime": "quickjs-native",
+      "implementation": "planned",
+      "verification": "not-run",
+      "gate": "blocked",
+      "compatible": false,
+      "inputMode": ["original-cjs", "prepared-js", "ts-build"],
+      "preloadMode": ["original"],
+      "scope": ["unit", "kernel", "native-ingress", "app-scenario"],
+      "blockedReason": "strict synchronous isolated contextBridge remains No-Go/blocked; EP-07 finite spike and public-primitive evidence are required"
+    },
+    "electron-nodeless-adapted-v1": {
+      "engine": "quickjs",
+      "runtime": "quickjs-native",
+      "implementation": "planned",
+      "verification": "not-run",
+      "gate": "open",
+      "compatible": false,
+      "inputMode": ["original-cjs", "prepared-js", "ts-build"],
+      "preloadMode": ["generated-adapter"],
+      "scope": ["unit", "kernel", "native-ingress", "app-scenario", "release"],
+      "blockedReason": null
+    },
+    "moonbit-native-v1": {
+      "engine": "moonbit",
+      "runtime": "moonbit-native",
+      "implementation": "planned",
+      "verification": "not-run",
+      "gate": "open",
+      "compatible": false,
+      "inputMode": ["moonbit-source"],
+      "preloadMode": ["none"],
+      "scope": ["unit", "app-scenario"],
+      "blockedReason": null
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "appId": "moji-v1.0.5",
+  "adaptations": [
+    {
+      "id": "atomic-replace-v1",
+      "status": "planned",
+      "scope": "document save",
+      "reason": "Moji adapted save policy must be explicit; Node truncate/write equivalence is not claimed."
+    }
+  ],
+  "declaredUnsupported": [
+    "autoUpdater API",
+    "webUtils.getPathForFile",
+    "export/PDF/image features"
+  ],
+  "note": "Planned adaptations are not executed. The eager updater/zlib/Buffer boot closure remains an EP-05/DEC-05 decision."
+}

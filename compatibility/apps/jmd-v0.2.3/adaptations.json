@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "appId": "jmd-v0.2.3",
+  "adaptations": [],
+  "declaredUnsupported": [
+    "jmd-file privileged scheme (bypassCSP:true)",
+    "webUtils.getPathForFile",
+    "autoUpdater"
+  ],
+  "note": "J1 remains an expected-rejection until the privileged protocol gate is resolved; no privileged scheme is registered."
+}

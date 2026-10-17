@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "status": "not-collected",
+  "appId": "moji-v1.0.5",
+  "sourceHash": null,
+  "fileCount": 0,
+  "totalBytes": 0,
+  "files": [],
+  "links": [],
+  "nativeAddons": false,
+  "asar": false,
+  "note": "The pinned Moji checkout was not fetched in this environment; no source hash or file inventory is claimed."
+}

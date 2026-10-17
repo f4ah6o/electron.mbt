@@ -18,6 +18,12 @@ function checked(json) {
 function supportedTitle(value) {
   return typeof value === 'string' && value.length <= 256 && value.isWellFormed();
 }
+function supportedColor(value) {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+}
+function supportedDimension(value) {
+  return Number.isInteger(value) && value >= 0 && value <= 4096;
+}
 function within(root, target) {
   const relative = path.relative(root, target);
   return relative === '' || (!path.isAbsolute(relative) && !relative.startsWith('..' + path.sep) && relative !== '..');
@@ -71,7 +77,8 @@ function supportedOptions(options = {}, appRoot) {
     fail('ELECTRON_MBT_UNSUPPORTED_API', 'BrowserWindow expects ordinary options');
   }
   for (const key of Object.keys(options)) {
-    if (!['width', 'height', 'title', 'show', 'webPreferences'].includes(key)) {
+    if (!['width', 'height', 'x', 'y', 'minWidth', 'minHeight', 'title', 'show',
+      'backgroundColor', 'autoHideMenuBar', 'icon', 'webPreferences'].includes(key)) {
       fail('ELECTRON_MBT_UNSUPPORTED_API', 'BrowserWindow.' + key + ' is not implemented in M1');
     }
   }
@@ -98,7 +105,29 @@ function supportedOptions(options = {}, appRoot) {
       !supportedTitle(title) || typeof show !== 'boolean') {
     fail('ELECTRON_MBT_UNSUPPORTED_API', 'Unsupported BrowserWindow options');
   }
+  for (const key of ['x', 'y']) {
+    if (options[key] !== undefined && (!Number.isInteger(options[key]) || Math.abs(options[key]) > 1048576)) {
+      fail('ELECTRON_MBT_UNSUPPORTED_API', `Unsupported BrowserWindow.${key}`);
+    }
+  }
+  for (const key of ['minWidth', 'minHeight']) {
+    if (options[key] !== undefined && !supportedDimension(options[key])) {
+      fail('ELECTRON_MBT_UNSUPPORTED_API', `Unsupported BrowserWindow.${key}`);
+    }
+  }
+  if (options.backgroundColor !== undefined && !supportedColor(options.backgroundColor)) {
+    fail('ELECTRON_MBT_UNSUPPORTED_API', 'BrowserWindow.backgroundColor must be #rrggbb');
+  }
+  if (options.autoHideMenuBar !== undefined && typeof options.autoHideMenuBar !== 'boolean') {
+    fail('ELECTRON_MBT_UNSUPPORTED_API', 'BrowserWindow.autoHideMenuBar must be boolean');
+  }
+  if (options.icon !== undefined) fileWithin(appRoot, options.icon);
   const normalized = { width, height, title, show };
+  for (const key of ['x', 'y', 'minWidth', 'minHeight', 'backgroundColor']) {
+    if (options[key] !== undefined) normalized[key] = options[key];
+  }
+  if (options.icon !== undefined) normalized.icon = options.icon;
+  if (options.autoHideMenuBar !== undefined) normalized.autoHideMenuBar = options.autoHideMenuBar;
   if (Object.hasOwn(preferences, 'preload')) {
     Object.assign(normalized, readPreload(appRoot, preferences.preload));
   }
@@ -213,6 +242,14 @@ class ExperimentalRuntime {
         this.webContents = new EventEmitter();
         this.webContents.id = id;
         this.webContents.send = () => fail('ELECTRON_MBT_UNSUPPORTED_API', 'Renderer IPC is not available in M1');
+        this.webContents.setWindowOpenHandler = handler => {
+          if (typeof handler !== 'function') {
+            fail('ELECTRON_MBT_INVALID_ARGUMENT', 'setWindowOpenHandler expects a function');
+          }
+          // Retain main-local intent, but native window.open remains denied by
+          // the M1 host and this handler is not invoked on a native request yet.
+          this._windowOpenHandler = handler;
+        };
         this.webContents.getURL = () => {
           if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
           if (this._renderProcessGone) {
@@ -245,10 +282,34 @@ class ExperimentalRuntime {
         this._destroyed = false;
         this._closing = false;
         this._cancelledNativeCloseThrough = 0;
+        this._autoHideMenuBar = normalized.autoHideMenuBar === true;
+        this._icon = normalized.icon;
         try {
-          const created = runtime.host.request('create-window', id, 0, normalized);
+          const createPayload = {
+            width: normalized.width, height: normalized.height,
+            title: normalized.title, show: normalized.show,
+          };
+          if (normalized.preloadSource !== undefined) {
+            createPayload.preloadSource = normalized.preloadSource;
+            createPayload.preloadSHA256 = normalized.preloadSHA256;
+          }
+          const created = runtime.host.request('create-window', id, 0, createPayload);
           if (created.webViewAttached !== true) {
             fail('ELECTRON_MBT_NATIVE_FAILURE', 'Host did not attach WKWebView');
+          }
+          if (normalized.x !== undefined || normalized.y !== undefined) {
+            runtime.host.request('set-window-bounds', id, 0, {
+              x: normalized.x ?? 0, y: normalized.y ?? 0,
+              width: normalized.width, height: normalized.height,
+            });
+          }
+          if (normalized.minWidth !== undefined || normalized.minHeight !== undefined) {
+            runtime.host.request('set-window-min-size', id, 0, {
+              width: normalized.minWidth ?? 0, height: normalized.minHeight ?? 0,
+            });
+          }
+          if (normalized.backgroundColor !== undefined) {
+            runtime.host.request('set-window-background-color', id, 0, { color: normalized.backgroundColor });
           }
           checked(runtime.core.window_confirm(runtime.runtime, id));
           runtime.windows.set(id, this);
@@ -448,6 +509,39 @@ class ExperimentalRuntime {
       }
       setPosition(x, y, animate = false) {
         this.setBounds({ x, y }, animate);
+      }
+      getMinimumSize() {
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        const acknowledgement = runtime.host.request('get-window-min-size', this.id, this._generation);
+        if (!Number.isInteger(acknowledgement.width) || acknowledgement.width < 0 || acknowledgement.width > 4096 ||
+            !Number.isInteger(acknowledgement.height) || acknowledgement.height < 0 || acknowledgement.height > 4096) {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Malformed native minimum-size acknowledgement');
+        }
+        return [acknowledgement.width, acknowledgement.height];
+      }
+      setMinimumSize(width, height) {
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        if (!supportedDimension(width) || !supportedDimension(height)) {
+          fail('ELECTRON_MBT_INVALID_ARGUMENT', 'setMinimumSize expects integer dimensions from 0 to 4096');
+        }
+        runtime.host.request('set-window-min-size', this.id, this._generation, { width, height });
+      }
+      getBackgroundColor() {
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        const acknowledgement = runtime.host.request('get-window-background-color', this.id, this._generation);
+        if (!supportedColor(acknowledgement.color)) {
+          runtime.abort();
+          fail('ELECTRON_MBT_PROTOCOL', 'Malformed native background-colour acknowledgement');
+        }
+        return acknowledgement.color;
+      }
+      setBackgroundColor(color) {
+        if (this._destroyed) fail('ELECTRON_MBT_WINDOW_DESTROYED', 'Window destroyed');
+        if (!supportedColor(color)) {
+          fail('ELECTRON_MBT_INVALID_ARGUMENT', 'setBackgroundColor expects #rrggbb');
+        }
+        runtime.host.request('set-window-background-color', this.id, this._generation, { color });
       }
     };
     this.host.on('native-close-request', details => {

@@ -45,6 +45,17 @@ async function main() {
     assert.equal(restoredBounds.width, initialBounds.width);
     assert.deepEqual(host.request('get-window-bounds', 1, 0), restoredBounds);
     assert.deepEqual(host.request('set-window-bounds', 1, 0, {}), restoredBounds);
+    assert.deepEqual(host.request('get-window-min-size', 1, 0), { width: 0, height: 0 });
+    assert.deepEqual(host.request('set-window-min-size', 1, 0, { width: 320, height: 240 }), { width: 320, height: 240 });
+    assert.deepEqual(host.request('get-window-min-size', 1, 0), { width: 320, height: 240 });
+    assert.throws(() => host.request('set-window-min-size', 1, 0, { width: -1, height: 240 }), {
+      code: 'ELECTRON_MBT_PROTOCOL',
+    });
+    assert.equal(host.request('set-window-background-color', 1, 0, { color: '#112233' }).color, '#112233');
+    assert.equal(host.request('get-window-background-color', 1, 0).color, '#112233');
+    assert.throws(() => host.request('set-window-background-color', 1, 0, { color: 'red' }), {
+      code: 'ELECTRON_MBT_PROTOCOL',
+    });
     assert.equal(host.request('is-window-visible', 1, 0).visible, false);
     assert.equal(host.request('get-window-title', 1, 0).title, 'electron.mbt M1 native smoke');
     assert.equal(host.request('get-web-contents-url', 1, 0).url, '');
@@ -103,6 +114,12 @@ async function main() {
       code: 'ELECTRON_MBT_STALE_DOCUMENT',
     });
     assert.throws(() => host.request('set-window-bounds', 1, 1, { x: 30 }), {
+      code: 'ELECTRON_MBT_STALE_DOCUMENT',
+    });
+    assert.throws(() => host.request('get-window-min-size', 1, 1), {
+      code: 'ELECTRON_MBT_STALE_DOCUMENT',
+    });
+    assert.throws(() => host.request('get-window-background-color', 1, 1), {
       code: 'ELECTRON_MBT_STALE_DOCUMENT',
     });
     await assert.rejects(host.requestAsync('load-file', 1, 2, {

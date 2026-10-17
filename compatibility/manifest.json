@@ -471,7 +471,7 @@
       ],
       "privilegedScheme": "jmd-file bypassCSP remains expected-rejection"
     },
-    "note": "Pinned source/build/production-closure provenance only. The isolated M1 boot passes app paths, single-instance, ipcMain and Menu template modeling and blocks at BrowserWindow.minWidth; Node-less boot, native runtime and app scenarios remain NOT RUN."
+    "note": "Pinned source/build/production-closure provenance only. The isolated M1 boot reaches BrowserWindow creation and blocks at preload (contextBridge/ipcRenderer); Node-less boot, renderer ingress and app scenarios remain NOT RUN."
   },
   "cjsLoader": {
     "status": "partial",
@@ -583,9 +583,10 @@
       "productionPackages": 174,
       "packageFiles": 7165,
       "nativeAddons": 0,
-      "bootAttempt": "FAIL at BrowserWindow.minWidth after app paths, single-instance, ipcMain and bounded Menu model",
+      "bootAttempt": "FAIL at preload after BrowserWindow creation/options: contextBridge/ipcRenderer unsupported",
       "bootStructured": true,
-      "menu": "main-local template model only; no native NSMenu/role/click acceptance"
+      "menu": "main-local template model only; no native NSMenu/role/click acceptance",
+      "windowOptions": "x/y, minWidth/minHeight, backgroundColor applied; icon/autoHideMenuBar accepted but not applied"
     },
     "jmd": {
       "productionPackages": 88,

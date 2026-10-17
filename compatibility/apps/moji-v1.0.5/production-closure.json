@@ -1062,15 +1062,15 @@
   "note": "Production package closure only. node_modules source is not committed. Native addons are recorded; none were present in this closure.",
   "bootAttempt": {
     "status": "FAIL",
-    "stage": "after app paths, single-instance, ipcMain and Menu model",
+    "stage": "after BrowserWindow creation and option application; loadFile preload",
     "command": "ELECTRON_MBT_M1_USER_DATA_ROOT=<isolated-root> HOME=<isolated> TMPDIR=<isolated> node cmd/electron-mbt.cjs run <production-closure> --experimental-m1",
     "exitCode": 1,
-    "code": "ELECTRON_MBT_UNSUPPORTED_API",
-    "blocker": "BrowserWindow.minWidth is not implemented in M1",
+    "code": "ELECTRON_MBT_PRELOAD_UNSUPPORTED_API",
+    "blocker": "Moji preload requires contextBridge/ipcRenderer, which the M1 preload world does not provide",
     "structured": true,
     "backend": "experimental M1 (Node-backed AppKit/WKWebView host)",
-    "menu": "main-local template model only; no NSMenu install or native role/click acceptance",
+    "window": "created with position, min size and background colour applied; not shown",
     "userData": "isolated appData/userData root",
-    "note": "Structured M1 boot failure at BrowserWindow options after app paths, single-instance, main-local IPC and the bounded Menu model. Not a Node-less boot or app acceptance."
+    "note": "Structured M1 boot failure at preload after window creation. Not a Node-less boot or app acceptance."
   }
 }

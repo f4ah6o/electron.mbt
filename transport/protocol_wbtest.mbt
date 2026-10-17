@@ -419,3 +419,19 @@ test "What: native isolated attestation is one-shot, bounded and cannot be regis
   let success = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":3,\"window\":2,\"generation\":2,\"operation\":\"isolated-preload-attested\",\"payload\":{},\"terminal\":\"success\"}"
   assert_true(session.observe(success) is Err(_))
 }
+
+///|
+test "What: min-size and background operations validate exact payloads" {
+  assert_true(validate(visibility_wire("get-window-min-size", "{}", "")) is Ok(_))
+  assert_true(validate(visibility_wire("get-window-min-size", "{\"width\":320,\"height\":240}", ",\"terminal\":\"success\"")) is Ok(_))
+  assert_true(validate(visibility_wire("set-window-min-size", "{\"width\":320,\"height\":240}", "")) is Ok(_))
+  for bad in ["{}", "{\"width\":320}", "{\"width\":-1,\"height\":240}", "{\"width\":320.5,\"height\":240}", "{\"width\":5000,\"height\":240}"] {
+    assert_true(validate(visibility_wire("set-window-min-size", bad, "")) is Err(_))
+  }
+  assert_true(validate(visibility_wire("get-window-background-color", "{}", "")) is Ok(_))
+  assert_true(validate(visibility_wire("get-window-background-color", "{\"color\":\"#112233\"}", ",\"terminal\":\"success\"")) is Ok(_))
+  assert_true(validate(visibility_wire("set-window-background-color", "{\"color\":\"#112233\"}", "")) is Ok(_))
+  for bad in ["{}", "{\"color\":\"#123\"}", "{\"color\":\"#gggggg\"}", "{\"color\":5}"] {
+    assert_true(validate(visibility_wire("set-window-background-color", bad, "")) is Err(_))
+  }
+}

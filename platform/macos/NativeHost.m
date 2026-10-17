@@ -104,6 +104,28 @@ static NSString *canonicalPath(NSString *path) {
   return [NSString stringWithUTF8String:resolved];
 }
 
+static NSColor *windowBackgroundColor(NSString *value) {
+  if (![value isKindOfClass:[NSString class]] || value.length != 7 || ![value hasPrefix:@"#"]) return nil;
+  NSString *hex = [value substringFromIndex:1];
+  NSScanner *scanner = [NSScanner scannerWithString:hex];
+  unsigned long long raw = 0;
+  if (![scanner scanHexLongLong:&raw] || !scanner.isAtEnd || raw > 0xffffffULL) return nil;
+  return [NSColor colorWithSRGBRed:((raw >> 16) & 0xff) / 255.0
+                              green:((raw >> 8) & 0xff) / 255.0
+                               blue:(raw & 0xff) / 255.0
+                              alpha:1.0];
+}
+
+static NSString *windowBackgroundHex(NSColor *color) {
+  NSColor *srgb = [color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+  if (!srgb) return nil;
+  double red = fmin(1.0, fmax(0.0, srgb.redComponent));
+  double green = fmin(1.0, fmax(0.0, srgb.greenComponent));
+  double blue = fmin(1.0, fmax(0.0, srgb.blueComponent));
+  return [NSString stringWithFormat:@"#%02x%02x%02x",
+    (unsigned)lround(red * 255.0), (unsigned)lround(green * 255.0), (unsigned)lround(blue * 255.0)];
+}
+
 static NSString *preloadDigest(NSData *data) {
   unsigned char digest[CC_SHA256_DIGEST_LENGTH];
   CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
@@ -863,6 +885,58 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     done(@"success", observed);
+    return;
+  }
+  if ([operation isEqualToString:@"get-window-min-size"] ||
+      [operation isEqualToString:@"set-window-min-size"]) {
+    BOOL changing = [operation isEqualToString:@"set-window-min-size"];
+    if ((!changing && payload.count != 0) || (changing && payload.count != 2)) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (changing) {
+      NSNumber *width = payload[@"width"];
+      NSNumber *height = payload[@"height"];
+      if (![width isKindOfClass:[NSNumber class]] || ![height isKindOfClass:[NSNumber class]] ||
+          CFGetTypeID((__bridge CFTypeRef)width) == CFBooleanGetTypeID() ||
+          CFGetTypeID((__bridge CFTypeRef)height) == CFBooleanGetTypeID()) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+        return;
+      }
+      double w = width.doubleValue;
+      double h = height.doubleValue;
+      if (!isfinite(w) || !isfinite(h) || floor(w) != w || floor(h) != h ||
+          w < 0.0 || h < 0.0 || w > 4096.0 || h > 4096.0) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+        return;
+      }
+      window.native.contentMinSize = NSMakeSize(w, h);
+    }
+    NSSize observed = window.native.contentMinSize;
+    done(@"success", @{@"width": @(llround(observed.width)), @"height": @(llround(observed.height))});
+    return;
+  }
+  if ([operation isEqualToString:@"get-window-background-color"] ||
+      [operation isEqualToString:@"set-window-background-color"]) {
+    BOOL changing = [operation isEqualToString:@"set-window-background-color"];
+    if ((!changing && payload.count != 0) || (changing && payload.count != 1)) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (changing) {
+      NSColor *color = windowBackgroundColor(payload[@"color"]);
+      if (!color) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+        return;
+      }
+      window.native.backgroundColor = color;
+    }
+    NSString *hex = windowBackgroundHex(window.native.backgroundColor);
+    if (!hex) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
+      return;
+    }
+    done(@"success", @{@"color": hex});
     return;
   }
   if ([operation isEqualToString:@"get-window-title"]) {

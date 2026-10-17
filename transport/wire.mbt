@@ -247,6 +247,44 @@ fn bounds_value(value : Json, dimension : Bool) -> Bool {
 }
 
 ///|
+fn min_size_value(value : Json) -> Bool {
+  match value {
+    Number(number, repr~) => {
+      if number - number != 0.0 || (number == 0.0 && 1.0 / number < 0.0) {
+        return false
+      }
+      let exact = match repr {
+        Some(token) => exact_identifier(token) catch { _ => return false }
+        None =>
+          if number < 0.0 || number > 4096.0 || number.to_int64().to_double() != number {
+            return false
+          } else {
+            number.to_int64()
+          }
+      }
+      exact >= 0L && exact <= 4096L
+    }
+    _ => false
+  }
+}
+
+///|
+fn color_value(value : Json) -> Bool {
+  match value {
+    String(text) if text.length() == 7 && text[0] == '#' => {
+      for i = 1; i < 7; i = i + 1 {
+        let c = text[i].to_int()
+        if !((c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102)) {
+          return false
+        }
+      }
+      true
+    }
+    _ => false
+  }
+}
+
+///|
 fn writable_bounds_value(value : Json, dimension : Bool) -> Bool {
   if !bounds_value(value, dimension) { return false }
   if !dimension { return true }
@@ -298,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -365,6 +403,40 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Invalid native window bounds")
+      }
+    }
+  }
+  if operation == "get-window-min-size" || operation == "set-window-min-size" {
+    if !terminal {
+      match payload {
+        Object(values) if operation == "get-window-min-size" && values.length() == 0 => ()
+        Object(values) if operation == "set-window-min-size" && values.length() == 2 &&
+          min_size_value(values.get("width").unwrap_or(null)) &&
+          min_size_value(values.get("height").unwrap_or(null)) => ()
+        _ => raise BadProtocol("Invalid window minimum-size request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 2 &&
+          min_size_value(values.get("width").unwrap_or(null)) &&
+          min_size_value(values.get("height").unwrap_or(null)) => ()
+        _ => raise BadProtocol("Invalid native window minimum size")
+      }
+    }
+  }
+  if operation == "get-window-background-color" || operation == "set-window-background-color" {
+    if !terminal {
+      match payload {
+        Object(values) if operation == "get-window-background-color" && values.length() == 0 => ()
+        Object(values) if operation == "set-window-background-color" && values.length() == 1 &&
+          color_value(values.get("color").unwrap_or(null)) => ()
+        _ => raise BadProtocol("Invalid window background-colour request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 1 &&
+          color_value(values.get("color").unwrap_or(null)) => ()
+        _ => raise BadProtocol("Invalid native window background colour")
       }
     }
   }

@@ -471,7 +471,7 @@
       ],
       "privilegedScheme": "jmd-file bypassCSP remains expected-rejection"
     },
-    "note": "Pinned source/build provenance only. Boot closure is NOT RUN: the installed Moji workspace contains development .node artifacts; no production dependency pruner or disposable user-data root is established. Native runtime, preload/IPC and app scenarios remain NOT RUN."
+    "note": "Pinned source/build/production-closure provenance only. The M1 boot attempt failed at electron.app.setName; Node-less boot, native runtime, preload/IPC and app scenarios remain NOT RUN."
   },
   "cjsLoader": {
     "status": "partial",
@@ -575,5 +575,26 @@
       "util"
     ],
     "note": "Classification and symbol scope only. No Node builtin shim is implemented."
+  },
+  "productionClosure": {
+    "status": "partial",
+    "compatible": false,
+    "moji": {
+      "productionPackages": 174,
+      "packageFiles": 7165,
+      "nativeAddons": 0,
+      "bootAttempt": "FAIL: app.setName is not a function"
+    },
+    "jmd": {
+      "productionPackages": 88,
+      "packageFiles": 4298,
+      "nativeAddons": 0,
+      "bootAttempt": "NOT_RUN"
+    },
+    "evidence": [
+      "compatibility/apps/moji-v1.0.5/production-closure.json",
+      "compatibility/apps/jmd-v0.2.3/production-closure.json"
+    ],
+    "note": "Lock-driven production closure only. The M1 boot is not a Node-less boot or app acceptance."
   }
 }

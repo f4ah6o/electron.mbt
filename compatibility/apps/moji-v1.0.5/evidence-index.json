@@ -19,7 +19,19 @@
       "kind": "static-symbols",
       "path": "symbols.json",
       "status": "source-reviewed"
+    },
+    {
+      "id": "build:moji-v1.0.5:production-closure",
+      "kind": "production-closure",
+      "path": "production-closure.json",
+      "status": "PASS"
+    },
+    {
+      "id": "boot:moji-v1.0.5:m1",
+      "kind": "boot-attempt",
+      "path": "production-closure.json",
+      "status": "FAIL"
     }
   ],
-  "note": "Build/source evidence only. No native runtime, preload, IPC or app-scenario acceptance is recorded."
+  "note": "Build/source/production-closure evidence only. The M1 boot attempt failed at app.setName; no Node-less runtime or app-scenario acceptance is recorded."
 }

@@ -19,7 +19,13 @@
       "kind": "static-symbols",
       "path": "symbols.json",
       "status": "source-reviewed"
+    },
+    {
+      "id": "build:jmd-v0.2.3:production-closure",
+      "kind": "production-closure",
+      "path": "production-closure.json",
+      "status": "PASS"
     }
   ],
-  "note": "Build/source evidence only. No native runtime, preload, IPC or app-scenario acceptance is recorded."
+  "note": "Build/source/production-closure evidence only. The M1 boot attempt failed at app.setName; no Node-less runtime or app-scenario acceptance is recorded."
 }

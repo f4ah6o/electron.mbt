@@ -38,6 +38,12 @@
       "kind": "preload-capabilities",
       "path": "preload-capabilities.json",
       "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "id": "sbom:moji-v1.0.5",
+      "kind": "sbom",
+      "path": "sbom.cdx.json",
+      "status": "PASS"
     }
   ],
   "note": "Build/source/production-closure and preload-gate evidence only. No contextBridge/ipcRenderer or app-scenario acceptance is recorded."

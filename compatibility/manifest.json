@@ -619,5 +619,19 @@
       "compatibility/apps/moji-v1.0.5/preload-capabilities.json"
     ],
     "note": "The M1 preload realm records the first unsupported API. It does not provide contextBridge/ipcRenderer or claim preload success."
+  },
+  "sbom": {
+    "status": "partial",
+    "compatible": false,
+    "format": "CycloneDX-1.5",
+    "moji": {
+      "components": 174,
+      "path": "compatibility/apps/moji-v1.0.5/sbom.cdx.json"
+    },
+    "jmd": {
+      "components": 88,
+      "path": "compatibility/apps/jmd-v0.2.3/sbom.cdx.json"
+    },
+    "note": "Flat production dependency closure with SHA-512 integrity. No license policy, signing, direct dependency graph or OS WebView component."
   }
 }

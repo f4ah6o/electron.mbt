@@ -25,6 +25,12 @@
       "kind": "production-closure",
       "path": "production-closure.json",
       "status": "PASS"
+    },
+    {
+      "id": "sbom:jmd-v0.2.3",
+      "kind": "sbom",
+      "path": "sbom.cdx.json",
+      "status": "PASS"
     }
   ],
   "note": "Build/source/production-closure evidence only. The M1 boot attempt failed at app.setName; no Node-less runtime or app-scenario acceptance is recorded."

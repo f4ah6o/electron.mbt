@@ -96,7 +96,14 @@ function pruneApp({ appRoot, outRoot, appId }) {
       else throw new Error(`production package is not installed: ${key}`);
     }
     copyTree(source, path.join(out, key), SKIP_PACKAGE, packageFiles);
-    productionPackages.push({ path: key, name: packageNameFromKey(key), version: entry.version || null, optional: entry.optional === true });
+    productionPackages.push({
+      path: key,
+      name: packageNameFromKey(key),
+      version: entry.version || null,
+      optional: entry.optional === true,
+      resolved: typeof entry.resolved === 'string' ? entry.resolved : null,
+      integrity: typeof entry.integrity === 'string' ? entry.integrity : null,
+    });
   }
   for (const file of packageFiles) {
     if (file.endsWith('.node')) nativeAddons.push(path.relative(out, file).split(path.sep).join('/'));

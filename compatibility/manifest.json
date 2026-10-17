@@ -524,5 +524,56 @@
       "real CJS file resolution"
     ],
     "note": "In-process integration only. Not a native supervisor or app runner."
+  },
+  "nodeBuiltins": {
+    "status": "policy-only",
+    "compatible": false,
+    "tests": [
+      "runtime/modules/builtins_wbtest.mbt"
+    ],
+    "planned": [
+      "path",
+      "url",
+      "fs",
+      "fs/promises",
+      "buffer",
+      "events",
+      "process",
+      "zlib"
+    ],
+    "unsupported": [
+      "child_process",
+      "worker_threads",
+      "vm",
+      "net",
+      "tls",
+      "http",
+      "https",
+      "http2",
+      "dns",
+      "crypto",
+      "stream",
+      "readline",
+      "repl",
+      "cluster",
+      "inspector",
+      "module",
+      "perf_hooks",
+      "async_hooks",
+      "v8",
+      "wasi",
+      "test",
+      "assert",
+      "querystring",
+      "string_decoder",
+      "timers",
+      "tty",
+      "dgram",
+      "diagnostics_channel",
+      "trace_events",
+      "os",
+      "util"
+    ],
+    "note": "Classification and symbol scope only. No Node builtin shim is implemented."
   }
 }

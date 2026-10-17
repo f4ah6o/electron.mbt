@@ -4,7 +4,19 @@ import {
 
 options(
   "is-main": true,
-  "native-stub": ["supervisor.c"],
+  "native-stub": [
+    "supervisor.c",
+    "quickjs.c",
+    "cutils.c",
+    "libregexp.c",
+    "libunicode.c",
+    "dtoa.c",
+  ],
+  link: {
+    "native": {
+      "stub-cc-flags": "-O2 -D_GNU_SOURCE -DCONFIG_VERSION=\\\"2026-06-04\\\" -funsigned-char -I../../bridges/embedded-js",
+    },
+  },
   targets: {
     "main.mbt": ["native"],
     "main_js.mbt": ["js"],

@@ -13,6 +13,9 @@ extern "C" fn supervisor_read(fd : Int, buffer : Bytes, capacity : Int) -> Int =
 extern "C" fn supervisor_pid() -> Int = "moonbit_ebt_supervisor_pid"
 
 ///|
+extern "C" fn supervisor_app_main() -> Int = "moonbit_ebt_supervisor_app_main"
+
+///|
 extern "C" fn supervisor_load_fd() -> Int = "moonbit_ebt_supervisor_load_fd"
 
 ///|
@@ -96,6 +99,11 @@ fn main {
     supervisor_exit(1)
   }
   let buffer = Bytes::new(65536)
+  if supervisor_app_main() != 42 {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_APP_MAIN\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let hello = request_frame(session, 1, 0, 0, "hello", "{}")
   if !send(fd, hello) {
     supervisor_kill()
@@ -186,5 +194,6 @@ fn main {
   let exit_status = supervisor_finish()
   println("{\"status\":\"PASS\",\"probe\":\"native-supervisor-window-load\",\"backend\":\"AppKit+WKWebView\",\"childPid\":" +
     child_pid.to_string() + ",\"exitStatus\":" + exit_status.to_string() +
-    ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"creator\":\"moonbit-native\",\"compatible\":false}")
+    ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true," +
+    "\"appMain\":\"native-fixture\",\"creator\":\"moonbit-native\",\"compatible\":false}")
 }

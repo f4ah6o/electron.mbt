@@ -1,4 +1,5 @@
 #include "moonbit.h"
+#include "quickjs.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -278,6 +279,41 @@ void moonbit_ebt_supervisor_kill(void) {
   if (event_fd >= 0) { close(event_fd); event_fd = -1; }
   free(supervisor_root);
   supervisor_root = NULL;
+}
+
+int32_t moonbit_ebt_supervisor_app_main(void) {
+  JSRuntime *runtime = JS_NewRuntime();
+  if (runtime == NULL) return -1;
+  JS_SetMemoryLimit(runtime, 32 * 1024 * 1024);
+  JSContext *context = JS_NewContext(runtime);
+  if (context == NULL) { JS_FreeRuntime(runtime); return -1; }
+  const char *source =
+    "(function(){"
+    "const electron={app:{name:'native-fixture',isPackaged:false}};"
+    "const module={exports:{}};"
+    "(function(require,module,exports){"
+    "const {app}=require('electron');"
+    "globalThis.__nativeMain=app.name;"
+    "module.exports=app.name;"
+    "})(function(name){if(name==='electron')return electron;"
+    "throw new Error('unknown module');},module,module.exports);"
+    "if(module.exports!=='native-fixture')throw new Error('bad exports');"
+    "})();";
+  JSValue value = JS_Eval(context, source, strlen(source), "native-fixture-main.js", JS_EVAL_TYPE_GLOBAL);
+  int32_t ok = 0;
+  if (!JS_IsException(value)) {
+    JSValue global = JS_GetGlobalObject(context);
+    JSValue nativeMain = JS_GetPropertyStr(context, global, "__nativeMain");
+    const char *text = JS_ToCString(context, nativeMain);
+    if (text != NULL && strcmp(text, "native-fixture") == 0) ok = 42;
+    if (text != NULL) JS_FreeCString(context, text);
+    JS_FreeValue(context, nativeMain);
+    JS_FreeValue(context, global);
+  }
+  JS_FreeValue(context, value);
+  JS_FreeContext(context);
+  JS_FreeRuntime(runtime);
+  return ok;
 }
 
 void moonbit_ebt_supervisor_exit(int32_t code) {

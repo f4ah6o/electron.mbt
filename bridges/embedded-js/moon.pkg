@@ -1,0 +1,23 @@
+import {
+  "moonbitlang/core/encoding/utf8" @utf8,
+}
+
+options(
+  "native-stub": [
+    "quickjs_adapter.c",
+    "quickjs.c",
+    "cutils.c",
+    "libregexp.c",
+    "libunicode.c",
+    "dtoa.c",
+  ],
+  targets: {
+    "engine.mbt": ["native"],
+    "engine_wbtest.mbt": ["native"],
+  },
+  link: {
+    "native": {
+      "stub-cc-flags": "-O2 -D_GNU_SOURCE -DCONFIG_VERSION=\\\"2026-06-04\\\" -funsigned-char",
+    },
+  },
+)

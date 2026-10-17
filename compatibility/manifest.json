@@ -385,5 +385,34 @@
       "workerInterruptedBeforeFdRelease": true,
       "evidence": "scripts/m1-load-deadline.cjs"
     }
+  },
+  "quickjsAbi": {
+    "status": "partial",
+    "engine": "quickjs",
+    "version": "2026-06-04",
+    "sourceTarballSha256": "b376e839b322978313d929fd20663b11ba58b75df5a46c126dd19ea2fa70ad2a",
+    "license": "MIT",
+    "compatible": false,
+    "tests": [
+      "tests/quickjs-lock.test.cjs",
+      "bridges/embedded-js/engine_wbtest.mbt"
+    ],
+    "evidence": [
+      "vendor/quickjs/lock.json"
+    ],
+    "passed": [
+      "QJS-01-partial",
+      "QJS-02-partial",
+      "QJS-03-partial",
+      "QJS-04-partial"
+    ],
+    "open": [
+      "QJS-05",
+      "ownership/sanitizer review",
+      "scheduler integration",
+      "CJS loader",
+      "Node subset"
+    ],
+    "note": "Pinned ABI only. Eval/throw, explicit value leases, Promise job execution and interrupt pass on this integration environment; no Node-free runtime or app claim."
   }
 }

@@ -7,9 +7,15 @@
       "title": "Profile-specific AGENTS and manifest admission",
       "state": "proposed",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0006-runtime-architecture-and-profiles.md", "docs/adr/0001-profile-authority.md"],
+      "sourceRefs": [
+        "issues/polished/0006-runtime-architecture-and-profiles.md",
+        "docs/adr/0001-profile-authority.md"
+      ],
       "ownerRole": "Maintainer / Core",
-      "appliesTo": ["EP-06", "EP-20"],
+      "appliesTo": [
+        "EP-06",
+        "EP-20"
+      ],
       "blocked": null,
       "history": []
     },
@@ -18,25 +24,50 @@
       "title": "QuickJS source SHA-256, flags, FFI ownership and patch policy",
       "state": "blocked",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0008-nodeless-runtime-and-module-loader.md"],
+      "sourceRefs": [
+        "issues/polished/0008-nodeless-runtime-and-module-loader.md"
+      ],
       "ownerRole": "Engine / Build",
-      "appliesTo": ["EP-08"],
+      "appliesTo": [
+        "EP-08"
+      ],
       "blocked": {
         "scope": "QuickJS vendor acquisition and FFI build",
-        "reason": "The fixed tarball SHA-256, license hash and local patch hash have not been captured.",
-        "requiredEvidence": ["vendor source hash", "license hash", "build flags", "minimal native eval/throw"],
+        "reason": "The source tarball SHA-256 and license hash are captured and the minimal ABI passes; independent ownership/sanitizer review and patch policy remain.",
+        "requiredEvidence": [
+          "vendor source hash",
+          "license hash",
+          "build flags",
+          "minimal native eval/throw",
+          "ownership/sanitizer review",
+          "patch policy"
+        ],
         "resumeCondition": "Capture and review the pinned source and ABI evidence before any release build."
       },
-      "history": []
+      "history": [
+        {
+          "date": "2026-10-17",
+          "state": "blocked",
+          "reason": "Pinned tarball/license and minimal ABI added; QJS-05 and ownership review remain open."
+        }
+      ]
     },
     {
       "id": "DEC-03",
       "title": "Direct sender versus authorized parent relay and file document identity",
       "state": "proposed",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0007-context-bridge-feasibility-and-security.md", "docs/adr/0001-profile-authority.md"],
+      "sourceRefs": [
+        "issues/polished/0007-context-bridge-feasibility-and-security.md",
+        "docs/adr/0001-profile-authority.md"
+      ],
       "ownerRole": "Security / Core",
-      "appliesTo": ["EP-06", "EP-13", "EP-14", "EP-15"],
+      "appliesTo": [
+        "EP-06",
+        "EP-13",
+        "EP-14",
+        "EP-15"
+      ],
       "blocked": null,
       "history": []
     },
@@ -45,9 +76,13 @@
       "title": "Strict bridge finite spike hypothesis, checkpoints and resume conditions",
       "state": "proposed",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0007-context-bridge-feasibility-and-security.md"],
+      "sourceRefs": [
+        "issues/polished/0007-context-bridge-feasibility-and-security.md"
+      ],
       "ownerRole": "Security / Native",
-      "appliesTo": ["EP-07"],
+      "appliesTo": [
+        "EP-07"
+      ],
       "blocked": null,
       "history": []
     },
@@ -56,13 +91,26 @@
       "title": "Moji boot closure, updater/export adaptation, local disposer variant and atomic save",
       "state": "blocked",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0014-real-app-acceptance.md"],
+      "sourceRefs": [
+        "issues/polished/0014-real-app-acceptance.md"
+      ],
       "ownerRole": "App / Engine / Storage",
-      "appliesTo": ["EP-05", "EP-12", "EP-13", "EP-16", "EP-21"],
+      "appliesTo": [
+        "EP-05",
+        "EP-12",
+        "EP-13",
+        "EP-16",
+        "EP-21"
+      ],
       "blocked": {
         "scope": "Moji positive scenarios",
         "reason": "The pinned Moji build output, emitted boot graph and adaptation manifest have not been collected.",
-        "requiredEvidence": ["pinned build output", "emitted module graph", "symbol manifest", "adaptation hashes"],
+        "requiredEvidence": [
+          "pinned build output",
+          "emitted module graph",
+          "symbol manifest",
+          "adaptation hashes"
+        ],
         "resumeCondition": "Collect the isolated build and boot trace, then review the adaptation manifest."
       },
       "history": []
@@ -72,9 +120,16 @@
       "title": "Open-for-edit/saveAs/save grants and persistent grant scope",
       "state": "proposed",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0011-app-loading-origin-and-storage.md", "issues/polished/0014-real-app-acceptance.md"],
+      "sourceRefs": [
+        "issues/polished/0011-app-loading-origin-and-storage.md",
+        "issues/polished/0014-real-app-acceptance.md"
+      ],
       "ownerRole": "Storage / Security",
-      "appliesTo": ["EP-16", "EP-18", "EP-19"],
+      "appliesTo": [
+        "EP-16",
+        "EP-18",
+        "EP-19"
+      ],
       "blocked": null,
       "history": []
     },
@@ -83,24 +138,48 @@
       "title": "Evidence schema required fields and invalidation scope",
       "state": "accepted-for-design",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0015-oracle-ci-and-evidence.md", "compatibility/evidence-schema-v2.json"],
+      "sourceRefs": [
+        "issues/polished/0015-oracle-ci-and-evidence.md",
+        "compatibility/evidence-schema-v2.json"
+      ],
       "ownerRole": "Evidence / Integration",
-      "appliesTo": ["EP-01", "EP-02", "EP-03"],
+      "appliesTo": [
+        "EP-01",
+        "EP-02",
+        "EP-03"
+      ],
       "blocked": null,
-      "history": [{"date": "2026-10-17", "state": "accepted-for-design", "reason": "Versioned evidence bundle schema and admission tests added; product gates remain unpromoted."}]
+      "history": [
+        {
+          "date": "2026-10-17",
+          "state": "accepted-for-design",
+          "reason": "Versioned evidence bundle schema and admission tests added; product gates remain unpromoted."
+        }
+      ]
     },
     {
       "id": "DEC-08",
       "title": "Minimum macOS/SDK, interactive QA and next-OS lane",
       "state": "blocked",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0019-native-interaction-and-accessibility.md"],
+      "sourceRefs": [
+        "issues/polished/0019-native-interaction-and-accessibility.md"
+      ],
       "ownerRole": "Platform / QA / Product",
-      "appliesTo": ["EP-23", "EP-25", "EP-29", "EP-30"],
+      "appliesTo": [
+        "EP-23",
+        "EP-25",
+        "EP-29",
+        "EP-30"
+      ],
       "blocked": {
         "scope": "G4 minimum environment and interactive acceptance",
         "reason": "A clean macOS arm64 target, signing identity and interactive IME/AX environment are not assigned.",
-        "requiredEvidence": ["environment matrix", "interactive QA record", "clean install target"],
+        "requiredEvidence": [
+          "environment matrix",
+          "interactive QA record",
+          "clean install target"
+        ],
         "resumeCondition": "Record the environment and operator before claiming a preview gate."
       },
       "history": []
@@ -110,13 +189,22 @@
       "title": "Performance budgets, measurement machine and large-document support",
       "state": "blocked",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0017-performance-and-resource-budgets.md"],
+      "sourceRefs": [
+        "issues/polished/0017-performance-and-resource-budgets.md"
+      ],
       "ownerRole": "Performance / App",
-      "appliesTo": ["EP-26"],
+      "appliesTo": [
+        "EP-26"
+      ],
       "blocked": {
         "scope": "G4 performance comparison",
         "reason": "No same-condition Electron/candidate raw baseline or fixed measurement machine exists.",
-        "requiredEvidence": ["raw samples", "process ledger", "artifact hashes", "budget definition"],
+        "requiredEvidence": [
+          "raw samples",
+          "process ledger",
+          "artifact hashes",
+          "budget definition"
+        ],
         "resumeCondition": "Freeze the workload and machine before using a metric in gate aggregation."
       },
       "history": []
@@ -126,13 +214,25 @@
       "title": "Root license, SBOM, signing identity and private security path",
       "state": "blocked",
       "sourceClass": "snapshot-fact",
-      "sourceRefs": ["issues/polished/0016-packaging-release-and-updates.md", "issues/polished/0021-decisions-risks-and-maintenance.md"],
+      "sourceRefs": [
+        "issues/polished/0016-packaging-release-and-updates.md",
+        "issues/polished/0021-decisions-risks-and-maintenance.md"
+      ],
       "ownerRole": "Maintainer / Release",
-      "appliesTo": ["EP-24", "EP-25", "EP-32"],
+      "appliesTo": [
+        "EP-24",
+        "EP-25",
+        "EP-32"
+      ],
       "blocked": {
         "scope": "External distribution",
         "reason": "The root license, signing credential owner, SBOM approval and private security reporting path are undecided.",
-        "requiredEvidence": ["root license decision", "component SBOM", "signing identity", "security contact"],
+        "requiredEvidence": [
+          "root license decision",
+          "component SBOM",
+          "signing identity",
+          "security contact"
+        ],
         "resumeCondition": "Record the owner and material first; do not infer a license from dependencies."
       },
       "history": []
@@ -142,13 +242,24 @@
       "title": "Update channel, data rollback and supported versions",
       "state": "blocked",
       "sourceClass": "draft-design",
-      "sourceRefs": ["issues/polished/0016-packaging-release-and-updates.md", "issues/polished/0020-implementation-work-packages.md"],
+      "sourceRefs": [
+        "issues/polished/0016-packaging-release-and-updates.md",
+        "issues/polished/0020-implementation-work-packages.md"
+      ],
       "ownerRole": "Release / Storage / Maintainer",
-      "appliesTo": ["EP-27", "EP-28", "EP-32"],
+      "appliesTo": [
+        "EP-27",
+        "EP-28",
+        "EP-32"
+      ],
       "blocked": {
         "scope": "Post-G4 updater and data migration",
         "reason": "The update channel, rollback proof and supported-version policy are not defined.",
-        "requiredEvidence": ["signed full-bundle replacement", "rollback test", "data schema mapping"],
+        "requiredEvidence": [
+          "signed full-bundle replacement",
+          "rollback test",
+          "data schema mapping"
+        ],
         "resumeCondition": "Start after the G4 preview artifact and recovery procedure are accepted."
       },
       "history": []

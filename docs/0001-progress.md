@@ -16,6 +16,7 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 9. Runtime profile admission is owned by `core/profile.mbt` and exported as `validate_profile`. `compatibility/runtime-profiles-v1.json` keeps `desktop-core-v1`, `electron-nodeless-v1` (blocked), `electron-nodeless-adapted-v1` and `moonbit-native-v1` separate; unknown profiles and mismatched input/preload/runtime selections are rejected before app evaluation. `manifest.schema-v2.json` and the migration fixture preserve schema-1 rows without upgrading their claims. Evidence bundle v2, the Moji/jmd pinned app records, and the decision/risk/component ledgers add admission inputs; they do not create verified rows.
 10. The main-local IPC stack from PR #9/#11/#12 is integrated: bounded `ipcMain` listeners and invoke handlers, duplicate/once/removal semantics, a MoonBit-owned ticket registry, and a tagged `invoke-json-undefined-v1` codec. Registration does not grant renderer authority, and the invoke comparison uses a synthetic trusted-host candidate, not native sender attestation. `ipcRenderer`, production renderer ingress, event replies and strict contextBridge remain unimplemented; `run`/`pack` stay closed.
 11. The contextBridge prerequisite stack from PR #10/#13 is integrated: bounded native-backed JS handle registration/release/settlement, isolated bootstrap/preload worlds, one-shot native preload attestation, failed-preload denial, page/preload handler separation, same-URL reload and window-destroy revocation, and unsupported `require` failing closed. The public `contextBridge` API, synchronous cross-world function proxies and arbitrary page-initiated authority remain NOT_IMPLEMENTED.
+12. QuickJS 2026-06-04 is vendored with a measured tarball SHA-256 and license hash. The native ABI in `bridges/embedded-js/` owns explicit engine/context/value leases and passes eval/throw, duplicate/release, Promise job and interrupt tests. QJS-05, sanitizer/ownership review, the CJS loader and scheduler integration remain open.
 
 ## Ownership and unfinished wiring
 
@@ -32,6 +33,7 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 | Profile and app inputs | MoonBit `core` profile contract plus pinned app records | Native execution, actual app build/boot closure, or a profile claim |
 | Main-local IPC listeners/handlers | MoonBit `core` registries plus Node leaf facade | Actual renderer sender, production ingress, `ipcRenderer` or native E2E |
 | contextBridge prerequisites | MoonBit handle registry, JS realm registry, native isolated bootstrap/attestation | Public contextBridge API, synchronous proxy, arbitrary page sender authority |
+| QuickJS ABI | Vendored engine, C adapter and native MoonBit package | CJS loader, Node subset, scheduler, ownership/sanitizer acceptance |
 | Governance | `compatibility/{decisions,risks,components}.json` and validator | License selection, signing identity, SBOM, or release approval |
 
 Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter inputs for unit tests, not proof of an authenticated sender. The production adapter must derive them from native frame/document/session state and cannot accept renderer claims. Document grants and pending cancellations do not by themselves secure a disconnected renderer.
@@ -44,6 +46,13 @@ Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter in
 - EP-32: decisions/risks/components ledgers and validation are present. Root license, signing identity, clean Mac and interactive QA remain blocked.
 
 G0 therefore stays open until the actual app build/boot closure and the remaining authority evidence are recorded. No polished issue is closed by this progress.
+
+## G1 progress (partial)
+
+- EP-02, EP-03 and EP-04 are integrated on this branch; the main-local IPC stack, native host and contextBridge prerequisites have tests and macOS probes.
+- EP-08/R1a is partial: the pinned QuickJS ABI passes eval/throw, value lease, job and interrupt tests. QJS-05, ownership/sanitizer review, scheduler and CJS/MOD gates remain open.
+- EP-10/EP-15 production supervisor and snapshot/origin integration are not yet on this branch. The experimental M1 runner is not the Node-less supervisor.
+- G1 remains open. No compatibility row is verified.
 
 ## Experimental M1 native execution (partial)
 

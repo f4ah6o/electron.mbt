@@ -14,6 +14,7 @@ MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/p
 | `compatibility/` | Runtime profiles, evidence schema v2, app records for Moji/jmd, decision/risk/component ledgers; schema 1 manifest remains active | A verified profile, app scenario, SBOM or release |
 | `bridges/node/` | Real Node CJS module identity probe, runtime-owned `electron` facade, main-local `ipcMain` listeners/handlers, bounded invoke codec, source inventory, private socketpair and M1 runner | Renderer ingress/sender authentication, `ipcRenderer`, complete BrowserWindow, general Structured Clone or full Electron IPC |
 | `platform/macos/` | AppKit/WKWebView feasibility probes plus a standalone real-window host with create/load/show/destroy ACKs, cancellable close events and bounded renderer-liveness signals | A synchronous function-proxy bridge, full sandbox audit, IME or accessibility acceptance |
+| `bridges/embedded-js/` | Pinned QuickJS 2026-06-04 native ABI: eval/throw, value leases, jobs, interrupt, explicit destroy | CJS loader, Node subset, sanitizer/ownership review, scheduler integration or a Node-less app |
 | `fixtures/oracle/` | Unchanged main/preload/renderer fixture for a separately installed pinned Electron oracle | A matching electron.mbt execution or size improvement |
 | `cmd/` | `snapshot`, MoonBit-backed `doctor` and static `compat-check` diagnostics | General Electron-compatible `run` or `pack`; explicit experimental M1 macOS run is separate |
 
@@ -38,6 +39,8 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
    ```
 
    `npm run test:leaf` runs only the native transport/loader/codec/manifest suite after `node scripts/build-native.cjs`. It is not a substitute for the MoonBit tests. A missing compiled core fails the complete suite rather than being silently skipped.
+
+   `moon test --target native` also compiles the vendored QuickJS core in `bridges/embedded-js/`; the pin and license are recorded in [vendor/quickjs/lock.json](vendor/quickjs/lock.json) and checked by `tests/quickjs-lock.test.cjs`. See [the QuickJS ABI note](docs/0009-quickjs-abi.md).
 
 4. On macOS with Xcode command-line tools and an available WindowServer, run:
 

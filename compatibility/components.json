@@ -8,7 +8,11 @@
       "source": "MoonBit CLI",
       "version": "0.1.20261012 / moonc v0.10.15+943464bfa",
       "hash": "manifest versions.moonbit.binarySha256",
-      "license": {"status": "unknown", "expression": null, "source": null},
+      "license": {
+        "status": "unknown",
+        "expression": null,
+        "source": null
+      },
       "distribution": false,
       "releaseGate": "open",
       "blockedReason": null,
@@ -20,7 +24,11 @@
       "source": "this repository",
       "version": "0.0.1",
       "hash": null,
-      "license": {"status": "unknown", "expression": null, "source": null},
+      "license": {
+        "status": "unknown",
+        "expression": null,
+        "source": null
+      },
       "distribution": true,
       "releaseGate": "blocked",
       "blockedReason": "root repository license is undecided (DEC-10)",
@@ -31,11 +39,15 @@
       "kind": "runtime",
       "source": "https://bellard.org/quickjs/",
       "version": "2026-06-04",
-      "hash": null,
-      "license": {"status": "known", "expression": "MIT", "source": "upstream QuickJS license"},
+      "hash": "sha256:b376e839b322978313d929fd20663b11ba58b75df5a46c126dd19ea2fa70ad2a",
+      "license": {
+        "status": "known",
+        "expression": "MIT",
+        "source": "upstream QuickJS license"
+      },
       "distribution": true,
       "releaseGate": "blocked",
-      "blockedReason": "source tarball SHA-256 and build flags are not captured (DEC-02)",
+      "blockedReason": "QJS-05, sanitizer/ownership review and scheduler/CJS integration are not complete",
       "updateOwnerRole": "Engine / Build"
     },
     {
@@ -44,7 +56,11 @@
       "source": "macOS system",
       "version": "system WebKit",
       "hash": null,
-      "license": {"status": "known", "expression": "Apple system component, not redistributed", "source": "macOS"},
+      "license": {
+        "status": "known",
+        "expression": "Apple system component, not redistributed",
+        "source": "macOS"
+      },
       "distribution": false,
       "releaseGate": "open",
       "blockedReason": null,
@@ -56,7 +72,11 @@
       "source": "Node.js",
       "version": "24.21.0",
       "hash": null,
-      "license": {"status": "known", "expression": "MIT", "source": "Node.js"},
+      "license": {
+        "status": "known",
+        "expression": "MIT",
+        "source": "Node.js"
+      },
       "distribution": false,
       "releaseGate": "open",
       "blockedReason": null,
@@ -68,7 +88,11 @@
       "source": "https://www.electronjs.org/",
       "version": "44.7.0",
       "hash": null,
-      "license": {"status": "known", "expression": "MIT", "source": "Electron"},
+      "license": {
+        "status": "known",
+        "expression": "MIT",
+        "source": "Electron"
+      },
       "distribution": false,
       "releaseGate": "open",
       "blockedReason": null,
@@ -80,7 +104,11 @@
       "source": "gpui.mbt",
       "version": "008b3c73d50108d6ed1e6c02ad9e12e930e843ec",
       "hash": null,
-      "license": {"status": "unknown", "expression": null, "source": null},
+      "license": {
+        "status": "unknown",
+        "expression": null,
+        "source": null
+      },
       "distribution": false,
       "releaseGate": "open",
       "blockedReason": null,
@@ -92,7 +120,11 @@
       "source": "https://github.com/alexishida/Moji",
       "version": "b7b1d585d61772a0f791f165c8d07a420443b65b",
       "hash": null,
-      "license": {"status": "known", "expression": "MIT", "source": "upstream LICENSE"},
+      "license": {
+        "status": "known",
+        "expression": "MIT",
+        "source": "upstream LICENSE"
+      },
       "distribution": false,
       "releaseGate": "blocked",
       "blockedReason": "pinned build/provenance has not been collected (EP-05)",
@@ -104,7 +136,11 @@
       "source": "https://github.com/jojonki/jmd",
       "version": "f875fc616feb89ea803a0fc140ec770a2ade041e",
       "hash": null,
-      "license": {"status": "known", "expression": "MIT", "source": "upstream LICENSE"},
+      "license": {
+        "status": "known",
+        "expression": "MIT",
+        "source": "upstream LICENSE"
+      },
       "distribution": false,
       "releaseGate": "blocked",
       "blockedReason": "pinned build/provenance has not been collected (EP-05)",

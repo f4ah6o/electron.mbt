@@ -469,6 +469,33 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_NATIVE_INGRESS_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let close_event = request_frame(session, 47, 1, 1, "dispatch-adapted-event",
+    "{\"topic\":\"app:request-close\",\"value\":\"close-request\"}")
+  let close_event_sent = send(fd, close_event)
+  let close_event_reply = if close_event_sent { receive(fd, buffer) } else { None }
+  if !close_event_sent || close_event_reply is None ||
+    !close_event_reply.unwrap().contains("\"delivered\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_CLOSE_REQUEST\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let mut close_title_ok = false
+  for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let close_title_request = request_frame(session, 48, 1, 1, "get-web-contents-title", "{}")
+    let close_title_sent = send(fd, close_title_request)
+    let close_title_reply = if close_title_sent { receive(fd, buffer) } else { None }
+    if close_title_sent && close_title_reply is Some(_) &&
+      close_title_reply.unwrap().contains("\"title\":\"nodeless-close-requested\"") {
+      close_title_ok = true
+      break
+    }
+    supervisor_sleep_ms(20)
+  }
+  if !close_title_ok {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_CLOSE_TITLE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let bootstrap = request_frame(session, 17, 1, 1, "get-bootstrap-status", "{}")
   let bootstrap_sent = send(fd, bootstrap)
   let bootstrap_reply = if bootstrap_sent { receive(fd, buffer) } else { None }
@@ -715,6 +742,33 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_NATIVE_INGRESS_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let reload_close_event = request_frame(session, 49, 1, 2, "dispatch-adapted-event",
+    "{\"topic\":\"app:request-close\",\"value\":\"close-request\"}")
+  let reload_close_event_sent = send(fd, reload_close_event)
+  let reload_close_event_reply = if reload_close_event_sent { receive(fd, buffer) } else { None }
+  if !reload_close_event_sent || reload_close_event_reply is None ||
+    !reload_close_event_reply.unwrap().contains("\"delivered\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_CLOSE_REQUEST\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let mut reload_close_title_ok = false
+  for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let reload_close_title_request = request_frame(session, 50, 1, 2, "get-web-contents-title", "{}")
+    let reload_close_title_sent = send(fd, reload_close_title_request)
+    let reload_close_title_reply = if reload_close_title_sent { receive(fd, buffer) } else { None }
+    if reload_close_title_sent && reload_close_title_reply is Some(_) &&
+      reload_close_title_reply.unwrap().contains("\"title\":\"nodeless-close-requested\"") {
+      reload_close_title_ok = true
+      break
+    }
+    supervisor_sleep_ms(20)
+  }
+  if !reload_close_title_ok {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_CLOSE_TITLE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let stale_after = request_frame(session, 28, 1, 1, "dispatch-adapted-event",
     "{\"topic\":\"doc:open\",\"value\":\"stale\"}")
   let stale_after_sent = send(fd, stale_after)
@@ -794,7 +848,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"nodeless-app-ready\",\"appScenario\":\"nodeless-fixture\",\"appDocumentTitle\":\"nodeless-app-ready\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"nativeQueueRelease\":true,\"nativeQueueAdmitted\":4,\"nativeMainRoundTrip\":true,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"nodeless-app-ready\",\"appScenario\":\"nodeless-fixture\",\"appDocumentTitle\":\"nodeless-app-ready\",\"closeRequest\":true,\"closeRequestReload\":true,\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"nativeQueueRelease\":true,\"nativeQueueAdmitted\":4,\"nativeMainRoundTrip\":true,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

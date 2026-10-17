@@ -71,6 +71,13 @@ window.__electronMbtIngressProbe = async function () {
       document.title = 'adapted-event-disposed';
     });
     disposed();
+    api.onCloseRequest(function (payload) {
+      if (payload && payload.source === 'native' && payload.value === 'close-request') {
+        document.title = 'nodeless-close-requested';
+      } else {
+        document.title = 'nodeless-close-malformed';
+      }
+    });
     if (typeof window.__electronMbtDispatch !== 'function') {
       return finish('adapted-dispatch-missing');
     }

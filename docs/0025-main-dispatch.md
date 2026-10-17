@@ -37,12 +37,18 @@ becomes `nodeless-app-ready`; the native window title remains the separate
 `native-app-window`. Three overflow calls still reject with
 `ELECTRON_MBT_ADAPTER_QUEUE_FULL`.
 
+The page also registers `onCloseRequest`. After the ingress probe the supervisor
+delivers a fixed `app:request-close` event and the page sets
+`nodeless-close-requested`. This is an event-delivery scenario, not a Main
+close/quit decision, a native close ACK or a physical close. The same event is
+delivered after the generation-2 reload.
+
 ## Evidence
 
 The supervisor reports:
 
 ```json
-{"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"appScenario":"nodeless-fixture","pageTitle":"nodeless-app-ready"}
+{"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"appScenario":"nodeless-fixture","pageTitle":"nodeless-app-ready","closeRequest":true,"closeRequestReload":true}
 ```
 
 The page verifies that the first three results are Main settings with
@@ -56,8 +62,9 @@ scenario runs after the generation-2 reload.
   this is not a general app loader, module graph or Node symbol layer
 - the source snapshot covers the page entry and adapter, not the Main graph;
   Main source changes are outside the snapshot (B2b remains open)
-- no `contextBridge`, `ipcRenderer`, `webContents.send`, app lifecycle/close
-  scenario or physical UI acceptance
+- the close scenario is a page-side event observation only; there is no native
+  close/quit decision, close ACK or physical UI acceptance
+- no `contextBridge`, `ipcRenderer` or `webContents.send`
 - no Moji main/preload boot, no app compatibility and no verified row
 - `compatible:false`, adapted **partial** and strict **blocked** are unchanged
 
@@ -65,7 +72,7 @@ scenario runs after the generation-2 reload.
 
 - move the Main graph and its dependencies into the source snapshot, then add
   the general CJS loader and Node symbols
-- add a real close/lifecycle scenario instead of only the ready-state title
+- replace the event-only close observation with a Main/native close decision
 - replace the test-only queue release with the production
   `DocumentIngressReady` transition
 - adapt Moji's main/preload and run an app scenario

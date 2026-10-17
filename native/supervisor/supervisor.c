@@ -491,6 +491,10 @@ int32_t moonbit_ebt_supervisor_app_title(moonbit_bytes_t buffer, int32_t capacit
   return (int32_t)length;
 }
 
+void moonbit_ebt_supervisor_sleep_ms(int32_t milliseconds) {
+  if (milliseconds > 0 && milliseconds <= 5000) usleep((useconds_t)milliseconds * 1000);
+}
+
 void moonbit_ebt_supervisor_exit(int32_t code) {
   fflush(NULL);
   _exit((int)code);

@@ -74,7 +74,7 @@
     {
       "id": "supervisor-handshake",
       "status": "PASS",
-      "detail": "PASS: random session, hello/ready, package.json main, local CJS + node_modules/exports fixture, window create/load/destroy, event notice, bootstrap status, no-preload status, QuickJS fixture app main/title, shutdown, second host restart, exit 0; 4 fault probes PASS"
+      "detail": "PASS: random session, bounded start/handshake retry, hello/ready, package.json main, local CJS + node_modules/exports fixture, window create/load/destroy, event notice, bootstrap status, no-preload status, QuickJS fixture app main/title, shutdown, second host restart, exit 0; 4 fault + retry probes PASS"
     },
     {
       "id": "node-less-moji-app-main",

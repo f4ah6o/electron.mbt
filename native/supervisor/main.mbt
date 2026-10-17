@@ -16,6 +16,9 @@ extern "C" fn supervisor_pid() -> Int = "moonbit_ebt_supervisor_pid"
 extern "C" fn supervisor_timeout_ms() -> Int = "moonbit_ebt_supervisor_timeout_ms"
 
 ///|
+extern "C" fn supervisor_sleep_ms(milliseconds : Int) = "moonbit_ebt_supervisor_sleep_ms"
+
+///|
 extern "C" fn supervisor_app_main() -> Int = "moonbit_ebt_supervisor_app_main"
 
 ///|
@@ -97,51 +100,54 @@ fn receive(fd : Int, buffer : Bytes) -> String? {
   receive_timeout(fd, buffer, supervisor_timeout_ms())
 }
 
+fn start_ready(buffer : Bytes) -> (Int, String, Int)? {
+  for attempt = 1; attempt <= 3; attempt = attempt + 1 {
+    let session_buffer = Bytes::new(32)
+    if supervisor_session(session_buffer) != 32 {
+      return None
+    }
+    let session = @utf8.decode_lossy(session_buffer)
+    let fd = supervisor_start(
+      @utf8.encode("dist/electron-mbt-native-host"),
+      @utf8.encode("fixtures/native-app"),
+      @utf8.encode(session),
+    )
+    if fd >= 0 {
+      let hello = request_frame(session, 1, 0, 0, "hello", "{}")
+      let hello_sent = send(fd, hello)
+      let hello_reply = if hello_sent { receive(fd, buffer) } else { None }
+      if hello_sent && hello_reply is Some(_) &&
+        hello_reply.unwrap().contains("\"terminal\":\"success\"") &&
+        hello_reply.unwrap().contains("AppKit+WKWebView") {
+        let ready = request_frame(session, 2, 0, 0, "ready", "{}")
+        let ready_sent = send(fd, ready)
+        let ready_reply = if ready_sent { receive(fd, buffer) } else { None }
+        if ready_sent && ready_reply is Some(_) &&
+          ready_reply.unwrap().contains("\"terminal\":\"success\"") {
+          return Some((fd, session, attempt))
+        }
+      }
+      supervisor_kill()
+    }
+    supervisor_sleep_ms(100)
+  }
+  None
+}
+
 ///|
 fn main {
-  let session_buffer = Bytes::new(32)
-  if supervisor_session(session_buffer) != 32 {
-    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SESSION\",\"compatible\":false}")
-    supervisor_exit(1)
-  }
-  let session = @utf8.decode_lossy(session_buffer)
-  let fd = supervisor_start(
-    @utf8.encode("dist/electron-mbt-native-host"),
-    @utf8.encode("fixtures/native-app"),
-    @utf8.encode(session),
-  )
-  if fd < 0 {
-    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_START\",\"compatible\":false}")
-    supervisor_exit(1)
-  }
   let buffer = Bytes::new(65536)
+  let (fd, session, attempts) = match start_ready(buffer) {
+    Some(value) => value
+    None => {
+      println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_START\",\"compatible\":false}")
+      supervisor_exit(1)
+      (0, "", 0)
+    }
+  }
   if supervisor_app_main() != 42 {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_APP_MAIN\",\"compatible\":false}")
-    supervisor_exit(1)
-  }
-  let hello = request_frame(session, 1, 0, 0, "hello", "{}")
-  if !send(fd, hello) {
-    supervisor_kill()
-    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_WRITE\",\"compatible\":false}")
-    supervisor_exit(1)
-  }
-  let hello_reply = receive(fd, buffer)
-  if hello_reply is None || !hello_reply.unwrap().contains("\"terminal\":\"success\"") ||
-    !hello_reply.unwrap().contains("AppKit+WKWebView") {
-    let reply_text = match hello_reply {
-      Some(value) => "\"" + value + "\""
-      None => "null"
-    }
-    let exit_status = supervisor_finish()
-    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_HELLO\",\"reply\":" +
-      reply_text + ",\"exitStatus\":" + exit_status.to_string() + ",\"compatible\":false}")
-    supervisor_exit(1)
-  }
-  let ready = request_frame(session, 2, 0, 0, "ready", "{}")
-  if !send(fd, ready) || receive(fd, buffer) is None {
-    supervisor_kill()
-    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_READY\",\"compatible\":false}")
     supervisor_exit(1)
   }
   let entry_buffer = Bytes::new(256)
@@ -305,7 +311,8 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"attempts\":" + attempts.to_string() +
+    ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")
 }

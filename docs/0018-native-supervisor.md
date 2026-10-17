@@ -16,7 +16,8 @@ complete supervisor, app launcher or Node-less app boot.
   `ELECTRON_MBT_HOST_SESSION`
 - 4-byte big-endian length framing around canonical JSON envelopes
 - `hello` → `ready` → `create-window` → `begin-load` → `load-file` on the
-  load lane → `destroy-window` → `shutdown`
+  load lane → event-lane `isolated-preload-attested` → `destroy-window` →
+  `shutdown`
 - the loaded file is resolved under the canonical app root by C and sent as a
   JSON path; the load ACK must contain `didFinishLoad:true` and `index.html`
 - close/EOF and `waitpid` on finish; `SIGKILL` + wait on failure
@@ -30,12 +31,13 @@ Node-API, `sync_channel.node` or the JS runner.
 the final JSON line:
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":77566,"exitStatus":0,"windowLoaded":true,"creator":"moonbit-native","compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","childPid":78389,"exitStatus":0,"windowLoaded":true,"event":"isolated-preload-attested","creator":"moonbit-native","compatible":false}
 ```
 
 Observed: real native host startup, `hello`/`ready` replies, window creation,
-`begin-load`, a load-channel `load-file` ACK with `didFinishLoad:true`, window
-destroy, `shutdown`, and child exit status 0. A native test also checks
+`begin-load`, a load-channel `load-file` ACK with `didFinishLoad:true`, an
+event-channel `isolated-preload-attested` notice, window destroy, `shutdown`,
+and child exit status 0. A native test also checks
 that sessions are 32 lowercase hex characters and differ between draws.
 
 `node scripts/m1-native-supervisor-fault.cjs` passes two negative cases:

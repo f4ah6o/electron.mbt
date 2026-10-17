@@ -179,11 +179,12 @@ int32_t moonbit_ebt_supervisor_write_frame(int32_t fd, moonbit_bytes_t bytes, in
   return write_all(fd, bytes, (size_t)length) == 0 ? 0 : -1;
 }
 
-int32_t moonbit_ebt_supervisor_read_frame(int32_t fd, moonbit_bytes_t buffer, int32_t capacity) {
-  if (fd < 0 || buffer == NULL || capacity < 0) return -1;
+int32_t moonbit_ebt_supervisor_read_frame_timeout(
+    int32_t fd, moonbit_bytes_t buffer, int32_t capacity, int32_t timeout_ms) {
+  if (fd < 0 || buffer == NULL || capacity < 0 || timeout_ms < 0) return -1;
   struct pollfd pollfd = {.fd = fd, .events = POLLIN};
   int ready;
-  do { ready = poll(&pollfd, 1, 15000); } while (ready < 0 && errno == EINTR);
+  do { ready = poll(&pollfd, 1, timeout_ms); } while (ready < 0 && errno == EINTR);
   if (ready <= 0 || !(pollfd.revents & POLLIN)) return -1;
   uint32_t header = 0;
   if (read_all(fd, &header, sizeof(header)) != 0) return -1;
@@ -193,7 +194,13 @@ int32_t moonbit_ebt_supervisor_read_frame(int32_t fd, moonbit_bytes_t buffer, in
   return (int32_t)length;
 }
 
+int32_t moonbit_ebt_supervisor_read_frame(int32_t fd, moonbit_bytes_t buffer, int32_t capacity) {
+  return moonbit_ebt_supervisor_read_frame_timeout(fd, buffer, capacity, 15000);
+}
+
 int32_t moonbit_ebt_supervisor_load_fd(void) { return load_fd; }
+
+int32_t moonbit_ebt_supervisor_event_fd(void) { return event_fd; }
 
 int32_t moonbit_ebt_supervisor_file(
     moonbit_bytes_t buffer,

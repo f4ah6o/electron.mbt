@@ -16,6 +16,13 @@ extern "C" fn supervisor_pid() -> Int = "moonbit_ebt_supervisor_pid"
 extern "C" fn supervisor_load_fd() -> Int = "moonbit_ebt_supervisor_load_fd"
 
 ///|
+extern "C" fn supervisor_event_fd() -> Int = "moonbit_ebt_supervisor_event_fd"
+
+///|
+#borrow(buffer)
+extern "C" fn supervisor_read_timeout(fd : Int, buffer : Bytes, capacity : Int, timeout_ms : Int) -> Int = "moonbit_ebt_supervisor_read_frame_timeout"
+
+///|
 #borrow(buffer, name)
 extern "C" fn supervisor_file(buffer : Bytes, capacity : Int, name : Bytes) -> Int = "moonbit_ebt_supervisor_file"
 
@@ -149,6 +156,18 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_LOAD\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let event_fd = supervisor_event_fd()
+  let event_length = supervisor_read_timeout(event_fd, buffer, buffer.length(), 2000)
+  let event_reply = if event_length > 0 {
+    try { Some(@utf8.decode(buffer[:event_length])) } catch { _ => None }
+  } else {
+    None
+  }
+  if event_reply is None || !event_reply.unwrap().contains("\"operation\":\"isolated-preload-attested\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_EVENT\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let destroy = request_frame(session, 7, 1, 1, "destroy-window", "{}")
   let destroy_sent = send(fd, destroy)
   let destroy_reply = if destroy_sent { receive(fd, buffer) } else { None }
@@ -167,5 +186,5 @@ fn main {
   let exit_status = supervisor_finish()
   println("{\"status\":\"PASS\",\"probe\":\"native-supervisor-window-load\",\"backend\":\"AppKit+WKWebView\",\"childPid\":" +
     child_pid.to_string() + ",\"exitStatus\":" + exit_status.to_string() +
-    ",\"windowLoaded\":true,\"creator\":\"moonbit-native\",\"compatible\":false}")
+    ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"creator\":\"moonbit-native\",\"compatible\":false}")
 }

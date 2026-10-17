@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -627,6 +627,41 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Malformed source snapshot acknowledgement")
+      }
+    }
+  }
+  if operation == "grant-file" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 2 => {
+          match values.get("path") {
+            Some(String(path)) if path.length() > 0 && path.length() <= 4096 => ()
+            _ => raise BadProtocol("Invalid file grant path")
+          }
+          match values.get("mode") {
+            Some(String(mode)) if mode == "read" || mode == "write" || mode == "readwrite" => ()
+            _ => raise BadProtocol("Invalid file grant mode")
+          }
+        }
+        _ => raise BadProtocol("Invalid file grant request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 3 => {
+          match values.get("granted") {
+            Some(True) => ()
+            _ => raise BadProtocol("Invalid file grant acknowledgement")
+          }
+          match values.get("path") {
+            Some(String(path)) if path.length() > 0 && path.length() <= 4096 => ()
+            _ => raise BadProtocol("Invalid file grant path")
+          }
+          match values.get("mode") {
+            Some(String(mode)) if mode == "read" || mode == "write" || mode == "readwrite" => ()
+            _ => raise BadProtocol("Invalid file grant mode")
+          }
+        }
+        _ => raise BadProtocol("Malformed file grant acknowledgement")
       }
     }
   }

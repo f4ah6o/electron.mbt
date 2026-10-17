@@ -568,6 +568,28 @@ test "What: source snapshot preparation validates the manifest shape" {
 }
 
 ///|
+test "What: file grants accept only a bounded path and read/write mode" {
+  let request = source_wire("grant-file",
+    "{\"path\":\"broker-output.txt\",\"mode\":\"readwrite\"}", "")
+  assert_true(validate(request) is Ok(_))
+  for malformed in [
+    "{}",
+    "{\"path\":\"x\"}",
+    "{\"path\":\"\",\"mode\":\"read\"}",
+    "{\"path\":\"x\",\"mode\":\"execute\"}",
+    "{\"path\":\"x\",\"mode\":\"read\",\"extra\":1}",
+  ] {
+    assert_true(validate(source_wire("grant-file", malformed, "")) is Err(_))
+  }
+  assert_true(validate(source_wire("grant-file",
+    "{\"granted\":true,\"path\":\"/tmp/x\",\"mode\":\"readwrite\"}",
+    ",\"terminal\":\"success\"")) is Ok(_))
+  assert_true(validate(source_wire("grant-file",
+    "{\"granted\":false,\"path\":\"/tmp/x\",\"mode\":\"readwrite\"}",
+    ",\"terminal\":\"success\"")) is Err(_))
+}
+
+///|
 test "What: document identity binds the snapshot and manifest hashes to the current generation" {
   let hash = "b".repeat(64)
   let manifest = "d".repeat(64)

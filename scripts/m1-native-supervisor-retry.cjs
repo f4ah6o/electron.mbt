@@ -38,4 +38,5 @@ try {
   process.stdout.write(`${JSON.stringify({ status: 'PASS', probe: 'native-supervisor-retry', attempts: parsed.attempts, spawns: attempts, compatible: false })}\n`);
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
+  fs.rmSync(path.join(root, 'fixtures/native-app/broker-output.txt'), { force: true });
 }

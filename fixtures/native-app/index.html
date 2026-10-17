@@ -77,13 +77,42 @@ window.__electronMbtIngressProbe = async function () {
     if (!closeDecision || closeDecision.shouldClose !== true) {
       document.title = 'adapted-ingress-confirm-close'; return;
     }
-    let fileRejected = false;
-    try {
-      await handler.postMessage({ operation: 'file:read-path', payload: { args: ['/tmp/x'] } });
-    } catch (error) {
-      fileRejected = String(error).includes('ELECTRON_MBT_MAIN_UNKNOWN_OPERATION');
+    const sample = await handler.postMessage({
+      operation: 'file:read-path', payload: { args: ['samples/sample.md'] },
+    });
+    if (!sample || sample.text !== 'sample document\n') {
+      document.title = 'adapted-file-sample'; return;
     }
-    if (!fileRejected) { document.title = 'adapted-ingress-file-handler'; return; }
+    const saved = await handler.postMessage({
+      operation: 'file:save', payload: { args: ['broker-output.txt', 'broker-write'] },
+    });
+    if (!saved || saved.bytes !== 12) {
+      document.title = 'adapted-file-save'; return;
+    }
+    const reread = await handler.postMessage({
+      operation: 'file:read-path', payload: { args: ['broker-output.txt'] },
+    });
+    if (!reread || reread.text !== 'broker-write') {
+      document.title = 'adapted-file-reread'; return;
+    }
+    let deniedWrite = false;
+    try {
+      await handler.postMessage({
+        operation: 'file:save', payload: { args: ['broker-denied.txt', 'x'] },
+      });
+    } catch (error) {
+      deniedWrite = String(error).includes('ELECTRON_MBT_FILE_DENIED');
+    }
+    if (!deniedWrite) { document.title = 'adapted-file-write-accepted'; return; }
+    let deniedEscape = false;
+    try {
+      await handler.postMessage({
+        operation: 'file:read-path', payload: { args: ['../escape.md'] },
+      });
+    } catch (error) {
+      deniedEscape = String(error).includes('ELECTRON_MBT_FILE_DENIED');
+    }
+    if (!deniedEscape) { document.title = 'adapted-file-escape-accepted'; return; }
     document.title = 'adapted-ingress-ok';
   } catch (error) {
     document.title = 'adapted-ingress-denied';

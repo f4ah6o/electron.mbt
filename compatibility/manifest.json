@@ -745,10 +745,24 @@
         "app:confirm-close"
       ],
       "unregistered": [
-        "file:*",
         "doc:export",
         "diagram:export-png"
+      ],
+      "nativeBroker": [
+        "file:read-path",
+        "file:save",
+        "file:read-image",
+        "file:read-sample"
       ]
     }
+  },
+  "fileBroker": {
+    "status": "partial",
+    "readBytes": 1048576,
+    "saveBytes": 65536,
+    "imageBytes": 1048576,
+    "grants": "test-only grant-file; dialogs must grant in production",
+    "dialogs": "NOT_IMPLEMENTED",
+    "export": "NOT_IMPLEMENTED"
   }
 }

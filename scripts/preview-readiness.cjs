@@ -83,6 +83,18 @@ function buildReport() {
     Array.isArray(mojiManifest.topics) && mojiManifest.topics.length === mojiAdapted.api.topics &&
     mojiAdapterHash === mojiAdapted.adapter.sha256 &&
     mojiAdapted.semantics.runtime === 'NOT_IMPLEMENTED';
+  const fileBroker = adaptedRecord.fileBroker || {};
+  const fileBrokerOk = fileBroker.status === 'partial' &&
+    fileBroker.bounds && fileBroker.bounds.readBytes > 0 &&
+    fileBroker.bounds.saveBytes > 0 && fileBroker.bounds.imageBytes > 0 &&
+    fileBroker.grants && fileBroker.dialogs === 'NOT_IMPLEMENTED' &&
+    fileBroker.export === 'NOT_IMPLEMENTED';
+  checks.push(check('adapted-file-broker', fileBrokerOk ? 'PASS' : 'FAIL',
+    `File broker: read=${fileBroker.bounds?.readBytes || 0}B, save=${fileBroker.bounds?.saveBytes || 0}B, image=${fileBroker.bounds?.imageBytes || 0}B, grants=${fileBroker.grants || 'none'}; dialogs=${fileBroker.dialogs || 'none'}; export=${fileBroker.export || 'none'}`));
+  checks.push(check('adapted-dialog', 'NOT_RUN',
+    'NSOpenPanel/NSSavePanel and dialog-granted paths are not implemented'));
+  checks.push(check('adapted-export', 'NOT_RUN',
+    'export/save-panel writes are not implemented'));
   checks.push(check('adapted-moji-api', mojiApiOk ? 'PASS' : 'FAIL',
     `Moji ${mojiAdapted.appId}: calls=${mojiAdapted.api.calls}, topics=${mojiAdapted.api.topics}, unsupported=${(mojiAdapted.api.unsupported || []).join(',')}, handlers=${mojiAdapted.semantics.applicationHandlers || 'none'}, runtime=${mojiAdapted.semantics.runtime}, originalPreload=${mojiAdapted.originalPreload}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',

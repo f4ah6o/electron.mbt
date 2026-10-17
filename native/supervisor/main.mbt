@@ -468,6 +468,16 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTED_EVENT_TITLE\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let grant = request_frame(session, 52, 1, 1, "grant-file",
+    "{\"path\":\"broker-output.txt\",\"mode\":\"readwrite\"}")
+  let grant_sent = send(fd, grant)
+  let grant_reply = if grant_sent { receive(fd, buffer) } else { None }
+  if !grant_sent || grant_reply is None ||
+    !grant_reply.unwrap().contains("\"granted\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_FILE_GRANT\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let ingress = request_frame(session, 35, 1, 1, "trigger-adapted-ingress", "{}")
   let ingress_sent = send(fd, ingress)
   let ingress_reply = if ingress_sent { receive(fd, buffer) } else { None }
@@ -499,10 +509,10 @@ fn main {
   let ingress_status_sent = send(fd, ingress_status)
   let ingress_status_reply = if ingress_status_sent { receive(fd, buffer) } else { None }
   if !ingress_status_sent || ingress_status_reply is None ||
-    !ingress_status_reply.unwrap().contains("\"admitted\":13") ||
-    !ingress_status_reply.unwrap().contains("\"denied\":2") ||
+    !ingress_status_reply.unwrap().contains("\"admitted\":15") ||
+    !ingress_status_reply.unwrap().contains("\"denied\":4") ||
     !ingress_status_reply.unwrap().contains("\"generation\":1") ||
-    !ingress_status_reply.unwrap().contains("ELECTRON_MBT_INGRESS_LIMIT") {
+    !ingress_status_reply.unwrap().contains("ELECTRON_MBT_FILE_DENIED") {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_NATIVE_INGRESS_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
@@ -774,8 +784,8 @@ fn main {
   let reload_ingress_status_sent = send(fd, reload_ingress_status)
   let reload_ingress_status_reply = if reload_ingress_status_sent { receive(fd, buffer) } else { None }
   if !reload_ingress_status_sent || reload_ingress_status_reply is None ||
-    !reload_ingress_status_reply.unwrap().contains("\"admitted\":13") ||
-    !reload_ingress_status_reply.unwrap().contains("\"denied\":2") ||
+    !reload_ingress_status_reply.unwrap().contains("\"admitted\":15") ||
+    !reload_ingress_status_reply.unwrap().contains("\"denied\":4") ||
     !reload_ingress_status_reply.unwrap().contains("\"generation\":2") {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_NATIVE_INGRESS_STATUS\",\"compatible\":false}")
@@ -887,7 +897,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"nodeless-app-ready\",\"appScenario\":\"nodeless-fixture\",\"appDocumentTitle\":\"nodeless-app-ready\",\"closeRequest\":true,\"closeRequestReload\":true,\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"nativeQueueRelease\":true,\"nativeQueueAdmitted\":4,\"nativeMainRoundTrip\":true,\"unsupportedBuiltinRejected\":true,\"mojiOperationRouted\":true,\"mojiHandlers\":true,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"nodeless-app-ready\",\"appScenario\":\"nodeless-fixture\",\"appDocumentTitle\":\"nodeless-app-ready\",\"closeRequest\":true,\"closeRequestReload\":true,\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":4,\"nativeQueueRelease\":true,\"nativeQueueAdmitted\":4,\"nativeMainRoundTrip\":true,\"unsupportedBuiltinRejected\":true,\"mojiOperationRouted\":true,\"mojiHandlers\":true,\"fileBroker\":true,\"fileRead\":true,\"fileSave\":true,\"fileDenied\":true,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

@@ -25,6 +25,9 @@ no Node, no general app loader and no Moji compatibility.
   with the Main error code, and removes the pending entry.
 - Pending Main replies are failed on begin-load, WebContent termination and
   window teardown. A five-second native timeout also rejects a stuck reply.
+- `file:*` operations are handled by the native file broker before Main
+  dispatch; `doc:*` and `diagram:*` fail closed in the broker
+  ([docs/0027-file-broker.md](0027-file-broker.md)).
 - The fixture Main exposes a registry: `app:get-settings`,
   `app:get-update-state`, `settings:get`, `settings:set`, `update:get-state`,
   `update:check`, `app:confirm-close` and the builtin selftest are registered.

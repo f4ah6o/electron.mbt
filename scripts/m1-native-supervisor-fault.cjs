@@ -10,6 +10,7 @@ function run(label, env) {
     cwd: root, encoding: 'utf8', timeout: 90000,
     env: { ...process.env, ...env },
   });
+  fs.rmSync(path.join(root, 'fixtures/native-app/broker-output.txt'), { force: true });
   const lines = `${result.stdout || ''}\n${result.stderr || ''}`.split('\n').map(line => line.trim()).filter(Boolean);
   const report = lines.filter(line => line.startsWith('{') && line.endsWith('}')).at(-1);
   let parsed;

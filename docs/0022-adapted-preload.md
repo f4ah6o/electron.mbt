@@ -118,7 +118,7 @@ application ingress is wired.
 Observed fixture probe (macOS, AppKit + WKWebView):
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"mojiOperationRouted":true,"mojiHandlers":true,"closeRequest":true,"closeRequestReload":true,"reloadGeneration":2,"compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"mojiOperationRouted":true,"mojiHandlers":true,"fileBroker":true,"fileRead":true,"fileSave":true,"fileDenied":true,"closeRequest":true,"closeRequestReload":true,"reloadGeneration":2,"compatible":false}
 ```
 
 Adapter hash:
@@ -138,8 +138,10 @@ event path.
 - no general application ingress, Main loader, invoke/reply or sender/document
   grant; the page-world ingress and queue release are test-only, and Main is a
   fixed QuickJS fixture graph
-- the Moji adapted API is generated shape only; its original preload, main
-  handlers, file/dialog/export services and app scenario are not run
+- the Moji adapted API is generated shape only; its original preload and main
+  handlers are not run
+- the file broker is partial: grants are test-only, and dialogs, export and
+  `openLocalPath` are not implemented ([docs/0027-file-broker.md](0027-file-broker.md))
 - the source snapshot covers the fixture entry, adapter, package metadata and
   preloaded module graph, but is not a signed or dynamically discovered app
   graph; the Main loader cannot require arbitrary files or builtins
@@ -156,8 +158,8 @@ event path.
 
 ## Next
 
-- register the 14 Moji operations in the Main handler registry and connect the
-  file/dialog/export services; boot Moji main/preload with the adapted API
+- add open/save dialogs with real grants and export/save-panel writes; boot
+  Moji main/preload with the adapted API
 - make the CJS loader dynamic over a verified graph and add the remaining Node
   symbol layers (EP-11/12); define the production `DocumentIngressReady`
   transition

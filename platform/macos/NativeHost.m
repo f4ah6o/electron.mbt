@@ -246,6 +246,7 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic) long long ingressDenied;
 @property(nonatomic) long long ingressUnhandled;
 @property(nonatomic, copy) NSString *ingressLastCode;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *fileGrants;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
                   preloadSource:(NSString *)preloadSource;
@@ -282,6 +283,7 @@ static NSString *preloadDigest(NSData *data) {
     self.ingressDenied = 0;
     self.ingressUnhandled = 0;
     self.ingressLastCode = nil;
+    self.fileGrants = [NSMutableDictionary dictionary];
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -338,6 +340,150 @@ static NSString *preloadDigest(NSData *data) {
     [self.pendingAppReplies removeObjectForKey:key];
     if (block != nil) ((void (^)(id, NSString *))block)(nil, code);
   }
+}
+- (NSString *)canonicalAppPath:(NSString *)path {
+  if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096) return nil;
+  if (self.root == nil) return nil;
+  NSString *resolvedRoot = [self.root stringByResolvingSymlinksInPath];
+  NSString *candidate = path;
+  if (![candidate isAbsolutePath]) {
+    candidate = [self.root stringByAppendingPathComponent:candidate];
+  }
+  NSString *resolved = [[candidate stringByStandardizingPath] stringByResolvingSymlinksInPath];
+  NSString *prefix = [resolvedRoot stringByAppendingString:@"/"];
+  if (![resolved isEqualToString:resolvedRoot] && ![resolved hasPrefix:prefix]) return nil;
+  return resolved;
+}
+- (BOOL)grantFile:(NSString *)path mode:(NSString *)mode canonical:(NSString **)canonical {
+  NSString *resolved = [self canonicalAppPath:path];
+  if (resolved == nil) return NO;
+  NSInteger bits = 0;
+  if ([mode isEqualToString:@"read"]) bits = 1;
+  else if ([mode isEqualToString:@"write"]) bits = 2;
+  else if ([mode isEqualToString:@"readwrite"]) bits = 3;
+  else return NO;
+  NSFileManager *manager = [NSFileManager defaultManager];
+  BOOL isDirectory = NO;
+  BOOL exists = [manager fileExistsAtPath:resolved isDirectory:&isDirectory];
+  if (bits == 1 && !exists) return NO;
+  if ((bits & 2) != 0) {
+    NSString *parent = [resolved stringByDeletingLastPathComponent];
+    BOOL parentIsDirectory = NO;
+    if (![manager fileExistsAtPath:parent isDirectory:&parentIsDirectory] || !parentIsDirectory) return NO;
+  }
+  if (canonical != NULL) *canonical = resolved;
+  NSNumber *existing = self.fileGrants[resolved];
+  NSInteger merged = (existing != nil ? existing.integerValue : 0) | bits;
+  self.fileGrants[resolved] = @(merged);
+  return YES;
+}
+- (BOOL)hasFileGrant:(NSString *)canonical write:(BOOL)write {
+  NSInteger needed = write ? 2 : 1;
+  NSNumber *exact = self.fileGrants[canonical];
+  if (exact != nil && (exact.integerValue & needed) == needed) return YES;
+  NSFileManager *manager = [NSFileManager defaultManager];
+  for (NSString *grantPath in self.fileGrants) {
+    NSNumber *bits = self.fileGrants[grantPath];
+    if ((bits.integerValue & needed) != needed) continue;
+    BOOL isDirectory = NO;
+    if ([manager fileExistsAtPath:grantPath isDirectory:&isDirectory] && isDirectory) {
+      NSString *prefix = [grantPath stringByAppendingString:@"/"];
+      if ([canonical hasPrefix:prefix]) return YES;
+    }
+  }
+  return NO;
+}
+- (BOOL)isSamplePath:(NSString *)canonical {
+  NSString *samples = [[self.root stringByResolvingSymlinksInPath] stringByAppendingString:@"/samples/"];
+  return [canonical hasPrefix:samples];
+}
+- (void)denyFile:(NSString *)code reply:(void (^)(id, NSString *))reply {
+  self.ingressDenied++;
+  self.ingressLastCode = code;
+  reply(nil, code);
+}
+- (void)handleFileOperation:(NSString *)operation payload:(NSDictionary *)payload
+  reply:(void (^)(id, NSString *))reply {
+  NSArray *args = payload[@"args"];
+  if (![args isKindOfClass:[NSArray class]]) {
+    [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
+    return;
+  }
+  if ([operation isEqualToString:@"file:read-path"] ||
+      [operation isEqualToString:@"file:read-sample"] ||
+      [operation isEqualToString:@"file:read-image"]) {
+    if (args.count != 1 || ![args[0] isKindOfClass:[NSString class]]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
+      return;
+    }
+    NSString *requested = args[0];
+    NSString *candidate = [operation isEqualToString:@"file:read-sample"]
+      ? [@"samples" stringByAppendingPathComponent:requested] : requested;
+    NSString *canonical = [self canonicalAppPath:candidate];
+    if (canonical == nil || (![self isSamplePath:canonical] && ![self hasFileGrant:canonical write:NO])) {
+      [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
+    NSData *data = [NSData dataWithContentsOfFile:canonical options:NSDataReadingMappedIfSafe error:nil];
+    if (data == nil) {
+      [self denyFile:@"ELECTRON_MBT_FILE_READ" reply:reply];
+      return;
+    }
+    if (data.length > 1048576) {
+      [self denyFile:@"ELECTRON_MBT_FILE_LIMIT" reply:reply];
+      return;
+    }
+    if ([operation isEqualToString:@"file:read-image"]) {
+      NSString *extension = canonical.pathExtension.lowercaseString;
+      NSString *mime = nil;
+      if ([extension isEqualToString:@"png"]) mime = @"image/png";
+      else if ([extension isEqualToString:@"jpg"] || [extension isEqualToString:@"jpeg"]) mime = @"image/jpeg";
+      else if ([extension isEqualToString:@"gif"]) mime = @"image/gif";
+      else if ([extension isEqualToString:@"webp"]) mime = @"image/webp";
+      if (mime == nil) {
+        [self denyFile:@"ELECTRON_MBT_FILE_TYPE" reply:reply];
+        return;
+      }
+      NSString *dataUrl = [NSString stringWithFormat:@"data:%@;base64,%@", mime,
+        [data base64EncodedStringWithOptions:0]];
+      self.ingressAdmitted++;
+      reply(@{@"path": canonical, @"dataUrl": dataUrl, @"bytes": @(data.length)}, nil);
+      return;
+    }
+    NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (text == nil) {
+      [self denyFile:@"ELECTRON_MBT_FILE_ENCODING" reply:reply];
+      return;
+    }
+    self.ingressAdmitted++;
+    reply(@{@"path": canonical, @"text": text, @"bytes": @(data.length)}, nil);
+    return;
+  }
+  if ([operation isEqualToString:@"file:save"]) {
+    if (args.count != 2 || ![args[0] isKindOfClass:[NSString class]] ||
+        ![args[1] isKindOfClass:[NSString class]]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
+      return;
+    }
+    NSString *canonical = [self canonicalAppPath:args[0]];
+    if (canonical == nil || ![self hasFileGrant:canonical write:YES]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
+    NSData *content = [args[1] dataUsingEncoding:NSUTF8StringEncoding];
+    if (content.length > 65536) {
+      [self denyFile:@"ELECTRON_MBT_FILE_LIMIT" reply:reply];
+      return;
+    }
+    if (![content writeToFile:canonical atomically:YES]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
+      return;
+    }
+    self.ingressAdmitted++;
+    reply(@{@"path": canonical, @"bytes": @(content.length)}, nil);
+    return;
+  }
+  [self denyFile:@"ELECTRON_MBT_FILE_NOT_IMPLEMENTED" reply:reply];
 }
 - (void)clearSnapshot {
   if (self.snapshotRoot != nil) {
@@ -549,6 +695,11 @@ static NSString *preloadDigest(NSData *data) {
         self.ingressDenied++;
         self.ingressLastCode = @"ELECTRON_MBT_INGRESS_LIMIT";
         replyHandler(nil, @"ELECTRON_MBT_INGRESS_LIMIT");
+        return;
+      }
+      if ([operation hasPrefix:@"file:"] || [operation hasPrefix:@"doc:"] ||
+          [operation hasPrefix:@"diagram:"]) {
+        [self handleFileOperation:operation payload:requestPayload reply:replyHandler];
         return;
       }
       if (self.publishAppRequest == nil) {
@@ -1539,6 +1690,26 @@ static NSString *preloadDigest(NSData *data) {
       pending(nil, code);
     }
     done(@"success", @{@"delivered": @YES});
+    return;
+  }
+  if ([operation isEqualToString:@"grant-file"]) {
+    if (payload.count != 2) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *path = payload[@"path"];
+    NSString *mode = payload[@"mode"];
+    if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096 ||
+        ![mode isKindOfClass:[NSString class]]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *canonical = nil;
+    if (![window grantFile:path mode:mode canonical:&canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
+      return;
+    }
+    done(@"success", @{@"granted": @YES, @"path": canonical, @"mode": mode});
     return;
   }
   if ([operation isEqualToString:@"get-ingress-status"]) {

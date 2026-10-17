@@ -49,10 +49,16 @@
       "app:confirm-close"
     ],
     "unregistered": [
-      "file:*",
       "doc:export",
       "diagram:export-png"
     ],
-    "note": "Fixture QuickJS Main handlers; not Moji main execution."
+    "note": "Fixture QuickJS Main handlers; not Moji main execution.",
+    "nativeBroker": [
+      "file:read-path",
+      "file:save",
+      "file:read-image",
+      "file:read-sample"
+    ],
+    "dialogs": "NOT_IMPLEMENTED"
   }
 }

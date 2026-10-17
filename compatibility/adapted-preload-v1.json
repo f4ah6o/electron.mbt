@@ -23,8 +23,8 @@
     "files": [
       {
         "path": "index.html",
-        "sha256": "dbe5c5e5f8bc84886eb41885a80b3c252e9af49f608923ef956dab4f34cb50a7",
-        "bytes": 6995
+        "sha256": "fec574a5d989badcf4252569fef2fd0843ea42d51fadf5eb06d790c926c8b06e",
+        "bytes": 8084
       },
       {
         "path": "adapted/page-api.js",
@@ -167,10 +167,32 @@
       "selftest:unsupported-builtin"
     ],
     "unregisteredApplicationPrefixes": [
-      "file:",
       "doc:",
       "diagram:"
     ],
     "mojiHandlers": true
+  },
+  "fileBroker": {
+    "status": "partial",
+    "read": [
+      "samples/*",
+      "granted paths"
+    ],
+    "write": [
+      "granted paths"
+    ],
+    "image": [
+      "samples/*",
+      "granted paths"
+    ],
+    "grants": "test-only grant-file control operation; production grants must come from dialogs",
+    "bounds": {
+      "readBytes": 1048576,
+      "saveBytes": 65536,
+      "imageBytes": 1048576
+    },
+    "dialogs": "NOT_IMPLEMENTED",
+    "export": "NOT_IMPLEMENTED",
+    "openLocalPath": "NOT_IMPLEMENTED"
   }
 }

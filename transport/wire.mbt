@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "get-document-identity" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -583,6 +583,68 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Malformed native adapted status")
+      }
+    }
+  }
+  if operation == "prepare-source" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 1 => {
+          match values.get("file") {
+            Some(String(file)) if file.length() > 0 && file.length() <= 256 &&
+              !file.has_prefix("/") && !file.contains("..") => ()
+            _ => raise BadProtocol("Invalid source file")
+          }
+        }
+        _ => raise BadProtocol("Invalid prepare-source request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 3 => {
+          match values.get("prepared") {
+            Some(True) => ()
+            _ => raise BadProtocol("Invalid source snapshot acknowledgement")
+          }
+          match values.get("sha256") {
+            Some(String(hash)) if hash.length() == 64 => ()
+            _ => raise BadProtocol("Invalid source snapshot hash")
+          }
+          let bytes = identifier(values.get("bytes").unwrap_or(null))
+          if bytes <= 0L || bytes > 1048576L {
+            raise BadProtocol("Invalid source snapshot size")
+          }
+        }
+        _ => raise BadProtocol("Malformed source snapshot acknowledgement")
+      }
+    }
+  }
+  if operation == "get-document-identity" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid document identity request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 3 => {
+          if identifier(values.get("generation").unwrap_or(null)) != generation {
+            raise BadProtocol("Mismatched document identity generation")
+          }
+          let source = match values.get("source") {
+            Some(String(value)) => value
+            _ => raise BadProtocol("Invalid document identity source")
+          }
+          let hash = match values.get("sha256") {
+            Some(String(value)) => value
+            _ => raise BadProtocol("Invalid document identity hash")
+          }
+          if (source == "snapshot" && hash.length() != 64) ||
+             (source == "app" && hash.length() != 0) ||
+             (source != "snapshot" && source != "app") {
+            raise BadProtocol("Inconsistent document identity")
+          }
+        }
+        _ => raise BadProtocol("Malformed document identity")
       }
     }
   }

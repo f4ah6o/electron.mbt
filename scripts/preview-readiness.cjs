@@ -45,6 +45,19 @@ function buildReport() {
     adapterHash === adaptedRecord.adapter.sha256;
   checks.push(check('adapted-adapter-fixture', adapterOk ? 'PASS' : 'FAIL',
     `page-world document-start adapter ${adaptedRecord.adapter.path}; hash=${adapterHash}`));
+  const sourceManifest = readJson('fixtures/native-app/source-manifest.json');
+  const sourceBytes = fs.readFileSync(path.join(root, 'fixtures/native-app', sourceManifest.entry));
+  const sourceHash = require('node:crypto').createHash('sha256').update(sourceBytes).digest('hex');
+  const sourceSnapshot = adaptedRecord.sourceSnapshot || {};
+  const sourceOk = sourceManifest.schema === 1 &&
+    sourceManifest.entry === 'index.html' &&
+    sourceHash === sourceManifest.sha256 && sourceBytes.length === sourceManifest.bytes &&
+    sourceSnapshot.manifest === 'fixtures/native-app/source-manifest.json' &&
+    sourceSnapshot.sha256 === sourceManifest.sha256 &&
+    sourceSnapshot.bytes === sourceManifest.bytes &&
+    sourceSnapshot.staging === 'private-temporary-directory';
+  checks.push(check('adapted-source-snapshot', sourceOk ? 'PASS' : 'FAIL',
+    `private staging manifest=${sourceManifest.entry}; hash=${sourceHash}; bytes=${sourceBytes.length}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',
     'Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected'));
 

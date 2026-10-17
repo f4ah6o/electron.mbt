@@ -77,6 +77,13 @@ application ingress is wired.
   generation; it requires an observed adapter installation and a completed
   load. It then evaluates the page-world dispatcher and returns a correlated
   `delivered` reply. It is a test trigger, not an application event route.
+- Before load, the supervisor calls `prepare-source`; native verifies the
+  fixture entry against `source-manifest.json`, copies it to a private staging
+  directory and loads that snapshot instead of the working tree. The reload
+  probe prepares a second snapshot. See
+  [docs/0023-source-snapshot.md](0023-source-snapshot.md). The adapter source
+  is still the separately pinned artifact from the app root, not part of this
+  entry-only snapshot.
 - `fixtures/native-app/index.html` checks the page-local listener/disposer
   shape, rejects a forged page nonce and checks the queue timeout/overflow
   codes. The supervisor then delivers `doc:open` and verifies the page title
@@ -93,7 +100,7 @@ application ingress is wired.
 Observed fixture probe (macOS, AppKit + WKWebView):
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"adapted-api-ok","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","reloadGeneration":2,"compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"adapted-api-ok","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"reloadGeneration":2,"compatible":false}
 ```
 
 Adapter hash:
@@ -112,6 +119,8 @@ event path.
 - no original preload execution and no `contextBridge`/`ipcRenderer`
 - no native application ingress, Main dispatch, invoke/reply or sender/document
   grant
+- the source snapshot covers only the entry document and is not a signed
+  manifest; the full app graph and the adapter are outside it
 - native event delivery is a private-lane test trigger; there is no production
   native event route, `webContents.send`, or Electron event-ordering evidence
 - no `DocumentIngressReady` transition or native first-call flush; only the
@@ -129,6 +138,8 @@ event path.
   admission to Main (EP-14) and replace the test host seam
 - define and observe the actual `DocumentIngressReady` transitions separately
   from `LoadComplete` (EP-15)
+- extend the entry-only source snapshot to the complete boot graph and the
+  generated adapter, with manifest provenance
 - turn the test-triggered event path into a production fixed-topic route and
   test early events, host loss and listener exceptions natively
 - generate adapters from Moji's actual preload API and connection graphs

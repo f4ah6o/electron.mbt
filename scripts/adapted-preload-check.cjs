@@ -52,6 +52,23 @@ function check() {
     errors.push('event trigger required');
   }
   if (!record.adapter.installationObservation) errors.push('installation observation required');
+  const sourceManifest = readJson('fixtures/native-app/source-manifest.json');
+  const sourceBytes = fs.readFileSync(path.join(root, 'fixtures/native-app', sourceManifest.entry));
+  const sourceHash = crypto.createHash('sha256').update(sourceBytes).digest('hex');
+  if (sourceManifest.schema !== 1) errors.push('source manifest schema must be 1');
+  if (sourceManifest.app !== 'native-app-fixture') errors.push('source manifest app mismatch');
+  if (sourceManifest.entry !== 'index.html') errors.push('source manifest entry mismatch');
+  if (sourceHash !== sourceManifest.sha256 || sourceBytes.length !== sourceManifest.bytes) {
+    errors.push('source manifest does not match the fixture entry');
+  }
+  const snapshot = record.sourceSnapshot || {};
+  if (snapshot.manifest !== 'fixtures/native-app/source-manifest.json' ||
+      snapshot.entry !== sourceManifest.entry ||
+      snapshot.sha256 !== sourceManifest.sha256 ||
+      snapshot.bytes !== sourceManifest.bytes ||
+      snapshot.staging !== 'private-temporary-directory') {
+    errors.push('source snapshot record mismatch');
+  }
   const source = adapter.toString('utf8');
   if (source.includes('contextBridge') || source.includes('ipcRenderer')) {
     errors.push('adapter must not expose contextBridge or ipcRenderer');
@@ -67,6 +84,12 @@ function check() {
     queue: record.queue || null,
     ingress: semantics.ingress || null,
     eventDelivery: semantics.eventDelivery || null,
+    sourceSnapshot: {
+      entry: sourceManifest.entry,
+      sha256: sourceManifest.sha256,
+      bytes: sourceManifest.bytes,
+      staging: snapshot.staging || null,
+    },
     errors,
     compatible: false,
     note: 'Fixture adapter contract only; no Moji preload, native ingress or app boot.',

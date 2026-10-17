@@ -10,8 +10,8 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 18,
-    "pass": 11,
+    "checks": 19,
+    "pass": 12,
     "fail": 2,
     "notRun": 5
   },
@@ -40,6 +40,11 @@
       "id": "adapted-adapter-fixture",
       "status": "PASS",
       "detail": "page-world document-start adapter fixtures/native-app/adapted/page-api.js; hash=49aeda61046df2110756c88dbf80a54564dc7d4382ab53a71c8129b88ae7728b"
+    },
+    {
+      "id": "adapted-source-snapshot",
+      "status": "PASS",
+      "detail": "private staging manifest=index.html; hash=0b014aa18f6ae6156320255bf5b7ded934669009cdd1de7f5765d1bdf7271980; bytes=2246"
     },
     {
       "id": "adapted-moji-runtime",

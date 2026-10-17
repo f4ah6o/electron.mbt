@@ -119,6 +119,41 @@ static NSString *jsQuotedString(NSString *value) {
   return quoted;
 }
 
+static const NSUInteger MaxSnapshotBytes = 1048576;
+static const NSUInteger MaxSourceManifestBytes = 65536;
+
+static BOOL safeRelativePath(NSString *path) {
+  if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 256 ||
+      [path isAbsolutePath]) return NO;
+  for (NSString *component in [path pathComponents]) {
+    if ([component isEqualToString:@".."] || [component isEqualToString:@"."]) return NO;
+  }
+  return YES;
+}
+
+static BOOL validSHA256(NSString *value) {
+  if (![value isKindOfClass:[NSString class]] || value.length != 64) return NO;
+  for (NSUInteger index = 0; index < 64; index++) {
+    unichar character = [value characterAtIndex:index];
+    if (!((character >= '0' && character <= '9') ||
+          (character >= 'a' && character <= 'f'))) return NO;
+  }
+  return YES;
+}
+
+static NSDictionary *readSourceManifest(NSString *root) {
+  NSString *manifestPath = [root stringByAppendingPathComponent:@"source-manifest.json"];
+  NSString *canonical = canonicalPath(manifestPath);
+  if (!canonical || ![canonical hasPrefix:[root stringByAppendingString:@"/"]]) return nil;
+  struct stat info;
+  if (stat(canonical.fileSystemRepresentation, &info) != 0 || !S_ISREG(info.st_mode) ||
+      info.st_size <= 0 || info.st_size > (off_t)MaxSourceManifestBytes) return nil;
+  NSData *data = [NSData dataWithContentsOfFile:canonical];
+  if (!data || data.length == 0 || data.length > MaxSourceManifestBytes) return nil;
+  id value = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  return [value isKindOfClass:[NSDictionary class]] ? value : nil;
+}
+
 static NSColor *windowBackgroundColor(NSString *value) {
   if (![value isKindOfClass:[NSString class]] || value.length != 7 || ![value hasPrefix:@"#"]) return nil;
   NSString *hex = [value substringFromIndex:1];
@@ -195,10 +230,16 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic) BOOL permittedClose;
 @property(nonatomic) BOOL allowNextNavigation;
 @property(nonatomic) BOOL contentAlive;
+@property(nonatomic, copy) NSString *snapshotSourceFile;
+@property(nonatomic, copy) NSString *snapshotRoot;
+@property(nonatomic, copy) NSString *snapshotFile;
+@property(nonatomic, copy) NSString *snapshotSHA256;
+@property(nonatomic) long long snapshotBytes;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
                   preloadSource:(NSString *)preloadSource;
 - (void)publishVerifiedBootstrapIfReady;
+- (void)clearSnapshot;
 - (void)tearDown;
 @end
 
@@ -215,6 +256,11 @@ static NSString *preloadDigest(NSData *data) {
     self.adaptedEventNonce = nil;
     self.adaptedAdapterObservedGeneration = 0;
     self.adaptedAdapterBeforeLoad = NO;
+    self.snapshotSourceFile = nil;
+    self.snapshotRoot = nil;
+    self.snapshotFile = nil;
+    self.snapshotSHA256 = nil;
+    self.snapshotBytes = 0;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -263,6 +309,16 @@ static NSString *preloadDigest(NSData *data) {
     if (visible) [self.native orderFront:nil];
   }
   return self;
+}
+- (void)clearSnapshot {
+  if (self.snapshotRoot != nil) {
+    [[NSFileManager defaultManager] removeItemAtPath:self.snapshotRoot error:nil];
+  }
+  self.snapshotSourceFile = nil;
+  self.snapshotRoot = nil;
+  self.snapshotFile = nil;
+  self.snapshotSHA256 = nil;
+  self.snapshotBytes = 0;
 }
 - (void)installBootstrapScript {
   // Bootstrap attestation is issued by a different JS realm from the app's
@@ -621,6 +677,7 @@ static NSString *preloadDigest(NSData *data) {
   self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
+  [self clearSnapshot];
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
   if (newlyTerminated && self.contentGone) self.contentGone(self.generation);
 }
@@ -641,6 +698,7 @@ static NSString *preloadDigest(NSData *data) {
   self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
+  [self clearSnapshot];
   [self.web.configuration.userContentController removeAllUserScripts];
   [self.web.configuration.userContentController
     removeScriptMessageHandlerForName:@"electronMbtBootstrap" contentWorld:self.bootstrapWorld];
@@ -860,20 +918,26 @@ static NSString *preloadDigest(NSData *data) {
   if ([operation isEqualToString:@"load-file"]) {
     NSString *file = payload[@"file"];
     NSString *canonical = canonicalPath(file);
-    if (![file isKindOfClass:[NSString class]] || !canonical || ![window withinRoot:canonical] ||
+    BOOL snapshot = window.snapshotFile != nil;
+    BOOL pathAllowed = canonical != nil &&
+      (snapshot ? [canonical isEqualToString:window.snapshotSourceFile]
+                : [window withinRoot:canonical]);
+    if (![file isKindOfClass:[NSString class]] || !canonical || !pathAllowed ||
         generation.longLongValue != window.generation ||
         generation.longLongValue <= window.loadedGeneration ||
         window.loadDone != nil || !window.contentAlive) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
       return;
     }
+    NSString *loadPath = snapshot ? window.snapshotFile : canonical;
+    NSString *readRoot = snapshot ? window.snapshotRoot : self.root;
     struct stat info;
-    if (stat(canonical.fileSystemRepresentation, &info) != 0 || !S_ISREG(info.st_mode)) {
+    if (stat(loadPath.fileSystemRepresentation, &info) != 0 || !S_ISREG(info.st_mode)) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
       return;
     }
     window.loadedGeneration = generation.longLongValue;
-    window.loadedFile = canonical;
+    window.loadedFile = loadPath;
     [window installBootstrapScript];
     window.allowNextNavigation = YES;
 #if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
@@ -884,17 +948,17 @@ static NSString *preloadDigest(NSData *data) {
 #if defined(ELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK)
         MBTWindow *candidate = weakWindow;
         done(@"success", @{@"didFinishLoad": @YES,
-          @"url": [NSURL fileURLWithPath:canonical].absoluteString,
+          @"url": [NSURL fileURLWithPath:loadPath].absoluteString,
           @"testRetiredNavigationCallbackCount": @(candidate ? candidate.testingStaleNavigationCallbackCount : 0)});
 #else
         done(@"success", @{@"didFinishLoad": @YES,
-          @"url": [NSURL fileURLWithPath:canonical].absoluteString});
+          @"url": [NSURL fileURLWithPath:loadPath].absoluteString});
 #endif
       } else done(@"failure", @{@"code": reason});
     };
     window.loadingNavigationGeneration = generation.longLongValue;
-    window.loadingNavigation = [window.web loadFileURL:[NSURL fileURLWithPath:canonical]
-        allowingReadAccessToURL:[NSURL fileURLWithPath:self.root isDirectory:YES]];
+    window.loadingNavigation = [window.web loadFileURL:[NSURL fileURLWithPath:loadPath]
+        allowingReadAccessToURL:[NSURL fileURLWithPath:readRoot isDirectory:YES]];
     if (!window.loadingNavigation) {
       window.allowNextNavigation = NO;
       [window completeLoad:NO reason:@"ELECTRON_MBT_LOAD_FAILED"];
@@ -1072,6 +1136,123 @@ static NSString *preloadDigest(NSData *data) {
       @"generation": @(window.generation),
       @"documentStartBeforeLoad": @(window.adaptedAdapterBeforeLoad),
       @"ingress": @"absent"});
+    return;
+  }
+  if ([operation isEqualToString:@"prepare-source"]) {
+    if (payload.count != 1) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *file = payload[@"file"];
+    if (!safeRelativePath(file)) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive || window.loadDone != nil || window.loadingNavigation != nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    NSDictionary *manifest = readSourceManifest(self.root);
+    if (!manifest || manifest.count != 5) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_MANIFEST"});
+      return;
+    }
+    NSNumber *schema = manifest[@"schema"];
+    NSString *app = manifest[@"app"];
+    NSString *entry = manifest[@"entry"];
+    NSString *expectedHash = manifest[@"sha256"];
+    NSNumber *expectedBytes = manifest[@"bytes"];
+    if (![schema isKindOfClass:[NSNumber class]] || schema.integerValue != 1 ||
+        schema.doubleValue != 1.0 ||
+        CFGetTypeID((__bridge CFTypeRef)schema) == CFBooleanGetTypeID() ||
+        ![app isKindOfClass:[NSString class]] || app.length == 0 || app.length > 128 ||
+        !safeRelativePath(entry) || !validSHA256(expectedHash) ||
+        ![expectedBytes isKindOfClass:[NSNumber class]] ||
+        CFGetTypeID((__bridge CFTypeRef)expectedBytes) == CFBooleanGetTypeID() ||
+        expectedBytes.doubleValue != (double)expectedBytes.longLongValue ||
+        expectedBytes.longLongValue <= 0 || expectedBytes.longLongValue > (long long)MaxSnapshotBytes) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_MANIFEST"});
+      return;
+    }
+    NSString *requested = canonicalPath([self.root stringByAppendingPathComponent:file]);
+    NSString *entryPath = canonicalPath([self.root stringByAppendingPathComponent:entry]);
+    if (!requested || !entryPath || ![requested isEqualToString:entryPath] ||
+        ![window withinRoot:requested]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_DENIED"});
+      return;
+    }
+    struct stat info;
+    if (stat(requested.fileSystemRepresentation, &info) != 0 || !S_ISREG(info.st_mode) ||
+        info.st_size <= 0 || info.st_size > (off_t)MaxSnapshotBytes) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_DENIED"});
+      return;
+    }
+    NSData *data = [NSData dataWithContentsOfFile:requested options:0 error:nil];
+    if (!data || data.length == 0 || data.length > MaxSnapshotBytes ||
+        data.length != expectedBytes.unsignedLongLongValue) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_MISMATCH"});
+      return;
+    }
+    NSString *actualHash = preloadDigest(data);
+    if (![actualHash isEqualToString:expectedHash]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_MISMATCH"});
+      return;
+    }
+    NSString *snapshotRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:
+      [NSString stringWithFormat:@"electron-mbt-snapshot-%@", [[NSUUID UUID] UUIDString]]];
+    NSError *error = nil;
+    NSDictionary *directoryAttributes = @{NSFilePosixPermissions: @0700};
+    if (![[NSFileManager defaultManager] createDirectoryAtPath:snapshotRoot
+          withIntermediateDirectories:NO attributes:directoryAttributes error:&error]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
+      return;
+    }
+    NSString *snapshotFile = [snapshotRoot stringByAppendingPathComponent:requested.lastPathComponent];
+    if (![data writeToFile:snapshotFile options:NSDataWritingAtomic error:&error]) {
+      [[NSFileManager defaultManager] removeItemAtPath:snapshotRoot error:nil];
+      done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
+      return;
+    }
+    [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @0600}
+      ofItemAtPath:snapshotFile error:nil];
+    // Resolve the /var -> /private/var alias before handing the read root to
+    // WebKit, or the file URL and its sandbox grant can disagree.
+    NSString *canonicalSnapshotRoot = canonicalPath(snapshotRoot);
+    NSString *canonicalSnapshotFile = canonicalPath(snapshotFile);
+    if (!canonicalSnapshotRoot || !canonicalSnapshotFile) {
+      [[NSFileManager defaultManager] removeItemAtPath:snapshotRoot error:nil];
+      done(@"failure", @{@"code": @"ELECTRON_MBT_NATIVE_FAILURE"});
+      return;
+    }
+    [window clearSnapshot];
+    window.snapshotSourceFile = requested;
+    window.snapshotRoot = canonicalSnapshotRoot;
+    window.snapshotFile = canonicalSnapshotFile;
+    window.snapshotSHA256 = actualHash;
+    window.snapshotBytes = (long long)data.length;
+    done(@"success", @{@"prepared": @YES, @"sha256": actualHash, @"bytes": @(data.length)});
+    return;
+  }
+  if ([operation isEqualToString:@"get-document-identity"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSURL *url = window.web.URL;
+    NSString *current = url.isFileURL ? canonicalPath(url.path) : nil;
+    BOOL observed = window.contentAlive && window.generation > 0 &&
+      window.loadedGeneration == window.generation && window.loadedFile != nil &&
+      window.loadDone == nil && window.loadingNavigation == nil &&
+      current != nil && [current isEqualToString:window.loadedFile];
+    if (!observed) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    BOOL snapshot = window.snapshotFile != nil &&
+      [window.loadedFile isEqualToString:window.snapshotFile];
+    done(@"success", @{@"generation": @(window.generation),
+      @"source": snapshot ? @"snapshot" : @"app",
+      @"sha256": snapshot ? (window.snapshotSHA256 ?: @"") : @""});
     return;
   }
   if ([operation isEqualToString:@"dispatch-adapted-event"]) {

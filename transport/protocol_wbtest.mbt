@@ -525,3 +525,65 @@ test "What: adapted event delivery is fixed-topic and generation-bound" {
     assert_true(validate(adapted_event_wire(malformed, ",\"terminal\":\"success\"")) is Err(_))
   }
 }
+
+///|
+fn source_wire(operation : String, payload : String, suffix : String) -> String {
+  "{\"version\":1,\"session\":\"0123456789abcdef0123456789abcdef\",\"request\":1,\"window\":2,\"generation\":1,\"operation\":\"" +
+    operation + "\",\"payload\":" + payload + suffix + "}"
+}
+
+///|
+test "What: source snapshot preparation validates the manifest shape" {
+  let hash = "a".repeat(64)
+  let request = source_wire("prepare-source", "{\"file\":\"index.html\"}", "")
+  assert_true(validate(request) is Ok(_))
+  let session = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(session.register(request) is Ok(_))
+  let completed = source_wire("prepare-source",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246}",
+    ",\"terminal\":\"success\"")
+  assert_true(session.accept(completed) is Ok(_))
+  for malformed in [
+    "{}",
+    "{\"file\":\"\"}",
+    "{\"file\":\"../escape\"}",
+    "{\"file\":\"/absolute\"}",
+    "{\"file\":\"index.html\",\"extra\":1}",
+  ] {
+    assert_true(validate(source_wire("prepare-source", malformed, "")) is Err(_))
+  }
+  for malformed in [
+    "{\"prepared\":false,\"sha256\":\"" + hash + "\",\"bytes\":2246}",
+    "{\"prepared\":true,\"sha256\":\"short\",\"bytes\":2246}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":0}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":1048577}",
+  ] {
+    assert_true(validate(source_wire("prepare-source", malformed, ",\"terminal\":\"success\"")) is Err(_))
+  }
+}
+
+///|
+test "What: document identity binds the snapshot hash to the current generation" {
+  let hash = "b".repeat(64)
+  let request = source_wire("get-document-identity", "{}", "")
+  assert_true(validate(request) is Ok(_))
+  let session = Session::new("0123456789abcdef0123456789abcdef")
+  assert_true(session.register(request) is Ok(_))
+  let completed = source_wire("get-document-identity",
+    "{\"generation\":1,\"source\":\"snapshot\",\"sha256\":\"" + hash + "\"}",
+    ",\"terminal\":\"success\"")
+  assert_true(session.accept(completed) is Ok(_))
+  assert_true(validate(source_wire("get-document-identity",
+    "{\"generation\":1,\"source\":\"app\",\"sha256\":\"\"}",
+    ",\"terminal\":\"success\"")) is Ok(_))
+  for malformed in [
+    "{\"generation\":2,\"source\":\"snapshot\",\"sha256\":\"" + hash + "\"}",
+    "{\"generation\":1,\"source\":\"other\",\"sha256\":\"" + hash + "\"}",
+    "{\"generation\":1,\"source\":\"snapshot\",\"sha256\":\"\"}",
+    "{\"generation\":1,\"source\":\"app\",\"sha256\":\"" + hash + "\"}",
+    "{\"generation\":1,\"source\":\"snapshot\"}",
+  ] {
+    assert_true(validate(source_wire("get-document-identity", malformed, ",\"terminal\":\"success\"")) is Err(_))
+  }
+  assert_true(validate(source_wire("get-document-identity", "{\"x\":1}", "")) is Err(_))
+}

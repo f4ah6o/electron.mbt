@@ -200,6 +200,16 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTER\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let prepare = request_frame(session, 31, 1, 0, "prepare-source", "{\"file\":\"index.html\"}")
+  let prepare_sent = send(fd, prepare)
+  let prepare_reply = if prepare_sent { receive(fd, buffer) } else { None }
+  if !prepare_sent || prepare_reply is None ||
+    !prepare_reply.unwrap().contains("\"prepared\":true") ||
+    !prepare_reply.unwrap().contains("\"sha256\":\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PREPARE_SOURCE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let begin = request_frame(session, 7, 1, 1, "begin-load", "{}")
   let begin_sent = send(fd, begin)
   let begin_reply = if begin_sent { receive(fd, buffer) } else { None }
@@ -336,6 +346,27 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTED_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let identity = request_frame(session, 32, 1, 1, "get-document-identity", "{}")
+  let identity_sent = send(fd, identity)
+  let identity_reply = if identity_sent { receive(fd, buffer) } else { None }
+  if !identity_sent || identity_reply is None ||
+    !identity_reply.unwrap().contains("\"source\":\"snapshot\"") ||
+    !identity_reply.unwrap().contains("\"generation\":1") ||
+    !identity_reply.unwrap().contains("\"sha256\":\"") ||
+    identity_reply.unwrap().contains("\"sha256\":\"\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SOURCE_IDENTITY\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_prepare = request_frame(session, 33, 1, 1, "prepare-source", "{\"file\":\"index.html\"}")
+  let reload_prepare_sent = send(fd, reload_prepare)
+  let reload_prepare_reply = if reload_prepare_sent { receive(fd, buffer) } else { None }
+  if !reload_prepare_sent || reload_prepare_reply is None ||
+    !reload_prepare_reply.unwrap().contains("\"prepared\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_PREPARE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let reload_begin = request_frame(session, 20, 1, 2, "begin-load", "{}")
   let reload_begin_sent = send(fd, reload_begin)
   let reload_begin_reply = if reload_begin_sent { receive(fd, buffer) } else { None }
@@ -413,6 +444,18 @@ fn main {
     !reload_adapted_reply.unwrap().contains("\"generation\":2") {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_ADAPTED\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let reload_identity = request_frame(session, 34, 1, 2, "get-document-identity", "{}")
+  let reload_identity_sent = send(fd, reload_identity)
+  let reload_identity_reply = if reload_identity_sent { receive(fd, buffer) } else { None }
+  if !reload_identity_sent || reload_identity_reply is None ||
+    !reload_identity_reply.unwrap().contains("\"source\":\"snapshot\"") ||
+    !reload_identity_reply.unwrap().contains("\"generation\":2") ||
+    !reload_identity_reply.unwrap().contains("\"sha256\":\"") ||
+    reload_identity_reply.unwrap().contains("\"sha256\":\"\"") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_RELOAD_SOURCE_IDENTITY\",\"compatible\":false}")
     supervisor_exit(1)
   }
   let reload_event = request_frame(session, 26, 1, 2, "dispatch-adapted-event",
@@ -523,7 +566,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

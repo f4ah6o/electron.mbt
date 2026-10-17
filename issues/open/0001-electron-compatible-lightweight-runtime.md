@@ -1,5 +1,7 @@
 # 0001: Electron API 互換・軽量ランタイム electron.mbt の設計
 
+> 2026-10-17 追補: [0004 実用化ロードマップ](0004-production-readiness-roadmap.md)を入口に、[0005 既存Issue/PRの棚卸し](0005-existing-work-and-integration.md)、[0020 実装作業と受入ゲート](0020-implementation-work-packages.md)、0006〜0021の詳細設計を参照する。本書のM0〜M4・A〜Jは保持し、Node-less adaptedの実績を本書の厳密互換の完了へ転記しない。
+
 | 項目 | 内容 |
 | --- | --- |
 | 状態 | Proposed / 設計のみ。実装・互換性・軽量化の実証は未実施 |

@@ -151,6 +151,8 @@ for (const [label, change, overrides, expectedField] of [
   ['wrong Electron pin', value => { value.versions.electron = '0.0.0'; }, {}, 'observed.versions.electron'],
   ['wrong Node pin', value => { value.versions.node = '0.0.0'; }, {}, 'observed.versions.node'],
   ['missing trace', value => { delete value.trace; }, {}, 'observed.trace'],
+  ['empty trace', value => { value.trace = []; }, {}, 'observed.trace'],
+  ['empty measurement payload', value => { value.observation = {}; }, {}, 'observed.observation'],
   ['compatibility claim', () => {}, { compatible: true }, 'compatible'],
 ]) {
   test(`a saved ${label} is rejected before the fixture can run`, t => {

@@ -49,6 +49,8 @@ for (const [label, change, expected] of [
   ['an aborted observation', value => { value.status = 'aborted'; }, /observed.status/],
   ['a version mismatch', value => { value.versions.electron = '0.0.0'; }, /observed.versions.electron/],
   ['missing measurements', value => { delete value.observation; }, /observed.observation/],
+  ['empty measurements', value => { value.observation = {}; }, /observed.observation/],
+  ['empty trace', value => { value.trace = []; }, /observed.trace/],
   ['a null observation', () => null, /observed/],
 ]) {
   test(`oracle runner does not publish ${label} despite exit zero`, t => {

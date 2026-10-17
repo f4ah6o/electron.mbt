@@ -111,3 +111,21 @@ test "negative measurements remain evidence rather than being forced to pass" {
   baseline_test_set(observed, "observation", { "syncThrow": false })
   assert_true(baseline_value(baseline_test_validate(report), "ok") is True)
 }
+
+///|
+test "empty trace and measurement payloads cannot certify a comparison" {
+  let empty_trace = baseline_test_report()
+  baseline_test_set(baseline_value(empty_trace, "observed"), "trace", [])
+  let trace_result = baseline_test_validate(empty_trace)
+  assert_true(baseline_value(trace_result, "ok") is False)
+  assert_true(baseline_value(trace_result, "field") is String("observed.trace"))
+  let empty_observation = baseline_test_report()
+  baseline_test_set(
+    baseline_value(empty_observation, "observed"), "observation", {},
+  )
+  let observation_result = baseline_test_validate(empty_observation)
+  assert_true(baseline_value(observation_result, "ok") is False)
+  assert_true(
+    baseline_value(observation_result, "field") is String("observed.observation"),
+  )
+}

@@ -16,6 +16,25 @@ static void finish(NSDictionary *result, int code) {
   exit(code);
 }
 
+// Observation shape checks. An NSNull field must never be treated as a
+// dictionary/array, and a missing field must never be scored as expected.
+static NSDictionary *probeDictionary(id value) {
+  return [value isKindOfClass:[NSDictionary class]] ? value : nil;
+}
+
+static BOOL probeString(id value) { return [value isKindOfClass:[NSString class]]; }
+static BOOL probeBool(id value) { return [value isKindOfClass:[NSNumber class]] &&
+  CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID(); }
+static BOOL probeNumber(id value) { return [value isKindOfClass:[NSNumber class]] &&
+  CFGetTypeID((__bridge CFTypeRef)value) != CFBooleanGetTypeID(); }
+static BOOL probeIsArray(id value) { return [value isKindOfClass:[NSArray class]]; }
+static NSArray *probeArray(id value) { return [value isKindOfClass:[NSArray class]] ? value : nil; }
+static BOOL probeNullableString(id value) { return probeString(value) || value == [NSNull null]; }
+
+static void probeMissingObservation(NSMutableArray<NSString *> *missing, NSString *key) {
+  [missing addObject:[@"observed." stringByAppendingString:key]];
+}
+
 @interface NativeProbe : NSObject <WKNavigationDelegate, NSWindowDelegate>
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) NSWindow *window;
@@ -50,12 +69,85 @@ static void finish(NSDictionary *result, int code) {
            @"traces": self.traces, @"nativeObservations": self.nativeLog}, 1);
 }
 
+// The JS report validator owns the detailed field contract; this check keeps
+// the native producer from scoring an absent shape as "as expected".
+- (NSArray<NSString *> *)missingObservationsForTrace:(NSString *)name
+                                            observed:(id)value {
+  NSMutableArray<NSString *> *missing = [NSMutableArray array];
+  NSDictionary *obs = probeDictionary(value);
+  if (obs == nil || obs.count == 0) {
+    [missing addObject:@"observed"];
+    return missing;
+  }
+  if ([name isEqual:@"windowFocusBlur"]) {
+    if (!probeDictionary(obs[@"afterActivate"])) probeMissingObservation(missing, @"afterActivate");
+    if (!probeDictionary(obs[@"afterShadowKey"])) probeMissingObservation(missing, @"afterShadowKey");
+    if (!probeBool(obs[@"domFocusEvent"])) probeMissingObservation(missing, @"domFocusEvent");
+    if (!probeBool(obs[@"domBlurEvent"])) probeMissingObservation(missing, @"domBlurEvent");
+    if (!probeDictionary(obs[@"native"])) probeMissingObservation(missing, @"native");
+    if (!probeIsArray(obs[@"keyNotifications"])) probeMissingObservation(missing, @"keyNotifications");
+  } else if ([name isEqual:@"resizeAndDpi"]) {
+    if (!probeDictionary(obs[@"before"])) probeMissingObservation(missing, @"before");
+    if (!probeDictionary(obs[@"after"])) probeMissingObservation(missing, @"after");
+    if (!probeNumber(obs[@"windowBackingScaleFactor"])) probeMissingObservation(missing, @"windowBackingScaleFactor");
+    if (!probeNumber(obs[@"screenCount"])) probeMissingObservation(missing, @"screenCount");
+    NSDictionary *before = probeDictionary(obs[@"before"]);
+    NSDictionary *after = probeDictionary(obs[@"after"]);
+    if (before != nil && !probeArray(before[@"inner"])) probeMissingObservation(missing, @"before.inner");
+    if (after != nil && !probeArray(after[@"inner"])) probeMissingObservation(missing, @"after.inner");
+    if (after != nil && !probeNumber(after[@"resizeEvents"])) probeMissingObservation(missing, @"after.resizeEvents");
+  } else if ([name isEqual:@"inputDomSynthesis"]) {
+    if (!probeString(obs[@"inputValueAfterSyntheticEvents"])) probeMissingObservation(missing, @"inputValueAfterSyntheticEvents");
+    if (!probeBool(obs[@"documentFocused"])) probeMissingObservation(missing, @"documentFocused");
+    if (!probeIsArray(obs[@"events"])) probeMissingObservation(missing, @"events");
+    if (!probeBool(obs[@"anyTrustedEvent"])) probeMissingObservation(missing, @"anyTrustedEvent");
+  } else if ([name isEqual:@"inputOsEvent"]) {
+    if (!probeDictionary(obs[@"focusState"])) probeMissingObservation(missing, @"focusState");
+    if (!probeDictionary(obs[@"paths"])) probeMissingObservation(missing, @"paths");
+    if (!probeString(obs[@"inputValue"])) probeMissingObservation(missing, @"inputValue");
+    if (!probeIsArray(obs[@"domEvents"])) probeMissingObservation(missing, @"domEvents");
+    if (!probeBool(obs[@"trustedEventSeen"])) probeMissingObservation(missing, @"trustedEventSeen");
+  } else if ([name isEqual:@"osPaste"]) {
+    if (!probeDictionary(obs[@"paths"])) probeMissingObservation(missing, @"paths");
+    if (!probeDictionary(obs[@"focusState"])) probeMissingObservation(missing, @"focusState");
+    if (!probeNullableString(obs[@"inputValue"])) probeMissingObservation(missing, @"inputValue");
+    if (!probeBool(obs[@"pasteEventSeen"])) probeMissingObservation(missing, @"pasteEventSeen");
+    if (!probeBool(obs[@"pasteEventTrusted"])) probeMissingObservation(missing, @"pasteEventTrusted");
+  } else if ([name isEqual:@"pasteboard"]) {
+    NSDictionary *native = probeDictionary(obs[@"native"]);
+    if (native == nil) {
+      probeMissingObservation(missing, @"native");
+    } else {
+      if (!probeString(native[@"pasteboard"])) probeMissingObservation(missing, @"native.pasteboard");
+      if (!probeBool(native[@"write"])) probeMissingObservation(missing, @"native.write");
+      if (!probeNullableString(native[@"readBack"])) probeMissingObservation(missing, @"native.readBack");
+    }
+    NSDictionary *dom = probeDictionary(obs[@"dom"]);
+    if (dom == nil) {
+      probeMissingObservation(missing, @"dom");
+    } else if ([dom[@"stalled"] isEqual:@YES] || [dom[@"skipped"] isEqual:@YES]) {
+      if (!probeString(dom[@"reason"]) || [dom[@"reason"] length] == 0) probeMissingObservation(missing, @"dom.reason");
+    } else if (!probeString(dom[@"api"])) {
+      probeMissingObservation(missing, @"dom.api");
+    }
+  } else if ([name isEqual:@"accessibilityTree"]) {
+    if (!probeString(obs[@"webViewRole"])) probeMissingObservation(missing, @"webViewRole");
+    if (!(probeNumber(obs[@"childCount"]) || obs[@"childCount"] == [NSNull null])) probeMissingObservation(missing, @"childCount");
+    if (!probeNullableString(obs[@"title"])) probeMissingObservation(missing, @"title");
+  }
+  return missing;
+}
+
 // The observation each trace must produce. Unexpected values flip the run to
 // INCONCLUSIVE; a stalled or missing trace makes it PARTIAL — the top-level
 // status is computed, never asserted from constants.
 - (NSString *)outcomeForTrace:(NSString *)name
                      observed:(NSDictionary *)obs
                   expectation:(NSString **)expectation {
+  if (probeDictionary(obs) == nil) {
+    *expectation = @"required observations were not recorded";
+    return @"unexpected";
+  }
   if ([name isEqual:@"inputDomSynthesis"]) {
     *expectation = @"evaluateJavaScript-synthesized events must all carry isTrusted=false and insert no text";
     if ([obs[@"anyTrustedEvent"] isEqual:@YES]) return @"unexpected";
@@ -67,31 +159,38 @@ static void finish(NSDictionary *result, int code) {
   }
   if ([name isEqual:@"resizeAndDpi"]) {
     *expectation = @"the real NSWindow resize produces a DOM resize event and a changed viewport";
-    NSDictionary *after = obs[@"after"];
-    NSDictionary *before = obs[@"before"];
-    BOOL resized = [after[@"resizeEvents"] integerValue] >= 1 &&
+    NSDictionary *after = probeDictionary(obs[@"after"]);
+    NSDictionary *before = probeDictionary(obs[@"before"]);
+    if (after == nil || before == nil) return @"unexpected";
+    BOOL resized = probeNumber(after[@"resizeEvents"]) && [after[@"resizeEvents"] integerValue] >= 1 &&
+                   probeArray(after[@"inner"]) && probeArray(before[@"inner"]) &&
                    ![after[@"inner"] isEqual:before[@"inner"]];
     return resized ? @"as-expected" : @"unexpected";
   }
   if ([name isEqual:@"pasteboard"]) {
     *expectation = @"the named NSPasteboard write/read round-trips; a parked DOM probe is recorded as stalled";
-    NSDictionary *native = obs[@"native"];
+    NSDictionary *native = probeDictionary(obs[@"native"]);
+    NSDictionary *dom = probeDictionary(obs[@"dom"]);
+    if (native == nil || dom == nil) return @"unexpected";
     BOOL roundTrip = [native[@"write"] isEqual:@YES] &&
                      [native[@"readBack"] isEqual:@"mbt-pasteboard-ok"];
     if (!roundTrip) return @"unexpected";
-    if ([obs[@"dom"][@"stalled"] isEqual:@YES]) return @"stalled";
-    return @"as-expected";
+    if ([dom[@"stalled"] isEqual:@YES]) return @"stalled";
+    if ([dom[@"skipped"] isEqual:@YES]) return @"as-expected";
+    return probeString(dom[@"api"]) ? @"as-expected" : @"unexpected";
   }
   if ([name isEqual:@"accessibilityTree"]) {
     *expectation = @"an in-process AX role read returns a non-null value";
-    return obs[@"webViewRole"] != nil && obs[@"webViewRole"] != [NSNull null]
-         ? @"as-expected" : @"unexpected";
+    return probeString(obs[@"webViewRole"]) ? @"as-expected" : @"unexpected";
   }
   *expectation = nil;
   return @"as-expected";
 }
 
 - (void)emit {
+  // A malformed observation must still produce a terminal report; an uncaught
+  // native exception would otherwise lose the accumulated evidence entirely.
+  @try {
   NSInteger unexpected = 0, notRun = 0, executed = 0, stalled = 0;
   for (NSString *name in self.traces.allKeys) {
     NSMutableDictionary *entry = [self.traces[name] mutableCopy];
@@ -99,15 +198,22 @@ static void finish(NSDictionary *result, int code) {
       entry[@"outcome"] = @"not-run";
       notRun++;
     } else {
-      NSString *expectation = nil;
-      NSString *outcome = [self outcomeForTrace:name
-                                       observed:entry[@"observed"]
-                                    expectation:&expectation];
-      if (expectation != nil) entry[@"expectation"] = expectation;
-      entry[@"outcome"] = outcome;
-      if ([outcome isEqual:@"unexpected"]) unexpected++;
-      else if ([outcome isEqual:@"stalled"]) stalled++;
-      else executed++;
+      NSArray<NSString *> *missing = [self missingObservationsForTrace:name observed:entry[@"observed"]];
+      if (missing.count > 0) {
+        entry[@"outcome"] = @"unexpected";
+        entry[@"observationErrors"] = missing;
+        unexpected++;
+      } else {
+        NSString *expectation = nil;
+        NSString *outcome = [self outcomeForTrace:name
+                                         observed:entry[@"observed"]
+                                      expectation:&expectation];
+        if (expectation != nil) entry[@"expectation"] = expectation;
+        entry[@"outcome"] = outcome;
+        if ([outcome isEqual:@"unexpected"]) unexpected++;
+        else if ([outcome isEqual:@"stalled"]) stalled++;
+        else executed++;
+      }
     }
     self.traces[name] = entry;
   }
@@ -136,6 +242,14 @@ static void finish(NSDictionary *result, int code) {
                 @"arrived because the web process blocked); later phases were never attempted"};
   }
   finish(result, 0);
+  } @catch (NSException *exception) {
+    finish(@{@"probe": @"wknative", @"status": @"FAIL",
+             @"code": @"ELECTRON_MBT_PROBE_OBSERVATION_SHAPE",
+             @"compatibilityGate": @"OPEN",
+             @"traces": self.traces ?: @{},
+             @"nativeObservations": self.nativeLog ?: @[],
+             @"error": exception.reason ?: @"unknown native exception"}, 1);
+  }
 }
 
 - (void)advance {
@@ -288,9 +402,10 @@ static void finish(NSDictionary *result, int code) {
                   then:^(id blurred, NSError *e1) {
           if (e1 != nil) { [weakSelf abort:@"ELECTRON_MBT_PAGE_OBSERVATION"]; return; }
           BOOL focusSeen = NO, blurSeen = NO;
-          for (NSDictionary *t in blurred[@"trace"]) {
-            if ([t[@"kind"] isEqual:@"window.focus"]) focusSeen = YES;
-            if ([t[@"kind"] isEqual:@"window.blur"]) blurSeen = YES;
+          for (id t in probeArray(blurred[@"trace"]) ?: @[]) {
+            NSDictionary *event = probeDictionary(t);
+            if ([event[@"kind"] isEqual:@"window.focus"]) focusSeen = YES;
+            if ([event[@"kind"] isEqual:@"window.blur"]) blurSeen = YES;
           }
           [weakSelf trace:@"windowFocusBlur" body:@{
             @"executed": @(focusSeen && blurSeen),
@@ -368,10 +483,12 @@ static void finish(NSDictionary *result, int code) {
   [self eval:probe then:^(id result, NSError *e0) {
     if (e0 != nil) { [weakSelf abort:@"ELECTRON_MBT_PAGE_OBSERVATION"]; return; }
     BOOL anyTrusted = NO;
-    for (NSDictionary *t in result[@"events"]) {
-      id detail = [NSJSONSerialization JSONObjectWithData:[t[@"detail"] dataUsingEncoding:NSUTF8StringEncoding]
+    for (id t in probeArray(result[@"events"]) ?: @[]) {
+      NSDictionary *event = probeDictionary(t);
+      if (!probeString(event[@"detail"])) continue;
+      id detail = [NSJSONSerialization JSONObjectWithData:[event[@"detail"] dataUsingEncoding:NSUTF8StringEncoding]
                                                   options:0 error:NULL];
-      if ([detail[@"trusted"] isEqual:@YES]) anyTrusted = YES;
+      if ([probeDictionary(detail)[@"trusted"] isEqual:@YES]) anyTrusted = YES;
     }
     [weakSelf trace:@"inputDomSynthesis" body:@{
       @"executed": @YES,
@@ -426,16 +543,18 @@ static void finish(NSDictionary *result, int code) {
                   then:^(id result, NSError *e3) {
           if (e3 != nil) { [weakSelf abort:@"ELECTRON_MBT_PAGE_OBSERVATION"]; return; }
           NSMutableArray *newEvents = [NSMutableArray array];
-          NSArray *trace = result[@"trace"];
+          NSArray *trace = probeArray(result[@"trace"]) ?: @[];
           for (NSInteger i = traceBefore; i < (NSInteger)trace.count; i++) {
             [newEvents addObject:trace[(NSUInteger)i]];
           }
           BOOL trustedKey = NO;
-          for (NSDictionary *t in newEvents) {
-            if (![t[@"kind"] hasPrefix:@"input."]) continue;
-            id detail = [NSJSONSerialization JSONObjectWithData:[t[@"detail"] dataUsingEncoding:NSUTF8StringEncoding]
+          for (id t in newEvents) {
+            NSDictionary *event = probeDictionary(t);
+            if (![event[@"kind"] hasPrefix:@"input."]) continue;
+            if (!probeString(event[@"detail"])) continue;
+            id detail = [NSJSONSerialization JSONObjectWithData:[event[@"detail"] dataUsingEncoding:NSUTF8StringEncoding]
                                                         options:0 error:NULL];
-            if ([detail[@"trusted"] isEqual:@YES]) trustedKey = YES;
+            if ([probeDictionary(detail)[@"trusted"] isEqual:@YES]) trustedKey = YES;
           }
           NSString *value = [result[@"value"] isKindOfClass:[NSString class]] ? result[@"value"] : @"";
           BOOL cgDelivered = [value containsString:@"a"];
@@ -516,14 +635,17 @@ static void finish(NSDictionary *result, int code) {
                 then:^(id result, NSError *e1) {
         if (e1 != nil) { [weakSelf abort:@"ELECTRON_MBT_PAGE_OBSERVATION"]; return; }
         BOOL pasteSeen = NO, trusted = NO;
-        for (NSDictionary *t in result[@"trace"]) {
-          if (![t[@"kind"] isEqual:@"input.paste"]) continue;
+        for (id t in probeArray(result[@"trace"]) ?: @[]) {
+          NSDictionary *event = probeDictionary(t);
+          if (![event[@"kind"] isEqual:@"input.paste"]) continue;
           pasteSeen = YES;
-          id detail = [NSJSONSerialization JSONObjectWithData:[t[@"detail"] dataUsingEncoding:NSUTF8StringEncoding]
+          if (!probeString(event[@"detail"])) continue;
+          id detail = [NSJSONSerialization JSONObjectWithData:[event[@"detail"] dataUsingEncoding:NSUTF8StringEncoding]
                                                       options:0 error:NULL];
-          if ([detail[@"trusted"] isEqual:@YES]) trusted = YES;
+          if ([probeDictionary(detail)[@"trusted"] isEqual:@YES]) trusted = YES;
         }
-        BOOL delivered = [result[@"value"] containsString:@"mbt-cgevent-paste"] || trusted;
+        NSString *inputValue = probeString(result[@"value"]) ? result[@"value"] : @"";
+        BOOL delivered = [inputValue containsString:@"mbt-cgevent-paste"] || trusted;
         [weakSelf trace:@"osPaste" body:@{
           @"executed": @(delivered),
           @"observed": @{@"paths": @{@"cgEventPosted": @(cgPosted), @"nsEventPosted": @(nsPosted)},
@@ -558,6 +680,46 @@ static void finish(NSDictionary *result, int code) {
   NSString *readBack = [pb stringForType:NSPasteboardTypeString];
   [weakSelf recordNative:@"pasteboard.native" detail:@{@"pasteboard": @"named:electron-mbt-probe",
     @"wrote": @(wrote), @"readBack": readBack ?: [NSNull null]}];
+  BOOL osPasteOptIn = [NSProcessInfo.processInfo.environment[@"ELECTRON_MBT_OS_PASTE_OPT_IN"] isEqual:@"1"];
+  NSDictionary *nativeObserved = @{@"pasteboard": @"named:electron-mbt-probe",
+                                   @"write": @(wrote),
+                                   @"readBack": readBack ?: [NSNull null],
+                                   @"generalPasteboardVerify": osPasteOptIn
+                                     ? @"pending"
+                                     : @"skipped: reading the general pasteboard requires ELECTRON_MBT_OS_PASTE_OPT_IN=1"};
+
+  // Default execution must not read, write, or copy the general clipboard. The
+  // opt-in path below is the only code allowed to call navigator.clipboard or
+  // document.execCommand('copy'); it runs only in a disposable environment.
+  if (!osPasteOptIn) {
+    NSString *safeProbe = @"(function () {"
+      @"return JSON.stringify({"
+      @"  api: typeof navigator.clipboard,"
+      @"  writeApi: typeof (navigator.clipboard && navigator.clipboard.writeText),"
+      @"  execCommand: typeof document.execCommand,"
+      @"  skipped: true,"
+      @"  reason: 'DOM clipboard read/write/copy requires ELECTRON_MBT_OS_PASTE_OPT_IN=1'"
+      @"});"
+      @"})()";
+    [self eval:safeProbe then:^(id dom, NSError *e0) {
+      if (![weakSelf.currentPhase isEqual:@"phasePasteboard"]) return;
+      if (e0 != nil) { [weakSelf abort:@"ELECTRON_MBT_PAGE_OBSERVATION"]; return; }
+      NSDictionary *domObserved = probeDictionary(dom) ?: @{
+        @"skipped": @YES,
+        @"reason": @"the DOM clipboard availability probe did not return an object",
+      };
+      [weakSelf trace:@"pasteboard" body:@{
+        @"executed": @YES,
+        @"observed": @{@"native": nativeObserved, @"dom": domObserved},
+        @"note": @"NSPasteboard round-trips natively. DOM clipboard read/write/copy is NOT_RUN "
+                 @"unless ELECTRON_MBT_OS_PASTE_OPT_IN=1, so the default run does not mutate the "
+                 @"user's general clipboard.",
+      }];
+      [weakSelf advance];
+    }];
+    return;
+  }
+
   NSString *domProbe = @"(function () {"
     @"var out = { api: typeof navigator.clipboard };"
     @"var done = function () { globalThis.__clipResult = JSON.stringify(out); };"
@@ -571,13 +733,8 @@ static void finish(NSDictionary *result, int code) {
     @"})()";
   // Bounded phase: a pasteboard-consent prompt can park the web process and
   // leave any DOM clipboard eval unresolved; the guard records it and moves on.
-  // Verifying a DOM write means reading the general pasteboard — gated on the
-  // same opt-in because the read itself can raise a consent prompt.
-  BOOL osPasteOptIn = [NSProcessInfo.processInfo.environment[@"ELECTRON_MBT_OS_PASTE_OPT_IN"] isEqual:@"1"];
   [self guardPhase:12 fallback:^{
-    id nativeVerify = osPasteOptIn
-      ? ([[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] ?: [NSNull null])
-      : @"skipped: reading the general pasteboard requires ELECTRON_MBT_OS_PASTE_OPT_IN=1";
+    id nativeVerify = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] ?: [NSNull null];
     [weakSelf trace:@"pasteboard" body:@{
       @"executed": @YES,
       @"observed": @{
@@ -601,9 +758,7 @@ static void finish(NSDictionary *result, int code) {
       [weakSelf eval:@"globalThis.__clipResult" then:^(id dom, NSError *e1) {
         if (![weakSelf.currentPhase isEqual:@"phasePasteboard"]) return;
         if (e1 != nil) { [weakSelf abort:@"ELECTRON_MBT_PAGE_OBSERVATION"]; return; }
-        id nativeVerify = osPasteOptIn
-          ? ([[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] ?: [NSNull null])
-          : @"skipped: reading the general pasteboard requires ELECTRON_MBT_OS_PASTE_OPT_IN=1";
+        id nativeVerify = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] ?: [NSNull null];
         [weakSelf trace:@"pasteboard" body:@{
           @"executed": @YES,
           @"observed": @{

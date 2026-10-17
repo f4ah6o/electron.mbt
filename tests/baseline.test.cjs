@@ -90,6 +90,19 @@ test('negative measurements and another recorded platform are not forced to matc
   assert.equal(validate(value).ok, true);
 });
 
+test('empty trace and measurement payloads are rejected as vacuous baselines', () => {
+  const emptyTrace = report();
+  emptyTrace.observed.trace = [];
+  assert.deepEqual(validate(emptyTrace), {
+    ok: false, compatible: false, code: 'ELECTRON_MBT_INVALID_BASELINE', field: 'observed.trace',
+  });
+  const emptyObservation = report();
+  emptyObservation.observed.observation = {};
+  assert.deepEqual(validate(emptyObservation), {
+    ok: false, compatible: false, code: 'ELECTRON_MBT_INVALID_BASELINE', field: 'observed.observation',
+  });
+});
+
 test('malformed and oversized raw baseline payloads are rejected at the compiled boundary', () => {
   for (const raw of ['{', JSON.stringify(report()) + ' '.repeat(16385)]) {
     const result = JSON.parse(core.validate_baseline(raw, manifest.versions.electronOracle, manifest.versions.nodeOracle, hash));

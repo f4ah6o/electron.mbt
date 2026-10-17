@@ -8,8 +8,9 @@ MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/p
 
 | Path | What works now | What it does not prove |
 | --- | --- | --- |
-| `core/` | MoonBit lifecycle, monotonic handles, native-ack state, close/quit cancellation, document generations, grants, bounded requests, exactly-once terminal bookkeeping | Electron event ordering, native sender authentication or a connected desktop host |
-| `bridge/` | Compiled MoonBit CJS exports, state and diagnostic contracts, structured window/document/request envelopes | A handwritten JS replacement for the core |
+| `core/` | MoonBit lifecycle, monotonic handles, native-ack state, close/quit cancellation, document generations, grants, bounded requests, exactly-once terminal bookkeeping, pinned-baseline admission | Electron event ordering, native sender authentication or a connected desktop host |
+| `bridge/` | Compiled MoonBit CJS exports, state and diagnostic contracts, structured window/document/request envelopes, `validate_baseline` | A handwritten JS replacement for the core |
+| `scripts/` | Bounded saved-baseline admission and probe-report validation; missing/null/mistyped observations fail closed | Actual Electron, native, app or compatibility evidence by itself |
 | `bridges/node/` | Real Node CJS module identity probe, runtime-owned `electron` facade declaring the app surface, bounded tiny-tree codec, source inventory, real private synchronous socketpair control calls | BrowserWindow, general Structured Clone, preload or renderer IPC |
 | `platform/macos/` | An AppKit/WKWebView world-isolation probe with a deadline and machine-readable observations | A synchronous function-proxy bridge, full sandbox audit, IME or accessibility acceptance |
 | `fixtures/oracle/` | Unchanged main/preload/renderer fixture for a separately installed pinned Electron oracle | A matching electron.mbt execution or size improvement |
@@ -43,7 +44,7 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
    npm run probe:macos
    ```
 
-   `node scripts/macos-probe.cjs --build-only` compiles but does not execute the probe. Non-macOS execution reports `NOT_RUN` and exits 2. The probe creates its own `dist/WKWorldProbe.app` and writes `evidence/wkcontentworld.json`; a PASS applies only to its listed world observations. It never reports contextBridge compatibility.
+   `node scripts/macos-probe.cjs --build-only` compiles but does not execute the probe. Non-macOS execution reports `NOT_RUN` and exits 2. The probe creates its own `dist/WKWorldProbe.app` and writes `evidence/wkcontentworld.json`; a PASS applies only to its listed world observations. It never reports contextBridge compatibility. Reports with a missing required observation are invalid and exit 1. The default run does not read, write or copy the general clipboard; DOM clipboard read/write/copy and OS-level paste require `ELECTRON_MBT_OS_PASTE_OPT_IN=1` in a disposable environment.
 
 5. To collect a reference baseline, install Electron **44.7.0** separately, then pass its actual executable path:
 
@@ -51,7 +52,7 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
    node scripts/oracle.cjs /absolute/path/to/Electron.app/Contents/MacOS/Electron
    ```
 
-   The script requires the oracle's embedded Node to be **24.21.0**, creates a separate temporary userData directory, records event/value observations and fixture hashes in `evidence/electron-baseline.json`, and rejects changed sources. It does not download Electron or turn off Chromium's sandbox. CI explicitly installs the oracle outside the source tree for this test only; it is not a fallback or production dependency.
+   The script requires the oracle's embedded Node to be **24.21.0**, creates a separate temporary userData directory, records event/value observations and fixture hashes in `evidence/electron-baseline.json`, and rejects changed sources. It does not download Electron or turn off Chromium's sandbox. The compiled core validates the baseline before it is written, and `scripts/differential.cjs` validates a saved baseline before launching the candidate; incomplete, unpinned, source-mismatched or empty-observation baselines are rejected. CI explicitly installs the oracle outside the source tree for this test only; it is not a fallback or production dependency.
 
 ## CLI
 
@@ -68,5 +69,7 @@ The inventory hashes files and symlink targets, bounds traversal and reads, reje
 ## Boundaries
 
 The tiny value profile rejects lossy values, accessors, proxies, sparse arrays, cycles and repeated object references. It is intentionally not Electron Structured Clone. JavaScript handles JS descriptors and module hooks; the lifecycle/authority/diagnostic implementation is MoonBit. The private C control transport accepts runtime-owned descriptors and serial calls only; it must not be exposed to renderers. Its watchdog is a transport failure detector, not an application IPC handler timeout.
+
+Saved baselines are admitted only when the compiled core confirms completion, the manifest Electron/Node pins, the current fixture hash, and a non-empty trace and measurement payload. Probe reports are admitted only when every executed candidate/trace carries its required observations; `NOT_RUN` and stalled entries need a reason and remain warnings, never acceptance evidence. These are admission checks, not native or compatibility proof.
 
 [The machine-readable manifest](compatibility/manifest.json) keeps acceptance A–J partial/planned, with no verified compatibility rows. [Implementation progress and remaining work](docs/0001-progress.md) distinguish the probes from the production architecture. No release artifact, signing, Node bundle, size saving or complete crash/process ledger is claimed.

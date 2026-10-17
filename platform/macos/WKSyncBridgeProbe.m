@@ -13,6 +13,26 @@ static void finish(NSDictionary *result, int code) {
   exit(code);
 }
 
+// Observation shape checks. A missing or NSNull field is not a negative
+// result: outcome scoring must not turn it into an "as expected" conclusion.
+static NSDictionary *probeDictionary(id value) {
+  return [value isKindOfClass:[NSDictionary class]] ? value : nil;
+}
+
+static BOOL probeString(id value) { return [value isKindOfClass:[NSString class]]; }
+static BOOL probeBool(id value) { return [value isKindOfClass:[NSNumber class]] &&
+  CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID(); }
+static BOOL probeNumber(id value) { return [value isKindOfClass:[NSNumber class]] &&
+  CFGetTypeID((__bridge CFTypeRef)value) != CFBooleanGetTypeID(); }
+static BOOL probeIsArray(id value) { return [value isKindOfClass:[NSArray class]]; }
+static NSArray *probeArray(id value) { return [value isKindOfClass:[NSArray class]] ? value : nil; }
+static BOOL probeNullableString(id value) { return probeString(value) || value == [NSNull null]; }
+static BOOL probeNullableBool(id value) { return probeBool(value) || value == [NSNull null]; }
+
+static void probeMissingObservation(NSMutableArray<NSString *> *missing, NSString *key) {
+  [missing addObject:[@"observed." stringByAppendingString:key]];
+}
+
 @interface SyncBridgeProbe : NSObject <WKNavigationDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, WKUIDelegate, WKURLSchemeHandler>
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) NSWindow *window;
@@ -44,6 +64,73 @@ static void finish(NSDictionary *result, int code) {
            @"candidates": self.candidates, @"nativeObservations": self.nativeLog}, 1);
 }
 
+// Return the observation paths that are missing or the wrong type. The JS
+// report validator owns the detailed contract; this check prevents the native
+// producer itself from scoring an absent observation as "as expected".
+- (NSArray<NSString *> *)missingObservationsForCandidate:(NSString *)name
+                                               observed:(id)value {
+  NSMutableArray<NSString *> *missing = [NSMutableArray array];
+  NSDictionary *obs = probeDictionary(value);
+  if (obs == nil || obs.count == 0) {
+    [missing addObject:@"observed"];
+    return missing;
+  }
+  if ([name isEqual:@"crossWorldFunctionReference"]) {
+    if (!probeString(obs[@"pageFnVisibleFromIsolated"])) probeMissingObservation(missing, @"pageFnVisibleFromIsolated");
+    if (!probeString(obs[@"isolatedFnVisibleFromPage"])) probeMissingObservation(missing, @"isolatedFnVisibleFromPage");
+  } else if ([name isEqual:@"domEventDispatchChannel"]) {
+    if (!probeIsArray(obs[@"isolatedListenerCalls"])) probeMissingObservation(missing, @"isolatedListenerCalls");
+    for (id call in probeArray(obs[@"isolatedListenerCalls"]) ?: @[]) {
+      if (!probeDictionary(call) || !probeBool(probeDictionary(call)[@"callable"])) {
+        probeMissingObservation(missing, @"isolatedListenerCalls.callable");
+        break;
+      }
+    }
+    if (!probeBool(obs[@"syncRoundTripViaSharedDom"])) probeMissingObservation(missing, @"syncRoundTripViaSharedDom");
+    if (!probeNullableString(obs[@"writeBack"])) probeMissingObservation(missing, @"writeBack");
+    if (!(probeBool(obs[@"dispatcherCaughtThrow"]) || probeString(obs[@"dispatcherCaughtThrow"]))) {
+      probeMissingObservation(missing, @"dispatcherCaughtThrow");
+    }
+  } else if ([name isEqual:@"sharedLocalStorage"]) {
+    if (!probeNullableString(obs[@"pageWrite"])) probeMissingObservation(missing, @"pageWrite");
+    if (!probeNullableString(obs[@"isolatedRead"])) probeMissingObservation(missing, @"isolatedRead");
+  } else if ([name isEqual:@"jsDialogChannel"]) {
+    if (!probeNullableString(obs[@"prompt"])) probeMissingObservation(missing, @"prompt");
+    if (!probeString(obs[@"promptTypeof"])) probeMissingObservation(missing, @"promptTypeof");
+    if (!probeNumber(obs[@"promptBlockMs"])) probeMissingObservation(missing, @"promptBlockMs");
+    if (!probeNullableString(obs[@"latePrompt"])) probeMissingObservation(missing, @"latePrompt");
+    if (!probeNullableBool(obs[@"confirm"])) probeMissingObservation(missing, @"confirm");
+    if (!probeNumber(obs[@"confirmBlockMs"])) probeMissingObservation(missing, @"confirmBlockMs");
+    if (!(probeString(obs[@"alert"]) || obs[@"alert"] == [NSNull null])) probeMissingObservation(missing, @"alert");
+    if (!probeIsArray(obs[@"delegateCalls"])) probeMissingObservation(missing, @"delegateCalls");
+  } else if ([name isEqual:@"scriptMessageHandlers"]) {
+    if (!probeString(obs[@"plainReturnType"])) probeMissingObservation(missing, @"plainReturnType");
+    if (!probeBool(obs[@"plainIsPromise"])) probeMissingObservation(missing, @"plainIsPromise");
+    if (!probeString(obs[@"replyReturnType"])) probeMissingObservation(missing, @"replyReturnType");
+    if (!probeBool(obs[@"replyIsPromise"])) probeMissingObservation(missing, @"replyIsPromise");
+    if (!probeBool(obs[@"settledSynchronously"])) probeMissingObservation(missing, @"settledSynchronously");
+    if (!probeString(obs[@"settlementAfterTick"])) probeMissingObservation(missing, @"settlementAfterTick");
+    if (!(probeString(obs[@"pageWorldSeesIsolatedHandler"]) || probeDictionary(obs[@"pageWorldSeesIsolatedHandler"]))) {
+      probeMissingObservation(missing, @"pageWorldSeesIsolatedHandler");
+    }
+    if (!probeIsArray(obs[@"deliveries"])) probeMissingObservation(missing, @"deliveries");
+  } else if ([name isEqual:@"evaluateJavaScriptAsync"]) {
+    if (!probeNumber(obs[@"value"])) probeMissingObservation(missing, @"value");
+    if (!probeBool(obs[@"completionOnLaterRunLoopTurn"])) probeMissingObservation(missing, @"completionOnLaterRunLoopTurn");
+  } else if ([name isEqual:@"syncXhrToUrlSchemeHandler"]) {
+    NSDictionary *xhr = probeDictionary(obs[@"xhr"]);
+    if (xhr == nil) {
+      probeMissingObservation(missing, @"xhr");
+    } else if (!(probeString(xhr[@"response"]) || probeString(xhr[@"error"]))) {
+      probeMissingObservation(missing, @"xhr.response|error");
+    } else if (xhr[@"blockMs"] != nil && !probeNumber(xhr[@"blockMs"])) {
+      probeMissingObservation(missing, @"xhr.blockMs");
+    }
+    if (!probeIsArray(obs[@"schemeTasks"])) probeMissingObservation(missing, @"schemeTasks");
+  }
+  return missing;
+}
+
 // The outcome each candidate must produce for the no-sync-proxy verdict to
 // hold on this build. An unexpected observation flips the candidate to
 // 'unexpected' and the whole run to INCONCLUSIVE — the conclusion never gets
@@ -52,16 +139,23 @@ static void finish(NSDictionary *result, int code) {
                           observed:(NSDictionary *)obs
                        expectation:(NSString **)expectation {
   BOOL unexpected = NO;
+  if (probeDictionary(obs) == nil) {
+    *expectation = @"required observations were not recorded";
+    return @"unexpected";
+  }
   if ([name isEqual:@"crossWorldFunctionReference"]) {
     *expectation = @"function references are 'undefined' in both directions — worlds share DOM, not JS objects";
     unexpected = !([obs[@"pageFnVisibleFromIsolated"] isEqual:@"undefined"] &&
                    [obs[@"isolatedFnVisibleFromPage"] isEqual:@"undefined"]);
   } else if ([name isEqual:@"domEventDispatchChannel"]) {
     *expectation = @"payloads may round-trip, but never callables and never a propagated throw";
-    for (NSDictionary *call in obs[@"isolatedListenerCalls"] ?: @[]) {
-      if ([call[@"callable"] isEqual:@YES]) unexpected = YES;
+    for (id call in probeArray(obs[@"isolatedListenerCalls"]) ?: @[]) {
+      if (probeDictionary(call) && [probeDictionary(call)[@"callable"] isEqual:@YES]) unexpected = YES;
     }
-    if ([obs[@"dispatcherCaughtThrow"] isEqual:@YES]) unexpected = YES;
+    // A throw that reaches the dispatcher is recorded as a string; only the
+    // Boolean false means the page did not catch a propagated exception.
+    if (!probeBool(obs[@"dispatcherCaughtThrow"])) unexpected = YES;
+    else if ([obs[@"dispatcherCaughtThrow"] boolValue]) unexpected = YES;
   } else if ([name isEqual:@"sharedLocalStorage"]) {
     *expectation = @"a shared string store at most — any read/write result is data";
   } else if ([name isEqual:@"jsDialogChannel"]) {
@@ -81,6 +175,9 @@ static void finish(NSDictionary *result, int code) {
 }
 
 - (void)emit {
+  // A malformed observation must still produce a terminal report; an uncaught
+  // native exception would otherwise lose the accumulated evidence entirely.
+  @try {
   // Score every candidate against its invariant before drawing any verdict.
   NSInteger unexpected = 0, notExecuted = 0, asExpected = 0;
   for (NSString *name in self.candidates.allKeys) {
@@ -89,13 +186,20 @@ static void finish(NSDictionary *result, int code) {
       entry[@"outcome"] = @"not-executed";
       notExecuted++;
     } else {
-      NSString *expectation = nil;
-      NSString *outcome = [self outcomeForCandidate:name
-                                          observed:entry[@"observed"]
-                                       expectation:&expectation];
-      entry[@"expectation"] = expectation;
-      entry[@"outcome"] = outcome;
-      if ([outcome isEqual:@"unexpected"]) unexpected++; else asExpected++;
+      NSArray<NSString *> *missing = [self missingObservationsForCandidate:name observed:entry[@"observed"]];
+      if (missing.count > 0) {
+        entry[@"outcome"] = @"unexpected";
+        entry[@"observationErrors"] = missing;
+        unexpected++;
+      } else {
+        NSString *expectation = nil;
+        NSString *outcome = [self outcomeForCandidate:name
+                                            observed:entry[@"observed"]
+                                         expectation:&expectation];
+        entry[@"expectation"] = expectation;
+        entry[@"outcome"] = outcome;
+        if ([outcome isEqual:@"unexpected"]) unexpected++; else asExpected++;
+      }
     }
     self.candidates[name] = entry;
   }
@@ -106,8 +210,9 @@ static void finish(NSDictionary *result, int code) {
     (long)((__MAC_OS_X_VERSION_MAX_ALLOWED / 100) % 100)];
   NSString *verdict = unexpected > 0
     ? [NSString stringWithFormat:
-       @"On OS %@ / WebKit %@ / build SDK %@, %ld executed candidate(s) VIOLATED their expectations — "
-       @"the observations must be reviewed before drawing any sync-proxy conclusion.",
+       @"On OS %@ / WebKit %@ / build SDK %@, %ld executed candidate(s) violated their expectations "
+       @"or lacked required observations — the evidence must be reviewed before drawing any "
+       @"sync-proxy conclusion.",
        NSProcessInfo.processInfo.operatingSystemVersionString,
        [[NSBundle bundleForClass:[WKWebView class]] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"unknown",
        buildSdk, (long)unexpected]
@@ -147,6 +252,14 @@ static void finish(NSDictionary *result, int code) {
                       @"webkit": [[NSBundle bundleForClass:[WKWebView class]] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"unknown"},
   };
   finish(result, 0);
+  } @catch (NSException *exception) {
+    finish(@{@"probe": @"wksyncbridge", @"status": @"FAIL",
+             @"code": @"ELECTRON_MBT_PROBE_OBSERVATION_SHAPE",
+             @"compatibilityGate": @"OPEN",
+             @"candidates": self.candidates ?: @{},
+             @"nativeObservations": self.nativeLog ?: @[],
+             @"error": exception.reason ?: @"unknown native exception"}, 1);
+  }
 }
 
 - (void)advance {

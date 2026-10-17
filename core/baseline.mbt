@@ -81,10 +81,15 @@ pub fn validate_baseline(
     True | False => ()
     _ => return baseline_rejected("observed.moduleIdentity")
   }
-  if !(baseline_value(observed, "trace") is Array(_)) {
+  // An empty trace or measurement payload is shape-valid but carries no
+  // semantic observation. Admitting it would let a vacuous baseline certify a
+  // later comparison, so require at least one recorded entry in each.
+  let trace = baseline_value(observed, "trace")
+  guard trace is Array(trace_entries) && trace_entries.length() > 0 else {
     return baseline_rejected("observed.trace")
   }
-  if !(baseline_value(observed, "observation") is Object(_)) {
+  let measurement = baseline_value(observed, "observation")
+  guard measurement is Object(measurement_fields) && measurement_fields.length() > 0 else {
     return baseline_rejected("observed.observation")
   }
   { "ok": true, "compatible": false }

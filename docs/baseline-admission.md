@@ -1,7 +1,7 @@
 # M0 reference-baseline admission
 
 Status: implementation increment; M0 remains open and `compatible:false`.
-This does not replace or close `issues/open/0001-electron-compatible-lightweight-runtime.md`.
+This does not replace or close `issues/polished/0001-electron-compatible-lightweight-runtime.md`.
 
 ## Execution boundary
 
@@ -10,9 +10,10 @@ This does not replace or close `issues/open/0001-electron-compatible-lightweight
    invoke the same compiled `validate_baseline` export.
 2. A reference must have schema 1, `baseline-collected`, `compatible:false`, the
    current fixture hash, a completed observation, exact manifest Electron/Node
-   versions, recorded platform/architecture, Boolean module identity, an array
-   trace and an object measurement payload. Missing/null/mistyped fields and any
-   `abort` field are rejected. Negative measurements remain valid observations.
+   versions, recorded platform/architecture, Boolean module identity, a
+   non-empty trace and a non-empty object measurement payload. Missing/null/
+   mistyped fields and any `abort` field are rejected. Negative measurements
+   remain valid observations; an empty payload is not a measured negative.
 3. The differential runner validates before launching the candidate fixture.
    Its baseline file read is bounded to 65,536 bytes, rejects nonregular files
    and uses nonblocking open so a FIFO cannot park it before the type check.

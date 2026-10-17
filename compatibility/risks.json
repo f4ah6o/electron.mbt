@@ -164,14 +164,17 @@
       "id": "R12",
       "severity": "P1",
       "evidenceKind": "source-reviewed",
-      "status": "open",
-      "trigger": "Moji eager updater/zlib/Buffer or jmd privileged scheme blocks boot",
+      "status": "mitigating",
+      "trigger": "Pinned source/build outputs exist, but boot closure and native runtime are not executed",
       "stopScope": "Moji positive/J1",
       "mitigation": "pinned build inventory, explicit adaptation, no empty stub",
       "ownerRole": "Loader / App",
       "fixSha": null,
-      "regressionEvidence": [],
-      "residualRisk": "build output not collected."
+      "regressionEvidence": [
+        "compatibility/apps/moji-v1.0.5/build-provenance.json",
+        "compatibility/apps/jmd-v0.2.3/build-provenance.json"
+      ],
+      "residualRisk": "No Node-less boot trace or app scenario has run; jmd privileged scheme remains expected-rejection."
     },
     {
       "id": "R13",

@@ -1,6 +1,25 @@
 {
   "schema": 1,
   "appId": "moji-v1.0.5",
-  "evidence": [],
-  "note": "No Moji evidence has been collected."
+  "evidence": [
+    {
+      "id": "build:moji-v1.0.5:source",
+      "kind": "source-inventory",
+      "path": "inventory.json",
+      "status": "collected"
+    },
+    {
+      "id": "build:moji-v1.0.5:provenance",
+      "kind": "build",
+      "path": "build-provenance.json",
+      "status": "PASS"
+    },
+    {
+      "id": "build:moji-v1.0.5:symbols",
+      "kind": "static-symbols",
+      "path": "symbols.json",
+      "status": "source-reviewed"
+    }
+  ],
+  "note": "Build/source evidence only. No native runtime, preload, IPC or app-scenario acceptance is recorded."
 }

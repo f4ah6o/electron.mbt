@@ -90,13 +90,16 @@ test('a collected record without a valid source hash is invalid', (t) => {
   assert.ok(validateAppRecord(record).problems.some((problem) => problem.includes('sourceHash')));
 });
 
-test('the pinned Moji and jmd records validate without claiming collected builds', () => {
+test('the pinned Moji and jmd records validate and record isolated build provenance', () => {
   for (const appId of ['moji-v1.0.5', 'jmd-v0.2.3']) {
     const dir = path.join(root, 'compatibility/apps', appId);
     const record = {};
     for (const file of RECORD_FILES) record[file] = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
     assert.deepEqual(validateAppRecord(record), { ok: true, problems: [] }, appId);
-    assert.equal(record['build-provenance.json'].status, 'NOT_RUN', appId);
-    assert.equal(record['inventory.json'].status, 'not-collected', appId);
+    assert.equal(record['build-provenance.json'].status, 'PASS', appId);
+    assert.equal(record['inventory.json'].status, 'collected', appId);
+    assert.match(record['inventory.json'].sourceHash, /^[a-f0-9]{64}$/, appId);
+    assert.ok(record['build-provenance.json'].commands.length > 0, appId);
+    assert.equal(record['build-provenance.json'].commands.every((command) => command.exitCode === 0), true, appId);
   }
 });

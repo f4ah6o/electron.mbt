@@ -1,6 +1,25 @@
 {
   "schema": 1,
   "appId": "jmd-v0.2.3",
-  "evidence": [],
-  "note": "No jmd evidence has been collected."
+  "evidence": [
+    {
+      "id": "build:jmd-v0.2.3:source",
+      "kind": "source-inventory",
+      "path": "inventory.json",
+      "status": "collected"
+    },
+    {
+      "id": "build:jmd-v0.2.3:provenance",
+      "kind": "build",
+      "path": "build-provenance.json",
+      "status": "PASS"
+    },
+    {
+      "id": "build:jmd-v0.2.3:symbols",
+      "kind": "static-symbols",
+      "path": "symbols.json",
+      "status": "source-reviewed"
+    }
+  ],
+  "note": "Build/source evidence only. No native runtime, preload, IPC or app-scenario acceptance is recorded."
 }

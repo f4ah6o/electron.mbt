@@ -56,7 +56,12 @@ function scanSymbols(appRoot, inventory, inputMode) {
   ];
   const files = inventory.files.filter((file) => /\.(?:c?js|mjs|ts|tsx)$/.test(file.path));
   let scannedBytes = 0;
+  let skippedLargeFiles = 0;
   for (const file of files) {
+    if (file.bytes > 1048576) {
+      skippedLargeFiles += 1;
+      continue;
+    }
     if (scannedBytes + file.bytes > 4194304) break;
     const text = readSource(appRoot, file.path);
     scannedBytes += Buffer.byteLength(text);
@@ -81,6 +86,7 @@ function scanSymbols(appRoot, inventory, inputMode) {
     inputMode,
     scannedFiles: files.length,
     scannedBytes,
+    skippedLargeFiles,
     builtins: [...builtinImports].sort(),
     packages: [...packageImports].sort(),
     localImports: [...localImports].sort(),

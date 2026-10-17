@@ -12,7 +12,9 @@
     "main": "out/main/main.js"
   },
   "entryType": "commonjs",
-  "collectedAt": "2026-10-17T00:00:00Z",
+  "collectedAt": "2026-10-17T11:57:49.438Z",
   "lockedElectron": "43.1.0",
-  "lockedElectronUpdater": "6.8.9"
+  "lockedElectronUpdater": "6.8.9",
+  "buildStatus": "PASS",
+  "buildNote": "Pinned source installed with npm ci --ignore-scripts and built in an isolated workspace; see build-provenance.json."
 }

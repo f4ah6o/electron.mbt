@@ -104,7 +104,7 @@
       ],
       "blocked": {
         "scope": "Moji positive scenarios",
-        "reason": "The pinned Moji build output, emitted boot graph and adaptation manifest have not been collected.",
+        "reason": "The pinned Moji/jmd sources were built in an isolated workspace (Moji typecheck+build PASS; jmd build PASS), but the emitted boot closure, adaptation manifest and native first-use trace remain open.",
         "requiredEvidence": [
           "pinned build output",
           "emitted module graph",
@@ -113,7 +113,13 @@
         ],
         "resumeCondition": "Collect the isolated build and boot trace, then review the adaptation manifest."
       },
-      "history": []
+      "history": [
+        {
+          "date": "2026-10-17",
+          "state": "blocked",
+          "reason": "Pinned builds collected; boot/E2E and adaptation decisions remain open."
+        }
+      ]
     },
     {
       "id": "DEC-06",

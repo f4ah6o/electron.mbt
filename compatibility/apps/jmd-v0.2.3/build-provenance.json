@@ -1,12 +1,71 @@
 {
   "schema": 1,
   "appId": "jmd-v0.2.3",
-  "status": "NOT_RUN",
+  "status": "PASS",
   "commands": [
-    "npm ci",
-    "npm run build"
+    {
+      "command": "npm ci --ignore-scripts --no-audit --no-fund --cache <isolated>",
+      "exitCode": 0,
+      "note": "install scripts were not run; electron binary was not downloaded"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "note": "vite build; dist renderer emitted"
+    }
   ],
-  "exitCodes": [],
-  "hashes": {},
-  "note": "Not executed. jmd has no independent typecheck script; do not claim one."
+  "typecheck": {
+    "status": "NOT_RUN",
+    "reason": "jmd has no independent typecheck script"
+  },
+  "build": {
+    "status": "PASS",
+    "exitCode": 0,
+    "output": "dist/index.html"
+  },
+  "environment": {
+    "node": "24.22.0",
+    "npm": "11.19.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "osVersion": "Darwin Kernel Version 25.5.0: Tue Jun  9 22:26:22 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T8132"
+  },
+  "sourceHash": "8e5407efa68a7a0b60f4ed51aaf270554ac23358911d6b5e5b98d9b292a4d360",
+  "sourceFiles": 227,
+  "hashes": {
+    "packageLock": "b3ef9f045b55a62dbedec3f6bf027709c332f39de33320abe4a3eabfab760895",
+    "renderer": "96e87db88e45766e458e15b7aa9914fb5566e3ef5ee365d907b5caffee79de65",
+    "sourceInventory": "8e5407efa68a7a0b60f4ed51aaf270554ac23358911d6b5e5b98d9b292a4d360"
+  },
+  "note": "Pinned source built in an isolated workspace with npm ci --ignore-scripts. No typecheck is claimed for jmd. No runtime or app acceptance is claimed.",
+  "moduleKind": "commonjs",
+  "mainRequires": [
+    "./updater",
+    "electron",
+    "node:fs",
+    "node:fs/promises",
+    "node:path",
+    "node:url"
+  ],
+  "preloadRequires": [
+    "electron"
+  ],
+  "privilegedSchemes": [
+    {
+      "scheme": "jmd-file",
+      "privileges": [
+        "standard",
+        "secure",
+        "supportFetchAPI",
+        "bypassCSP"
+      ],
+      "status": "unsupported-expected-rejection"
+    }
+  ],
+  "isolation": {
+    "workspace": "temporary directory outside the repository",
+    "installScripts": "disabled",
+    "nodeModules": "excluded from the source inventory and build hashes"
+  },
+  "builtRendererRelative": "dist/index.html"
 }

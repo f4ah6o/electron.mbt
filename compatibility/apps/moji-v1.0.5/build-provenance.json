@@ -1,13 +1,72 @@
 {
   "schema": 1,
   "appId": "moji-v1.0.5",
-  "status": "NOT_RUN",
+  "status": "PASS",
   "commands": [
-    "npm ci",
-    "npm run typecheck",
-    "npm run build"
+    {
+      "command": "npm ci --ignore-scripts --no-audit --no-fund --cache <isolated>",
+      "exitCode": 0,
+      "note": "install scripts were not run; electron binary was not downloaded"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "note": "electron-vite build; out/main and out/preload emitted"
+    }
   ],
-  "exitCodes": [],
-  "hashes": {},
-  "note": "Not executed. Typecheck and emit/build must remain separate results."
+  "typecheck": {
+    "status": "PASS",
+    "exitCode": 0
+  },
+  "build": {
+    "status": "PASS",
+    "exitCode": 0,
+    "output": "out/main/main.js"
+  },
+  "environment": {
+    "node": "24.22.0",
+    "npm": "11.19.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "osVersion": "Darwin Kernel Version 25.5.0: Tue Jun  9 22:26:22 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T8132"
+  },
+  "sourceHash": "c7e83c7587705763af6b0b30e0139a4a5a8d386dd5a6621e67dbe38cf96bb43d",
+  "sourceFiles": 295,
+  "hashes": {
+    "packageLock": "48ff8c7775a394b7e8191be5d1c40122d68de4b8f0a524b33c0e39da52fe71b8",
+    "main": "41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e",
+    "preload": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
+    "renderer": "1389b9dd44638f0a93c39207df78eba56ddd07f884bccf3789b9224f28c54d7f",
+    "buildConfig": "6471e97be1bd594fa983fcfd1a6df6ba9a6f16ef69777431a337388fce70b71b",
+    "sourceInventory": "c7e83c7587705763af6b0b30e0139a4a5a8d386dd5a6621e67dbe38cf96bb43d"
+  },
+  "note": "Pinned source built in an isolated workspace with npm ci --ignore-scripts. Typecheck and build are separate results. No runtime or app acceptance is claimed.",
+  "moduleKind": "commonjs",
+  "mainRequires": [
+    "electron",
+    "electron-updater",
+    "node:fs",
+    "node:fs/promises",
+    "node:path",
+    "node:url",
+    "node:zlib"
+  ],
+  "preloadRequires": [
+    "electron"
+  ],
+  "isolation": {
+    "workspace": "temporary directory outside the repository",
+    "installScripts": "disabled",
+    "nodeModules": "excluded from the source inventory and build hashes"
+  },
+  "builtMainRelative": "out/main/main.js",
+  "builtPreloadRelative": "out/preload/preload.js",
+  "outputBytes": {
+    "main": 32088,
+    "preload": 2664
+  }
 }

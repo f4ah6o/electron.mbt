@@ -44,10 +44,10 @@ Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter in
 
 - EP-01: baseline/probe admission is implemented; the 0005 reproducer is a regression test.
 - EP-06: profile schema, ADR, compiled admission and CLI integration are implemented. Native authority and actual renderer ingress are not connected.
-- EP-05: the inventory collector, pinned Moji/jmd target records and scenario IDs are present. The pinned checkouts, `npm ci`, typecheck/emit/build and boot traces are NOT RUN in this environment.
+- EP-05: the inventory collector and pinned Moji/jmd records are present. Pinned checkouts were installed with `npm ci --ignore-scripts` in an isolated workspace; Moji `typecheck` and both builds PASS, with source/main/preload/renderer hashes in `compatibility/apps/*/build-provenance.json`. Boot/first-use traces, native runtime and app scenarios remain NOT RUN.
 - EP-32: decisions/risks/components ledgers and validation are present. Root license, signing identity, clean Mac and interactive QA remain blocked.
 
-G0 therefore stays open until the actual app build/boot closure and the remaining authority evidence are recorded. No polished issue is closed by this progress.
+G0 therefore stays open until the boot/first-use closure, native authority and app scenario evidence are recorded. No polished issue is closed by this progress.
 
 ## G1 progress (partial)
 

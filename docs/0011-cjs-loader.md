@@ -33,6 +33,20 @@ state machine.
 - `cacheCount`/`cacheIds` are recorded for evidence. They are realm-local
   identity observations, not a Node compatibility proof.
 
+## Resolution
+
+`runtime/modules/resolve.mbt` resolves relative specifiers against an immutable
+`FileIndex` supplied by the host:
+
+- exact `.js`/`.cjs`/`.json`, extension probing and directory index
+- package `main` metadata for a directory candidate
+- path normalization, root-escape rejection and unsupported `.node`/TS rejection
+- a 16-step package-main recursion bound
+
+The index is a path/metadata snapshot; it does not read the live filesystem.
+Package specifiers (`electron`, nested `node_modules`), exports/imports and
+conditional resolution are intentionally unsupported in this increment.
+
 ## Verified
 
 `moon test --target native -p bridges/embedded-js` and the full native suite
@@ -43,13 +57,14 @@ pass:
 - `module.exports` reassignment
 - JSON module
 - duplicate ID, missing entry, missing dependency and syntax-error rejection
+- relative file/extension/directory/package-main resolution and escape/unsupported rejection
 
 `moon test --target js`/native also pass the pure `ModuleRegistry` contract
 tests for duplicate/unknown/limit/state transitions and cycle edges.
 
 ## Open
 
-- extension/directory/package.json resolution and nested `node_modules`
+- package specifiers, nested `node_modules`, exports/imports and conditional resolution
 - filesystem source acquisition, source hashes and source maps
 - `require('electron')` identity, Node builtin allowlist and unsupported-symbol diagnostics
 - dynamic/computed require, package exports/imports and ESM

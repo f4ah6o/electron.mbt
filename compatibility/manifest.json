@@ -476,21 +476,24 @@
     "compatible": false,
     "tests": [
       "runtime/modules/module_wbtest.mbt",
-      "bridges/embedded-js/cjs_loader_wbtest.mbt"
+      "bridges/embedded-js/cjs_loader_wbtest.mbt",
+      "runtime/modules/resolve_wbtest.mbt"
     ],
     "passed": [
       "in-memory cycle",
       "cache identity",
       "module.exports reassignment",
       "JSON module",
-      "duplicate/missing dependency/syntax rejection"
+      "duplicate/missing dependency/syntax rejection",
+      "relative/extension/index/package-main resolution and escape rejection"
     ],
     "open": [
-      "filesystem/package resolution",
+      "package specifiers/node_modules",
       "Node builtins",
       "dynamic require",
       "pinned Node oracle",
-      "actual Moji/jmd graph"
+      "actual Moji/jmd graph",
+      "conditional exports/imports"
     ],
     "note": "Pre-resolved in-memory graph only. No app loader or Node compatibility claim."
   },

@@ -414,5 +414,29 @@
       "Node subset"
     ],
     "note": "Pinned ABI only. Eval/throw, explicit value leases, Promise job execution and interrupt pass on this integration environment; no Node-free runtime or app claim."
+  },
+  "scheduler": {
+    "status": "partial",
+    "compatible": false,
+    "tests": [
+      "runtime/embedded/scheduler_wbtest.mbt"
+    ],
+    "passed": [
+      "deadline/registration ordering",
+      "cancellation",
+      "negative delay",
+      "non-monotonic rejection",
+      "timer limit",
+      "unref next-deadline",
+      "post-batch scheduling"
+    ],
+    "open": [
+      "QuickJS jobs/nextTick integration",
+      "host events",
+      "shutdown deadlines",
+      "Node timer differential",
+      "unhandled rejection policy"
+    ],
+    "note": "Pure MoonBit timer contract only. No JavaScript callback execution or Node parity is claimed."
   }
 }

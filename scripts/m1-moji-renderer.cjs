@@ -115,6 +115,9 @@ async function main() {
     fs.mkdirSync(path.join(temp, 'out/preload'), { recursive: true });
     fs.mkdirSync(path.join(temp, 'adapted'), { recursive: true });
     fs.cpSync(sourceRenderer, path.join(temp, 'out/renderer'), { recursive: true });
+    fs.mkdirSync(path.join(temp, 'samples'), { recursive: true });
+    fs.copyFileSync(path.join(sourceRoot, 'samples/markdown-guide.en.md'),
+      path.join(temp, 'samples/markdown-guide.en.md'));
     fs.copyFileSync(sourceMain, path.join(temp, 'out/main/main.js'));
     fs.copyFileSync(sourcePreload, path.join(temp, 'out/preload/preload.js'));
     fs.copyFileSync(adapterPath, path.join(temp, 'adapted/page-api.js'));
@@ -129,6 +132,7 @@ async function main() {
       'out/main/main.js',
       'out/preload/preload.js',
       'harness.js',
+      'samples/markdown-guide.en.md',
     ];
     const manifest = buildSourceManifest(temp, 'out/renderer/index.html', 'moji-renderer', files);
     writeSourceManifest(path.join(temp, 'source-manifest.json'), manifest);
@@ -157,11 +161,15 @@ async function main() {
       return;
     }
     const pageText = typeof parsed.pageText === 'string' ? parsed.pageText : '';
+    let api = {};
+    try { api = JSON.parse(parsed.apiProbe || '{}'); } catch {}
+    const apiOk = api.state === 'done' && api.saveOk === true &&
+      api.readOk === true && api.sampleOk === true && api.settingsTheme === 'dark';
     const ok = result.code === 0 && parsed.status === 'PASS' &&
       parsed.probe === 'moji-adapted-native' && parsed.rendererLoaded === true &&
       parsed.apiPresent === true && Number.isInteger(parsed.rootChildren) &&
       parsed.rootChildren > 0 && pageText.length > 0 &&
-      !/error|failed|unsupported api/i.test(pageText) && parsed.compatible === false;
+      !/error|failed|unsupported api/i.test(pageText) && apiOk && parsed.compatible === false;
     const report = {
       ...parsed,
       status: ok ? 'PASS' : 'FAIL',
@@ -181,7 +189,11 @@ async function main() {
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
     process.stdout.write(`${JSON.stringify(report)}\n`);
-    if (!ok) process.exitCode = 1;
+    if (!ok) {
+      process.stderr.write(result.stdout || '');
+      process.stderr.write(result.stderr || '');
+      process.exitCode = 1;
+    }
   } finally {
     if (assetServer !== null) assetServer.close();
     fs.rmSync(temp, { recursive: true, force: true });

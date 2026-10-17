@@ -345,6 +345,16 @@ fn run_moji_app() -> Unit {
       ""
     }
   }
+  let grant = request_frame(session, 52, 1, 0, "grant-file",
+    "{\"path\":\"renderer-save.md\",\"mode\":\"readwrite\"}")
+  let grant_sent = send(fd, grant)
+  let grant_reply = if grant_sent { receive(fd, buffer) } else { None }
+  if !grant_sent || grant_reply is None ||
+    !grant_reply.unwrap().contains("\"granted\":true") {
+    println("{\"debug\":\"grant\",\"reply\":\"" +
+      json_path(grant_reply.unwrap_or("none")) + "\"}")
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_GRANT")
+  }
   if supervisor_app_main(@utf8.encode(snapshot_root)) != 43 {
     fail_moji_app("ELECTRON_MBT_MOJI_APP_MAIN")
   }
@@ -444,6 +454,7 @@ fn run_moji_app() -> Unit {
     }
     supervisor_sleep_ms(20)
   }
+  let mut api_probe = ""
   let simple_ok = page_title.contains("moji-adapted-ready:dark:unsupported")
   let renderer_ok = api_present && root_children > 0
   let page_ok = ready && (simple_ok || renderer_ok)
@@ -452,7 +463,8 @@ fn run_moji_app() -> Unit {
       "\"pageLoaded\":true,\"apiPresent\":" + (if api_present { "true" } else { "false" }) +
       ",\"pageTitle\":\"" + json_path(page_title) + "\"," +
       "\"pageText\":\"" + json_path(json_line(page_text)) + "\"," +
-      "\"rootChildren\":" + root_children.to_string() +
+      "\"apiProbe\":\"" + json_path(json_line(api_probe)) + "\"," +
+    "\"rootChildren\":" + root_children.to_string() +
       ",\"rendererLoaded\":" + (if renderer_ok { "true" } else { "false" }) +
       ",\"simpleProbe\":" + (if simple_ok { "true" } else { "false" }) +
       ",\"attempts\":" + attempts.to_string() + ",\"compatible\":false}")
@@ -460,18 +472,56 @@ fn run_moji_app() -> Unit {
     supervisor_kill()
     supervisor_exit(1)
   }
-  let report = ("{\"status\":\"PASS\",\"probe\":\"moji-adapted-native\"," +
+  if renderer_ok {
+    let trigger = request_frame(session, 38, 1, 1, "trigger-renderer-api", "{}")
+    let trigger_sent = send(fd, trigger)
+    let trigger_reply = if trigger_sent { receive(fd, buffer) } else { None }
+    if !trigger_sent || trigger_reply is None ||
+      !trigger_reply.unwrap().contains("\"started\":true") {
+      api_probe = "{\"state\":\"error\",\"code\":\"ELECTRON_MBT_RENDERER_API_TRIGGER\"}"
+    } else {
+      for _attempt = 0; _attempt < 300; _attempt = _attempt + 1 {
+        let _ = pump_app_requests(fd, event_fd, buffer, event_buffer, session, 1, 1)
+        let probe = request_frame(session, 37, 1, 1, "probe-renderer", "{}")
+        let probe_sent = send(fd, probe)
+        let probe_reply = if probe_sent { receive(fd, buffer) } else { None }
+        if probe_reply is Some(_) {
+          let probe_text = probe_reply.unwrap()
+          if json_payload_field(probe_text, "apiProbe") is Some(value) {
+            api_probe = value
+          }
+        }
+        if api_probe.contains("\"state\":\"done\"") ||
+          api_probe.contains("\"state\":\"error\"") {
+          break
+        }
+        supervisor_sleep_ms(20)
+      }
+    }
+  }
+  let api_ok = !renderer_ok || (api_probe.contains("\"state\":\"done\"") &&
+    api_probe.contains("\"saveOk\":true") &&
+    api_probe.contains("\"readOk\":true") &&
+    api_probe.contains("\"sampleOk\":true") &&
+    api_probe.contains("\"settingsTheme\":\"dark\""))
+  let final_ok = page_ok && api_ok
+  let report_status = if final_ok { "PASS" } else { "FAIL" }
+  let report = ("{\"status\":\"" + report_status + "\",\"probe\":\"moji-adapted-native\"," +
     "\"backend\":\"AppKit+WKWebView\",\"pageLoaded\":true,\"apiPresent\":" +
     (if api_present { "true" } else { "false" }) +
     ",\"settingsTheme\":\"dark\",\"updateStatus\":\"unsupported\"," +
     "\"mainHandlers\":true,\"pageTitle\":\"" + json_path(page_title) + "\"," +
     "\"pageText\":\"" + json_path(json_line(page_text)) + "\"," +
+    "\"apiProbe\":\"" + json_path(json_line(api_probe)) + "\"," +
     "\"rootChildren\":" + root_children.to_string() +
     ",\"rendererLoaded\":" + (if renderer_ok { "true" } else { "false" }) +
     ",\"simpleProbe\":" + (if simple_ok { "true" } else { "false" }) +
     ",\"attempts\":" + attempts.to_string() + ",\"compatible\":false}")
   println(report)
   supervisor_kill()
+  if !final_ok {
+    supervisor_exit(1)
+  }
   supervisor_exit(0)
   return
 }

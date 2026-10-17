@@ -54,8 +54,10 @@ exposes `contextBridge`, `ipcRenderer` or a generic `send(channel, ...)`.
 
 The pinned Moji renderer (112 files, ~13 MB) loads under the adapted API with a
 test-only loopback asset server and renders its real UI (`New`, `Open`, `Save`,
-`Preview`, `Editor`, `Export`, `Open File`, `New File`). The original preload
-remains **NOT_EXECUTED**. See
+`Preview`, `Editor`, `Export`, `Open File`, `New File`). Its programmatic
+`save`/`readPath`/`readSample` calls reach the native file broker, and
+settings/update reach the QuickJS handlers; the original preload remains
+**NOT_EXECUTED**. See
 [docs/0032-moji-renderer.md](0032-moji-renderer.md).
 
 ## Native adapted E2E

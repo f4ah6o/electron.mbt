@@ -171,6 +171,11 @@ function buildReport() {
       : `Moji page adapter -> native ingress -> Moji handlers: page=${mojiNative.pageLoaded}, api=${mojiNative.apiPresent}, settings=${mojiNative.settingsTheme}, update=${mojiNative.updateStatus}, preloadExecuted=${mojiNative.preloadExecuted}`));
   let mojiRenderer = null;
   try { mojiRenderer = readJson('compatibility/reports/moji-renderer.json'); } catch {}
+  let mojiRendererApi = {};
+  try { mojiRendererApi = JSON.parse((mojiRenderer && mojiRenderer.apiProbe) || '{}'); } catch {}
+  const mojiRendererApiOk = mojiRendererApi.state === 'done' &&
+    mojiRendererApi.saveOk === true && mojiRendererApi.readOk === true &&
+    mojiRendererApi.sampleOk === true && mojiRendererApi.settingsTheme === 'dark';
   const mojiRendererOk = mojiRenderer !== null && mojiRenderer.status === 'PASS' &&
     mojiRenderer.rendererLoaded === true && mojiRenderer.apiPresent === true &&
     mojiRenderer.rootChildren >= 1 && typeof mojiRenderer.pageText === 'string' &&
@@ -178,11 +183,11 @@ function buildReport() {
     mojiRenderer.mainSHA256 === mojiProvenance.hashes.main &&
     mojiRenderer.preloadSHA256 === mojiProvenance.hashes.preload &&
     mojiRenderer.adapterSHA256 === mojiNativeAdapterHash &&
-    mojiRenderer.harnessSHA256 === mojiHarnessHash;
+    mojiRenderer.harnessSHA256 === mojiHarnessHash && mojiRendererApiOk;
   checks.push(check('moji-renderer', mojiRenderer === null ? 'NOT_RUN' : (mojiRendererOk ? 'PASS' : 'FAIL'),
     mojiRenderer === null
       ? 'Moji renderer report is absent'
-      : `Moji renderer: title=${mojiRenderer.pageTitle}, rootChildren=${mojiRenderer.rootChildren}, api=${mojiRenderer.apiPresent}, preloadExecuted=${mojiRenderer.preloadExecuted}`));
+      : `Moji renderer: title=${mojiRenderer.pageTitle}, rootChildren=${mojiRenderer.rootChildren}, api=${mojiRenderer.apiPresent}, save=${mojiRendererApi.saveOk}, read=${mojiRendererApi.readOk}, sample=${mojiRendererApi.sampleOk}, preloadExecuted=${mojiRenderer.preloadExecuted}`));
   checks.push(check('node-less-moji-app-main', mojiRendererOk ? 'PASS' : 'NOT_RUN',
     mojiRendererOk
       ? 'Moji main boots and the adapted Moji renderer loads; original preload NOT_EXECUTED'

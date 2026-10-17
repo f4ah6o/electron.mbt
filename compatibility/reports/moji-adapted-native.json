@@ -9,6 +9,7 @@
   "mainHandlers": true,
   "pageTitle": "moji-adapted-ready:dark:unsupported",
   "pageText": "moji-adapted-ready:dark:unsupported",
+  "apiProbe": "",
   "rootChildren": 0,
   "rendererLoaded": false,
   "simpleProbe": true,

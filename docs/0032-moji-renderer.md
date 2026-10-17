@@ -38,6 +38,20 @@ The page text includes the real UI: `New`, `Open`, `Save`, `Preview`,
 `getSettings`/`getUpdateState` calls reach the QuickJS Moji handlers
 (`settingsTheme:"dark"`, `updateStatus:"unsupported"`).
 
+The API probe also exercises the native file broker from the real renderer:
+
+- `save('renderer-save.md', '# renderer save\n')` → `saveOk:true`
+- `readPath('renderer-save.md')` → `readOk:true`, content
+  `# renderer save\n`
+- `readSample('markdown-guide.en.md')` → `sampleOk:true`, real sample content
+  (`# Complete Markdown Guide...`)
+
+The broker now returns the Moji-shaped `ok`/`content` fields (while retaining
+`text` for the fixture probe) for `file:read-path`/`file:read-sample`;
+`file:save` returns `ok`.
+
+The report's `apiProbe` is
+`{"state":"done","saveOk":true,"readOk":true,"sampleOk":true,"settingsTheme":"dark"}`.
 Report: [compatibility/reports/moji-renderer.json](compatibility/reports/moji-renderer.json).
 Readiness rows `moji-renderer` and `node-less-moji-app-main` are PASS;
 `adapted-moji-runtime` remains NOT_RUN because the original preload is not
@@ -51,15 +65,17 @@ executed and async file/dialog/export dispatch is incomplete.
   unresolved M0 gate
 - the renderer's file/dialog/export calls are async; the bridge currently
   returns `ASYNC_PENDING` for them
-- only the initial render and settings/update calls are asserted; no human UI
-  interaction, file open/save, export or update flow
+- the file save/read uses a **test-only grant** for `renderer-save.md`; no
+  human save dialog or production grant flow
+- only the initial render and programmatic save/read/sample calls are asserted;
+  no human UI interaction, dialog, export or update flow
 - external Google Fonts may be unavailable; no visual/font acceptance
 - no verified row; `compatible:false`, adapted **partial**, strict **blocked**
   unchanged
 
 ## Next
 
-- add async handler dispatch and real file/dialog/export flows to the renderer
+- add async handler dispatch and real dialog/export flows to the renderer
 - exercise the real dialog UI and PDF/PNG document export
 - move asset delivery out of the test-only loopback harness
 - keep the original preload unexecuted until the contextBridge gate is resolved

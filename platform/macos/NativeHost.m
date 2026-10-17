@@ -358,7 +358,13 @@ static NSString *preloadDigest(NSData *data) {
   if (![candidate isAbsolutePath]) {
     candidate = [self.root stringByAppendingPathComponent:candidate];
   }
-  NSString *resolved = [[candidate stringByStandardizingPath] stringByResolvingSymlinksInPath];
+  NSString *standardized = [candidate stringByStandardizingPath];
+  NSString *resolved = [standardized stringByResolvingSymlinksInPath];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:standardized]) {
+    NSString *parent = [standardized stringByDeletingLastPathComponent];
+    NSString *resolvedParent = [parent stringByResolvingSymlinksInPath];
+    resolved = [resolvedParent stringByAppendingPathComponent:standardized.lastPathComponent];
+  }
   NSString *prefix = [resolvedRoot stringByAppendingString:@"/"];
   if (![resolved isEqualToString:resolvedRoot] && ![resolved hasPrefix:prefix]) return nil;
   return resolved;
@@ -475,7 +481,7 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     self.ingressAdmitted++;
-    reply(@{@"path": granted, @"bytes": @(data.length), @"source": @"test-dialog"}, nil);
+    reply(@{@"ok": @YES, @"path": granted, @"bytes": @(data.length), @"source": @"test-dialog"}, nil);
     return;
   }
   if (self.native == nil) {
@@ -504,7 +510,7 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     window.ingressAdmitted++;
-    reply(@{@"path": granted, @"bytes": @(data.length), @"source": @"dialog"}, nil);
+    reply(@{@"ok": @YES, @"path": granted, @"bytes": @(data.length), @"source": @"dialog"}, nil);
   }];
 }
 - (void)writeExportData:(NSData *)data suggestedName:(NSString *)suggestedName
@@ -655,7 +661,7 @@ static NSString *preloadDigest(NSData *data) {
       NSString *dataUrl = [NSString stringWithFormat:@"data:%@;base64,%@", mime,
         [data base64EncodedStringWithOptions:0]];
       self.ingressAdmitted++;
-      reply(@{@"path": canonical, @"dataUrl": dataUrl, @"bytes": @(data.length)}, nil);
+      reply(@{@"ok": @YES, @"path": canonical, @"dataUrl": dataUrl, @"bytes": @(data.length)}, nil);
       return;
     }
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
@@ -664,7 +670,7 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     self.ingressAdmitted++;
-    reply(@{@"path": canonical, @"text": text, @"bytes": @(data.length)}, nil);
+    reply(@{@"ok": @YES, @"path": canonical, @"text": text, @"content": text, @"bytes": @(data.length)}, nil);
     return;
   }
   if ([operation isEqualToString:@"file:save"]) {
@@ -688,7 +694,7 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     self.ingressAdmitted++;
-    reply(@{@"path": canonical, @"bytes": @(content.length)}, nil);
+    reply(@{@"ok": @YES, @"path": canonical, @"bytes": @(content.length)}, nil);
     return;
   }
   if ([operation isEqualToString:@"doc:export"]) {
@@ -1973,6 +1979,37 @@ static NSString *preloadDigest(NSData *data) {
     done(@"success", @{@"delivered": @YES});
     return;
   }
+  if ([operation isEqualToString:@"trigger-renderer-api"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive || window.generation <= 0 || window.loadedFile == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    NSString *script = @"window.__mojiApiProbe={state:'pending'}; (async function(){ try { "
+      "const saved=await window.api.save('renderer-save.md','# renderer save\\n'); "
+      "const read=await window.api.readPath('renderer-save.md'); "
+      "const sample=await window.api.readSample('markdown-guide.en.md'); "
+      "const settings=await window.api.getSettings(); "
+      "window.__mojiApiProbe={state:'done',saveOk:!!(saved&&saved.ok),"
+      "readOk:!!(read&&read.ok),readContent:read&&read.content?read.content.slice(0,64):'',"
+      "sampleOk:!!(sample&&sample.ok),"
+      "sampleContent:sample&&sample.content?sample.content.slice(0,64):'',"
+      "settingsTheme:settings&&settings.previewTheme}; "
+      "} catch(e){ window.__mojiApiProbe={state:'error',code:String(e&&e.code||e)}; } })(); true;";
+    [window.web evaluateJavaScript:script inFrame:nil inContentWorld:[WKContentWorld pageWorld]
+      completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        (void)result;
+        if (error != nil) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_RENDERER_API_PROBE"});
+          return;
+        }
+        done(@"success", @{@"started": @YES});
+      }];
+    return;
+  }
   if ([operation isEqualToString:@"probe-renderer"]) {
     if (payload.count != 0) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
@@ -1985,7 +2022,8 @@ static NSString *preloadDigest(NSData *data) {
     NSString *script = @"(function(){ const root=document.getElementById('root'); "
       "return {api: !!(window.api && typeof window.api.getSettings === 'function'), "
       "rootChildren: root ? root.childElementCount : 0, title: document.title, "
-      "text: (document.body && document.body.innerText || '').slice(0, 160)}; })()";
+      "text: (document.body && document.body.innerText || '').slice(0, 160), "
+      "apiProbe: window.__mojiApiProbe ? JSON.stringify(window.__mojiApiProbe) : ''}; })()";
     [window.web evaluateJavaScript:script inFrame:nil inContentWorld:[WKContentWorld pageWorld]
       completionHandler:^(id _Nullable result, NSError * _Nullable error) {
         if (error != nil || ![result isKindOfClass:[NSDictionary class]]) {

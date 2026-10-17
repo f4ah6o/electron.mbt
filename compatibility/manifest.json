@@ -756,7 +756,7 @@
       ]
     },
     "nativeE2E": "PASS (settings/update)",
-    "renderer": "PASS (loopback)"
+    "renderer": "PASS (loopback; file save/read/sample)"
   },
   "fileBroker": {
     "status": "partial",
@@ -825,6 +825,15 @@
     "assetServer": "loopback-http-test-only",
     "bootGraphFiles": 112,
     "compatible": false,
-    "note": "Pinned Moji renderer loaded under the adapted profile via a loopback asset server; original preload NOT_EXECUTED."
+    "note": "Pinned Moji renderer loaded under the adapted profile via a loopback asset server; save/read/sample and settings/update paths work; original preload NOT_EXECUTED.",
+    "apiProbe": {
+      "state": "done",
+      "saveOk": true,
+      "readOk": true,
+      "sampleOk": true,
+      "settingsTheme": "dark"
+    },
+    "readContent": "# renderer save\n",
+    "sampleContent": "# Complete Markdown Guide..."
   }
 }

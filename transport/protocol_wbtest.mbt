@@ -535,12 +535,13 @@ fn source_wire(operation : String, payload : String, suffix : String) -> String 
 ///|
 test "What: source snapshot preparation validates the manifest shape" {
   let hash = "a".repeat(64)
+  let manifest = "c".repeat(64)
   let request = source_wire("prepare-source", "{\"file\":\"index.html\"}", "")
   assert_true(validate(request) is Ok(_))
   let session = Session::new("0123456789abcdef0123456789abcdef")
   assert_true(session.register(request) is Ok(_))
   let completed = source_wire("prepare-source",
-    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":2,\"manifestSHA256\":\"" + manifest + "\"}",
     ",\"terminal\":\"success\"")
   assert_true(session.accept(completed) is Ok(_))
   for malformed in [
@@ -553,35 +554,41 @@ test "What: source snapshot preparation validates the manifest shape" {
     assert_true(validate(source_wire("prepare-source", malformed, "")) is Err(_))
   }
   for malformed in [
-    "{\"prepared\":false,\"sha256\":\"" + hash + "\",\"bytes\":2246}",
-    "{\"prepared\":true,\"sha256\":\"short\",\"bytes\":2246}",
-    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":0}",
-    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":1048577}",
+    "{\"prepared\":false,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":2,\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"prepared\":true,\"sha256\":\"short\",\"bytes\":2246,\"files\":2,\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":0,\"files\":2,\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":1048577,\"files\":2,\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":0,\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":33,\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"prepared\":true,\"sha256\":\"" + hash + "\",\"bytes\":2246,\"files\":2,\"manifestSHA256\":\"short\"}",
   ] {
     assert_true(validate(source_wire("prepare-source", malformed, ",\"terminal\":\"success\"")) is Err(_))
   }
 }
 
 ///|
-test "What: document identity binds the snapshot hash to the current generation" {
+test "What: document identity binds the snapshot and manifest hashes to the current generation" {
   let hash = "b".repeat(64)
+  let manifest = "d".repeat(64)
   let request = source_wire("get-document-identity", "{}", "")
   assert_true(validate(request) is Ok(_))
   let session = Session::new("0123456789abcdef0123456789abcdef")
   assert_true(session.register(request) is Ok(_))
   let completed = source_wire("get-document-identity",
-    "{\"generation\":1,\"source\":\"snapshot\",\"sha256\":\"" + hash + "\"}",
+    "{\"generation\":1,\"source\":\"snapshot\",\"sha256\":\"" + hash + "\",\"manifestSHA256\":\"" + manifest + "\"}",
     ",\"terminal\":\"success\"")
   assert_true(session.accept(completed) is Ok(_))
   assert_true(validate(source_wire("get-document-identity",
-    "{\"generation\":1,\"source\":\"app\",\"sha256\":\"\"}",
+    "{\"generation\":1,\"source\":\"app\",\"sha256\":\"\",\"manifestSHA256\":\"\"}",
     ",\"terminal\":\"success\"")) is Ok(_))
   for malformed in [
-    "{\"generation\":2,\"source\":\"snapshot\",\"sha256\":\"" + hash + "\"}",
-    "{\"generation\":1,\"source\":\"other\",\"sha256\":\"" + hash + "\"}",
-    "{\"generation\":1,\"source\":\"snapshot\",\"sha256\":\"\"}",
-    "{\"generation\":1,\"source\":\"app\",\"sha256\":\"" + hash + "\"}",
-    "{\"generation\":1,\"source\":\"snapshot\"}",
+    "{\"generation\":2,\"source\":\"snapshot\",\"sha256\":\"" + hash + "\",\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"generation\":1,\"source\":\"other\",\"sha256\":\"" + hash + "\",\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"generation\":1,\"source\":\"snapshot\",\"sha256\":\"\",\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"generation\":1,\"source\":\"snapshot\",\"sha256\":\"" + hash + "\",\"manifestSHA256\":\"\"}",
+    "{\"generation\":1,\"source\":\"app\",\"sha256\":\"" + hash + "\",\"manifestSHA256\":\"\"}",
+    "{\"generation\":1,\"source\":\"app\",\"sha256\":\"\",\"manifestSHA256\":\"" + manifest + "\"}",
+    "{\"generation\":1,\"source\":\"snapshot\",\"sha256\":\"" + hash + "\"}",
   ] {
     assert_true(validate(source_wire("get-document-identity", malformed, ",\"terminal\":\"success\"")) is Err(_))
   }

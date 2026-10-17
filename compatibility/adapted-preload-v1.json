@@ -18,9 +18,20 @@
   },
   "sourceSnapshot": {
     "manifest": "fixtures/native-app/source-manifest.json",
+    "schema": 2,
     "entry": "index.html",
-    "sha256": "0b014aa18f6ae6156320255bf5b7ded934669009cdd1de7f5765d1bdf7271980",
-    "bytes": 2246,
+    "files": [
+      {
+        "path": "index.html",
+        "sha256": "0b014aa18f6ae6156320255bf5b7ded934669009cdd1de7f5765d1bdf7271980",
+        "bytes": 2246
+      },
+      {
+        "path": "adapted/page-api.js",
+        "sha256": "49aeda61046df2110756c88dbf80a54564dc7d4382ab53a71c8129b88ae7728b",
+        "bytes": 5841
+      }
+    ],
     "staging": "private-temporary-directory"
   },
   "topics": [

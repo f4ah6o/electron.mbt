@@ -81,9 +81,9 @@ application ingress is wired.
   fixture entry against `source-manifest.json`, copies it to a private staging
   directory and loads that snapshot instead of the working tree. The reload
   probe prepares a second snapshot. See
-  [docs/0023-source-snapshot.md](0023-source-snapshot.md). The adapter source
-  is still the separately pinned artifact from the app root, not part of this
-  entry-only snapshot.
+  [docs/0023-source-snapshot.md](0023-source-snapshot.md). The source manifest
+  includes both the entry and the generated adapter; both are staged and the
+  adapter install reads the staged copy.
 - `fixtures/native-app/index.html` checks the page-local listener/disposer
   shape, rejects a forged page nonce and checks the queue timeout/overflow
   codes. The supervisor then delivers `doc:open` and verifies the page title
@@ -119,8 +119,8 @@ event path.
 - no original preload execution and no `contextBridge`/`ipcRenderer`
 - no native application ingress, Main dispatch, invoke/reply or sender/document
   grant
-- the source snapshot covers only the entry document and is not a signed
-  manifest; the full app graph and the adapter are outside it
+- the source snapshot covers the entry document and generated adapter only and
+  is not a signed manifest; the remaining app graph is outside it
 - native event delivery is a private-lane test trigger; there is no production
   native event route, `webContents.send`, or Electron event-ordering evidence
 - no `DocumentIngressReady` transition or native first-call flush; only the
@@ -138,8 +138,8 @@ event path.
   admission to Main (EP-14) and replace the test host seam
 - define and observe the actual `DocumentIngressReady` transitions separately
   from `LoadComplete` (EP-15)
-- extend the entry-only source snapshot to the complete boot graph and the
-  generated adapter, with manifest provenance
+- extend the entry+adapter source snapshot to the complete boot graph, with
+  manifest provenance
 - turn the test-triggered event path into a production fixed-topic route and
   test early events, host loss and listener exceptions natively
 - generate adapters from Moji's actual preload API and connection graphs

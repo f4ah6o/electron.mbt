@@ -191,6 +191,18 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTER_PATH\",\"compatible\":false}")
     supervisor_exit(1)
   }
+  let prepare = request_frame(session, 31, 1, 0, "prepare-source", "{\"file\":\"index.html\"}")
+  let prepare_sent = send(fd, prepare)
+  let prepare_reply = if prepare_sent { receive(fd, buffer) } else { None }
+  if !prepare_sent || prepare_reply is None ||
+    !prepare_reply.unwrap().contains("\"prepared\":true") ||
+    !prepare_reply.unwrap().contains("\"sha256\":\"") ||
+    !prepare_reply.unwrap().contains("\"manifestSHA256\":\"") ||
+    !prepare_reply.unwrap().contains("\"files\":2") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PREPARE_SOURCE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
   let install_adapter = request_frame(session, 6, 1, 0, "install-adapted-adapter",
     "{\"file\":\"" + json_path(@utf8.decode_lossy(adapter_path[:adapter_length])) + "\"}")
   let adapter_sent = send(fd, install_adapter)
@@ -198,16 +210,6 @@ fn main {
   if !adapter_sent || adapter_reply is None || !adapter_reply.unwrap().contains("\"installed\":true") {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTER\",\"compatible\":false}")
-    supervisor_exit(1)
-  }
-  let prepare = request_frame(session, 31, 1, 0, "prepare-source", "{\"file\":\"index.html\"}")
-  let prepare_sent = send(fd, prepare)
-  let prepare_reply = if prepare_sent { receive(fd, buffer) } else { None }
-  if !prepare_sent || prepare_reply is None ||
-    !prepare_reply.unwrap().contains("\"prepared\":true") ||
-    !prepare_reply.unwrap().contains("\"sha256\":\"") {
-    supervisor_kill()
-    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PREPARE_SOURCE\",\"compatible\":false}")
     supervisor_exit(1)
   }
   let begin = request_frame(session, 7, 1, 1, "begin-load", "{}")

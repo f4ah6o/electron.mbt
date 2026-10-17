@@ -53,19 +53,29 @@ function check() {
   }
   if (!record.adapter.installationObservation) errors.push('installation observation required');
   const sourceManifest = readJson('fixtures/native-app/source-manifest.json');
-  const sourceBytes = fs.readFileSync(path.join(root, 'fixtures/native-app', sourceManifest.entry));
-  const sourceHash = crypto.createHash('sha256').update(sourceBytes).digest('hex');
-  if (sourceManifest.schema !== 1) errors.push('source manifest schema must be 1');
+  if (sourceManifest.schema !== 2) errors.push('source manifest schema must be 2');
   if (sourceManifest.app !== 'native-app-fixture') errors.push('source manifest app mismatch');
   if (sourceManifest.entry !== 'index.html') errors.push('source manifest entry mismatch');
-  if (sourceHash !== sourceManifest.sha256 || sourceBytes.length !== sourceManifest.bytes) {
-    errors.push('source manifest does not match the fixture entry');
+  if (!Array.isArray(sourceManifest.files) || sourceManifest.files.length !== 2) {
+    errors.push('source manifest files mismatch');
+  }
+  for (const file of Array.isArray(sourceManifest.files) ? sourceManifest.files : []) {
+    if (!file || typeof file.path !== 'string' || file.path.length === 0 ||
+        file.path.includes('..') || path.isAbsolute(file.path)) {
+      errors.push(`invalid source manifest file: ${file && file.path}`);
+      continue;
+    }
+    const bytes = fs.readFileSync(path.join(root, 'fixtures/native-app', file.path));
+    const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+    if (hash !== file.sha256 || bytes.length !== file.bytes) {
+      errors.push(`source manifest mismatch: ${file.path}`);
+    }
   }
   const snapshot = record.sourceSnapshot || {};
   if (snapshot.manifest !== 'fixtures/native-app/source-manifest.json' ||
+      snapshot.schema !== 2 ||
       snapshot.entry !== sourceManifest.entry ||
-      snapshot.sha256 !== sourceManifest.sha256 ||
-      snapshot.bytes !== sourceManifest.bytes ||
+      !same(snapshot.files, sourceManifest.files) ||
       snapshot.staging !== 'private-temporary-directory') {
     errors.push('source snapshot record mismatch');
   }
@@ -85,9 +95,9 @@ function check() {
     ingress: semantics.ingress || null,
     eventDelivery: semantics.eventDelivery || null,
     sourceSnapshot: {
+      schema: sourceManifest.schema,
       entry: sourceManifest.entry,
-      sha256: sourceManifest.sha256,
-      bytes: sourceManifest.bytes,
+      files: Array.isArray(sourceManifest.files) ? sourceManifest.files.length : 0,
       staging: snapshot.staging || null,
     },
     errors,

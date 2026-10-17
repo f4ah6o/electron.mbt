@@ -658,7 +658,7 @@
     "moduleGraph": "fixture source list: relative paths, .js/.cjs/.json, directory index, JSON modules, cache identity, node_modules package exports(require/default)/main",
     "restart": "sequential second host start/hello/ready/shutdown; not an automatic restart policy",
     "bootstrap": "get-bootstrap-status observed/mainFrame/generation/index.html; preloadStatus=absent",
-    "adaptedAdapter": "get-adapted-status observed/documentStartBeforeLoad=true/ingress=absent; pageTitle=adapted-api-ok; entry loaded from a private hash-verified source snapshot; dispatch-adapted-event delivers doc:open to the page listener after load and after a generation-2 reload; unknown topic and stale generation are rejected; a forged page nonce is rejected page-side",
+    "adaptedAdapter": "get-adapted-status observed/documentStartBeforeLoad=true/ingress=absent; pageTitle=adapted-api-ok; entry and adapter loaded from a private hash-verified source snapshot; dispatch-adapted-event delivers doc:open to the page listener after load and after a generation-2 reload; unknown topic and stale generation are rejected; a forged page nonce is rejected page-side",
     "retry": "initial start/handshake retries up to 3 with 100 ms backoff; flaky wrapper reaches attempts=2; no crash-after-ready restart policy"
   },
   "previewReadiness": {
@@ -706,7 +706,7 @@
     "ingress": "ABSENT",
     "eventDelivery": "native-test-triggered-fixed-topics",
     "eventTrigger": "dispatch-adapted-event",
-    "sourceSnapshot": "private staging from fixtures/native-app/source-manifest.json (entry hash and bytes pinned)",
+    "sourceSnapshot": "private staging from fixtures/native-app/source-manifest.json (entry and adapter pinned by SHA-256 and bytes)",
     "note": "Generated page-local listener and ingress-gated Promise-call fixture only. The entry document is loaded from a private hash-verified snapshot; native event delivery is a private-lane test trigger. Application ingress, ipcRenderer/contextBridge, Moji preload adaptation and app boot remain absent."
   }
 }

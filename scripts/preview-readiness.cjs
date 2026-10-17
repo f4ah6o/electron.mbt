@@ -46,18 +46,29 @@ function buildReport() {
   checks.push(check('adapted-adapter-fixture', adapterOk ? 'PASS' : 'FAIL',
     `page-world document-start adapter ${adaptedRecord.adapter.path}; hash=${adapterHash}`));
   const sourceManifest = readJson('fixtures/native-app/source-manifest.json');
-  const sourceBytes = fs.readFileSync(path.join(root, 'fixtures/native-app', sourceManifest.entry));
-  const sourceHash = require('node:crypto').createHash('sha256').update(sourceBytes).digest('hex');
+  const sourceFiles = Array.isArray(sourceManifest.files) ? sourceManifest.files : [];
   const sourceSnapshot = adaptedRecord.sourceSnapshot || {};
-  const sourceOk = sourceManifest.schema === 1 &&
+  const recordedFiles = Array.isArray(sourceSnapshot.files) ? sourceSnapshot.files : [];
+  let sourceOk = sourceManifest.schema === 2 &&
     sourceManifest.entry === 'index.html' &&
-    sourceHash === sourceManifest.sha256 && sourceBytes.length === sourceManifest.bytes &&
+    sourceFiles.length === 2 &&
+    recordedFiles.length === sourceFiles.length &&
+    sourceSnapshot.schema === 2 &&
+    sourceSnapshot.entry === sourceManifest.entry &&
     sourceSnapshot.manifest === 'fixtures/native-app/source-manifest.json' &&
-    sourceSnapshot.sha256 === sourceManifest.sha256 &&
-    sourceSnapshot.bytes === sourceManifest.bytes &&
     sourceSnapshot.staging === 'private-temporary-directory';
+  for (const file of sourceFiles) {
+    const bytes = fs.readFileSync(path.join(root, 'fixtures/native-app', file.path));
+    const hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+    const recorded = recordedFiles.find(item => item && item.path === file.path);
+    if (!recorded || hash !== file.sha256 || bytes.length !== file.bytes ||
+        recorded.sha256 !== file.sha256 || recorded.bytes !== file.bytes) {
+      sourceOk = false;
+    }
+  }
+  const sourceEntry = sourceFiles.find(file => file.path === sourceManifest.entry);
   checks.push(check('adapted-source-snapshot', sourceOk ? 'PASS' : 'FAIL',
-    `private staging manifest=${sourceManifest.entry}; hash=${sourceHash}; bytes=${sourceBytes.length}`));
+    `private staging files=${sourceFiles.length}; entry=${sourceManifest.entry}; hash=${sourceEntry ? sourceEntry.sha256 : ''}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',
     'Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected'));
 

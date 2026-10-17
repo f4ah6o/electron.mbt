@@ -44,7 +44,7 @@
     {
       "id": "adapted-source-snapshot",
       "status": "PASS",
-      "detail": "private staging manifest=index.html; hash=0b014aa18f6ae6156320255bf5b7ded934669009cdd1de7f5765d1bdf7271980; bytes=2246"
+      "detail": "private staging files=2; entry=index.html; hash=0b014aa18f6ae6156320255bf5b7ded934669009cdd1de7f5765d1bdf7271980"
     },
     {
       "id": "adapted-moji-runtime",

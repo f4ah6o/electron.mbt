@@ -25,6 +25,8 @@ test('the generated adapted page adapter is deterministic and admitted', () => {
   assert.equal(admitted.ingress, 'ABSENT');
   assert.equal(admitted.eventDelivery, 'native-test-triggered-fixed-topics');
   assert.equal(admitted.sourceSnapshot.entry, 'index.html');
+  assert.equal(admitted.sourceSnapshot.schema, 2);
+  assert.equal(admitted.sourceSnapshot.files, 2);
   assert.equal(admitted.sourceSnapshot.staging, 'private-temporary-directory');
   assert.deepEqual(admitted.errors, []);
 });

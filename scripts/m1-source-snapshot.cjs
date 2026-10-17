@@ -44,18 +44,33 @@ async function mutationIsolation() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-source-positive-'));
   const before = snapshotDirs();
   try {
+    fs.mkdirSync(path.join(root, 'adapted'), { recursive: true });
     fs.writeFileSync(path.join(root, 'index.html'),
-      '<!doctype html><title>prepared-title</title><p>prepared-content</p>');
-    const manifest = buildSourceManifest(root, 'index.html', 'source-probe');
+      '<!doctype html><title>prepared-title</title><script>' +
+      "document.title = window.api && window.api.version && window.api.version() === 'prepared-adapter' " +
+      "? 'prepared-title' : 'adapter-missing';</script>");
+    fs.writeFileSync(path.join(root, 'adapted', 'page-api.js'),
+      "Object.defineProperty(window, 'api', { value: Object.freeze({ " +
+      "version: function () { return 'prepared-adapter'; } }), " +
+      'enumerable: true, configurable: false, writable: false });');
+    const manifest = buildSourceManifest(root, 'index.html', 'source-probe',
+      ['index.html', 'adapted/page-api.js']);
     writeManifest(root, manifest);
     const result = await withHost(root, async host => {
       const prepared = host.request('prepare-source', 1, 0, { file: 'index.html' });
       assert.equal(prepared.prepared, true);
-      assert.equal(prepared.sha256, manifest.sha256);
-      assert.equal(prepared.bytes, manifest.bytes);
-      // Mutate the working tree only after the snapshot was prepared.
+      assert.equal(prepared.files, 2);
+      assert.equal(prepared.sha256, manifest.files[0].sha256);
+      assert.match(prepared.manifestSHA256, /^[a-f0-9]{64}$/);
+      // Change both the entry and the adapter only after the snapshot exists.
       fs.writeFileSync(path.join(root, 'index.html'),
-        '<!doctype html><title>mutated-title</title><p>mutated-content</p>');
+        '<!doctype html><title>mutated-title</title>');
+      fs.writeFileSync(path.join(root, 'adapted', 'page-api.js'),
+        "Object.defineProperty(window, 'api', { value: Object.freeze({ " +
+        "version: function () { return 'mutated-adapter'; } }) });");
+      assert.equal(host.request('install-adapted-adapter', 1, 0, {
+        file: path.join(root, 'adapted', 'page-api.js'),
+      }).installed, true);
       assert.equal(host.request('begin-load', 1, 1).generation, 1);
       const loaded = await host.requestAsync('load-file', 1, 1, {
         file: path.join(root, 'index.html'),
@@ -66,14 +81,19 @@ async function mutationIsolation() {
         () => host.request('get-web-contents-title', 1, 1).title,
         'prepared-title',
       );
-      assert.notEqual(host.request('get-web-contents-title', 1, 1).title, 'mutated-title');
+      assert.notEqual(host.request('get-web-contents-title', 1, 1).title, 'adapter-missing');
       const identity = host.request('get-document-identity', 1, 1);
       assert.deepEqual(identity, {
-        generation: 1, source: 'snapshot', sha256: manifest.sha256,
+        generation: 1,
+        source: 'snapshot',
+        sha256: prepared.sha256,
+        manifestSHA256: prepared.manifestSHA256,
       });
       return {
         preparedSHA256: prepared.sha256,
+        manifestSHA256: prepared.manifestSHA256,
         documentIdentity: identity.source,
+        preparedAdapter: true,
         loadedFromSnapshot: true,
       };
     });
@@ -89,8 +109,8 @@ async function hashMismatchRejected() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-source-mismatch-'));
   try {
     fs.writeFileSync(path.join(root, 'index.html'), '<!doctype html><title>mismatch</title>');
-    const manifest = buildSourceManifest(root, 'index.html', 'source-probe');
-    manifest.sha256 = '0'.repeat(64);
+    const manifest = buildSourceManifest(root, 'index.html', 'source-probe', ['index.html']);
+    manifest.files[0].sha256 = '0'.repeat(64);
     writeManifest(root, manifest);
     return await withHost(root, host => {
       assert.throws(() => host.request('prepare-source', 1, 0, { file: 'index.html' }), {
@@ -112,11 +132,14 @@ async function symlinkEscapeRejected() {
     fs.symlinkSync(outside, path.join(root, 'escape.html'));
     const data = fs.readFileSync(outside);
     writeManifest(root, {
-      schema: 1,
+      schema: 2,
       app: 'source-probe',
       entry: 'escape.html',
-      sha256: crypto.createHash('sha256').update(data).digest('hex'),
-      bytes: data.length,
+      files: [{
+        path: 'escape.html',
+        sha256: crypto.createHash('sha256').update(data).digest('hex'),
+        bytes: data.length,
+      }],
     });
     return await withHost(root, host => {
       assert.throws(() => host.request('prepare-source', 1, 0, { file: 'escape.html' }), {
@@ -135,11 +158,10 @@ async function nonRegularRejected() {
   try {
     fs.mkdirSync(path.join(root, 'directory'));
     writeManifest(root, {
-      schema: 1,
+      schema: 2,
       app: 'source-probe',
       entry: 'directory',
-      sha256: 'a'.repeat(64),
-      bytes: 1,
+      files: [{ path: 'directory', sha256: 'a'.repeat(64), bytes: 1 }],
     });
     return await withHost(root, host => {
       assert.throws(() => host.request('prepare-source', 1, 0, { file: 'directory' }), {

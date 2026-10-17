@@ -600,7 +600,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       }
     } else if success {
       match payload {
-        Object(values) if values.length() == 3 => {
+        Object(values) if values.length() == 5 => {
           match values.get("prepared") {
             Some(True) => ()
             _ => raise BadProtocol("Invalid source snapshot acknowledgement")
@@ -612,6 +612,14 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           let bytes = identifier(values.get("bytes").unwrap_or(null))
           if bytes <= 0L || bytes > 1048576L {
             raise BadProtocol("Invalid source snapshot size")
+          }
+          let files = identifier(values.get("files").unwrap_or(null))
+          if files <= 0L || files > 32L {
+            raise BadProtocol("Invalid source snapshot file count")
+          }
+          match values.get("manifestSHA256") {
+            Some(String(hash)) if hash.length() == 64 => ()
+            _ => raise BadProtocol("Invalid source manifest hash")
           }
         }
         _ => raise BadProtocol("Malformed source snapshot acknowledgement")
@@ -626,7 +634,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       }
     } else if success {
       match payload {
-        Object(values) if values.length() == 3 => {
+        Object(values) if values.length() == 4 => {
           if identifier(values.get("generation").unwrap_or(null)) != generation {
             raise BadProtocol("Mismatched document identity generation")
           }
@@ -638,8 +646,12 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
             Some(String(value)) => value
             _ => raise BadProtocol("Invalid document identity hash")
           }
-          if (source == "snapshot" && hash.length() != 64) ||
-             (source == "app" && hash.length() != 0) ||
+          let manifest_hash = match values.get("manifestSHA256") {
+            Some(String(value)) => value
+            _ => raise BadProtocol("Invalid document manifest hash")
+          }
+          if (source == "snapshot" && (hash.length() != 64 || manifest_hash.length() != 64)) ||
+             (source == "app" && (hash.length() != 0 || manifest_hash.length() != 0)) ||
              (source != "snapshot" && source != "app") {
             raise BadProtocol("Inconsistent document identity")
           }

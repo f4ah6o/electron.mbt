@@ -30,12 +30,19 @@ for (const check of checks) {
   try { json = jsonLine ? JSON.parse(jsonLine) : null; } catch {}
   const exit = result.status === null ? -1 : result.status;
   const ok = exit === check.expect;
+  let detail = lines.at(-1) || '';
+  if (json && typeof json === 'object') {
+    detail = { status: json.status, probe: json.probe, code: json.code, counts: json.counts };
+    if (Array.isArray(json.cases)) {
+      detail.cases = json.cases.map(item => ({ label: item.label, status: item.status, code: item.code }));
+    }
+  }
   results.push({
     id: check.id,
     status: ok ? (check.id === 'readiness' ? 'NOT_READY' : 'PASS') : 'FAIL',
     exit,
     expectedExit: check.expect,
-    detail: json || (lines.at(-1) || ''),
+    detail,
   });
 }
 const failed = results.filter(result => result.status === 'FAIL');

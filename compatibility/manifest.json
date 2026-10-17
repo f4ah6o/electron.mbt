@@ -493,5 +493,27 @@
       "actual Moji/jmd graph"
     ],
     "note": "Pre-resolved in-memory graph only. No app loader or Node compatibility claim."
+  },
+  "runner": {
+    "status": "partial",
+    "compatible": false,
+    "tests": [
+      "runtime/runner/runner_wbtest.mbt"
+    ],
+    "passed": [
+      "job batch execution",
+      "rejecting job consumed",
+      "timer deadline order through runner",
+      "pre-resolved CJS entry"
+    ],
+    "open": [
+      "host event loop",
+      "timer callback leases",
+      "native supervisor/process ownership",
+      "shutdown/fault",
+      "unhandled rejection policy",
+      "real CJS file resolution"
+    ],
+    "note": "In-process integration only. Not a native supervisor or app runner."
   }
 }

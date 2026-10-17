@@ -1,0 +1,37 @@
+# In-process runner integration (EP-09/EP-10 partial)
+
+Status: **partial**. A `Runner` now owns one QuickJS engine/context and one
+timer scheduler, and exposes shared job, timer and pre-resolved CJS entry
+points. It is not a native supervisor, host event loop, production process
+topology or app runner.
+
+## What is connected
+
+- one QuickJS engine/context per runner
+- `run_jobs(max_steps)` over `JS_ExecutePendingJob`
+- timer scheduling, next ref deadline and due batches from `runtime/embedded`
+- the pre-resolved CJS graph executor from `bridges/embedded-js`
+- explicit context/engine teardown
+
+The host still owns wall-clock time, UI events, I/O readiness, shutdown and
+process supervision. The runner does not read files, resolve modules, execute
+Node builtins or start a native window.
+
+## Verified
+
+`moon test --target native -p runtime/runner` passes:
+
+- a Promise job executes and later evaluation observes its side effect
+- a rejecting job is consumed and later evaluation still works; unhandled
+  rejection policy is explicitly not claimed
+- timers scheduled through the runner return in deadline order
+- the CJS graph entry point executes through the same runner
+
+## Open
+
+- connect due timer IDs to actual QuickJS callback leases
+- nextTick/microtask/timer partial-order fixtures and shutdown deadlines
+- host event queue, I/O completion and process supervision
+- unhandled rejection policy, request-local exception mapping and root ledger
+- real CJS file resolution and Node builtins
+- fault injection for host loss and runner kill

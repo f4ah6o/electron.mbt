@@ -1,0 +1,11 @@
+import {
+  "f4ah6o/electron/bridges/embedded-js" @engine,
+  "f4ah6o/electron/runtime/embedded" @scheduler,
+}
+
+options(
+  targets: {
+    "runner.mbt": ["native"],
+    "runner_wbtest.mbt": ["native"],
+  },
+)

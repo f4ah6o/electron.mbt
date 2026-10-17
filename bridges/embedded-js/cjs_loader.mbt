@@ -8,6 +8,17 @@ pub struct ModuleSource {
 }
 
 ///|
+pub fn ModuleSource::new(
+  id : String,
+  source_hash : String,
+  source : String,
+  dependencies : Map[String, String],
+  json : Bool,
+) -> ModuleSource {
+  { id, source_hash, source, dependencies, json }
+}
+
+///|
 pub struct CjsResult {
   status : EvalStatus
   exports : String

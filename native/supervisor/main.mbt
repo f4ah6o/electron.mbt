@@ -26,6 +26,9 @@ extern "C" fn supervisor_app_main(root : Bytes) -> Int = "moonbit_ebt_supervisor
 extern "C" fn supervisor_boot_mode() -> Int = "moonbit_ebt_supervisor_boot_mode"
 
 ///|
+extern "C" fn supervisor_moji_app_mode() -> Int = "moonbit_ebt_supervisor_moji_app_mode"
+
+///|
 #borrow(buffer)
 extern "C" fn supervisor_boot_root(buffer : Bytes, capacity : Int) -> Int = "moonbit_ebt_supervisor_boot_root"
 
@@ -205,7 +208,7 @@ fn pump_app_requests(
   handled
 }
 
-fn start_ready(buffer : Bytes) -> (Int, String, Int)? {
+fn start_ready(root : String, buffer : Bytes) -> (Int, String, Int)? {
   for attempt = 1; attempt <= 3; attempt = attempt + 1 {
     let session_buffer = Bytes::new(32)
     if supervisor_session(session_buffer) != 32 {
@@ -214,7 +217,7 @@ fn start_ready(buffer : Bytes) -> (Int, String, Int)? {
     let session = @utf8.decode_lossy(session_buffer)
     let fd = supervisor_start(
       @utf8.encode("dist/electron-mbt-native-host"),
-      @utf8.encode("fixtures/native-app"),
+      @utf8.encode(root),
       @utf8.encode(session),
     )
     if fd >= 0 {
@@ -240,7 +243,132 @@ fn start_ready(buffer : Bytes) -> (Int, String, Int)? {
 }
 
 ///|
+fn fail_moji_app(code : String) -> Unit {
+  supervisor_kill()
+  println("{\"status\":\"FAIL\",\"code\":\"" + code + "\",\"compatible\":false}")
+  supervisor_exit(1)
+}
+
+///|
+fn run_moji_app() -> Unit {
+  let buffer = Bytes::new(65536)
+  let event_buffer = Bytes::new(65536)
+  let root_buffer = Bytes::new(4096)
+  let root_length = supervisor_boot_root(root_buffer, root_buffer.length())
+  if root_length <= 0 {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_ROOT")
+  }
+  let root = @utf8.decode_lossy(root_buffer[:root_length])
+  let (fd, session, attempts) = match start_ready(root, buffer) {
+    Some(value) => value
+    None => {
+      fail_moji_app("ELECTRON_MBT_MOJI_APP_START")
+      (0, "", 0)
+    }
+  }
+  let create = request_frame(session, 4, 1, 0, "create-window",
+    "{\"width\":800,\"height\":600,\"title\":\"Moji\",\"show\":false}")
+  let create_sent = send(fd, create)
+  let create_reply = if create_sent { receive(fd, buffer) } else { None }
+  if !create_sent || create_reply is None ||
+    !create_reply.unwrap().contains("\"webViewAttached\":true") {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_WINDOW")
+  }
+  let prepare = request_frame(session, 31, 1, 0, "prepare-source", "{\"file\":\"index.html\"}")
+  let prepare_sent = send(fd, prepare)
+  let prepare_reply = if prepare_sent { receive(fd, buffer) } else { None }
+  if !prepare_sent || prepare_reply is None ||
+    !prepare_reply.unwrap().contains("\"prepared\":true") {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_PREPARE")
+  }
+  let snapshot_root = match json_payload_field(prepare_reply.unwrap(), "root") {
+    Some(value) => value
+    None => {
+      fail_moji_app("ELECTRON_MBT_MOJI_APP_PREPARE_ROOT")
+      ""
+    }
+  }
+  if supervisor_app_main(@utf8.encode(snapshot_root)) != 43 {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_MAIN")
+  }
+  let adapter_path = Bytes::new(4096)
+  let adapter_length = supervisor_file(adapter_path, adapter_path.length(),
+    @utf8.encode("adapted/page-api.js"))
+  if adapter_length <= 0 {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_ADAPTER_PATH")
+  }
+  let install = request_frame(session, 6, 1, 0, "install-adapted-adapter",
+    "{\"file\":\"" + json_path(@utf8.decode_lossy(adapter_path[:adapter_length])) + "\"}")
+  let install_sent = send(fd, install)
+  let install_reply = if install_sent { receive(fd, buffer) } else { None }
+  if !install_sent || install_reply is None || !install_reply.unwrap().contains("\"installed\":true") {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_ADAPTER")
+  }
+  let begin = request_frame(session, 7, 1, 1, "begin-load", "{}")
+  let begin_sent = send(fd, begin)
+  let begin_reply = if begin_sent { receive(fd, buffer) } else { None }
+  if !begin_sent || begin_reply is None || !begin_reply.unwrap().contains("\"terminal\":\"success\"") {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_BEGIN")
+  }
+  let file_path = Bytes::new(4096)
+  let path_length = supervisor_file(file_path, file_path.length(), @utf8.encode("index.html"))
+  if path_length <= 0 {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_PAGE_PATH")
+  }
+  let load = request_frame(session, 8, 1, 1, "load-file",
+    "{\"file\":\"" + json_path(@utf8.decode_lossy(file_path[:path_length])) + "\"}")
+  let load_fd = supervisor_load_fd()
+  let load_sent = send(load_fd, load)
+  let load_reply = if load_sent { receive(load_fd, buffer) } else { None }
+  if !load_sent || load_reply is None || !load_reply.unwrap().contains("\"didFinishLoad\":true") {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_LOAD")
+  }
+  let release = request_frame(session, 34, 1, 1, "release-adapted-ingress", "{}")
+  let release_sent = send(fd, release)
+  let release_reply = if release_sent { receive(fd, buffer) } else { None }
+  if !release_sent || release_reply is None || !release_reply.unwrap().contains("\"released\":true") {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_RELEASE")
+  }
+  let event_fd = supervisor_event_fd()
+  let mut ready = false
+  let mut title = ""
+  for _attempt = 0; _attempt < 150; _attempt = _attempt + 1 {
+    let _ = pump_app_requests(fd, event_fd, buffer, event_buffer, session, 1, 1)
+    let title_request = request_frame(session, 36, 1, 1, "get-web-contents-title", "{}")
+    let title_sent = send(fd, title_request)
+    let title_reply = if title_sent { receive(fd, buffer) } else { None }
+    if title_reply is Some(_) {
+      title = title_reply.unwrap()
+      if title.contains("moji-adapted-ready") {
+        ready = true
+        break
+      }
+      if title.contains("moji-adapted-failed") || title.contains("moji-adapted-bad") {
+        break
+      }
+    }
+    supervisor_sleep_ms(20)
+  }
+  if !ready || !title.contains("moji-adapted-ready:dark:unsupported") {
+    fail_moji_app("ELECTRON_MBT_MOJI_APP_PAGE")
+  }
+  let report = ("{\"status\":\"PASS\",\"probe\":\"moji-adapted-native\"," +
+    "\"backend\":\"AppKit+WKWebView\",\"pageLoaded\":true,\"apiPresent\":true," +
+    "\"settingsTheme\":\"dark\",\"updateStatus\":\"unsupported\"," +
+    "\"mainHandlers\":true,\"attempts\":" + attempts.to_string() +
+    ",\"compatible\":false}")
+  println(report)
+  supervisor_kill()
+  supervisor_exit(0)
+  return
+}
+
+///|
 fn main {
+  if supervisor_moji_app_mode() == 1 {
+    run_moji_app()
+    return
+  }
   if supervisor_boot_mode() == 1 {
     let boot_root_buffer = Bytes::new(4096)
     let boot_root_length = supervisor_boot_root(boot_root_buffer, boot_root_buffer.length())
@@ -265,7 +393,7 @@ fn main {
   }
   let buffer = Bytes::new(65536)
   let event_buffer = Bytes::new(65536)
-  let (fd, session, attempts) = match start_ready(buffer) {
+  let (fd, session, attempts) = match start_ready("fixtures/native-app", buffer) {
     Some(value) => value
     None => {
       println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_START\",\"compatible\":false}")

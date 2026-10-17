@@ -139,8 +139,10 @@ event path.
   grant; the page-world ingress and queue release are test-only, and Main is a
   fixed QuickJS fixture graph
 - the Moji adapted API is generated shape only; its original preload is
-  NOT_EXECUTED and its main runs only in a virtual boot smoke
-  ([docs/0030-moji-main-boot.md](0030-moji-main-boot.md))
+  NOT_EXECUTED, its main runs in a virtual boot smoke and a focused native probe
+  reaches the settings/update handlers
+  ([docs/0030-moji-main-boot.md](0030-moji-main-boot.md),
+  [docs/0031-moji-adapted-native.md](0031-moji-adapted-native.md))
 - the file broker is partial: grants are test-only, dialog UI is NOT RUN, and
   document PDF/PNG rendering and `openLocalPath` are not implemented
   ([docs/0027-file-broker.md](0027-file-broker.md),

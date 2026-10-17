@@ -127,7 +127,7 @@ const cases = [
       () => assert.fail('queued call unexpectedly resolved'),
       error => error,
     );
-    await wait(420);
+    await wait(2300);
     assert.equal(code(await pending), 'ELECTRON_MBT_ADAPTER_INGRESS_TIMEOUT');
     host.ready();
     assert.equal(host.calls.length, 0);

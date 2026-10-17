@@ -321,6 +321,27 @@
       state.error = error;
     }
   };
+  globalThis.__mojiInstallInvoke = function () {
+    globalThis.__nativeInvoke = function (operation, payloadJson) {
+      let payload = {};
+      try { payload = payloadJson ? JSON.parse(payloadJson) : {}; } catch (_) { payload = {}; }
+      const handler = ipcHandlers[operation];
+      if (typeof handler !== 'function') {
+        return JSON.stringify({ ok: false, code: 'ELECTRON_MBT_MAIN_UNKNOWN_OPERATION' });
+      }
+      try {
+        const args = Array.isArray(payload.args) ? payload.args : [];
+        const value = handler({}, ...args);
+        if (value && typeof value.then === 'function') {
+          return JSON.stringify({ ok: false, code: 'ELECTRON_MBT_MAIN_ASYNC_PENDING' });
+        }
+        return JSON.stringify({ ok: true, result: value === undefined ? null : value });
+      } catch (error) {
+        return JSON.stringify({ ok: false, code: 'ELECTRON_MBT_MAIN_ERROR' });
+      }
+    };
+  };
+
   globalThis.__mojiBootFinish = function () {
     const results = {};
     const pending = [];

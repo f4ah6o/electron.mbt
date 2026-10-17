@@ -216,8 +216,8 @@
       "detail": {
         "status": "NOT_READY",
         "counts": {
-          "checks": 29,
-          "pass": 20,
+          "checks": 30,
+          "pass": 21,
           "fail": 2,
           "notRun": 7
         }

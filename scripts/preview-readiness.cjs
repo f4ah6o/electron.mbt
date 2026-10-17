@@ -107,7 +107,7 @@ function buildReport() {
   checks.push(check('adapted-moji-api', mojiApiOk ? 'PASS' : 'FAIL',
     `Moji ${mojiAdapted.appId}: calls=${mojiAdapted.api.calls}, topics=${mojiAdapted.api.topics}, unsupported=${(mojiAdapted.api.unsupported || []).join(',')}, handlers=${mojiAdapted.semantics.applicationHandlers || 'none'}, runtime=${mojiAdapted.semantics.runtime}, originalPreload=${mojiAdapted.originalPreload}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',
-    'Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected'));
+    'Adapted API -> Moji handlers passes natively for settings/update; original preload and real renderer are still not connected'));
 
   for (const [id, closure] of closures) {
     const closureOk = closure.status === 'PASS' && closure.nativeAddons.length === 0;
@@ -153,6 +153,22 @@ function buildReport() {
     mojiBoot === null
       ? 'Moji main boot report is absent'
       : `Moji main boot: entry=${mojiBoot.entry}, whenReady=${mojiBoot.whenReady}, windows=${mojiBoot.windows}, ipcHandlers=${mojiBoot.ipcHandlers}, handlers=${mojiBoot.handlerResults ? Object.keys(mojiBoot.handlerResults).length : 0}, preloadExecuted=${mojiBoot.preloadExecuted}, mainSHA256=${mojiBoot.mainSHA256}`));
+  let mojiNative = null;
+  try { mojiNative = readJson('compatibility/reports/moji-adapted-native.json'); } catch {}
+  const mojiNativeAdapterHash = require('node:crypto').createHash('sha256')
+    .update(fs.readFileSync(path.join(root, mojiAdapted.adapter.path))).digest('hex');
+  const mojiNativeOk = mojiNative !== null && mojiNative.status === 'PASS' &&
+    mojiNative.pageLoaded === true && mojiNative.apiPresent === true &&
+    mojiNative.settingsTheme === 'dark' && mojiNative.updateStatus === 'unsupported' &&
+    mojiNative.mainHandlers === true && mojiNative.preloadExecuted === false &&
+    mojiNative.mainSHA256 === mojiProvenance.hashes.main &&
+    mojiNative.preloadSHA256 === mojiProvenance.hashes.preload &&
+    mojiNative.adapterSHA256 === mojiNativeAdapterHash &&
+    mojiNative.harnessSHA256 === mojiHarnessHash;
+  checks.push(check('moji-adapted-native', mojiNative === null ? 'NOT_RUN' : (mojiNativeOk ? 'PASS' : 'FAIL'),
+    mojiNative === null
+      ? 'Moji adapted native E2E report is absent'
+      : `Moji page adapter -> native ingress -> Moji handlers: page=${mojiNative.pageLoaded}, api=${mojiNative.apiPresent}, settings=${mojiNative.settingsTheme}, update=${mojiNative.updateStatus}, preloadExecuted=${mojiNative.preloadExecuted}`));
   checks.push(check('node-less-moji-app-main', 'NOT_RUN', 'Moji main boots in a virtual QuickJS harness; no real app window/renderer or preload execution'));
   checks.push(check('preview-signing', 'NOT_RUN', 'No Developer ID signing, notarization or clean-install evidence'));
   checks.push(check('clean-install', 'NOT_RUN', 'No clean machine install has been executed'));

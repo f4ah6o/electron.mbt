@@ -3,7 +3,7 @@
   const TOPICS = Object.freeze(["doc:open", "app:request-close", "update:state"]);
   const MAX_CALLS = 8;
   const MAX_BYTES = 65536;
-  const READY_TIMEOUT_MS = 300;
+  const READY_TIMEOUT_MS = 2000;
   const listeners = new Map();
   const pending = [];
   let pendingBytes = 0;

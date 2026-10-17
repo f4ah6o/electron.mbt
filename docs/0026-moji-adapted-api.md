@@ -15,7 +15,7 @@ The original preload and Moji main are not executed.
   generated API manifest (schema 3).
 - [fixtures/moji-adapted/page-api.js](fixtures/moji-adapted/page-api.js) is the
   generated page-world adapter, SHA-256
-  `28fe7607d62dc7695e7d7dccb9740c85ef4f0709e50219ae3567423c4fa13a9c`.
+  `bdfe8bddb4bc07389060e805464a554ff1b0a24d998a88512564c8a91dcc7501`.
 - [compatibility/apps/moji-v1.0.5/adapted-preload.json](compatibility/apps/moji-v1.0.5/adapted-preload.json)
   records `originalPreload: NOT_EXECUTED`, the preload/adapter hashes, queue
   bounds and `runtime: NOT_IMPLEMENTED`.
@@ -49,6 +49,16 @@ events:
 The schema-3 generator emits the declared arity, snapshots the actual argument
 array at call time and applies the queue count/byte bounds. The adapter never
 exposes `contextBridge`, `ipcRenderer` or a generic `send(channel, ...)`.
+
+## Native adapted E2E
+
+A focused native probe installs the generated Moji adapter in a page, calls
+`getSettings`/`getUpdateState`, and routes the calls through native ingress to
+the QuickJS Moji `settings:get`/`update:get-state` handlers. It reports
+`pageLoaded`, `apiPresent`, `settingsTheme:"dark"`, `updateStatus:"unsupported"`
+and `mainHandlers:true`; the preload remains NOT_EXECUTED and the real renderer
+is not loaded. See
+[docs/0031-moji-adapted-native.md](0031-moji-adapted-native.md).
 
 ## Moji main boot smoke
 
@@ -95,8 +105,10 @@ The fixture QuickJS Main now uses an operation registry:
 
 - the original Moji preload is **NOT_EXECUTED**; this is not contextBridge or
   ipcRenderer compatibility
-- the registered handlers are fixture-only; settings are in-memory and the
-  updater returns an idle fixture state, not Moji's updater
+- the native E2E uses a small probe page, not Moji's renderer; only synchronous
+  settings/update calls cross the bridge
+- file/dialog/export handlers are async and currently return
+  `ELECTRON_MBT_MAIN_ASYNC_PENDING` through the page bridge
 - the file broker is partial: grants are test-only, dialog/save-panel UI is
   NOT RUN, and document PDF/PNG rendering is unsupported
 - `getDroppedPath` (`webUtils.getPathForFile`) is unsupported by design
@@ -110,7 +122,7 @@ The fixture QuickJS Main now uses an operation registry:
 
 - add open/save dialogs and export, then replace the fixture settings/updater
   with Moji's real main handlers
-- connect the adapted API to the registered Moji handlers and load a real
-  renderer window; record an app scenario
+- load the real Moji renderer and add async handler dispatch; record an app
+  scenario
 - add Node builtins required by Moji main (`node:url`, `node:zlib`; `node:fs`
   through the file broker)

@@ -12,7 +12,7 @@
   "adapter": {
     "manifest": "fixtures/moji-adapted/api.json",
     "path": "fixtures/moji-adapted/page-api.js",
-    "sha256": "28fe7607d62dc7695e7d7dccb9740c85ef4f0709e50219ae3567423c4fa13a9c",
+    "sha256": "bdfe8bddb4bc07389060e805464a554ff1b0a24d998a88512564c8a91dcc7501",
     "world": "page",
     "injection": "document-start"
   },
@@ -28,7 +28,7 @@
   "queue": {
     "maxCalls": 8,
     "maxBytes": 65536,
-    "readyTimeoutMs": 300
+    "readyTimeoutMs": 2000
   },
   "semantics": {
     "contextBridge": false,
@@ -72,5 +72,16 @@
     "handlersInvoked": true,
     "settingsRoundTrip": "dark\u2192light\u2192light (previewTheme)",
     "readSample": true
+  },
+  "nativeE2E": {
+    "status": "PASS",
+    "path": "page-world adapter -> native ingress -> QuickJS Moji main handlers",
+    "pageLoaded": true,
+    "apiPresent": true,
+    "settingsTheme": "dark",
+    "updateStatus": "unsupported",
+    "mainHandlers": true,
+    "preloadExecuted": false,
+    "rendererLoaded": false
   }
 }

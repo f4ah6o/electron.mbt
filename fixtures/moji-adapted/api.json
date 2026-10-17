@@ -3,25 +3,100 @@
   "name": "api",
   "version": "moji-adapted-v1",
   "topics": [
-    { "topic": "doc:open", "method": "onOpenDocument" },
-    { "topic": "app:request-close", "method": "onCloseRequest" },
-    { "topic": "update:state", "method": "onUpdateState" }
+    {
+      "topic": "doc:open",
+      "method": "onOpenDocument"
+    },
+    {
+      "topic": "app:request-close",
+      "method": "onCloseRequest"
+    },
+    {
+      "topic": "update:state",
+      "method": "onUpdateState"
+    }
   ],
   "calls": [
-    { "name": "getSettings", "operation": "settings:get", "args": "none" },
-    { "name": "setSettings", "operation": "settings:set", "args": "json-list", "arity": 1 },
-    { "name": "openDialog", "operation": "file:open-dialog", "args": "none" },
-    { "name": "readPath", "operation": "file:read-path", "args": "json-list", "arity": 1 },
-    { "name": "readImageAsDataUrl", "operation": "file:read-image", "args": "json-list", "arity": 1 },
-    { "name": "openLocalPath", "operation": "file:open-local-path", "args": "json-list", "arity": 1 },
-    { "name": "readSample", "operation": "file:read-sample", "args": "json-list", "arity": 1 },
-    { "name": "save", "operation": "file:save", "args": "json-list", "arity": 2 },
-    { "name": "saveAs", "operation": "file:save-as", "args": "json-list", "arity": 2 },
-    { "name": "exportAs", "operation": "doc:export", "args": "json-list", "arity": 1 },
-    { "name": "exportDiagramPng", "operation": "diagram:export-png", "args": "json-list", "arity": 1 },
-    { "name": "confirmClose", "operation": "app:confirm-close", "args": "json-list", "arity": 1 },
-    { "name": "getUpdateState", "operation": "update:get-state", "args": "none" },
-    { "name": "checkForUpdate", "operation": "update:check", "args": "none" }
+    {
+      "name": "getSettings",
+      "operation": "settings:get",
+      "args": "none"
+    },
+    {
+      "name": "setSettings",
+      "operation": "settings:set",
+      "args": "json-list",
+      "arity": 1
+    },
+    {
+      "name": "openDialog",
+      "operation": "file:open-dialog",
+      "args": "none"
+    },
+    {
+      "name": "readPath",
+      "operation": "file:read-path",
+      "args": "json-list",
+      "arity": 1
+    },
+    {
+      "name": "readImageAsDataUrl",
+      "operation": "file:read-image",
+      "args": "json-list",
+      "arity": 1
+    },
+    {
+      "name": "openLocalPath",
+      "operation": "file:open-local-path",
+      "args": "json-list",
+      "arity": 1
+    },
+    {
+      "name": "readSample",
+      "operation": "file:read-sample",
+      "args": "json-list",
+      "arity": 1
+    },
+    {
+      "name": "save",
+      "operation": "file:save",
+      "args": "json-list",
+      "arity": 2
+    },
+    {
+      "name": "saveAs",
+      "operation": "file:save-as",
+      "args": "json-list",
+      "arity": 2
+    },
+    {
+      "name": "exportAs",
+      "operation": "doc:export",
+      "args": "json-list",
+      "arity": 1
+    },
+    {
+      "name": "exportDiagramPng",
+      "operation": "diagram:export-png",
+      "args": "json-list",
+      "arity": 1
+    },
+    {
+      "name": "confirmClose",
+      "operation": "app:confirm-close",
+      "args": "json-list",
+      "arity": 1
+    },
+    {
+      "name": "getUpdateState",
+      "operation": "update:get-state",
+      "args": "none"
+    },
+    {
+      "name": "checkForUpdate",
+      "operation": "update:check",
+      "args": "none"
+    }
   ],
   "unsupported": [
     {
@@ -33,6 +108,6 @@
   "queue": {
     "maxCalls": 8,
     "maxBytes": 65536,
-    "readyTimeoutMs": 300
+    "readyTimeoutMs": 2000
   }
 }

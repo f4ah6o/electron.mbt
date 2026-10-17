@@ -367,8 +367,11 @@ static void release_app(void) {
 
 int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
   const char *boot_env = getenv("ELECTRON_MBT_MOJI_BOOT");
+  const char *app_env = getenv("ELECTRON_MBT_MOJI_APP");
   int moji_boot = boot_env != NULL && strcmp(boot_env, "1") == 0;
-  if (supervisor_root == NULL && !moji_boot) return -1;
+  int moji_app = app_env != NULL && strcmp(app_env, "1") == 0;
+  int moji_mode = moji_boot || moji_app;
+  if (supervisor_root == NULL && !moji_mode) return -1;
   release_app();
   char *root = copy_bytes(root_bytes);
   if (root == NULL) return -1;
@@ -471,7 +474,7 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
   }
   JS_FreeValue(context, files);
   JS_FreeValue(context, manifest);
-  if (moji_boot) {
+  if (moji_mode) {
     JSValue global = JS_GetGlobalObject(context);
     JS_SetPropertyStr(context, global, "__nativeSources", sources);
     JS_SetPropertyStr(context, global, "__nativeMainId", JS_NewString(context, entry));
@@ -514,6 +517,30 @@ int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
     if (job_status < 0) {
       JS_FreeValue(context, global); JS_FreeContext(context); JS_FreeRuntime(runtime);
       return -1;
+    }
+    if (moji_app) {
+      JSValue install = JS_GetPropertyStr(context, global, "__mojiInstallInvoke");
+      if (!JS_IsFunction(context, install)) {
+        JS_FreeValue(context, install); JS_FreeValue(context, global);
+        JS_FreeContext(context); JS_FreeRuntime(runtime);
+        return -1;
+      }
+      JSValue install_value = JS_Call(context, install, JS_UNDEFINED, 0, NULL);
+      JS_FreeValue(context, install);
+      if (JS_IsException(install_value)) {
+        JS_FreeValue(context, install_value); JS_FreeValue(context, global);
+        JS_FreeContext(context); JS_FreeRuntime(runtime);
+        return -1;
+      }
+      JS_FreeValue(context, install_value);
+      free(supervisor_app_title);
+      supervisor_app_title = strdup("Moji");
+      free(supervisor_app_entry);
+      supervisor_app_entry = strdup("index.html");
+      app_context = context;
+      app_runtime = runtime;
+      JS_FreeValue(context, global);
+      return 43;
     }
     JSValue finish = JS_GetPropertyStr(context, global, "__mojiBootFinish");
     if (!JS_IsFunction(context, finish)) {
@@ -731,6 +758,11 @@ int32_t moonbit_ebt_supervisor_app_title(moonbit_bytes_t buffer, int32_t capacit
   memcpy(buffer, supervisor_app_title, length);
   buffer[length] = 0;
   return (int32_t)length;
+}
+
+int32_t moonbit_ebt_supervisor_moji_app_mode(void) {
+  const char *value = getenv("ELECTRON_MBT_MOJI_APP");
+  return value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
 int32_t moonbit_ebt_supervisor_boot_mode(void) {

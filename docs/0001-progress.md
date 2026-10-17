@@ -41,7 +41,7 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 | Embedded scheduler | Pure MoonBit timer contract in `runtime/embedded/` | QuickJS job/nextTick/host-event integration, shutdown and Node parity |
 | CJS module registry | In-memory registry, path/package resolver and Node builtin policy | Node builtin shims, dynamic require, conditional exports or app loader |
 | In-process runner | QuickJS engine/context + scheduler + job/CJS entry points | Native supervisor, host loop, timer callbacks, fault and process ownership |
-| Governance | `compatibility/{decisions,risks,components}.json`, validator, CycloneDX production SBOM and preview-readiness report | License selection, signing identity, direct dependency graph or release approval |
+| Governance | `compatibility/{decisions,risks,components}.json`, validator, CycloneDX production SBOM, preview-readiness and G0–G4 reports | License selection, signing identity, direct dependency graph or release approval |
 
 Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter inputs for unit tests, not proof of an authenticated sender. The production adapter must derive them from native frame/document/session state and cannot accept renderer claims. Document grants and pending cancellations do not by themselves secure a disconnected renderer.
 

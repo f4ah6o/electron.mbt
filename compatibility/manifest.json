@@ -671,5 +671,11 @@
       "G4": "partial"
     },
     "note": "Validator result; not app compatibility or a preview release."
+  },
+  "gateReport": {
+    "status": "NOT_READY",
+    "report": "compatibility/reports/g0-g4.md",
+    "source": "compatibility/reports/preview-readiness.json",
+    "note": "Generated status report; not app compatibility or release approval."
   }
 }

@@ -1,5 +1,7 @@
 import {
   "moonbitlang/core/encoding/utf8" @utf8,
+  "moonbitlang/core/json" @json,
+  "f4ah6o/electron/runtime/modules" @modules,
 }
 
 options(
@@ -14,6 +16,8 @@ options(
   targets: {
     "engine.mbt": ["native"],
     "engine_wbtest.mbt": ["native"],
+    "cjs_loader.mbt": ["native"],
+    "cjs_loader_wbtest.mbt": ["native"],
   },
   link: {
     "native": {

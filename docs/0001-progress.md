@@ -18,6 +18,7 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 11. The contextBridge prerequisite stack from PR #10/#13 is integrated: bounded native-backed JS handle registration/release/settlement, isolated bootstrap/preload worlds, one-shot native preload attestation, failed-preload denial, page/preload handler separation, same-URL reload and window-destroy revocation, and unsupported `require` failing closed. The public `contextBridge` API, synchronous cross-world function proxies and arbitrary page-initiated authority remain NOT_IMPLEMENTED.
 12. QuickJS 2026-06-04 is vendored with a measured tarball SHA-256 and license hash. The native ABI in `bridges/embedded-js/` owns explicit engine/context/value leases and passes eval/throw, duplicate/release, stale-handle rejection, Promise job, interrupt, invalid UTF-8 and low-memory tests. QJS-05 callback/OOM exit and root-count evidence, sanitizer/ownership review, the CJS loader and scheduler integration remain open.
 13. `runtime/embedded/scheduler.mbt` owns timer IDs, deadlines, registration order, cancellation, ref/unref deadlines and limits. Its pure tests cover deadline/registration ordering, cancellation, negative delay, non-monotonic rejection, limits and post-batch scheduling. It is not yet connected to QuickJS jobs, host events or shutdown.
+14. `runtime/modules/module.mbt` owns in-memory module IDs/source hashes/state/dependency edges and bounds. `bridges/embedded-js/cjs_loader.mbt` executes a pre-resolved graph in one QuickJS realm and tests cycles, cache identity, `module.exports` reassignment, JSON modules and fail-closed admission. Filesystem/package resolution, Node builtins, dynamic require and the Node oracle remain open.
 
 ## Ownership and unfinished wiring
 
@@ -36,6 +37,7 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 | contextBridge prerequisites | MoonBit handle registry, JS realm registry, native isolated bootstrap/attestation | Public contextBridge API, synchronous proxy, arbitrary page sender authority |
 | QuickJS ABI | Vendored engine, C adapter and native MoonBit package | CJS loader, Node subset, scheduler, ownership/sanitizer acceptance |
 | Embedded scheduler | Pure MoonBit timer contract in `runtime/embedded/` | QuickJS job/nextTick/host-event integration, shutdown and Node parity |
+| CJS module registry | In-memory registry + QuickJS pre-resolved graph execution | Filesystem/package resolution, Node builtins, dynamic require or app loader |
 | Governance | `compatibility/{decisions,risks,components}.json` and validator | License selection, signing identity, SBOM, or release approval |
 
 Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter inputs for unit tests, not proof of an authenticated sender. The production adapter must derive them from native frame/document/session state and cannot accept renderer claims. Document grants and pending cancellations do not by themselves secure a disconnected renderer.
@@ -54,6 +56,7 @@ G0 therefore stays open until the boot/first-use closure, native authority and a
 - EP-02, EP-03 and EP-04 are integrated on this branch; the main-local IPC stack, native host and contextBridge prerequisites have tests and macOS probes.
 - EP-08/R1a is partial: the pinned QuickJS ABI passes eval/throw, value lease, job and interrupt tests. QJS-05, ownership/sanitizer review and CJS/MOD gates remain open.
 - EP-09 has a pure timer contract with deterministic ordering/limits. It is not yet connected to QuickJS jobs or host events.
+- EP-11 has an in-memory CJS registry and QuickJS cycle/cache/identity tests. Filesystem resolution, Node builtins and the actual app graph remain open.
 - EP-10/EP-15 production supervisor and snapshot/origin integration are not yet on this branch. The experimental M1 runner is not the Node-less supervisor.
 - G1 remains open. No compatibility row is verified.
 

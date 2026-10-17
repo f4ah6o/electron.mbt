@@ -412,7 +412,7 @@
       "ASAN/ownership review",
       "cross-context lease rejection",
       "scheduler integration",
-      "CJS loader",
+      "filesystem/Node CJS loader",
       "Node subset"
     ],
     "note": "Pinned ABI only. Eval/throw, explicit value leases, stale-handle rejection, Promise jobs, interrupt, invalid UTF-8 and a low-memory error pass on this integration environment; no Node-free runtime or app claim."
@@ -470,5 +470,28 @@
       "privilegedScheme": "jmd-file bypassCSP remains expected-rejection"
     },
     "note": "Pinned source/build provenance only. Boot closure, native runtime, preload/IPC and app scenarios remain NOT RUN."
+  },
+  "cjsLoader": {
+    "status": "partial",
+    "compatible": false,
+    "tests": [
+      "runtime/modules/module_wbtest.mbt",
+      "bridges/embedded-js/cjs_loader_wbtest.mbt"
+    ],
+    "passed": [
+      "in-memory cycle",
+      "cache identity",
+      "module.exports reassignment",
+      "JSON module",
+      "duplicate/missing dependency/syntax rejection"
+    ],
+    "open": [
+      "filesystem/package resolution",
+      "Node builtins",
+      "dynamic require",
+      "pinned Node oracle",
+      "actual Moji/jmd graph"
+    ],
+    "note": "Pre-resolved in-memory graph only. No app loader or Node compatibility claim."
   }
 }

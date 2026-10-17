@@ -9,9 +9,18 @@
       "verification": "not-run",
       "gate": "open",
       "compatible": false,
-      "inputMode": ["original-cjs", "prepared-js", "ts-build"],
-      "preloadMode": ["original"],
-      "scope": ["kernel", "native-probe"],
+      "inputMode": [
+        "original-cjs",
+        "prepared-js",
+        "ts-build"
+      ],
+      "preloadMode": [
+        "original"
+      ],
+      "scope": [
+        "kernel",
+        "native-probe"
+      ],
       "blockedReason": null
     },
     "electron-nodeless-v1": {
@@ -21,21 +30,44 @@
       "verification": "not-run",
       "gate": "blocked",
       "compatible": false,
-      "inputMode": ["original-cjs", "prepared-js", "ts-build"],
-      "preloadMode": ["original"],
-      "scope": ["unit", "kernel", "native-ingress", "app-scenario"],
+      "inputMode": [
+        "original-cjs",
+        "prepared-js",
+        "ts-build"
+      ],
+      "preloadMode": [
+        "original"
+      ],
+      "scope": [
+        "unit",
+        "kernel",
+        "native-ingress",
+        "app-scenario"
+      ],
       "blockedReason": "strict synchronous isolated contextBridge remains No-Go/blocked; EP-07 finite spike and public-primitive evidence are required"
     },
     "electron-nodeless-adapted-v1": {
       "engine": "quickjs",
       "runtime": "quickjs-native",
-      "implementation": "planned",
+      "implementation": "partial",
       "verification": "not-run",
       "gate": "open",
       "compatible": false,
-      "inputMode": ["original-cjs", "prepared-js", "ts-build"],
-      "preloadMode": ["generated-adapter"],
-      "scope": ["unit", "kernel", "native-ingress", "app-scenario", "release"],
+      "inputMode": [
+        "original-cjs",
+        "prepared-js",
+        "ts-build"
+      ],
+      "preloadMode": [
+        "generated-adapter"
+      ],
+      "scope": [
+        "unit",
+        "kernel",
+        "native-ingress",
+        "app-scenario",
+        "release"
+      ],
       "blockedReason": null
     },
     "moonbit-native-v1": {
@@ -45,9 +77,16 @@
       "verification": "not-run",
       "gate": "open",
       "compatible": false,
-      "inputMode": ["moonbit-source"],
-      "preloadMode": ["none"],
-      "scope": ["unit", "app-scenario"],
+      "inputMode": [
+        "moonbit-source"
+      ],
+      "preloadMode": [
+        "none"
+      ],
+      "scope": [
+        "unit",
+        "app-scenario"
+      ],
       "blockedReason": null
     }
   }

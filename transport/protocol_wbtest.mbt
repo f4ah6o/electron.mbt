@@ -449,3 +449,16 @@ test "What: preload-status operation validates empty requests and bounded ACKs" 
   }
   assert_true(validate(visibility_wire("get-preload-status", "{\"x\":1}", "")) is Err(_))
 }
+
+///|
+test "What: adapted-adapter installation validates path and acknowledgement" {
+  assert_true(validate(visibility_wire("install-adapted-adapter",
+    "{\"file\":\"adapted/page-api.js\"}", "")) is Ok(_))
+  assert_true(validate(visibility_wire("install-adapted-adapter",
+    "{\"installed\":true}", ",\"terminal\":\"success\"")) is Ok(_))
+  for bad in ["{}", "{\"file\":\"\"}", "{\"file\":5}", "{\"file\":\"" + "x".repeat(8193) + "\"}"] {
+    assert_true(validate(visibility_wire("install-adapted-adapter", bad, "")) is Err(_))
+  }
+  assert_true(validate(visibility_wire("install-adapted-adapter",
+    "{\"installed\":false}", ",\"terminal\":\"success\"")) is Err(_))
+}

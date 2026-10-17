@@ -5,13 +5,13 @@
   "gates": {
     "G0": "partial",
     "G1": "partial",
-    "G2": "NOT_RUN",
+    "G2": "partial",
     "G3": "NOT_RUN",
     "G4": "partial"
   },
   "counts": {
-    "checks": 16,
-    "pass": 9,
+    "checks": 18,
+    "pass": 11,
     "fail": 2,
     "notRun": 5
   },
@@ -32,9 +32,19 @@
       "detail": "electron-nodeless-v1 gate=blocked compatible=false"
     },
     {
-      "id": "adapted-profile-not-implemented",
+      "id": "adapted-profile-contract",
+      "status": "PASS",
+      "detail": "electron-nodeless-adapted-v1 implementation=partial verification=not-run preloadMode=generated-adapter"
+    },
+    {
+      "id": "adapted-adapter-fixture",
+      "status": "PASS",
+      "detail": "page-world document-start adapter fixtures/native-app/adapted/page-api.js; hash=6050f951fa1ae9f0491d9516a82554298f3f18b98e50732d241c29e7f0736b34"
+    },
+    {
+      "id": "adapted-moji-runtime",
       "status": "NOT_RUN",
-      "detail": "electron-nodeless-adapted-v1 implementation=planned verification=not-run preloadMode=generated-adapter"
+      "detail": "Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected"
     },
     {
       "id": "production-closure:moji-v1.0.5",

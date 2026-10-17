@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "profile": "electron-nodeless-adapted-v1",
+  "status": "fixture-only",
+  "app": "native-app-fixture",
+  "originalPreload": "NOT_EXECUTED",
+  "adapter": {
+    "path": "fixtures/native-app/adapted/page-api.js",
+    "manifest": "fixtures/native-app/adapted/api.json",
+    "sha256": "6050f951fa1ae9f0491d9516a82554298f3f18b98e50732d241c29e7f0736b34",
+    "world": "page",
+    "injection": "document-start"
+  },
+  "api": {
+    "name": "api",
+    "methods": [{ "name": "version", "returns": "adapted-fixture" }]
+  },
+  "semantics": {
+    "syncContextBridge": false,
+    "ipcRenderer": false,
+    "originalPreloadExecuted": false,
+    "pageApi": "generated constant methods",
+    "note": "Fixture adapter only. No main/renderer IPC, no Moji preload adaptation, no compatibility claim."
+  }
+}

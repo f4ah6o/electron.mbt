@@ -33,8 +33,20 @@ function buildReport() {
   const adapted = profiles.profiles['electron-nodeless-adapted-v1'];
   checks.push(check('strict-profile-blocked', strict.gate === 'blocked' && strict.compatible === false ? 'PASS' : 'FAIL',
     `electron-nodeless-v1 gate=${strict.gate} compatible=${strict.compatible}`));
-  checks.push(check('adapted-profile-not-implemented', adapted.implementation === 'planned' && adapted.verification === 'not-run' ? 'NOT_RUN' : 'FAIL',
+  checks.push(check('adapted-profile-contract', adapted.implementation === 'partial' && adapted.preloadMode.includes('generated-adapter') ? 'PASS' : 'FAIL',
     `electron-nodeless-adapted-v1 implementation=${adapted.implementation} verification=${adapted.verification} preloadMode=${adapted.preloadMode.join(',')}`));
+  const adaptedRecord = readJson('compatibility/adapted-preload-v1.json');
+  const adapterSource = fs.readFileSync(path.join(root, adaptedRecord.adapter.path));
+  const adapterHash = require('node:crypto').createHash('sha256').update(adapterSource).digest('hex');
+  const adapterOk = adaptedRecord.profile === 'electron-nodeless-adapted-v1' &&
+    adaptedRecord.originalPreload === 'NOT_EXECUTED' &&
+    adaptedRecord.adapter.world === 'page' &&
+    adaptedRecord.adapter.injection === 'document-start' &&
+    adapterHash === adaptedRecord.adapter.sha256;
+  checks.push(check('adapted-adapter-fixture', adapterOk ? 'PASS' : 'FAIL',
+    `page-world document-start adapter ${adaptedRecord.adapter.path}; hash=${adapterHash}`));
+  checks.push(check('adapted-moji-runtime', 'NOT_RUN',
+    'Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected'));
 
   for (const [id, closure] of closures) {
     const closureOk = closure.status === 'PASS' && closure.nativeAddons.length === 0;
@@ -70,7 +82,7 @@ function buildReport() {
     gates: {
       G0: 'partial',
       G1: 'partial',
-      G2: 'NOT_RUN',
+      G2: 'partial',
       G3: 'NOT_RUN',
       G4: 'partial',
     },

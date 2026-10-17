@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "name": "api",
+  "methods": [
+    { "name": "version", "returns": "adapted-fixture" }
+  ]
+}

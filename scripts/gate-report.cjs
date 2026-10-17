@@ -22,7 +22,7 @@ function buildMarkdown() {
     ['G1', 'QuickJS engine / CJS / native supervisor', readiness.gates.G1,
       '`runtime/runner`, CJS fixture graph, supervisor window/load/event', '`runtime/runner` in supervisor; crash restart; general event queue; Moji main'],
     ['G2', 'adapted Node-less runtime', readiness.gates.G2,
-      '`electron-nodeless-adapted-v1` profile contract only', 'generated preload adapter; renderer ingress; main/renderer IPC; app boot'],
+      '`electron-nodeless-adapted-v1` contract, generated page adapter, document-start injection fixture', 'Moji preload IPC; renderer ingress; main/renderer IPC; app boot'],
     ['G3', 'real-app acceptance', readiness.gates.G3,
       'pinned app records and M1 boot blocker', 'Moji/jmd app scenarios; IME/focus/AX; security/fault'],
     ['G4', 'signed preview / distribution', readiness.gates.G4,

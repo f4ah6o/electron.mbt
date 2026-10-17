@@ -151,6 +151,7 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, copy) void (^bootstrapAttested)(long long);
 @property(nonatomic) long long preloadObservedGeneration;
 @property(nonatomic, copy) NSString *preloadSource;
+@property(nonatomic, copy) NSString *adaptedAdapterSource;
 @property(nonatomic, copy) NSString *preloadStatus;
 @property(nonatomic, copy) NSString *preloadDetail;
 @property(nonatomic, copy) NSString *preloadLastStatus;
@@ -190,6 +191,7 @@ static NSString *preloadDigest(NSData *data) {
   if (self) {
     self.root = root;
     self.preloadSource = preloadSource;
+    self.adaptedAdapterSource = nil;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -258,6 +260,12 @@ static NSString *preloadDigest(NSData *data) {
     injectionTime:WKUserScriptInjectionTimeAtDocumentStart
     forMainFrameOnly:YES inContentWorld:self.bootstrapWorld];
   [controller addUserScript:bootstrap];
+  if (self.adaptedAdapterSource) {
+    WKUserScript *adapted = [[WKUserScript alloc] initWithSource:self.adaptedAdapterSource
+      injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+      forMainFrameOnly:YES inContentWorld:[WKContentWorld pageWorld]];
+    [controller addUserScript:adapted];
+  }
   if (self.preloadSource) {
     NSError *error = nil;
     NSData *json = [NSJSONSerialization dataWithJSONObject:@[self.preloadSource]
@@ -522,6 +530,7 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadObservedGeneration = 0;
   self.preloadStatus = nil;
   self.preloadFinishedGeneration = 0;
+  self.adaptedAdapterSource = nil;
   [self completeLoad:NO reason:@"ELECTRON_MBT_WEB_PROCESS_TERMINATED"];
   if (newlyTerminated && self.contentGone) self.contentGone(self.generation);
 }
@@ -537,6 +546,7 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadObservedGeneration = 0;
   self.preloadStatus = nil;
   self.preloadFinishedGeneration = 0;
+  self.adaptedAdapterSource = nil;
   [self.web.configuration.userContentController removeAllUserScripts];
   [self.web.configuration.userContentController
     removeScriptMessageHandlerForName:@"electronMbtBootstrap" contentWorld:self.bootstrapWorld];
@@ -688,6 +698,34 @@ static NSString *preloadDigest(NSData *data) {
   }
   MBTWindow *window = self.windows[windowID];
   if (!window) { done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_UNKNOWN"}); return; }
+  if ([operation isEqualToString:@"install-adapted-adapter"]) {
+    NSString *file = payload[@"file"];
+    if (payload.count != 1 || ![file isKindOfClass:[NSString class]] ||
+        window.generation != 0 || !window.contentAlive) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+      return;
+    }
+    NSString *canonical = canonicalPath(file);
+    if (!canonical || ![window withinRoot:canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
+      return;
+    }
+    struct stat info;
+    if (stat(canonical.fileSystemRepresentation, &info) != 0 || !S_ISREG(info.st_mode) ||
+        info.st_size <= 0 || info.st_size > 65536) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+      return;
+    }
+    NSData *data = [NSData dataWithContentsOfFile:canonical];
+    NSString *source = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    if (source == nil || source.length == 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
+      return;
+    }
+    window.adaptedAdapterSource = source;
+    done(@"success", @{@"installed": @YES});
+    return;
+  }
   if ([operation isEqualToString:@"begin-load"]) {
     if (!window.contentAlive || generation.longLongValue <= window.generation ||
         generation.longLongValue <= 0) {

@@ -184,7 +184,23 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_APP_TITLE\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let begin = request_frame(session, 6, 1, 1, "begin-load", "{}")
+  let adapter_path = Bytes::new(4096)
+  let adapter_length = supervisor_file(adapter_path, adapter_path.length(), @utf8.encode("adapted/page-api.js"))
+  if adapter_length <= 0 {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTER_PATH\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let install_adapter = request_frame(session, 6, 1, 0, "install-adapted-adapter",
+    "{\"file\":\"" + json_path(@utf8.decode_lossy(adapter_path[:adapter_length])) + "\"}")
+  let adapter_sent = send(fd, install_adapter)
+  let adapter_reply = if adapter_sent { receive(fd, buffer) } else { None }
+  if !adapter_sent || adapter_reply is None || !adapter_reply.unwrap().contains("\"installed\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTER\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let begin = request_frame(session, 7, 1, 1, "begin-load", "{}")
   let begin_sent = send(fd, begin)
   let begin_reply = if begin_sent { receive(fd, buffer) } else { None }
   if !begin_sent || begin_reply is None || !begin_reply.unwrap().contains("\"terminal\":\"success\"") {
@@ -199,7 +215,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PATH\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let load = request_frame(session, 7, 1, 1, "load-file",
+  let load = request_frame(session, 8, 1, 1, "load-file",
     "{\"file\":\"" + json_path(@utf8.decode_lossy(file_path[:path_length])) + "\"}")
   let load_fd = supervisor_load_fd()
   let load_sent = send(load_fd, load)
@@ -222,7 +238,24 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_EVENT\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let bootstrap = request_frame(session, 8, 1, 1, "get-bootstrap-status", "{}")
+  let mut page_title_ok = false
+  for _attempt = 0; _attempt < 20; _attempt = _attempt + 1 {
+    let page_title_request = request_frame(session, 9, 1, 1, "get-web-contents-title", "{}")
+    let page_title_sent = send(fd, page_title_request)
+    let page_title_reply = if page_title_sent { receive(fd, buffer) } else { None }
+    if page_title_sent && page_title_reply is Some(_) &&
+      page_title_reply.unwrap().contains("\"title\":\"adapted-api-ok\"") {
+      page_title_ok = true
+      break
+    }
+    supervisor_sleep_ms(50)
+  }
+  if !page_title_ok {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PAGE_API\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let bootstrap = request_frame(session, 10, 1, 1, "get-bootstrap-status", "{}")
   let bootstrap_sent = send(fd, bootstrap)
   let bootstrap_reply = if bootstrap_sent { receive(fd, buffer) } else { None }
   if !bootstrap_sent || bootstrap_reply is None ||
@@ -234,7 +267,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_BOOTSTRAP\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let preload = request_frame(session, 9, 1, 1, "get-preload-status", "{}")
+  let preload = request_frame(session, 11, 1, 1, "get-preload-status", "{}")
   let preload_sent = send(fd, preload)
   let preload_reply = if preload_sent { receive(fd, buffer) } else { None }
   if !preload_sent || preload_reply is None || !preload_reply.unwrap().contains("\"status\":\"absent\"") {
@@ -242,7 +275,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PRELOAD_STATUS\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let destroy = request_frame(session, 10, 1, 1, "destroy-window", "{}")
+  let destroy = request_frame(session, 12, 1, 1, "destroy-window", "{}")
   let destroy_sent = send(fd, destroy)
   let destroy_reply = if destroy_sent { receive(fd, buffer) } else { None }
   if !destroy_sent || destroy_reply is None || !destroy_reply.unwrap().contains("\"destroyed\":true") {
@@ -250,7 +283,7 @@ fn main {
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_DESTROY\",\"compatible\":false}")
     supervisor_exit(1)
   }
-  let shutdown = request_frame(session, 11, 0, 0, "shutdown", "{}")
+  let shutdown = request_frame(session, 13, 0, 0, "shutdown", "{}")
   if !send(fd, shutdown) || receive(fd, buffer) is None {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_SHUTDOWN\",\"compatible\":false}")
@@ -311,7 +344,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"adapted-api-ok\",\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

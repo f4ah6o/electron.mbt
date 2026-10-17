@@ -8,11 +8,13 @@ invariant or honest record passed; it never means app compatibility.
 ## Current result
 
 - status: `NOT_READY`, `compatible:false`
-- gates: G0 partial, G1 partial, G2 `NOT_RUN`, G3 `NOT_RUN`, G4 partial
-- 16 checks: 9 PASS, 2 FAIL, 5 NOT_RUN
+- gates: G0 partial, G1 partial, G2 partial, G3 `NOT_RUN`, G4 partial
+- 18 checks: 11 PASS, 2 FAIL, 5 NOT_RUN
 - failures: functional contextBridge/ipcRenderer is not implemented; the Moji
   M1 boot is a recorded FAIL at `contextBridge.exposeInMainWorld`
-- NOT_RUN: adapted profile, Node-less Moji app main, signing, clean install,
+- adapted: generated page adapter and document-start page-world injection are a
+  fixture PASS; Moji preload IPC/app boot remains NOT_RUN
+- NOT_RUN: adapted Moji runtime, Node-less Moji app main, signing, clean install,
   interactive IME/focus/accessibility
 
 ## Invariants it enforces
@@ -20,6 +22,8 @@ invariant or honest record passed; it never means app compatibility.
 - no `verified` rows are silently promoted
 - `manifest.compatible` remains false
 - the strict Node-less profile stays blocked
+- the adapted fixture adapter hash, page-world injection and NOT_EXECUTED original
+  preload are checked
 - production closures are PASS with zero native addons
 - SBOM component/hash counts match the production closure
 - the Moji preload gate is recorded as NOT_IMPLEMENTED

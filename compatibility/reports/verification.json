@@ -8,14 +8,14 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 121, passed: 121, failed: 0."
+      "detail": "Total tests: 122, passed: 122, failed: 0."
     },
     {
       "id": "moon-native",
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 140, passed: 140, failed: 0."
+      "detail": "Total tests: 141, passed: 141, failed: 0."
     },
     {
       "id": "npm-test",
@@ -114,6 +114,15 @@
       }
     },
     {
+      "id": "adapted-preload",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "status": "PASS"
+      }
+    },
+    {
       "id": "readiness",
       "status": "NOT_READY",
       "exit": 2,
@@ -121,8 +130,8 @@
       "detail": {
         "status": "NOT_READY",
         "counts": {
-          "checks": 16,
-          "pass": 9,
+          "checks": 18,
+          "pass": 11,
           "fail": 2,
           "notRun": 5
         }

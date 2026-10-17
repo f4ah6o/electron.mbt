@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "install-adapted-adapter" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -498,6 +498,24 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Invalid native web contents title")
+      }
+    }
+  }
+  if operation == "install-adapted-adapter" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 1 => {
+          match values.get("file") {
+            Some(String(value)) if value.length() > 0 && value.length() <= 8192 => ()
+            _ => raise BadProtocol("Invalid adapted-adapter file")
+          }
+        }
+        _ => raise BadProtocol("Invalid adapted-adapter request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 1 && values.get("installed") is Some(True) => ()
+        _ => raise BadProtocol("Invalid adapted-adapter acknowledgement")
       }
     }
   }

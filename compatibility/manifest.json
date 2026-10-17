@@ -681,8 +681,19 @@
   "verification": {
     "status": "NOT_READY",
     "report": "compatibility/reports/verification.json",
-    "checks": 12,
+    "checks": 13,
     "unexpectedFailures": 0,
     "note": "Expected NOT_READY; not app compatibility or release approval."
+  },
+  "adaptedPreload": {
+    "status": "fixture-only",
+    "compatible": false,
+    "profile": "electron-nodeless-adapted-v1",
+    "record": "compatibility/adapted-preload-v1.json",
+    "adapter": "fixtures/native-app/adapted/page-api.js",
+    "adapterSHA256": "6050f951fa1ae9f0491d9516a82554298f3f18b98e50732d241c29e7f0736b34",
+    "injection": "page-world document-start",
+    "originalPreload": "NOT_EXECUTED",
+    "note": "Generated constant page API fixture only. No ipcRenderer/contextBridge, Moji preload adaptation, renderer ingress or app boot."
   }
 }

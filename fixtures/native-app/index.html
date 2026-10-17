@@ -1,5 +1,11 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>native-app-fixture</title></head>
-<body><main id="app">native-app-fixture</main></body>
+<body>
+<main id="app">native-app-fixture</main>
+<script>
+  document.title = window.api && typeof window.api.version === 'function' &&
+    window.api.version() === 'adapted-fixture' ? 'adapted-api-ok' : 'adapted-api-missing';
+</script>
+</body>
 </html>

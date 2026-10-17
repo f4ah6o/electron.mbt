@@ -762,7 +762,8 @@
     "saveBytes": 65536,
     "imageBytes": 1048576,
     "grants": "test-only grant-file; dialogs must grant in production",
-    "dialogs": "NOT_IMPLEMENTED",
-    "export": "NOT_IMPLEMENTED"
+    "dialogs": "test-injected grant path; AppKit panels compiled; UI NOT RUN",
+    "export": "NOT_IMPLEMENTED",
+    "dialogGrants": true
   }
 }

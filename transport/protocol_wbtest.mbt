@@ -568,6 +568,27 @@ test "What: source snapshot preparation validates the manifest shape" {
 }
 
 ///|
+test "What: dialog results accept only open/save with a bounded path" {
+  assert_true(validate(source_wire("set-dialog-result",
+    "{\"kind\":\"open\",\"path\":\"samples/sample.md\"}", "")) is Ok(_))
+  for malformed in [
+    "{}",
+    "{\"kind\":\"open\"}",
+    "{\"kind\":\"other\",\"path\":\"samples/sample.md\"}",
+    "{\"kind\":\"open\",\"path\":\"\"}",
+    "{\"kind\":\"open\",\"path\":\"x\",\"extra\":1}",
+  ] {
+    assert_true(validate(source_wire("set-dialog-result", malformed, "")) is Err(_))
+  }
+  assert_true(validate(source_wire("set-dialog-result",
+    "{\"set\":true,\"kind\":\"save\",\"path\":\"/tmp/x\"}",
+    ",\"terminal\":\"success\"")) is Ok(_))
+  assert_true(validate(source_wire("set-dialog-result",
+    "{\"set\":false,\"kind\":\"save\",\"path\":\"/tmp/x\"}",
+    ",\"terminal\":\"success\"")) is Err(_))
+}
+
+///|
 test "What: file grants accept only a bounded path and read/write mode" {
   let request = source_wire("grant-file",
     "{\"path\":\"broker-output.txt\",\"mode\":\"readwrite\"}", "")

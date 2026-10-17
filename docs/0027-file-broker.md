@@ -1,7 +1,8 @@
 # File broker (partial)
 
 Status: **partial**. The native app handler now executes bounded read/save/image
-operations for the adapted profile. Dialogs, export, `openLocalPath` and Moji's
+operations for the adapted profile. Open/save dialogs have a test-injected grant
+path and compiled AppKit panels (UI NOT RUN); export, `openLocalPath` and Moji's
 real file handlers are not implemented.
 
 ## Policy
@@ -46,8 +47,9 @@ removes `broker-output.txt` after the probe.
 ## Deliberate limits
 
 - `grant-file` is a test-only control lane, not a production user consent path
-- no `NSOpenPanel` / `NSSavePanel`, no dialog-granted paths, no directory
-  picker
+- the AppKit `NSOpenPanel`/`NSSavePanel` UI is compiled but **NOT RUN**; the
+  automated path uses the test-only `set-dialog-result`
+- no `openLocalPath`
 - no `file:open-local-path`, `file:open-dialog`, `file:save-as`,
   `doc:export` or `diagram:export-png`
 - samples are read from the app root, not the source snapshot; the source
@@ -61,7 +63,7 @@ removes `broker-output.txt` after the probe.
 
 ## Next
 
-1. open/save dialogs with real user grants (NSOpenPanel/NSSavePanel)
+1. exercise the real dialog UI manually
 2. export through a save panel, including PNG diagram export
 3. `openLocalPath` with an explicit local-file policy
 4. Moji main/preload boot and a file read/save app scenario

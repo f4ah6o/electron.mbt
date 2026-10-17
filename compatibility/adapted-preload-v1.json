@@ -23,8 +23,8 @@
     "files": [
       {
         "path": "index.html",
-        "sha256": "fec574a5d989badcf4252569fef2fd0843ea42d51fadf5eb06d790c926c8b06e",
-        "bytes": 8084
+        "sha256": "52fe97b5399b278b82ffa43527ef9ca8a4617e78744dd2778955f7c8b6c78750",
+        "bytes": 8990
       },
       {
         "path": "adapted/page-api.js",
@@ -191,8 +191,9 @@
       "saveBytes": 65536,
       "imageBytes": 1048576
     },
-    "dialogs": "NOT_IMPLEMENTED",
+    "dialogs": "test-injected grant path + AppKit NSOpenPanel/NSSavePanel compiled; UI NOT RUN",
     "export": "NOT_IMPLEMENTED",
-    "openLocalPath": "NOT_IMPLEMENTED"
+    "openLocalPath": "NOT_IMPLEMENTED",
+    "dialogGrants": true
   }
 }

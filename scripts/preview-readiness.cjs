@@ -87,12 +87,16 @@ function buildReport() {
   const fileBrokerOk = fileBroker.status === 'partial' &&
     fileBroker.bounds && fileBroker.bounds.readBytes > 0 &&
     fileBroker.bounds.saveBytes > 0 && fileBroker.bounds.imageBytes > 0 &&
-    fileBroker.grants && fileBroker.dialogs === 'NOT_IMPLEMENTED' &&
+    fileBroker.grants && typeof fileBroker.dialogs === 'string' &&
     fileBroker.export === 'NOT_IMPLEMENTED';
   checks.push(check('adapted-file-broker', fileBrokerOk ? 'PASS' : 'FAIL',
     `File broker: read=${fileBroker.bounds?.readBytes || 0}B, save=${fileBroker.bounds?.saveBytes || 0}B, image=${fileBroker.bounds?.imageBytes || 0}B, grants=${fileBroker.grants || 'none'}; dialogs=${fileBroker.dialogs || 'none'}; export=${fileBroker.export || 'none'}`));
-  checks.push(check('adapted-dialog', 'NOT_RUN',
-    'NSOpenPanel/NSSavePanel and dialog-granted paths are not implemented'));
+  const dialogGrantOk = fileBroker.dialogGrants === true &&
+    /test-injected/.test(fileBroker.dialogs || '');
+  checks.push(check('adapted-dialog-grant', dialogGrantOk ? 'PASS' : 'FAIL',
+    `Dialog grant path: ${fileBroker.dialogs || 'none'}`));
+  checks.push(check('adapted-dialog-ui', 'NOT_RUN',
+    'NSOpenPanel/NSSavePanel UI is compiled but not exercised'));
   checks.push(check('adapted-export', 'NOT_RUN',
     'export/save-panel writes are not implemented'));
   checks.push(check('adapted-moji-api', mojiApiOk ? 'PASS' : 'FAIL',

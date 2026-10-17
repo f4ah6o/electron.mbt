@@ -247,6 +247,8 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic) long long ingressUnhandled;
 @property(nonatomic, copy) NSString *ingressLastCode;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *fileGrants;
+@property(nonatomic, copy) NSString *testOpenDialogPath;
+@property(nonatomic, copy) NSString *testSaveDialogPath;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
                   preloadSource:(NSString *)preloadSource;
@@ -284,6 +286,8 @@ static NSString *preloadDigest(NSData *data) {
     self.ingressUnhandled = 0;
     self.ingressLastCode = nil;
     self.fileGrants = [NSMutableDictionary dictionary];
+    self.testOpenDialogPath = nil;
+    self.testSaveDialogPath = nil;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -354,8 +358,12 @@ static NSString *preloadDigest(NSData *data) {
   if (![resolved isEqualToString:resolvedRoot] && ![resolved hasPrefix:prefix]) return nil;
   return resolved;
 }
-- (BOOL)grantFile:(NSString *)path mode:(NSString *)mode canonical:(NSString **)canonical {
-  NSString *resolved = [self canonicalAppPath:path];
+- (NSString *)canonicalBrokerPath:(NSString *)path {
+  if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096) return nil;
+  if (![path isAbsolutePath]) return [self canonicalAppPath:path];
+  return [[path stringByStandardizingPath] stringByResolvingSymlinksInPath];
+}
+- (BOOL)grantCanonicalFile:(NSString *)resolved mode:(NSString *)mode canonical:(NSString **)canonical {
   if (resolved == nil) return NO;
   NSInteger bits = 0;
   if ([mode isEqualToString:@"read"]) bits = 1;
@@ -376,6 +384,11 @@ static NSString *preloadDigest(NSData *data) {
   NSInteger merged = (existing != nil ? existing.integerValue : 0) | bits;
   self.fileGrants[resolved] = @(merged);
   return YES;
+}
+- (BOOL)grantFile:(NSString *)path mode:(NSString *)mode canonical:(NSString **)canonical {
+  NSString *resolved = [self canonicalAppPath:path];
+  if (resolved == nil) return NO;
+  return [self grantCanonicalFile:resolved mode:mode canonical:canonical];
 }
 - (BOOL)hasFileGrant:(NSString *)canonical write:(BOOL)write {
   NSInteger needed = write ? 2 : 1;
@@ -402,11 +415,115 @@ static NSString *preloadDigest(NSData *data) {
   self.ingressLastCode = code;
   reply(nil, code);
 }
+- (void)openDialogWithReply:(void (^)(id, NSString *))reply {
+  if (self.testOpenDialogPath != nil) {
+    NSString *granted = nil;
+    if (![self grantCanonicalFile:self.testOpenDialogPath mode:@"read" canonical:&granted]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
+    self.ingressAdmitted++;
+    reply(@{@"path": granted, @"paths": @[granted], @"source": @"test-dialog"}, nil);
+    return;
+  }
+  if (self.native == nil) {
+    [self denyFile:@"ELECTRON_MBT_FILE_DIALOG_UNAVAILABLE" reply:reply];
+    return;
+  }
+  NSOpenPanel *panel = [NSOpenPanel openPanel];
+  panel.canChooseFiles = YES;
+  panel.canChooseDirectories = NO;
+  panel.allowsMultipleSelection = NO;
+  __weak MBTWindow *weakSelf = self;
+  [panel beginSheetModalForWindow:self.native completionHandler:^(NSModalResponse response) {
+    MBTWindow *window = weakSelf;
+    if (window == nil) return;
+    if (response != NSModalResponseOK || panel.URL == nil) {
+      [window denyFile:@"ELECTRON_MBT_FILE_CANCELED" reply:reply];
+      return;
+    }
+    NSString *resolved = [window canonicalBrokerPath:panel.URL.path];
+    NSString *granted = nil;
+    if (resolved == nil || ![window grantCanonicalFile:resolved mode:@"read" canonical:&granted]) {
+      [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
+    window.ingressAdmitted++;
+    reply(@{@"path": granted, @"paths": @[granted], @"source": @"dialog"}, nil);
+  }];
+}
+- (void)saveAsContent:(NSString *)content suggestedName:(NSString *)suggestedName
+  reply:(void (^)(id, NSString *))reply {
+  NSData *data = [content dataUsingEncoding:NSUTF8StringEncoding];
+  if (data.length > 65536) {
+    [self denyFile:@"ELECTRON_MBT_FILE_LIMIT" reply:reply];
+    return;
+  }
+  if (self.testSaveDialogPath != nil) {
+    NSString *granted = nil;
+    if (![self grantCanonicalFile:self.testSaveDialogPath mode:@"readwrite" canonical:&granted]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
+    if (![data writeToFile:granted atomically:YES]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
+      return;
+    }
+    self.ingressAdmitted++;
+    reply(@{@"path": granted, @"bytes": @(data.length), @"source": @"test-dialog"}, nil);
+    return;
+  }
+  if (self.native == nil) {
+    [self denyFile:@"ELECTRON_MBT_FILE_DIALOG_UNAVAILABLE" reply:reply];
+    return;
+  }
+  NSSavePanel *panel = [NSSavePanel savePanel];
+  panel.nameFieldStringValue = suggestedName.length > 0 && suggestedName.length <= 128
+    ? suggestedName : @"document.md";
+  __weak MBTWindow *weakSelf = self;
+  [panel beginSheetModalForWindow:self.native completionHandler:^(NSModalResponse response) {
+    MBTWindow *window = weakSelf;
+    if (window == nil) return;
+    if (response != NSModalResponseOK || panel.URL == nil) {
+      [window denyFile:@"ELECTRON_MBT_FILE_CANCELED" reply:reply];
+      return;
+    }
+    NSString *resolved = [window canonicalBrokerPath:panel.URL.path];
+    NSString *granted = nil;
+    if (resolved == nil || ![window grantCanonicalFile:resolved mode:@"readwrite" canonical:&granted]) {
+      [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
+    if (![data writeToFile:granted atomically:YES]) {
+      [window denyFile:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
+      return;
+    }
+    window.ingressAdmitted++;
+    reply(@{@"path": granted, @"bytes": @(data.length), @"source": @"dialog"}, nil);
+  }];
+}
 - (void)handleFileOperation:(NSString *)operation payload:(NSDictionary *)payload
   reply:(void (^)(id, NSString *))reply {
   NSArray *args = payload[@"args"];
-  if (![args isKindOfClass:[NSArray class]]) {
+  if (args != nil && ![args isKindOfClass:[NSArray class]]) {
     [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
+    return;
+  }
+  if ([operation isEqualToString:@"file:open-dialog"]) {
+    if (args != nil && args.count != 0) {
+      [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
+      return;
+    }
+    [self openDialogWithReply:reply];
+    return;
+  }
+  if ([operation isEqualToString:@"file:save-as"]) {
+    if (args.count != 2 || ![args[0] isKindOfClass:[NSString class]] ||
+        ![args[1] isKindOfClass:[NSString class]]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
+      return;
+    }
+    [self saveAsContent:args[0] suggestedName:args[1] reply:reply];
     return;
   }
   if ([operation isEqualToString:@"file:read-path"] ||
@@ -419,7 +536,7 @@ static NSString *preloadDigest(NSData *data) {
     NSString *requested = args[0];
     NSString *candidate = [operation isEqualToString:@"file:read-sample"]
       ? [@"samples" stringByAppendingPathComponent:requested] : requested;
-    NSString *canonical = [self canonicalAppPath:candidate];
+    NSString *canonical = [self canonicalBrokerPath:candidate];
     if (canonical == nil || (![self isSamplePath:canonical] && ![self hasFileGrant:canonical write:NO])) {
       [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
@@ -465,7 +582,7 @@ static NSString *preloadDigest(NSData *data) {
       [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
       return;
     }
-    NSString *canonical = [self canonicalAppPath:args[0]];
+    NSString *canonical = [self canonicalBrokerPath:args[0]];
     if (canonical == nil || ![self hasFileGrant:canonical write:YES]) {
       [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
@@ -1690,6 +1807,29 @@ static NSString *preloadDigest(NSData *data) {
       pending(nil, code);
     }
     done(@"success", @{@"delivered": @YES});
+    return;
+  }
+  if ([operation isEqualToString:@"set-dialog-result"]) {
+    if (payload.count != 2) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *kind = payload[@"kind"];
+    NSString *path = payload[@"path"];
+    if (![kind isKindOfClass:[NSString class]] || !([kind isEqualToString:@"open"] ||
+        [kind isEqualToString:@"save"]) ||
+        ![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *canonical = [window canonicalAppPath:path];
+    if (canonical == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
+      return;
+    }
+    if ([kind isEqualToString:@"open"]) window.testOpenDialogPath = canonical;
+    else window.testSaveDialogPath = canonical;
+    done(@"success", @{@"set": @YES, @"kind": kind, @"path": canonical});
     return;
   }
   if ([operation isEqualToString:@"grant-file"]) {

@@ -60,6 +60,9 @@ The fixture QuickJS Main now uses an operation registry:
 - `file:read-path`, `file:save`, `file:read-image` and `file:read-sample` are
   handled by the native file broker with grants/bounds, not Main
   ([docs/0027-file-broker.md](0027-file-broker.md));
+- `file:open-dialog` and `file:save-as` have a test-injected grant path and
+  compiled AppKit panels; the UI is NOT RUN
+  ([docs/0028-dialogs.md](0028-dialogs.md));
 - `doc:export` and `diagram:export-png` fail closed with
   `ELECTRON_MBT_FILE_NOT_IMPLEMENTED`;
 - the native `settings:get` / `settings:set` / `settings:get` /
@@ -84,8 +87,8 @@ The fixture QuickJS Main now uses an operation registry:
   ipcRenderer compatibility
 - the registered handlers are fixture-only; settings are in-memory and the
   updater returns an idle fixture state, not Moji's updater
-- the file broker is partial: grants are test-only, and dialogs/export remain
-  unimplemented
+- the file broker is partial: grants are test-only, dialog UI is NOT RUN, and
+  export remains unimplemented
 - `getDroppedPath` (`webUtils.getPathForFile`) is unsupported by design
 - no file read/save broker, dialog, export, updater or OS service is connected
 - no Moji main boot, renderer boot, app scenario or verified row

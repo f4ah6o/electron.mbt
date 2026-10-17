@@ -113,6 +113,25 @@ window.__electronMbtIngressProbe = async function () {
       deniedEscape = String(error).includes('ELECTRON_MBT_FILE_DENIED');
     }
     if (!deniedEscape) { document.title = 'adapted-file-escape-accepted'; return; }
+    const opened = await handler.postMessage({
+      operation: 'file:open-dialog', payload: { args: [] },
+    });
+    if (!opened || opened.source !== 'test-dialog' || !Array.isArray(opened.paths) ||
+        opened.paths.length !== 1 || !opened.path.endsWith('/samples/sample.md')) {
+      document.title = 'adapted-file-open-dialog'; return;
+    }
+    const savedAs = await handler.postMessage({
+      operation: 'file:save-as', payload: { args: ['saved-by-dialog', 'suggested.md'] },
+    });
+    if (!savedAs || savedAs.source !== 'test-dialog' || savedAs.bytes !== 15) {
+      document.title = 'adapted-file-save-as'; return;
+    }
+    const savedAsRead = await handler.postMessage({
+      operation: 'file:read-path', payload: { args: ['broker-save-as.txt'] },
+    });
+    if (!savedAsRead || savedAsRead.text !== 'saved-by-dialog') {
+      document.title = 'adapted-file-save-as-read'; return;
+    }
     document.title = 'adapted-ingress-ok';
   } catch (error) {
     document.title = 'adapted-ingress-denied';

@@ -22,6 +22,7 @@ pub(all) enum RuntimeError {
   LimitExceeded
   InvalidPayload
   UnknownRequest
+  UnknownBridgeHandle
   AlreadyCompleted
   IdExhausted
 } derive(Eq)
@@ -55,6 +56,7 @@ pub fn RuntimeError::code(self : RuntimeError) -> String {
     LimitExceeded => "LimitExceeded"
     InvalidPayload => "InvalidPayload"
     UnknownRequest => "UnknownRequest"
+    UnknownBridgeHandle => "UnknownBridgeHandle"
     AlreadyCompleted => "AlreadyCompleted"
     IdExhausted => "IdExhausted"
   }
@@ -81,6 +83,8 @@ pub struct Runtime {
   mut app : AppState
   windows : Map[Int32, Window]
   pending : Map[Int32, Pending]
+  bridge_handles : Map[Int32, BridgeHandle]
+  mut next_bridge_handle : Int32
   terminal : Array[Int32]
   cancelled : Array[Int32]
   ipc_listeners : Array[MainListener]
@@ -96,6 +100,8 @@ pub fn Runtime::new() -> Runtime {
     app: Booting,
     windows: {},
     pending: {},
+    bridge_handles: {},
+    next_bridge_handle: 1,
     terminal: [],
     cancelled: [],
     ipc_listeners: [],
@@ -148,6 +154,7 @@ pub fn Runtime::stop(self : Runtime) -> Unit {
   self.windows.clear()
   self.pending.clear()
   self.ipc_listeners.clear()
+  self.bridge_handles.clear()
   self.queue_bytes = 0
 }
 
@@ -272,6 +279,7 @@ pub fn Runtime::destroy_window(self : Runtime, id : Int32) -> Bool {
     return false
   }
   self.cancel_window_requests(id)
+  self.revoke_bridge_handles(id)
   self.windows.remove(id)
   true
 }
@@ -294,6 +302,7 @@ pub fn Runtime::navigate(
       window.origin = ""
       window.grants.clear()
       self.cancel_window_requests(id)
+      self.revoke_bridge_handles(id)
       Ok(window.generation)
     }
     None => Err(UnknownWindow)
@@ -488,6 +497,7 @@ pub fn Runtime::invalidate_document(
       window.origin = ""
       window.grants.clear()
       self.cancel_window_requests(id)
+      self.revoke_bridge_handles(id)
       Ok(())
     }
     None => Err(UnknownWindow)

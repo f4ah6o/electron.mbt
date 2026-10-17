@@ -32,7 +32,10 @@ options(
         "window_cancel_close",
         "window_navigate",
         "window_destroy",
-        "window_invalidate"
+        "window_invalidate",
+        "context_bridge_dispatch",
+        "context_bridge_retained",
+        "context_bridge_count"
       ],
       "format": "cjs",
     },

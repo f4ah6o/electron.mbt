@@ -170,6 +170,10 @@
         "scripts/m0-bridge-probe.cjs",
         "scripts/macos-probe.cjs",
         "scripts/oracle.cjs",
+        "tests/context-bridge-bootstrap-native.test.cjs",
+        "tests/context-bridge-native.test.cjs",
+        "tests/context-bridge-preload-native.test.cjs",
+        "tests/context-bridge-registry.test.cjs",
         "tests/differential.test.cjs",
         "tests/m0-bridge-evidence.test.cjs",
         "tests/m0-electron-oracle-evidence.test.cjs"
@@ -178,7 +182,7 @@
         "evidence/wkcontentworld.json",
         "evidence/wksyncbridge.json"
       ],
-      "gap": "Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute. Separately pinned sandboxed Electron 44.7.0 preload baseline now validates first-script sync/Promise/frozen-data and documents callback identity vs disposer behavior; this is oracle evidence only. Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, test-only native document-grant issue/rotation/replay denial, direct child-frame native rejection with isolated Promise confirmation (not original page-initiator authentication), native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open."
+      "gap": "Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute. Separately pinned sandboxed Electron 44.7.0 preload baseline now validates first-script sync/Promise/frozen-data and documents callback identity vs disposer behavior; this is oracle evidence only. Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, test-only native document-grant issue/rotation/replay denial, direct child-frame native rejection with isolated Promise confirmation (not original page-initiator authentication), native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open. The contextBridge handle/registry/bootstrap prerequisite stack is integrated: bounded native-backed JS handles, document-start isolated bootstrap, one-shot native attestation, failed-preload denial and same-URL reload/window-destroy revocation are tested. The public contextBridge API and any synchronous cross-world proxy remain NOT_IMPLEMENTED."
     },
     {
       "id": "D",
@@ -222,10 +226,14 @@
         "scripts/m1-invalid-wire.cjs",
         "scripts/m1-renderer-delegate-sim.cjs",
         "scripts/m1-webkit-process-kill.cjs",
+        "tests/context-bridge-bootstrap-native.test.cjs",
+        "tests/context-bridge-native.test.cjs",
+        "tests/context-bridge-preload-native.test.cjs",
+        "tests/context-bridge-registry.test.cjs",
         "tests/ipc-handlers.test.cjs"
       ],
       "evidence": [],
-      "gap": "No native sender-attestation adapter; caller-supplied metadata is not authentication. Registration grants no renderer authority. Core invocation tickets bind completion to the originally authorized document; native invalidation/reconcile wiring is still required. Private native events revoke MoonBit document grants and malformed native identity frames fail closed; a separate test-only WebKit private selector now triggers genuine content-process termination and public delegate delivery on macOS. Unassisted renderer crashes, native sender attestation and complete renderer/frame origin policy remain open."
+      "gap": "No native sender-attestation adapter; caller-supplied metadata is not authentication. Registration grants no renderer authority. Core invocation tickets bind completion to the originally authorized document; native invalidation/reconcile wiring is still required. Private native events revoke MoonBit document grants and malformed native identity frames fail closed; a separate test-only WebKit private selector now triggers genuine content-process termination and public delegate delivery on macOS. Unassisted renderer crashes, native sender attestation and complete renderer/frame origin policy remain open. Native document-start bootstrap and one-shot preload attestation are connected, but arbitrary page-initiated authority and native frame/document attestation for renderer requests remain unproven."
     },
     {
       "id": "G",
@@ -362,7 +370,8 @@
       "webContents.getTitle reads the actual WKWebView document title independently of NSWindow.title; full Electron document-title event semantics are unverified",
       "BrowserWindow.getBounds reads actual NSWindow.frame as bounded integer coordinates relative to the primary screen top-left; multi-display and geometry-change event parity are unverified",
       "BrowserWindow.setBounds changes the real NSWindow frame with conservative partial integer inputs; animated changes, arbitrary manual move/resize events, tray clamping and multi-display Electron parity are unverified",
-      "app.quit respects native-backed close, before-quit and will-quit cancellation, supplies (event, exitCode=0), and suppresses normal quit after host loss; renderer beforeunload/unload is not implemented"
+      "app.quit respects native-backed close, before-quit and will-quit cancellation, supplies (event, exitCode=0), and suppresses normal quit after host loss; renderer beforeunload/unload is not implemented",
+      "isolated bootstrap/attestation prerequisites are integrated; public contextBridge is still NOT_IMPLEMENTED"
     ],
     "experimentalSignals": [
       "runtime-web-content-gone (not an Electron render-process-gone event)",

@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Bootstrap isolation probe</title></head>
+<body>
+<script>
+  // Checking pageWorld visibility does not confer origin/frame authority.
+  document.title = window.webkit?.messageHandlers?.electronMbtBootstrap ?
+    'BOOTSTRAP_HANDLER_EXPOSED' : 'BOOTSTRAP_HANDLER_HIDDEN';
+</script>
+</body>
+</html>

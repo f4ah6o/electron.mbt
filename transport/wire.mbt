@@ -298,7 +298,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-web-contents-url" | "get-web-contents-title" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "begin-load" | "load-file" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -306,6 +306,13 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let payload = field("payload")
   if !(payload is Object(_)) || !payload_ok(payload, 0, Ref(MaxNodes)) {
     raise BadProtocol("Unsupported or excessive payload")
+  }
+  if operation == "isolated-preload-attested" {
+    match payload {
+      Object(values) if values.length() == 0 => ()
+      _ => raise BadProtocol("Native isolated-preload attestation must have empty payload")
+    }
+    if generation <= 0L { raise BadProtocol("Attestation requires a live document generation") }
   }
   let terminal = fields.contains("terminal")
   let success = field("terminal") is String("success")
@@ -394,6 +401,38 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           }
         }
         _ => raise BadProtocol("Invalid native web contents title")
+      }
+    }
+  }
+  if operation == "get-bootstrap-status" {
+    if !terminal {
+      match payload {
+        Object(values) if values.length() == 0 => ()
+        _ => raise BadProtocol("Invalid bootstrap status request")
+      }
+    } else if success {
+      match payload {
+        Object(values) if values.length() == 4 => {
+          let observed = match values.get("observed") {
+            Some(True) => true
+            Some(False) => false
+            _ => raise BadProtocol("Invalid native bootstrap observation")
+          }
+          let main_frame = match values.get("mainFrame") {
+            Some(True) => true
+            Some(False) => false
+            _ => raise BadProtocol("Invalid bootstrap frame flag")
+          }
+          if observed != main_frame ||
+             identifier(values.get("generation").unwrap_or(null)) != generation {
+            raise BadProtocol("Mismatched native bootstrap identity")
+          }
+          match values.get("documentURL") {
+            Some(String(url)) if url.length() <= 8192 && ((url != "") == observed) => ()
+            _ => raise BadProtocol("Invalid bootstrap document URL")
+          }
+        }
+        _ => raise BadProtocol("Malformed native bootstrap status")
       }
     }
   }

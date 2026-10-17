@@ -2,7 +2,7 @@
 const path = require('node:path');
 const { inspectApp } = require('../bridges/node/app-files.cjs');
 const { installElectronFacade, loadCjs } = require('../bridges/node/cjs-loader.cjs');
-const { ExperimentalRuntime, attach, detach } = require('../bridges/node/runtime-session.cjs');
+const { ExperimentalRuntime, attach, detach } = require('../bridges/node/context-runtime.cjs');
 const { runtimeError } = require('../bridges/node/errors.cjs');
 
 function run(appDir) {

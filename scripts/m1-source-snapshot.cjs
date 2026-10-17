@@ -45,6 +45,7 @@ async function mutationIsolation() {
   const before = snapshotDirs();
   try {
     fs.mkdirSync(path.join(root, 'adapted'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
     fs.writeFileSync(path.join(root, 'index.html'),
       '<!doctype html><title>prepared-title</title><script>' +
       "document.title = window.api && window.api.version && window.api.version() === 'prepared-adapter' " +
@@ -53,21 +54,25 @@ async function mutationIsolation() {
       "Object.defineProperty(window, 'api', { value: Object.freeze({ " +
       "version: function () { return 'prepared-adapter'; } }), " +
       'enumerable: true, configurable: false, writable: false });');
+    fs.writeFileSync(path.join(root, 'src', 'main.js'), 'prepared-main');
     const manifest = buildSourceManifest(root, 'index.html', 'source-probe',
-      ['index.html', 'adapted/page-api.js']);
+      ['index.html', 'adapted/page-api.js', 'src/main.js']);
     writeManifest(root, manifest);
     const result = await withHost(root, async host => {
       const prepared = host.request('prepare-source', 1, 0, { file: 'index.html' });
       assert.equal(prepared.prepared, true);
-      assert.equal(prepared.files, 2);
+      assert.equal(prepared.files, 3);
       assert.equal(prepared.sha256, manifest.files[0].sha256);
       assert.match(prepared.manifestSHA256, /^[a-f0-9]{64}$/);
+      assert.equal(fs.readFileSync(path.join(prepared.root, 'src', 'main.js'), 'utf8'), 'prepared-main');
       // Change both the entry and the adapter only after the snapshot exists.
       fs.writeFileSync(path.join(root, 'index.html'),
         '<!doctype html><title>mutated-title</title>');
       fs.writeFileSync(path.join(root, 'adapted', 'page-api.js'),
         "Object.defineProperty(window, 'api', { value: Object.freeze({ " +
         "version: function () { return 'mutated-adapter'; } }) });");
+      fs.writeFileSync(path.join(root, 'src', 'main.js'), 'mutated-main');
+      assert.equal(fs.readFileSync(path.join(prepared.root, 'src', 'main.js'), 'utf8'), 'prepared-main');
       assert.equal(host.request('install-adapted-adapter', 1, 0, {
         file: path.join(root, 'adapted', 'page-api.js'),
       }).installed, true);
@@ -94,6 +99,7 @@ async function mutationIsolation() {
         manifestSHA256: prepared.manifestSHA256,
         documentIdentity: identity.source,
         preparedAdapter: true,
+        mainGraphStaged: true,
         loadedFromSnapshot: true,
       };
     });

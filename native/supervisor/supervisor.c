@@ -24,6 +24,7 @@ static int event_fd = -1;
 static char *supervisor_root = NULL;
 static char *supervisor_app_title = NULL;
 static char *supervisor_app_entry = NULL;
+static char *app_source_root = NULL;
 static JSRuntime *app_runtime = NULL;
 static JSContext *app_context = NULL;
 static void release_app(void);
@@ -334,6 +335,19 @@ static char *join_root(const char *relative) {
   return path;
 }
 
+static char *join_app_root(const char *relative) {
+  const char *base = app_source_root != NULL ? app_source_root : supervisor_root;
+  if (base == NULL || relative == NULL) return NULL;
+  size_t base_length = strlen(base);
+  size_t relative_length = strlen(relative);
+  char *path = (char *)malloc(base_length + relative_length + 2);
+  if (path == NULL) return NULL;
+  memcpy(path, base, base_length);
+  path[base_length] = '/';
+  memcpy(path + base_length + 1, relative, relative_length + 1);
+  return path;
+}
+
 static int valid_entry(const char *entry) {
   size_t length = strlen(entry);
   if (length == 0 || length > 256 || entry[0] == '/' || strstr(entry, "..") != NULL) return 0;
@@ -344,14 +358,27 @@ static int valid_entry(const char *entry) {
 static void release_app(void) {
   if (app_context != NULL) { JS_FreeContext(app_context); app_context = NULL; }
   if (app_runtime != NULL) { JS_FreeRuntime(app_runtime); app_runtime = NULL; }
+  free(app_source_root);
+  app_source_root = NULL;
 }
 
-int32_t moonbit_ebt_supervisor_app_main(void) {
+int32_t moonbit_ebt_supervisor_app_main(moonbit_bytes_t root_bytes) {
   if (supervisor_root == NULL) return -1;
   release_app();
+  char *root = copy_bytes(root_bytes);
+  if (root == NULL) return -1;
+  char *absolute_root = realpath(root, NULL);
+  free(root);
+  if (absolute_root == NULL) return -1;
+  struct stat root_info;
+  if (stat(absolute_root, &root_info) != 0 || !S_ISDIR(root_info.st_mode)) {
+    free(absolute_root);
+    return -1;
+  }
+  app_source_root = absolute_root;
   char entry[257];
   snprintf(entry, sizeof(entry), "main.js");
-  char *package_path = join_root("package.json");
+  char *package_path = join_app_root("package.json");
   size_t package_length = 0;
   char *package_json = package_path == NULL ? NULL : read_text_file(package_path, 65536, &package_length);
   free(package_path);
@@ -373,33 +400,79 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
   }
   free(package_json);
   if (!valid_entry(entry)) { JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
-  const char *fixture_files[] = {
-    "src/main.js", "src/lib/index.js", "src/lib/greet.js", "src/lib/data.json",
-    "node_modules/fixture-pkg/package.json", "node_modules/fixture-pkg/cjs.js",
-    "node_modules/fixture-pkg/index.js",
-  };
-  JSValue sources = JS_NewObject(context);
-  for (size_t i = 0; i < sizeof(fixture_files) / sizeof(fixture_files[0]); i++) {
-    char *path = join_root(fixture_files[i]);
-    size_t length = 0;
-    char *text = path == NULL ? NULL : read_text_file(path, 65536, &length);
-    free(path);
-    if (text == NULL) { JS_FreeValue(context, sources); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
-    JSValue source_value = JS_NewStringLen(context, text, length);
-    free(text);
-    if (JS_IsException(source_value)) { JS_FreeValue(context, sources); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
-    JS_SetPropertyStr(context, sources, fixture_files[i], source_value);
+  char *manifest_path = join_root("source-manifest.json");
+  size_t manifest_length = 0;
+  char *manifest_text = manifest_path == NULL ? NULL :
+    read_text_file(manifest_path, 65536, &manifest_length);
+  free(manifest_path);
+  if (manifest_text == NULL) {
+    JS_FreeContext(context); JS_FreeRuntime(runtime); return -1;
   }
-  char *entry_path = join_root(entry);
-  size_t entry_length = 0;
-  char *entry_source = entry_path == NULL ? NULL : read_text_file(entry_path, 65536, &entry_length);
-  free(entry_path);
-  if (entry_source == NULL) { JS_FreeValue(context, sources); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1; }
-  JS_SetPropertyStr(context, sources, entry, JS_NewStringLen(context, entry_source, entry_length));
-  free(entry_source);
+  JSValue manifest = JS_ParseJSON(context, manifest_text, manifest_length, "source-manifest.json");
+  free(manifest_text);
+  if (JS_IsException(manifest)) {
+    JS_FreeValue(context, manifest); JS_FreeContext(context); JS_FreeRuntime(runtime); return -1;
+  }
+  JSValue files = JS_GetPropertyStr(context, manifest, "files");
+  JSValue length_value = JS_GetPropertyStr(context, files, "length");
+  uint32_t file_count = 0;
+  if (JS_ToUint32(context, &file_count, length_value) != 0 ||
+      file_count == 0 || file_count > 64) {
+    JS_FreeValue(context, length_value); JS_FreeValue(context, files);
+    JS_FreeValue(context, manifest); JS_FreeContext(context); JS_FreeRuntime(runtime);
+    return -1;
+  }
+  JS_FreeValue(context, length_value);
+  JSValue sources = JS_NewObject(context);
+  for (uint32_t index = 0; index < file_count; index++) {
+    JSValue item = JS_GetPropertyUint32(context, files, index);
+    JSValue path_value = JS_GetPropertyStr(context, item, "path");
+    const char *path = JS_ToCString(context, path_value);
+    if (path == NULL || !valid_entry(path)) {
+      if (path != NULL) JS_FreeCString(context, path);
+      JS_FreeValue(context, path_value); JS_FreeValue(context, item);
+      JS_FreeValue(context, sources); JS_FreeValue(context, files);
+      JS_FreeValue(context, manifest); JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    char *full_path = join_app_root(path);
+    size_t source_length = 0;
+    char *text = full_path == NULL ? NULL : read_text_file(full_path, 65536, &source_length);
+    free(full_path);
+    if (text == NULL) {
+      JS_FreeCString(context, path);
+      JS_FreeValue(context, path_value); JS_FreeValue(context, item);
+      JS_FreeValue(context, sources); JS_FreeValue(context, files);
+      JS_FreeValue(context, manifest); JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JSValue source_value = JS_NewStringLen(context, text, source_length);
+    free(text);
+    if (JS_IsException(source_value)) {
+      JS_FreeCString(context, path);
+      JS_FreeValue(context, path_value); JS_FreeValue(context, item);
+      JS_FreeValue(context, sources); JS_FreeValue(context, files);
+      JS_FreeValue(context, manifest); JS_FreeContext(context); JS_FreeRuntime(runtime);
+      return -1;
+    }
+    JS_SetPropertyStr(context, sources, path, source_value);
+    JS_FreeCString(context, path);
+    JS_FreeValue(context, path_value);
+    JS_FreeValue(context, item);
+  }
+  JS_FreeValue(context, files);
+  JS_FreeValue(context, manifest);
   const char *loader =
     "(function(){"
     "const electron={app:{name:'native-fixture',isPackaged:false}};"
+    "const pathBuiltin={"
+    "join:function(){const parts=[];for(const arg of arguments){if(typeof arg!=='string')throw new Error('path.join');"
+    "for(const part of arg.split('/')){if(!part||part==='.')continue;if(part==='..'){if(parts.length)parts.pop();}else parts.push(part);}}return parts.join('/');},"
+    "basename:function(p){const parts=String(p).split('/');return parts[parts.length-1]||'';},"
+    "dirname:function(p){const parts=String(p).split('/');parts.pop();return parts.join('/')||'.';},"
+    "extname:function(p){const base=String(p).split('/').pop();const dot=base.lastIndexOf('.');return dot>0?base.slice(dot):'';}"
+    "};"
+    "const builtins={'node:path':pathBuiltin,path:pathBuiltin};"
     "const sources=globalThis.__nativeSources;"
     "const cache=Object.create(null);"
     "function normalize(from,spec){"
@@ -435,6 +508,8 @@ int32_t moonbit_ebt_supervisor_app_main(void) {
     "for(const index of ['/index.js','/index.cjs','/index.json'])if(sources[id+index]!==undefined)return id+index;"
     "return null;}"
     "function load(id,parent){if(id==='electron')return electron;"
+    "if(Object.prototype.hasOwnProperty.call(builtins,id))return builtins[id];"
+    "if(id.startsWith('node:')||id==='fs'||id==='url'||id==='util'||id==='events'||id==='process')throw new Error('ELECTRON_MBT_UNSUPPORTED_BUILTIN: '+id);"
     "let target;"
     "if((parent||'')===''&&sources[id]!==undefined)target=id;"
     "else if(id.startsWith('.'))target=normalize(parent||'',id);"

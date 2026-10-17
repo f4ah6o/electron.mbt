@@ -19,7 +19,8 @@ extern "C" fn supervisor_timeout_ms() -> Int = "moonbit_ebt_supervisor_timeout_m
 extern "C" fn supervisor_sleep_ms(milliseconds : Int) = "moonbit_ebt_supervisor_sleep_ms"
 
 ///|
-extern "C" fn supervisor_app_main() -> Int = "moonbit_ebt_supervisor_app_main"
+#borrow(root)
+extern "C" fn supervisor_app_main(root : Bytes) -> Int = "moonbit_ebt_supervisor_app_main"
 
 ///|
 #borrow(buffer)
@@ -77,6 +78,23 @@ fn request_frame(
 ///|
 fn json_path(value : String) -> String {
   value.replace_all(old="\\", new="\\\\").replace_all(old="\"", new="\\\"")
+}
+
+///|
+fn json_payload_field(raw : String, field : String) -> String? {
+  let parsed = @json.parse(raw) catch {
+    _ => return None
+  }
+  match parsed {
+    Object(fields) => match fields.get("payload") {
+      Some(Object(payload)) => match payload.get(field) {
+        Some(String(value)) => Some(value)
+        _ => None
+      }
+      _ => None
+    }
+    _ => None
+  }
 }
 
 ///|
@@ -222,7 +240,38 @@ fn main {
       (0, "", 0)
     }
   }
-  if supervisor_app_main() != 42 {
+  let create = request_frame(session, 4, 1, 0, "create-window",
+    "{\"width\":640,\"height\":480,\"title\":\"electron.mbt source snapshot\",\"show\":false}")
+  let create_sent = send(fd, create)
+  let create_reply = if create_sent { receive(fd, buffer) } else { None }
+  if !create_sent || create_reply is None || !create_reply.unwrap().contains("\"terminal\":\"success\"") ||
+    !create_reply.unwrap().contains("\"webViewAttached\":true") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_WINDOW\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let prepare = request_frame(session, 31, 1, 0, "prepare-source", "{\"file\":\"index.html\"}")
+  let prepare_sent = send(fd, prepare)
+  let prepare_reply = if prepare_sent { receive(fd, buffer) } else { None }
+  if !prepare_sent || prepare_reply is None ||
+    !prepare_reply.unwrap().contains("\"prepared\":true") ||
+    !prepare_reply.unwrap().contains("\"sha256\":\"") ||
+    !prepare_reply.unwrap().contains("\"manifestSHA256\":\"") ||
+    !prepare_reply.unwrap().contains("\"files\":11") {
+    supervisor_kill()
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PREPARE_SOURCE\",\"compatible\":false}")
+    supervisor_exit(1)
+  }
+  let snapshot_root = match json_payload_field(prepare_reply.unwrap(), "root") {
+    Some(value) => value
+    None => {
+      supervisor_kill()
+      println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PREPARE_ROOT\",\"compatible\":false}")
+      supervisor_exit(1)
+      ""
+    }
+  }
+  if supervisor_app_main(@utf8.encode(snapshot_root)) != 42 {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_APP_MAIN\",\"compatible\":false}")
     supervisor_exit(1)
@@ -243,14 +292,14 @@ fn main {
     supervisor_exit(1)
   }
   let app_title = @utf8.decode_lossy(title_buffer[:title_length])
-  let create = request_frame(session, 4, 1, 0, "create-window",
-    "{\"width\":640,\"height\":480,\"title\":\"" + json_path(app_title) + "\",\"show\":false}")
-  let create_sent = send(fd, create)
-  let create_reply = if create_sent { receive(fd, buffer) } else { None }
-  if !create_sent || create_reply is None || !create_reply.unwrap().contains("\"terminal\":\"success\"") ||
-    !create_reply.unwrap().contains("\"webViewAttached\":true") {
+  let set_title = request_frame(session, 51, 1, 0, "set-window-title",
+    "{\"title\":\"" + json_path(app_title) + "\"}")
+  let set_title_sent = send(fd, set_title)
+  let set_title_reply = if set_title_sent { receive(fd, buffer) } else { None }
+  if !set_title_sent || set_title_reply is None ||
+    !set_title_reply.unwrap().contains("\"title\":\"" + json_path(app_title) + "\"") {
     supervisor_kill()
-    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_WINDOW\",\"compatible\":false}")
+    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_APP_TITLE\",\"compatible\":false}")
     supervisor_exit(1)
   }
   let title_request = request_frame(session, 5, 1, 0, "get-window-title", "{}")
@@ -266,18 +315,6 @@ fn main {
   if adapter_length <= 0 {
     supervisor_kill()
     println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_ADAPTER_PATH\",\"compatible\":false}")
-    supervisor_exit(1)
-  }
-  let prepare = request_frame(session, 31, 1, 0, "prepare-source", "{\"file\":\"index.html\"}")
-  let prepare_sent = send(fd, prepare)
-  let prepare_reply = if prepare_sent { receive(fd, buffer) } else { None }
-  if !prepare_sent || prepare_reply is None ||
-    !prepare_reply.unwrap().contains("\"prepared\":true") ||
-    !prepare_reply.unwrap().contains("\"sha256\":\"") ||
-    !prepare_reply.unwrap().contains("\"manifestSHA256\":\"") ||
-    !prepare_reply.unwrap().contains("\"files\":2") {
-    supervisor_kill()
-    println("{\"status\":\"FAIL\",\"code\":\"ELECTRON_MBT_SUPERVISOR_PREPARE_SOURCE\",\"compatible\":false}")
     supervisor_exit(1)
   }
   let install_adapter = request_frame(session, 6, 1, 0, "install-adapted-adapter",
@@ -441,7 +478,8 @@ fn main {
     supervisor_exit(1)
   }
   let mut ingress_title_ok = false
-  for _attempt = 0; _attempt < 40; _attempt = _attempt + 1 {
+  for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let _ = pump_app_requests(fd, event_fd, buffer, event_buffer, session, 1, 1)
     let ingress_title_request = request_frame(session, 36, 1, 1, "get-web-contents-title", "{}")
     let ingress_title_sent = send(fd, ingress_title_request)
     let ingress_title_reply = if ingress_title_sent { receive(fd, buffer) } else { None }
@@ -461,7 +499,7 @@ fn main {
   let ingress_status_sent = send(fd, ingress_status)
   let ingress_status_reply = if ingress_status_sent { receive(fd, buffer) } else { None }
   if !ingress_status_sent || ingress_status_reply is None ||
-    !ingress_status_reply.unwrap().contains("\"admitted\":5") ||
+    !ingress_status_reply.unwrap().contains("\"admitted\":6") ||
     !ingress_status_reply.unwrap().contains("\"denied\":2") ||
     !ingress_status_reply.unwrap().contains("\"generation\":1") ||
     !ingress_status_reply.unwrap().contains("ELECTRON_MBT_INGRESS_LIMIT") {
@@ -715,7 +753,8 @@ fn main {
     supervisor_exit(1)
   }
   let mut reload_ingress_title_ok = false
-  for _attempt = 0; _attempt < 40; _attempt = _attempt + 1 {
+  for _attempt = 0; _attempt < 100; _attempt = _attempt + 1 {
+    let _ = pump_app_requests(fd, event_fd, buffer, event_buffer, session, 1, 2)
     let reload_ingress_title_request = request_frame(session, 39, 1, 2, "get-web-contents-title", "{}")
     let reload_ingress_title_sent = send(fd, reload_ingress_title_request)
     let reload_ingress_title_reply = if reload_ingress_title_sent { receive(fd, buffer) } else { None }
@@ -735,7 +774,7 @@ fn main {
   let reload_ingress_status_sent = send(fd, reload_ingress_status)
   let reload_ingress_status_reply = if reload_ingress_status_sent { receive(fd, buffer) } else { None }
   if !reload_ingress_status_sent || reload_ingress_status_reply is None ||
-    !reload_ingress_status_reply.unwrap().contains("\"admitted\":5") ||
+    !reload_ingress_status_reply.unwrap().contains("\"admitted\":6") ||
     !reload_ingress_status_reply.unwrap().contains("\"denied\":2") ||
     !reload_ingress_status_reply.unwrap().contains("\"generation\":2") {
     supervisor_kill()
@@ -848,7 +887,7 @@ fn main {
     ",\"windowLoaded\":true,\"event\":\"isolated-preload-attested\",\"mainEvaluated\":true,\"moduleGraph\":true,\"packageGraph\":true," +
     "\"appMain\":\"native-fixture\",\"appEntry\":\"" + json_path(app_entry) +
     "\",\"appTitle\":\"" + json_path(app_title) +
-    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"nodeless-app-ready\",\"appScenario\":\"nodeless-fixture\",\"appDocumentTitle\":\"nodeless-app-ready\",\"closeRequest\":true,\"closeRequestReload\":true,\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"nativeQueueRelease\":true,\"nativeQueueAdmitted\":4,\"nativeMainRoundTrip\":true,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
+    "\",\"bootstrapObserved\":true,\"preloadStatus\":\"absent\",\"adaptedAdapter\":true,\"pageApi\":\"adapted-fixture\",\"pageTitle\":\"nodeless-app-ready\",\"appScenario\":\"nodeless-fixture\",\"appDocumentTitle\":\"nodeless-app-ready\",\"closeRequest\":true,\"closeRequestReload\":true,\"adapterDocumentStartBeforeLoad\":true,\"adapterIngress\":\"absent\",\"adaptedEventDelivery\":true,\"adaptedEventReload\":true,\"adaptedEventUnknownTopicRejected\":true,\"adaptedEventStaleGenerationRejected\":true,\"adaptedEventForgedNonce\":\"page-observed-rejected\",\"sourceSnapshot\":true,\"sourceSnapshotReload\":true,\"nativeIngress\":true,\"nativeIngressReload\":true,\"nativeIngressDenied\":2,\"nativeQueueRelease\":true,\"nativeQueueAdmitted\":4,\"nativeMainRoundTrip\":true,\"unsupportedBuiltinRejected\":true,\"reloadGeneration\":2,\"attempts\":" + attempts.to_string() +
     ",\"restarts\":1,\"secondPid\":" + second_pid.to_string() +
     ",\"secondExitStatus\":" + second_exit_status.to_string() +
     ",\"creator\":\"moonbit-native\",\"compatible\":false}")

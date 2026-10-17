@@ -600,7 +600,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       }
     } else if success {
       match payload {
-        Object(values) if values.length() == 5 => {
+        Object(values) if values.length() == 6 => {
           match values.get("prepared") {
             Some(True) => ()
             _ => raise BadProtocol("Invalid source snapshot acknowledgement")
@@ -620,6 +620,10 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
           match values.get("manifestSHA256") {
             Some(String(hash)) if hash.length() == 64 => ()
             _ => raise BadProtocol("Invalid source manifest hash")
+          }
+          match values.get("root") {
+            Some(String(root)) if root.length() > 0 && root.length() <= 4096 => ()
+            _ => raise BadProtocol("Invalid source snapshot root")
           }
         }
         _ => raise BadProtocol("Malformed source snapshot acknowledgement")

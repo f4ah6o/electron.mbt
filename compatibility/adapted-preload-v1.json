@@ -23,13 +23,58 @@
     "files": [
       {
         "path": "index.html",
-        "sha256": "631e95dc4495c32a8176f014b61936514ee94dcb2dca51b7c7268e782f030af1",
-        "bytes": 4749
+        "sha256": "fc9a8207a96366db6a364c6c9d6ff2c60e9a2f5745e6910a68b6bd2379983fa2",
+        "bytes": 5128
       },
       {
         "path": "adapted/page-api.js",
         "sha256": "49aeda61046df2110756c88dbf80a54564dc7d4382ab53a71c8129b88ae7728b",
         "bytes": 5841
+      },
+      {
+        "path": "package.json",
+        "sha256": "56f258cd28dc3b040438c37a0e489c8061fe79920a3f3920309c06d3cf089e37",
+        "bytes": 101
+      },
+      {
+        "path": "src/main.js",
+        "sha256": "d5549ffdd9b595b57578ccefede89eaf448fa0fa988e1f22b532201839bea2b2",
+        "bytes": 1731
+      },
+      {
+        "path": "src/lib/index.js",
+        "sha256": "910a318fb2c7bfc5b7f5379166aa23a37150d6d6b7b023a8ff306132130a3995",
+        "bytes": 51
+      },
+      {
+        "path": "src/lib/greet.js",
+        "sha256": "ed7c95d5275e4bc70d473fabab505da3c4601a47cd443c5ccdba5190ac0a7b75",
+        "bytes": 52
+      },
+      {
+        "path": "src/lib/data.json",
+        "sha256": "2636b5446fe18c028269a442918881027566c7c520f0471b46906fcf33872a0b",
+        "bytes": 19
+      },
+      {
+        "path": "src/lib/scenario.js",
+        "sha256": "e83294d25e6359c030c254b146d1aab8863b16288eccc692d3c72e912d2e1cfe",
+        "bytes": 178
+      },
+      {
+        "path": "node_modules/fixture-pkg/package.json",
+        "sha256": "10a104fd28fd77f9be8e016ce929ba3db5afee2e2aeed9344cde776285d5d7b8",
+        "bytes": 166
+      },
+      {
+        "path": "node_modules/fixture-pkg/cjs.js",
+        "sha256": "196a8e7496e5de12d4ca0306dc03b7688feff277ac36873efb2f507470252a1a",
+        "bytes": 80
+      },
+      {
+        "path": "node_modules/fixture-pkg/index.js",
+        "sha256": "b0653400983ef13abd90cc829abefdc3273078b72452d04f13c8aa350160e3c9",
+        "bytes": 74
       }
     ],
     "staging": "private-temporary-directory"
@@ -103,6 +148,13 @@
     "appScenario": "nodeless-fixture",
     "documentTitle": "nodeless-app-ready",
     "closeRequest": "native-event-observed",
-    "closeRequestEvent": "app:request-close"
+    "closeRequestEvent": "app:request-close",
+    "loader": "manifest-preloaded-cjs",
+    "sourceSnapshot": true,
+    "builtins": [
+      "node:path"
+    ],
+    "unsupportedBuiltin": "fail-closed",
+    "loaderFiles": 11
   }
 }

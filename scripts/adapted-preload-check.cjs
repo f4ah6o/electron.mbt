@@ -49,6 +49,10 @@ function check() {
   if (!record.mainDispatch || record.mainDispatch.mode !== 'quickjs-fixture') {
     errors.push('QuickJS Main dispatch record required');
   }
+  if (!record.mainDispatch || record.mainDispatch.loader !== 'manifest-preloaded-cjs' ||
+      record.mainDispatch.sourceSnapshot !== true) {
+    errors.push('snapshot-backed Main loader record required');
+  }
   if (typeof semantics.eventDelivery !== 'string' || semantics.eventDelivery.length === 0) {
     errors.push('event delivery mode required');
   }
@@ -60,7 +64,7 @@ function check() {
   if (sourceManifest.schema !== 2) errors.push('source manifest schema must be 2');
   if (sourceManifest.app !== 'native-app-fixture') errors.push('source manifest app mismatch');
   if (sourceManifest.entry !== 'index.html') errors.push('source manifest entry mismatch');
-  if (!Array.isArray(sourceManifest.files) || sourceManifest.files.length !== 2) {
+  if (!Array.isArray(sourceManifest.files) || sourceManifest.files.length < 2) {
     errors.push('source manifest files mismatch');
   }
   for (const file of Array.isArray(sourceManifest.files) ? sourceManifest.files : []) {

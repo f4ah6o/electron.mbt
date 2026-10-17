@@ -44,7 +44,7 @@
     {
       "id": "adapted-source-snapshot",
       "status": "PASS",
-      "detail": "private staging files=2; entry=index.html; hash=631e95dc4495c32a8176f014b61936514ee94dcb2dca51b7c7268e782f030af1"
+      "detail": "private staging files=11; entry=index.html; hash=fc9a8207a96366db6a364c6c9d6ff2c60e9a2f5745e6910a68b6bd2379983fa2"
     },
     {
       "id": "adapted-native-ingress",
@@ -54,7 +54,7 @@
     {
       "id": "adapted-main-roundtrip",
       "status": "PASS",
-      "detail": "QuickJS Main fixture dispatches app:get-settings,app:get-update-state; scenario=nodeless-fixture; close=native-event-observed"
+      "detail": "QuickJS Main fixture dispatches app:get-settings,app:get-update-state; loader=manifest-preloaded-cjs; builtins=node:path; scenario=nodeless-fixture; close=native-event-observed"
     },
     {
       "id": "adapted-moji-runtime",

@@ -9,12 +9,25 @@ const { buildSourceManifest } = require('../scripts/source-manifest.cjs');
 test('the committed source manifest matches the fixture entry and adapter', () => {
   const root = path.resolve(__dirname, '../fixtures/native-app');
   const committed = JSON.parse(fs.readFileSync(path.join(root, 'source-manifest.json'), 'utf8'));
+  const files = [
+    'index.html',
+    'adapted/page-api.js',
+    'package.json',
+    'src/main.js',
+    'src/lib/index.js',
+    'src/lib/greet.js',
+    'src/lib/data.json',
+    'src/lib/scenario.js',
+    'node_modules/fixture-pkg/package.json',
+    'node_modules/fixture-pkg/cjs.js',
+    'node_modules/fixture-pkg/index.js',
+  ];
   assert.deepEqual(
-    buildSourceManifest(root, 'index.html', 'native-app-fixture', ['index.html', 'adapted/page-api.js']),
+    buildSourceManifest(root, 'index.html', 'native-app-fixture', files),
     committed,
   );
   assert.equal(committed.schema, 2);
-  assert.deepEqual(committed.files.map(file => file.path), ['index.html', 'adapted/page-api.js']);
+  assert.deepEqual(committed.files.map(file => file.path), files);
 });
 
 test('the source manifest builder orders the entry first and rejects escapes and duplicates', () => {

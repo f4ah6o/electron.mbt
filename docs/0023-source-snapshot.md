@@ -1,15 +1,16 @@
 # Source snapshot / document identity (fixture)
 
-Status: **fixture-only, EP-15 partial (B2a)**. This slice covers the entry
-document and the generated page adapter. It does not snapshot the complete app
-graph, sign the source manifest, connect Main/renderer ingress or claim app
-compatibility.
+Status: **fixture-only, EP-15 partial (B2a + B2b)**. The snapshot now covers the
+fixture entry, the generated adapter, `package.json`, the `src` module graph and
+the `fixture-pkg` node_modules fixture. It is still a fixture graph, not a
+general app loader or a signed application build.
 
 ## Contract
 
 - [fixtures/native-app/source-manifest.json](fixtures/native-app/source-manifest.json)
-  uses schema 2 and pins two files: the fixture entry and
-  `adapted/page-api.js`, each by relative path, SHA-256 and byte length.
+  uses schema 2 and pins 11 files: the page entry, the generated adapter,
+  `package.json`, `src/main.js`, the `src/lib` modules/JSON, and the
+  `node_modules/fixture-pkg` files.
 - [scripts/source-manifest.cjs](scripts/source-manifest.cjs) deterministically
   builds the manifest, puts the entry first, and rejects absolute/`..` paths,
   missing/non-regular files, symlink escapes, duplicates, an entry not listed
@@ -37,9 +38,8 @@ compatibility.
   disagree.
 - When a snapshot is prepared, `load-file` only accepts a listed source path and
   substitutes its staged file. `install-adapted-adapter` likewise reads the
-  staged adapter when the requested adapter path is in the snapshot. An adapter
-  request that is not in the manifest is denied. The app root itself is never
-  modified.
+  staged adapter. The supervisor evaluates the QuickJS Main from the staged
+  root; the app root itself is never modified.
 - `get-document-identity` requires a completed current load and a canonical
   page URL equal to `loadedFile`. It returns the current generation,
   `source: "snapshot"`, the entry SHA-256 and the whole-manifest SHA-256.
@@ -49,40 +49,36 @@ compatibility.
 
 ## Evidence
 
-The native supervisor prepares the fixture before installing the adapter,
-re-prepares before the generation-2 reload, and reports
-`sourceSnapshot: true` / `sourceSnapshotReload: true` alongside the adapted
-adapter, event and document-start observations.
+The native supervisor prepares the full fixture before creating the window
+title/Main and installs the adapter from the snapshot. It reports
+`sourceSnapshot: true` / `sourceSnapshotReload: true` and `appEntry:
+"src/main.js"` from the staged Main graph.
 
-```json
-{"status":"PASS","probe":"m1-source-snapshot","backend":"AppKit+WKWebView","preparedSHA256":"...","manifestSHA256":"...","documentIdentity":"snapshot","preparedAdapter":true,"loadedFromSnapshot":true,"hashMismatchRejected":true,"symlinkEscapeRejected":true,"nonRegularRejected":true,"missingManifestRejected":true,"compatible":false}
-```
-
-The probe mutates both the working-tree entry and the working-tree adapter
-after `prepare-source`, then installs and loads. The page still reports the
-prepared adapter and prepared title, the document identity matches the prepared
-entry and manifest hashes, and the staging directory is removed after shutdown.
-Negative probes cover a hash mismatch, a symlink escape, a directory entry and
-a missing manifest.
+The source-snapshot probe additionally stages a `src/main.js` file, mutates the
+working-tree entry/adapter/Main copy after prepare, and verifies that the staged
+copies remain the prepared bytes. Hash mismatch, symlink, non-regular and
+missing-manifest cases remain covered, and the staging directory is removed
+after shutdown.
 
 ## Deliberate limits
 
-- the snapshot covers the entry document and the generated adapter only; the
-  remaining boot graph (main-process files, package metadata, styles, assets)
-  is not copied into it
+- the manifest is a **preloaded file list**; dynamic `require` of files outside
+  the list, ESM and arbitrary package resolution are not general yet
+- the Main loader supports the fixture's relative/package/JSON graph and a
+  bounded `node:path` subset only; other Node builtins fail closed
 - the source manifest is an app-root input, not a signature; a writer who can
   change both the files and the manifest is not prevented by this slice
 - no manifest provenance, timestamp or transparency log
 - no origin/redirect/back-forward/cross-document identity policy
-- no native Main/renderer ingress, IPC, sender grant or compatibility claim
+- no Moji main/preload, no app compatibility and no verified row
 - a host crash can leave a private staging directory behind; normal teardown
   and WebContent termination remove it
 - `compatible:false`, adapted **partial** and strict **blocked** are unchanged
 
 ## Next
 
-- snapshot the complete boot graph and record manifest provenance separately
-  from the working tree
-- connect `get-document-identity` to EP-14 sender admission
-- add origin/redirect/back-forward and opaque-origin negative cases
-- keep the source snapshot independent from Main/renderer authority
+- make the Main loader truly dynamic over a verified graph and add the Node
+  symbol layers (EP-11/12)
+- record manifest provenance separately from the working tree
+- connect document identity to EP-14 sender admission and origin policy
+- adapt Moji's main/preload and run an app scenario

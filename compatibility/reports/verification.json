@@ -93,7 +93,7 @@
           {
             "label": "entry-traversal",
             "status": "PASS",
-            "code": "ELECTRON_MBT_SUPERVISOR_APP_MAIN"
+            "code": "ELECTRON_MBT_SUPERVISOR_PREPARE_SOURCE"
           },
           {
             "label": "handshake-timeout",

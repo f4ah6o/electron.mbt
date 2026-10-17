@@ -38,6 +38,12 @@ window.__electronMbtIngressProbe = async function () {
       oversizeRejected = String(error).includes('ELECTRON_MBT_INGRESS_LIMIT');
     }
     if (!oversizeRejected) { document.title = 'adapted-ingress-oversize-accepted'; return; }
+    const builtin = await handler.postMessage({
+      operation: 'selftest:unsupported-builtin',
+      payload: {},
+    });
+    const builtinRejected = builtin && builtin.code === 'ELECTRON_MBT_UNSUPPORTED_BUILTIN: node:fs';
+    if (!builtinRejected) { document.title = 'adapted-ingress-builtin-accepted'; return; }
     document.title = 'adapted-ingress-ok';
   } catch (error) {
     document.title = 'adapted-ingress-denied';
@@ -101,7 +107,8 @@ window.__electronMbtIngressProbe = async function () {
     const fulfilled = (result) => result.status === 'fulfilled' && result.value &&
       result.value.source === 'quickjs-main';
     const settings = results.slice(0, 3)
-      .every((result) => fulfilled(result) && result.value.theme === 'light');
+      .every((result) => fulfilled(result) && result.value.theme === 'light' &&
+        result.value.scenarioPath === 'src/lib/scenario.js');
     const state = fulfilled(results[3]) && results[3].value.state === 'ready';
     const overflowed = results.slice(4)
       .every((result) => rejectedWith(result, 'ELECTRON_MBT_ADAPTER_QUEUE_FULL'));

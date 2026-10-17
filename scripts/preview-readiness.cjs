@@ -51,7 +51,7 @@ function buildReport() {
   const recordedFiles = Array.isArray(sourceSnapshot.files) ? sourceSnapshot.files : [];
   let sourceOk = sourceManifest.schema === 2 &&
     sourceManifest.entry === 'index.html' &&
-    sourceFiles.length === 2 &&
+    sourceFiles.length >= 2 &&
     recordedFiles.length === sourceFiles.length &&
     sourceSnapshot.schema === 2 &&
     sourceSnapshot.entry === sourceManifest.entry &&
@@ -72,7 +72,7 @@ function buildReport() {
   checks.push(check('adapted-native-ingress', adaptedRecord.semantics.nativeIngress === 'test-only-selftest' ? 'PASS' : 'FAIL',
     `page-world electronMbtApp selftest=${adaptedRecord.nativeIngress?.operation || 'absent'}; queue=${adaptedRecord.nativeIngress?.queueRelease || 'absent'}; application RPC ingress=${adaptedRecord.semantics.ingress}`));
   checks.push(check('adapted-main-roundtrip', adaptedRecord.mainDispatch?.mode === 'quickjs-fixture' ? 'PASS' : 'FAIL',
-    `QuickJS Main fixture dispatches ${adaptedRecord.mainDispatch?.applicationOperations?.join(',') || 'none'}; scenario=${adaptedRecord.mainDispatch?.appScenario || 'none'}; close=${adaptedRecord.mainDispatch?.closeRequest || 'none'}`));
+    `QuickJS Main fixture dispatches ${adaptedRecord.mainDispatch?.applicationOperations?.join(',') || 'none'}; loader=${adaptedRecord.mainDispatch?.loader || 'none'}; builtins=${adaptedRecord.mainDispatch?.builtins?.join(',') || 'none'}; scenario=${adaptedRecord.mainDispatch?.appScenario || 'none'}; close=${adaptedRecord.mainDispatch?.closeRequest || 'none'}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',
     'Fixture adapter only; Moji preload IPC, renderer ingress and app boot are not connected'));
 

@@ -529,6 +529,7 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     BOOL known = [operation isEqualToString:@"selftest:identity"] ||
+                 [operation isEqualToString:@"selftest:unsupported-builtin"] ||
                  [operation isEqualToString:@"app:get-settings"] ||
                  [operation isEqualToString:@"app:get-update-state"];
     if (!known) {
@@ -1464,7 +1465,8 @@ static NSString *preloadDigest(NSData *data) {
     window.snapshotManifestSHA256 = preloadDigest(manifestData);
     done(@"success", @{@"prepared": @YES, @"sha256": window.snapshotSHA256,
       @"bytes": @(entryData.length), @"files": @(files.count),
-      @"manifestSHA256": window.snapshotManifestSHA256});
+      @"manifestSHA256": window.snapshotManifestSHA256,
+      @"root": canonicalSnapshotRoot});
     return;
   }
   if ([operation isEqualToString:@"get-document-identity"]) {

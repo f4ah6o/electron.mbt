@@ -7,7 +7,12 @@ no Node, no general app loader and no Moji compatibility.
 ## Contract
 
 - `moonbit_ebt_supervisor_app_main` keeps the fixture QuickJS runtime/context
-  alive after evaluating the fixed CJS graph.
+  alive after evaluating the CJS graph staged by the source snapshot.
+- The loader reads the `source-manifest.json` file list and loads those staged
+  files; it is no longer a fixed C file array. It supports relative paths,
+  extension/index/package resolution, JSON modules and a bounded `node:path`
+  subset. Other builtins fail closed with
+  `ELECTRON_MBT_UNSUPPORTED_BUILTIN`.
 - The fixture main defines `globalThis.__nativeInvoke(operation, payloadJson)`
   and returns a JSON envelope: `{ok:true,result}` or
   `{ok:false,code}`.
@@ -26,16 +31,20 @@ no Node, no general app loader and no Moji compatibility.
 The fixture app main handles:
 
 - `app:get-settings` → `{theme:"light", documentTitle:"nodeless-app-ready",
-  source:"quickjs-main", app:"native-fixture"}`;
+  scenarioPath:"src/lib/scenario.js", source:"quickjs-main",
+  app:"native-fixture"}`;
 - `app:get-update-state` → `{state:"ready", source:"quickjs-main",
-  app:"native-fixture"}`.
+  app:"native-fixture"}`;
+- `selftest:unsupported-builtin` → tries `require('node:fs')` and returns the
+  fail-closed `ELECTRON_MBT_UNSUPPORTED_BUILTIN: node:fs` code.
 
-The page queues three `getSettings` calls and one `getUpdateState` call. After
-the supervisor releases the queue and supplies the Main results, the page
-applies the settings to its content and document title. The document title
-becomes `nodeless-app-ready`; the native window title remains the separate
-`native-app-window`. Three overflow calls still reject with
-`ELECTRON_MBT_ADAPTER_QUEUE_FULL`.
+The page queues three `getSettings` calls and one `getUpdateState` call. The
+`src/lib/scenario.js` module requires `node:path` and returns
+`src/lib/scenario.js` as the scenario path. After the supervisor releases the
+queue and supplies the Main results, the page applies the settings to its
+content and document title. The document title becomes `nodeless-app-ready`;
+the native window title remains the separate `native-app-window`. Three
+overflow calls still reject with `ELECTRON_MBT_ADAPTER_QUEUE_FULL`.
 
 The page also registers `onCloseRequest`. After the ingress probe the supervisor
 delivers a fixed `app:request-close` event and the page sets
@@ -48,7 +57,7 @@ delivered after the generation-2 reload.
 The supervisor reports:
 
 ```json
-{"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"appScenario":"nodeless-fixture","pageTitle":"nodeless-app-ready","closeRequest":true,"closeRequestReload":true}
+{"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"appScenario":"nodeless-fixture","pageTitle":"nodeless-app-ready","closeRequest":true,"closeRequestReload":true}
 ```
 
 The page verifies that the first three results are Main settings with
@@ -58,10 +67,11 @@ scenario runs after the generation-2 reload.
 
 ## Deliberate limits
 
-- the Main fixture is a fixed CJS graph in `native/supervisor/supervisor.c`;
-  this is not a general app loader, module graph or Node symbol layer
-- the source snapshot covers the page entry and adapter, not the Main graph;
-  Main source changes are outside the snapshot (B2b remains open)
+- the loader is a **preloaded manifest graph**; dynamic requires of files not
+  in the manifest, ESM and arbitrary package resolution are not general yet
+- Node support is a bounded `node:path` subset; other builtins fail closed
+- the source snapshot covers the fixture graph, not a signed or dynamically
+  discovered application graph
 - the close scenario is a page-side event observation only; there is no native
   close/quit decision, close ACK or physical UI acceptance
 - no `contextBridge`, `ipcRenderer` or `webContents.send`

@@ -113,7 +113,7 @@ application ingress is wired.
 Observed fixture probe (macOS, AppKit + WKWebView):
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"closeRequest":true,"closeRequestReload":true,"reloadGeneration":2,"compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"closeRequest":true,"closeRequestReload":true,"reloadGeneration":2,"compatible":false}
 ```
 
 Adapter hash:
@@ -133,8 +133,9 @@ event path.
 - no general application ingress, Main loader, invoke/reply or sender/document
   grant; the page-world ingress and queue release are test-only, and Main is a
   fixed QuickJS fixture graph
-- the source snapshot covers the entry document and generated adapter only and
-  is not a signed manifest; the remaining app graph is outside it
+- the source snapshot covers the fixture entry, adapter, package metadata and
+  preloaded module graph, but is not a signed or dynamically discovered app
+  graph; the Main loader cannot require arbitrary files or builtins
 - native event delivery is a private-lane test trigger; there is no production
   native event route, `webContents.send`, or Electron event-ordering evidence
 - no `DocumentIngressReady` transition or native first-call flush; only the
@@ -148,9 +149,9 @@ event path.
 
 ## Next
 
-- move the Main graph into the source snapshot and add the general CJS/Node
+- make the CJS loader dynamic over a verified graph and add the remaining Node
   symbol layers (EP-11/12); define the production `DocumentIngressReady`
-  transition; add a close/lifecycle scenario
+  transition; replace the event-only close with a Main/native close decision
 - define and observe the actual `DocumentIngressReady` transitions separately
   from `LoadComplete` (EP-15)
 - extend the entry+adapter source snapshot to the complete boot graph, with

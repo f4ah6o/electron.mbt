@@ -249,6 +249,8 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *fileGrants;
 @property(nonatomic, copy) NSString *testOpenDialogPath;
 @property(nonatomic, copy) NSString *testSaveDialogPath;
+@property(nonatomic, copy) NSString *testExportHtmlPath;
+@property(nonatomic, copy) NSString *testExportPngPath;
 - (instancetype)initWithRoot:(NSString *)root width:(NSInteger)width height:(NSInteger)height
                        title:(NSString *)title visible:(BOOL)visible
                   preloadSource:(NSString *)preloadSource;
@@ -288,6 +290,8 @@ static NSString *preloadDigest(NSData *data) {
     self.fileGrants = [NSMutableDictionary dictionary];
     self.testOpenDialogPath = nil;
     self.testSaveDialogPath = nil;
+    self.testExportHtmlPath = nil;
+    self.testExportPngPath = nil;
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
@@ -502,6 +506,92 @@ static NSString *preloadDigest(NSData *data) {
     reply(@{@"path": granted, @"bytes": @(data.length), @"source": @"dialog"}, nil);
   }];
 }
+- (void)writeExportData:(NSData *)data suggestedName:(NSString *)suggestedName
+  testPath:(NSString *)testPath reply:(void (^)(id, NSString *))reply {
+  if (data.length > 1048576) {
+    [self denyFile:@"ELECTRON_MBT_EXPORT_LIMIT" reply:reply];
+    return;
+  }
+  NSString *name = [suggestedName lastPathComponent];
+  if (name.length == 0 || name.length > 128) name = @"export";
+  if (testPath != nil) {
+    NSString *granted = nil;
+    if (![self grantCanonicalFile:testPath mode:@"readwrite" canonical:&granted]) {
+      [self denyFile:@"ELECTRON_MBT_EXPORT_DENIED" reply:reply];
+      return;
+    }
+    if (![data writeToFile:granted atomically:YES]) {
+      [self denyFile:@"ELECTRON_MBT_EXPORT_WRITE" reply:reply];
+      return;
+    }
+    self.ingressAdmitted++;
+    reply(@{@"ok": @YES, @"path": granted, @"bytes": @(data.length)}, nil);
+    return;
+  }
+  if (self.native == nil) {
+    [self denyFile:@"ELECTRON_MBT_FILE_DIALOG_UNAVAILABLE" reply:reply];
+    return;
+  }
+  NSSavePanel *panel = [NSSavePanel savePanel];
+  panel.nameFieldStringValue = name;
+  __weak MBTWindow *weakSelf = self;
+  [panel beginSheetModalForWindow:self.native completionHandler:^(NSModalResponse response) {
+    MBTWindow *window = weakSelf;
+    if (window == nil) return;
+    if (response != NSModalResponseOK || panel.URL == nil) {
+      [window denyFile:@"ELECTRON_MBT_FILE_CANCELED" reply:reply];
+      return;
+    }
+    NSString *resolved = [window canonicalBrokerPath:panel.URL.path];
+    NSString *granted = nil;
+    if (resolved == nil || ![window grantCanonicalFile:resolved mode:@"readwrite" canonical:&granted]) {
+      [window denyFile:@"ELECTRON_MBT_EXPORT_DENIED" reply:reply];
+      return;
+    }
+    if (![data writeToFile:granted atomically:YES]) {
+      [window denyFile:@"ELECTRON_MBT_EXPORT_WRITE" reply:reply];
+      return;
+    }
+    window.ingressAdmitted++;
+    reply(@{@"ok": @YES, @"path": granted, @"bytes": @(data.length)}, nil);
+  }];
+}
+- (void)exportHtml:(NSString *)html baseName:(NSString *)baseName
+  reply:(void (^)(id, NSString *))reply {
+  NSData *data = [html dataUsingEncoding:NSUTF8StringEncoding];
+  if (data.length > 65536) {
+    [self denyFile:@"ELECTRON_MBT_EXPORT_LIMIT" reply:reply];
+    return;
+  }
+  NSString *name = [baseName lastPathComponent];
+  if (name.length == 0 || name.length > 96) name = @"export";
+  [self writeExportData:data suggestedName:[name stringByAppendingString:@".html"]
+    testPath:self.testExportHtmlPath reply:reply];
+}
+- (void)exportPngDataUrl:(NSString *)dataUrl baseName:(NSString *)baseName
+  reply:(void (^)(id, NSString *))reply {
+  NSString *prefix = @"data:image/png;base64,";
+  if (![dataUrl hasPrefix:prefix]) {
+    [self denyFile:@"ELECTRON_MBT_EXPORT_INVALID" reply:reply];
+    return;
+  }
+  NSString *encoded = [dataUrl substringFromIndex:prefix.length];
+  NSData *data = [[NSData alloc] initWithBase64EncodedString:encoded
+    options:NSDataBase64DecodingIgnoreUnknownCharacters];
+  if (data == nil || data.length < 8) {
+    [self denyFile:@"ELECTRON_MBT_EXPORT_INVALID" reply:reply];
+    return;
+  }
+  static const unsigned char pngMagic[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+  if (memcmp(data.bytes, pngMagic, 8) != 0) {
+    [self denyFile:@"ELECTRON_MBT_EXPORT_INVALID" reply:reply];
+    return;
+  }
+  NSString *name = [baseName lastPathComponent];
+  if (name.length == 0 || name.length > 96) name = @"diagram";
+  [self writeExportData:data suggestedName:[name stringByAppendingString:@".png"]
+    testPath:self.testExportPngPath reply:reply];
+}
 - (void)handleFileOperation:(NSString *)operation payload:(NSDictionary *)payload
   reply:(void (^)(id, NSString *))reply {
   NSArray *args = payload[@"args"];
@@ -598,6 +688,40 @@ static NSString *preloadDigest(NSData *data) {
     }
     self.ingressAdmitted++;
     reply(@{@"path": canonical, @"bytes": @(content.length)}, nil);
+    return;
+  }
+  if ([operation isEqualToString:@"doc:export"]) {
+    if (args.count != 1 || ![args[0] isKindOfClass:[NSDictionary class]]) {
+      [self denyFile:@"ELECTRON_MBT_EXPORT_INVALID" reply:reply];
+      return;
+    }
+    NSDictionary *request = args[0];
+    NSString *format = request[@"format"];
+    NSString *html = request[@"html"];
+    NSString *baseName = request[@"baseName"];
+    if (![format isKindOfClass:[NSString class]] || ![format isEqualToString:@"html"] ||
+        ![html isKindOfClass:[NSString class]]) {
+      [self denyFile:@"ELECTRON_MBT_EXPORT_UNSUPPORTED" reply:reply];
+      return;
+    }
+    [self exportHtml:html
+      baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"export" reply:reply];
+    return;
+  }
+  if ([operation isEqualToString:@"diagram:export-png"]) {
+    if (args.count != 1 || ![args[0] isKindOfClass:[NSDictionary class]]) {
+      [self denyFile:@"ELECTRON_MBT_EXPORT_INVALID" reply:reply];
+      return;
+    }
+    NSDictionary *request = args[0];
+    NSString *dataUrl = request[@"dataUrl"];
+    NSString *baseName = request[@"baseName"];
+    if (![dataUrl isKindOfClass:[NSString class]]) {
+      [self denyFile:@"ELECTRON_MBT_EXPORT_INVALID" reply:reply];
+      return;
+    }
+    [self exportPngDataUrl:dataUrl
+      baseName:[baseName isKindOfClass:[NSString class]] ? baseName : @"diagram" reply:reply];
     return;
   }
   [self denyFile:@"ELECTRON_MBT_FILE_NOT_IMPLEMENTED" reply:reply];
@@ -1817,7 +1941,8 @@ static NSString *preloadDigest(NSData *data) {
     NSString *kind = payload[@"kind"];
     NSString *path = payload[@"path"];
     if (![kind isKindOfClass:[NSString class]] || !([kind isEqualToString:@"open"] ||
-        [kind isEqualToString:@"save"]) ||
+        [kind isEqualToString:@"save"] || [kind isEqualToString:@"export-html"] ||
+        [kind isEqualToString:@"export-png"]) ||
         ![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
       return;
@@ -1828,7 +1953,9 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     if ([kind isEqualToString:@"open"]) window.testOpenDialogPath = canonical;
-    else window.testSaveDialogPath = canonical;
+    else if ([kind isEqualToString:@"save"]) window.testSaveDialogPath = canonical;
+    else if ([kind isEqualToString:@"export-html"]) window.testExportHtmlPath = canonical;
+    else window.testExportPngPath = canonical;
     done(@"success", @{@"set": @YES, @"kind": kind, @"path": canonical});
     return;
   }

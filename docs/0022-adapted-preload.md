@@ -118,7 +118,7 @@ application ingress is wired.
 Observed fixture probe (macOS, AppKit + WKWebView):
 
 ```json
-{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"mojiOperationRouted":true,"mojiHandlers":true,"fileBroker":true,"fileRead":true,"fileSave":true,"fileDenied":true,"fileDialog":true,"fileSaveAs":true,"closeRequest":true,"closeRequestReload":true,"reloadGeneration":2,"compatible":false}
+{"status":"PASS","probe":"native-supervisor-window-load","backend":"AppKit+WKWebView","windowLoaded":true,"adaptedAdapter":true,"pageApi":"adapted-fixture","pageTitle":"nodeless-app-ready","appScenario":"nodeless-fixture","bootstrapObserved":true,"preloadStatus":"absent","adapterDocumentStartBeforeLoad":true,"adapterIngress":"absent","adaptedEventDelivery":true,"adaptedEventReload":true,"adaptedEventUnknownTopicRejected":true,"adaptedEventStaleGenerationRejected":true,"adaptedEventForgedNonce":"page-observed-rejected","sourceSnapshot":true,"sourceSnapshotReload":true,"nativeIngress":true,"nativeIngressReload":true,"nativeIngressDenied":2,"nativeQueueRelease":true,"nativeQueueAdmitted":4,"nativeMainRoundTrip":true,"unsupportedBuiltinRejected":true,"mojiOperationRouted":true,"mojiHandlers":true,"fileBroker":true,"fileRead":true,"fileSave":true,"fileDenied":true,"fileDialog":true,"fileSaveAs":true,"exportHtml":true,"exportPng":true,"closeRequest":true,"closeRequestReload":true,"reloadGeneration":2,"compatible":false}
 ```
 
 Adapter hash:
@@ -141,9 +141,10 @@ event path.
 - the Moji adapted API is generated shape only; its original preload and main
   handlers are not run
 - the file broker is partial: grants are test-only, dialog UI is NOT RUN, and
-  export/`openLocalPath` are not implemented
+  document PDF/PNG rendering and `openLocalPath` are not implemented
   ([docs/0027-file-broker.md](0027-file-broker.md),
-  [docs/0028-dialogs.md](0028-dialogs.md))
+  [docs/0028-dialogs.md](0028-dialogs.md),
+  [docs/0029-export.md](0029-export.md))
 - the source snapshot covers the fixture entry, adapter, package metadata and
   preloaded module graph, but is not a signed or dynamically discovered app
   graph; the Main loader cannot require arbitrary files or builtins
@@ -160,8 +161,8 @@ event path.
 
 ## Next
 
-- exercise the real dialog UI, add export/save-panel writes, then boot Moji
-  main/preload with the adapted API
+- add document PDF/PNG rendering and exercise the real dialog/save panel UI,
+  then boot Moji main/preload with the adapted API
 - make the CJS loader dynamic over a verified graph and add the remaining Node
   symbol layers (EP-11/12); define the production `DocumentIngressReady`
   transition

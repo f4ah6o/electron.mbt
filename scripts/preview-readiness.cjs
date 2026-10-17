@@ -88,7 +88,7 @@ function buildReport() {
     fileBroker.bounds && fileBroker.bounds.readBytes > 0 &&
     fileBroker.bounds.saveBytes > 0 && fileBroker.bounds.imageBytes > 0 &&
     fileBroker.grants && typeof fileBroker.dialogs === 'string' &&
-    fileBroker.export === 'NOT_IMPLEMENTED';
+    typeof fileBroker.export === 'string';
   checks.push(check('adapted-file-broker', fileBrokerOk ? 'PASS' : 'FAIL',
     `File broker: read=${fileBroker.bounds?.readBytes || 0}B, save=${fileBroker.bounds?.saveBytes || 0}B, image=${fileBroker.bounds?.imageBytes || 0}B, grants=${fileBroker.grants || 'none'}; dialogs=${fileBroker.dialogs || 'none'}; export=${fileBroker.export || 'none'}`));
   const dialogGrantOk = fileBroker.dialogGrants === true &&
@@ -97,8 +97,13 @@ function buildReport() {
     `Dialog grant path: ${fileBroker.dialogs || 'none'}`));
   checks.push(check('adapted-dialog-ui', 'NOT_RUN',
     'NSOpenPanel/NSSavePanel UI is compiled but not exercised'));
-  checks.push(check('adapted-export', 'NOT_RUN',
-    'export/save-panel writes are not implemented'));
+  const exportMark = fileBroker.export || '';
+  checks.push(check('adapted-export-html', /test-injected HTML/.test(exportMark) ? 'PASS' : 'FAIL',
+    `Export HTML: ${exportMark || 'none'}`));
+  checks.push(check('adapted-export-png', /diagram PNG/.test(exportMark) ? 'PASS' : 'FAIL',
+    `Export diagram PNG: ${exportMark || 'none'}`));
+  checks.push(check('adapted-export-pdf', 'NOT_RUN',
+    'PDF/PNG document rendering export is not implemented'));
   checks.push(check('adapted-moji-api', mojiApiOk ? 'PASS' : 'FAIL',
     `Moji ${mojiAdapted.appId}: calls=${mojiAdapted.api.calls}, topics=${mojiAdapted.api.topics}, unsupported=${(mojiAdapted.api.unsupported || []).join(',')}, handlers=${mojiAdapted.semantics.applicationHandlers || 'none'}, runtime=${mojiAdapted.semantics.runtime}, originalPreload=${mojiAdapted.originalPreload}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',

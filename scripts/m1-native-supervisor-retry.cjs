@@ -40,4 +40,6 @@ try {
   fs.rmSync(temp, { recursive: true, force: true });
   fs.rmSync(path.join(root, 'fixtures/native-app/broker-output.txt'), { force: true });
   fs.rmSync(path.join(root, 'fixtures/native-app/broker-save-as.txt'), { force: true });
+  fs.rmSync(path.join(root, 'fixtures/native-app/broker-export.html'), { force: true });
+  fs.rmSync(path.join(root, 'fixtures/native-app/broker-export.png'), { force: true });
 }

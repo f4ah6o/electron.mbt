@@ -12,6 +12,8 @@ function run(label, env) {
   });
   fs.rmSync(path.join(root, 'fixtures/native-app/broker-output.txt'), { force: true });
   fs.rmSync(path.join(root, 'fixtures/native-app/broker-save-as.txt'), { force: true });
+  fs.rmSync(path.join(root, 'fixtures/native-app/broker-export.html'), { force: true });
+  fs.rmSync(path.join(root, 'fixtures/native-app/broker-export.png'), { force: true });
   const lines = `${result.stdout || ''}\n${result.stderr || ''}`.split('\n').map(line => line.trim()).filter(Boolean);
   const report = lines.filter(line => line.startsWith('{') && line.endsWith('}')).at(-1);
   let parsed;

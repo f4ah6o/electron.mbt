@@ -132,6 +132,35 @@ window.__electronMbtIngressProbe = async function () {
     if (!savedAsRead || savedAsRead.text !== 'saved-by-dialog') {
       document.title = 'adapted-file-save-as-read'; return;
     }
+    const exported = await handler.postMessage({
+      operation: 'doc:export',
+      payload: { args: [{ format: 'html', html: '<h1>export</h1>', baseName: 'export' }] },
+    });
+    if (!exported || exported.ok !== true || exported.bytes !== 15) {
+      document.title = 'adapted-export-html'; return;
+    }
+    const exportedRead = await handler.postMessage({
+      operation: 'file:read-path', payload: { args: ['broker-export.html'] },
+    });
+    if (!exportedRead || exportedRead.text !== '<h1>export</h1>') {
+      document.title = 'adapted-export-html-read'; return;
+    }
+    const png = await handler.postMessage({
+      operation: 'diagram:export-png',
+      payload: { args: [{
+        dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=',
+        baseName: 'diagram',
+      }] },
+    });
+    if (!png || png.ok !== true) {
+      document.title = 'adapted-export-png'; return;
+    }
+    const pngRead = await handler.postMessage({
+      operation: 'file:read-image', payload: { args: ['broker-export.png'] },
+    });
+    if (!pngRead || !String(pngRead.dataUrl).startsWith('data:image/png;base64,')) {
+      document.title = 'adapted-export-png-read'; return;
+    }
     document.title = 'adapted-ingress-ok';
   } catch (error) {
     document.title = 'adapted-ingress-denied';

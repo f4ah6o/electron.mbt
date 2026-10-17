@@ -763,7 +763,8 @@
     "imageBytes": 1048576,
     "grants": "test-only grant-file; dialogs must grant in production",
     "dialogs": "test-injected grant path; AppKit panels compiled; UI NOT RUN",
-    "export": "NOT_IMPLEMENTED",
-    "dialogGrants": true
+    "export": "test-injected HTML + diagram PNG; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED",
+    "dialogGrants": true,
+    "exportGrants": true
   }
 }

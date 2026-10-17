@@ -9,6 +9,8 @@ const result = spawnSync('moon', ['run', '--target', 'native', 'native/superviso
 });
 try { fs.rmSync(path.join(root, 'fixtures/native-app/broker-output.txt'), { force: true }); } catch {}
 try { fs.rmSync(path.join(root, 'fixtures/native-app/broker-save-as.txt'), { force: true }); } catch {}
+try { fs.rmSync(path.join(root, 'fixtures/native-app/broker-export.png'), { force: true }); } catch {}
+try { fs.rmSync(path.join(root, 'fixtures/native-app/broker-export.html'), { force: true }); } catch {}
 if (result.error) {
   process.stderr.write(`ELECTRON_MBT_NATIVE_SUPERVISOR: ${result.error.message}\n`);
   process.exitCode = 1;
@@ -28,7 +30,7 @@ const ok = result.status === 0 && parsed.status === 'PASS' &&
   Number.isInteger(parsed.childPid) && parsed.childPid > 0 &&
   parsed.exitStatus === 0 && Number.isInteger(parsed.attempts) && parsed.attempts >= 1 && parsed.windowLoaded === true && parsed.event === 'isolated-preload-attested' && parsed.mainEvaluated === true && parsed.moduleGraph === true && parsed.packageGraph === true && parsed.appMain === 'native-fixture' && parsed.appEntry === 'src/main.js' && parsed.appTitle === 'native-app-window' && parsed.bootstrapObserved === true && parsed.preloadStatus === 'absent' && parsed.adaptedAdapter === true && parsed.pageApi === 'adapted-fixture' && parsed.pageTitle === 'nodeless-app-ready' && parsed.appScenario === 'nodeless-fixture' && parsed.appDocumentTitle === 'nodeless-app-ready' && parsed.closeRequest === true && parsed.closeRequestReload === true && parsed.adapterDocumentStartBeforeLoad === true && parsed.adapterIngress === 'absent' && parsed.adaptedEventDelivery === true && parsed.adaptedEventReload === true && parsed.adaptedEventUnknownTopicRejected === true && parsed.adaptedEventStaleGenerationRejected === true && parsed.adaptedEventForgedNonce === 'page-observed-rejected' && parsed.sourceSnapshot === true && parsed.sourceSnapshotReload === true && parsed.nativeIngress === true && parsed.nativeIngressReload === true && parsed.nativeIngressDenied === 4 && parsed.nativeQueueRelease === true && parsed.nativeQueueAdmitted === 4 && parsed.nativeMainRoundTrip === true && parsed.unsupportedBuiltinRejected === true && parsed.mojiOperationRouted === true && parsed.mojiHandlers === true &&
     parsed.fileBroker === true && parsed.fileRead === true && parsed.fileSave === true &&
-    parsed.fileDenied === true && parsed.fileDialog === true && parsed.fileSaveAs === true && parsed.reloadGeneration === 2 && parsed.restarts === 1 &&
+    parsed.fileDenied === true && parsed.fileDialog === true && parsed.fileSaveAs === true && parsed.exportHtml === true && parsed.exportPng === true && parsed.reloadGeneration === 2 && parsed.restarts === 1 &&
   Number.isInteger(parsed.secondPid) && parsed.secondPid > 0 &&
   parsed.secondExitStatus === 0 && parsed.creator === 'moonbit-native' &&
   parsed.compatible === false;

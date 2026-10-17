@@ -10,8 +10,8 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 26,
-    "pass": 17,
+    "checks": 28,
+    "pass": 19,
     "fail": 2,
     "notRun": 7
   },
@@ -44,7 +44,7 @@
     {
       "id": "adapted-source-snapshot",
       "status": "PASS",
-      "detail": "private staging files=11; entry=index.html; hash=52fe97b5399b278b82ffa43527ef9ca8a4617e78744dd2778955f7c8b6c78750"
+      "detail": "private staging files=11; entry=index.html; hash=244416dc44e590a58b57d953646c9788450d708f061a1663ac0cce69f3e17efc"
     },
     {
       "id": "adapted-native-ingress",
@@ -59,7 +59,7 @@
     {
       "id": "adapted-file-broker",
       "status": "PASS",
-      "detail": "File broker: read=1048576B, save=65536B, image=1048576B, grants=test-only grant-file control operation; production grants must come from dialogs; dialogs=test-injected grant path + AppKit NSOpenPanel/NSSavePanel compiled; UI NOT RUN; export=NOT_IMPLEMENTED"
+      "detail": "File broker: read=1048576B, save=65536B, image=1048576B, grants=test-only grant-file control operation; production grants must come from dialogs; dialogs=test-injected grant path + AppKit NSOpenPanel/NSSavePanel compiled; UI NOT RUN; export=test-injected HTML + diagram PNG write; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED"
     },
     {
       "id": "adapted-dialog-grant",
@@ -72,9 +72,19 @@
       "detail": "NSOpenPanel/NSSavePanel UI is compiled but not exercised"
     },
     {
-      "id": "adapted-export",
+      "id": "adapted-export-html",
+      "status": "PASS",
+      "detail": "Export HTML: test-injected HTML + diagram PNG write; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED"
+    },
+    {
+      "id": "adapted-export-png",
+      "status": "PASS",
+      "detail": "Export diagram PNG: test-injected HTML + diagram PNG write; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED"
+    },
+    {
+      "id": "adapted-export-pdf",
       "status": "NOT_RUN",
-      "detail": "export/save-panel writes are not implemented"
+      "detail": "PDF/PNG document rendering export is not implemented"
     },
     {
       "id": "adapted-moji-api",

@@ -42,6 +42,9 @@ try {
   fs.mkdirSync(path.join(temp, 'out/main'), { recursive: true });
   fs.mkdirSync(path.join(temp, 'out/preload'), { recursive: true });
   fs.mkdirSync(path.join(temp, 'adapted'), { recursive: true });
+  fs.mkdirSync(path.join(temp, 'samples'), { recursive: true });
+  fs.copyFileSync(path.join(sourceRoot, 'samples/markdown-guide.en.md'),
+    path.join(temp, 'samples/markdown-guide.en.md'));
   fs.copyFileSync(mainPath, path.join(temp, 'out/main/main.js'));
   fs.copyFileSync(preloadPath, path.join(temp, 'out/preload/preload.js'));
   fs.copyFileSync(adapterPath, path.join(temp, 'adapted/page-api.js'));

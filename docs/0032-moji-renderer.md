@@ -50,6 +50,11 @@ The broker now returns the Moji-shaped `ok`/`content` fields (while retaining
 `text` for the fixture probe) for `file:read-path`/`file:read-sample`;
 `file:save` returns `ok`.
 
+Open/save/export from the same renderer probe also pass with test-injected
+paths: `openDialog` returns the sample document, `saveAs` writes a file,
+`exportAs` writes HTML and `exportDiagramPng` writes PNG. See
+[docs/0033-moji-os-services.md](0033-moji-os-services.md).
+
 The report's `apiProbe` is
 `{"state":"done","saveOk":true,"readOk":true,"sampleOk":true,"settingsTheme":"dark"}`.
 Report: [compatibility/reports/moji-renderer.json](compatibility/reports/moji-renderer.json).

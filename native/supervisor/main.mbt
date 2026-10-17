@@ -355,6 +355,22 @@ fn run_moji_app() -> Unit {
       json_path(grant_reply.unwrap_or("none")) + "\"}")
     fail_moji_app("ELECTRON_MBT_MOJI_APP_GRANT")
   }
+  let dialogs = [
+    (53, "\"kind\":\"open\",\"path\":\"samples/markdown-guide.en.md\""),
+    (54, "\"kind\":\"save\",\"path\":\"renderer-save-as.md\""),
+    (55, "\"kind\":\"export-html\",\"path\":\"renderer-export.html\""),
+    (56, "\"kind\":\"export-png\",\"path\":\"renderer-export.png\""),
+  ]
+  for entry in dialogs {
+    let (id, body) = entry
+    let dialog = request_frame(session, id, 1, 0, "set-dialog-result", "{" + body + "}")
+    let dialog_sent = send(fd, dialog)
+    let dialog_reply = if dialog_sent { receive(fd, buffer) } else { None }
+    if !dialog_sent || dialog_reply is None ||
+      !dialog_reply.unwrap().contains("\"set\":true") {
+      fail_moji_app("ELECTRON_MBT_MOJI_APP_DIALOG")
+    }
+  }
   if supervisor_app_main(@utf8.encode(snapshot_root)) != 43 {
     fail_moji_app("ELECTRON_MBT_MOJI_APP_MAIN")
   }
@@ -500,6 +516,10 @@ fn run_moji_app() -> Unit {
     }
   }
   let api_ok = !renderer_ok || (api_probe.contains("\"state\":\"done\"") &&
+    api_probe.contains("\"openOk\":true") &&
+    api_probe.contains("\"saveAsOk\":true") &&
+    api_probe.contains("\"exportOk\":true") &&
+    api_probe.contains("\"pngOk\":true") &&
     api_probe.contains("\"saveOk\":true") &&
     api_probe.contains("\"readOk\":true") &&
     api_probe.contains("\"sampleOk\":true") &&

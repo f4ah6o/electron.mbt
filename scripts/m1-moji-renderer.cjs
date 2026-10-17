@@ -163,7 +163,8 @@ async function main() {
     const pageText = typeof parsed.pageText === 'string' ? parsed.pageText : '';
     let api = {};
     try { api = JSON.parse(parsed.apiProbe || '{}'); } catch {}
-    const apiOk = api.state === 'done' && api.saveOk === true &&
+    const apiOk = api.state === 'done' && api.openOk === true && api.saveAsOk === true &&
+      api.exportOk === true && api.pngOk === true && api.saveOk === true &&
       api.readOk === true && api.sampleOk === true && api.settingsTheme === 'dark';
     const ok = result.code === 0 && parsed.status === 'PASS' &&
       parsed.probe === 'moji-adapted-native' && parsed.rendererLoaded === true &&

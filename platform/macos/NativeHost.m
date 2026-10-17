@@ -433,8 +433,24 @@ static NSString *preloadDigest(NSData *data) {
       [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
+    NSData *data = [NSData dataWithContentsOfFile:granted options:NSDataReadingMappedIfSafe error:nil];
+    if (data == nil) {
+      [self denyFile:@"ELECTRON_MBT_FILE_READ" reply:reply];
+      return;
+    }
+    if (data.length > 1048576) {
+      [self denyFile:@"ELECTRON_MBT_FILE_LIMIT" reply:reply];
+      return;
+    }
+    NSString *content = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (content == nil) {
+      [self denyFile:@"ELECTRON_MBT_FILE_ENCODING" reply:reply];
+      return;
+    }
     self.ingressAdmitted++;
-    reply(@{@"path": granted, @"paths": @[granted], @"source": @"test-dialog"}, nil);
+    reply(@{@"ok": @YES, @"canceled": @NO, @"path": granted, @"paths": @[granted],
+      @"documents": @[@{@"path": granted, @"content": content}],
+      @"source": @"test-dialog"}, nil);
     return;
   }
   if (self.native == nil) {
@@ -459,8 +475,20 @@ static NSString *preloadDigest(NSData *data) {
       [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
+    NSData *data = [NSData dataWithContentsOfFile:granted options:NSDataReadingMappedIfSafe error:nil];
+    if (data == nil || data.length > 1048576) {
+      [window denyFile:@"ELECTRON_MBT_FILE_READ" reply:reply];
+      return;
+    }
+    NSString *content = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (content == nil) {
+      [window denyFile:@"ELECTRON_MBT_FILE_ENCODING" reply:reply];
+      return;
+    }
     window.ingressAdmitted++;
-    reply(@{@"path": granted, @"paths": @[granted], @"source": @"dialog"}, nil);
+    reply(@{@"ok": @YES, @"canceled": @NO, @"path": granted, @"paths": @[granted],
+      @"documents": @[@{@"path": granted, @"content": content}],
+      @"source": @"dialog"}, nil);
   }];
 }
 - (void)saveAsContent:(NSString *)content suggestedName:(NSString *)suggestedName
@@ -601,8 +629,9 @@ static NSString *preloadDigest(NSData *data) {
 }
 - (void)handleFileOperation:(NSString *)operation payload:(NSDictionary *)payload
   reply:(void (^)(id, NSString *))reply {
-  NSArray *args = payload[@"args"];
-  if (args != nil && ![args isKindOfClass:[NSArray class]]) {
+  id rawArgs = payload[@"args"];
+  NSArray *args = [rawArgs isKindOfClass:[NSArray class]] ? rawArgs : nil;
+  if (rawArgs != nil && rawArgs != [NSNull null] && args == nil) {
     [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
     return;
   }
@@ -1989,11 +2018,20 @@ static NSString *preloadDigest(NSData *data) {
       return;
     }
     NSString *script = @"window.__mojiApiProbe={state:'pending'}; (async function(){ try { "
+      "const opened=await window.api.openDialog(); "
+      "const savedAs=await window.api.saveAs('# save-as\\n','save-as.md'); "
+      "const exported=await window.api.exportAs({format:'html',html:'<h1>renderer export</h1>',baseName:'export'}); "
+      "const png=await window.api.exportDiagramPng({dataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=',baseName:'diagram'}); "
       "const saved=await window.api.save('renderer-save.md','# renderer save\\n'); "
       "const read=await window.api.readPath('renderer-save.md'); "
       "const sample=await window.api.readSample('markdown-guide.en.md'); "
       "const settings=await window.api.getSettings(); "
-      "window.__mojiApiProbe={state:'done',saveOk:!!(saved&&saved.ok),"
+      "window.__mojiApiProbe={state:'done',"
+      "openOk:!!(opened&&!opened.canceled&&opened.documents&&opened.documents.length===1&&"
+      "opened.documents[0].content&&opened.documents[0].content.indexOf('# Complete Markdown Guide')===0),"
+      "openPath:opened&&opened.path?opened.path:'',"
+      "saveAsOk:!!(savedAs&&savedAs.ok),exportOk:!!(exported&&exported.ok),pngOk:!!(png&&png.ok),"
+      "saveOk:!!(saved&&saved.ok),"
       "readOk:!!(read&&read.ok),readContent:read&&read.content?read.content.slice(0,64):'',"
       "sampleOk:!!(sample&&sample.ok),"
       "sampleContent:sample&&sample.content?sample.content.slice(0,64):'',"

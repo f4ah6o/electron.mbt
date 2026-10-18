@@ -263,7 +263,11 @@ for B7 design work on 2026-10-18; no external independent audit was
 performed. Strict profile admission remains B7 and is blocked on the
 page-admission ordering, arbitrary API keys, full preload globals/
 ipcRenderer/webUtils, frame policy, page self-DoS and the B7 runtime evidence;
-no acceptance row is promoted by B6-A/B/C/D/E alone.
+no acceptance row is promoted by B6-A/B/C/D/E alone. In the experimental M1
+transport, arbitrary single API keys are now supported by previewing the
+unchanged preload before navigation and injecting the discovered key into the
+host-owned page shim; the strict nodeless runtime still needs that preview and
+the page-admission/registration ordering. See [docs/0041](0041-b7-strict-profile-admission.md).
 
 ## B6 acceptance criteria (not met by B6-A)
 

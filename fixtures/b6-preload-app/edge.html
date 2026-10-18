@@ -7,7 +7,7 @@
   'use strict';
   const state = { fixtureError: null };
   try {
-    const api = window.fixture;
+    const api = window.edge;
     state.available = Boolean(api);
     state.dataFrozen = Object.isFrozen(api.data) && Object.isFrozen(api.data.nested);
     const before = JSON.stringify(api.data);
@@ -148,7 +148,7 @@
   } catch (error) {
     state.fixtureError = { name: error && error.name, message: error && error.message };
     try { document.title = 'EDGE_ERROR:' + (error.name || '') + ':' + (error.message || ''); } catch (_) {}
-    try { window.fixture.report(state); } catch (_) {}
+    try { window.edge.report(state); } catch (_) {}
   }
 })();
 </script>

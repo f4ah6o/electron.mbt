@@ -34,7 +34,7 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 | B6-C synchronous transport (experimental) | Opt-in transport sources + document grant; unchanged oracle preload/page observation, reload/revocation, source hashes | PASS (experimental; strict blocked) |
 | B6-D semantic matrix (experimental) | Value/error/callback/Promise/bounds/fault matrix; three transport defects fixed | PASS (experimental; limits open) |
 | B6-E evidence packet | Baseline differential hook, CI evidence step, threat model/review checklist; project-owner acceptance for B7 design work | PREPARED + ACCEPTED (2026-10-18) for B7; strict admission gates open; baseline NOT RUN locally; external audit NOT RUN |
-| B7 strict-profile admission | Plan, arbitrary-key experiments (meta/comment/window-Proxy; failed/reverted), page-admission/strict-runtime gates | STARTED; strict blocked; no profile promotion |
+| B7 strict-profile admission | Plan, page-admission/strict-runtime gates, preload key preview (single arbitrary key in the experimental M1 transport) | STARTED; strict blocked; no profile promotion |
 | Production asset loading | loopback server is test-only | NOT IMPLEMENTED |
 | Timers/native promises/cancel | not supported by async bridge | NOT IMPLEMENTED |
 
@@ -43,7 +43,7 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 - `verify-state`: 17/17 PASS, `NOT_READY`
 - readiness: 31 checks, 24 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 450 pass
+- `npm test`: 452 pass
 - `moon test --target js`: 143 pass
 - `moon test --target native`: 162 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS

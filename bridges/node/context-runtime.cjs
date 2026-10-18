@@ -4,6 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const session = require('./runtime-session.cjs');
 const { bindContextBridgeCore } = require('./context-bridge-registry.cjs');
+const { discoverPreloadApiKey } = require('./preload-key.cjs');
 const { createIpcMain } = require('./ipc-main.cjs');
 const { createMenu } = require('./menu.cjs');
 const { runtimeError } = require('./errors.cjs');
@@ -101,6 +102,15 @@ class ExperimentalRuntime extends session.ExperimentalRuntime {
       }
     };
     attempt(0);
+  }
+
+  transportSourcesForPreload(preloadSource) {
+    if (!this.bridgeSources) return null;
+    if (typeof preloadSource !== 'string' || preloadSource.length === 0) {
+      throw runtimeError('ELECTRON_MBT_PRELOAD_KEY_DISCOVERY', 'Preload source is required for the transport');
+    }
+    const apiKey = discoverPreloadApiKey(preloadSource);
+    return Object.freeze({ ...this.bridgeSources, apiKey });
   }
 
   invalidateHost(cause) {

@@ -215,6 +215,22 @@ static BOOL b6TransportEnabled(void) {
   return [value isEqualToString:@"1"];
 }
 
+static BOOL bridgeApiKeyValid(NSString *key) {
+  if (![key isKindOfClass:[NSString class]] || key.length == 0 || key.length > 64) return NO;
+  static NSSet<NSString *> *reserved = nil;
+  if (reserved == nil) {
+    reserved = [NSSet setWithObjects:@"window", @"document", @"globalThis",
+      @"process", @"require", @"module", @"exports", @"electron",
+      @"__proto__", @"prototype", @"constructor", nil];
+  }
+  if ([reserved containsObject:key]) return NO;
+  for (NSUInteger index = 0; index < key.length; index++) {
+    unichar code = [key characterAtIndex:index];
+    if (code == 0 || code < 32 || code == 127) return NO;
+  }
+  return YES;
+}
+
 @interface MBTExportRenderer : NSObject <WKNavigationDelegate>
 @property(nonatomic, strong) WKWebView *web;
 @property(nonatomic, strong) NSWindow *window;
@@ -329,6 +345,7 @@ static BOOL b6TransportEnabled(void) {
 @property(nonatomic, copy) NSString *bridgeCodecSource;
 @property(nonatomic, copy) NSString *bridgePageShimSource;
 @property(nonatomic, copy) NSString *bridgeIsolatedSource;
+@property(nonatomic, copy) NSString *bridgeApiKey;
 @property(nonatomic, copy) NSString *bridgeSecret;
 @property(nonatomic, copy) NSString *bridgeGrant;
 @property(nonatomic) BOOL bridgeSourcesInstalled;
@@ -402,6 +419,7 @@ static BOOL b6TransportEnabled(void) {
     self.bridgeCodecSource = nil;
     self.bridgePageShimSource = nil;
     self.bridgeIsolatedSource = nil;
+    self.bridgeApiKey = nil;
     self.bridgeSecret = nil;
     self.bridgeGrant = nil;
     self.bridgeSourcesInstalled = NO;
@@ -1143,10 +1161,17 @@ static BOOL b6TransportEnabled(void) {
     if (self.bridgeGrant == nil) self.bridgeGrant = [[NSUUID UUID] UUIDString];
     if (self.bridgeSecret == nil || self.bridgeGrant == nil ||
         self.bridgeCodecSource.length == 0 || self.bridgePageShimSource.length == 0 ||
-        self.bridgeIsolatedSource.length == 0) return;
+        self.bridgeIsolatedSource.length == 0 || self.bridgeApiKey.length == 0) return;
+    NSError *keyError = nil;
+    NSData *keyData = [NSJSONSerialization dataWithJSONObject:@[self.bridgeApiKey]
+      options:0 error:&keyError];
+    NSString *keyArray = keyData ? [[NSString alloc] initWithData:keyData
+      encoding:NSUTF8StringEncoding] : nil;
+    if (keyError || keyArray.length < 2) return;
+    NSString *keyJSON = [keyArray substringWithRange:NSMakeRange(1, keyArray.length - 2)];
     NSString *pageSource = [NSString stringWithFormat:
-      @"(function(__m0Secret){\n%@\n%@\n})(\"%@\");",
-      self.bridgeCodecSource, self.bridgePageShimSource, self.bridgeSecret];
+      @"(function(__m0Secret, __m0ExposedApiKey){\n%@\n%@\n})(\"%@\", %@);",
+      self.bridgeCodecSource, self.bridgePageShimSource, self.bridgeSecret, keyJSON];
     WKUserScript *pageShim = [[WKUserScript alloc] initWithSource:pageSource
       injectionTime:WKUserScriptInjectionTimeAtDocumentStart
       forMainFrameOnly:YES inContentWorld:[WKContentWorld pageWorld]];
@@ -1725,6 +1750,7 @@ static BOOL b6TransportEnabled(void) {
   self.bridgeCodecSource = nil;
   self.bridgePageShimSource = nil;
   self.bridgeIsolatedSource = nil;
+  self.bridgeApiKey = nil;
   self.bridgeSecret = nil;
   self.bridgeGrant = nil;
   self.bridgeSourcesInstalled = NO;
@@ -2269,12 +2295,14 @@ static BOOL b6TransportEnabled(void) {
     NSString *codecSHA = payload[@"codecSHA256"];
     NSString *pageShimSHA = payload[@"pageShimSHA256"];
     NSString *isolatedSHA = payload[@"isolatedSHA256"];
+    NSString *apiKey = payload[@"apiKey"];
     BOOL strings = [codec isKindOfClass:[NSString class]] &&
       [pageShim isKindOfClass:[NSString class]] &&
       [isolated isKindOfClass:[NSString class]] &&
       [codecSHA isKindOfClass:[NSString class]] &&
       [pageShimSHA isKindOfClass:[NSString class]] &&
-      [isolatedSHA isKindOfClass:[NSString class]];
+      [isolatedSHA isKindOfClass:[NSString class]] &&
+      [apiKey isKindOfClass:[NSString class]];
     BOOL bounds = strings && codec.length > 0 && codec.length <= 262144 &&
       pageShim.length > 0 && pageShim.length <= 262144 &&
       isolated.length > 0 && isolated.length <= 262144;
@@ -2289,8 +2317,9 @@ static BOOL b6TransportEnabled(void) {
         [preloadDigest(pageData) isEqualToString:pageShimSHA] &&
         [preloadDigest(isolatedData) isEqualToString:isolatedSHA];
     }
-    if (payload.count != 6 || !digests || !window.bridgeTransportEnabled ||
-        !window.contentAlive || window.loadDone != nil || window.loadingNavigation != nil ||
+    if (payload.count != 7 || !digests || !bridgeApiKeyValid(apiKey) ||
+        !window.bridgeTransportEnabled || !window.contentAlive ||
+        window.loadDone != nil || window.loadingNavigation != nil ||
         generation.longLongValue != window.generation || window.preloadSource == nil) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_PRELOAD_BRIDGE_INVALID"});
       return;
@@ -2298,6 +2327,7 @@ static BOOL b6TransportEnabled(void) {
     window.bridgeCodecSource = codec;
     window.bridgePageShimSource = pageShim;
     window.bridgeIsolatedSource = isolated;
+    window.bridgeApiKey = apiKey;
     window.bridgeSourcesInstalled = YES;
     done(@"success", @{@"installed": @YES});
     return;

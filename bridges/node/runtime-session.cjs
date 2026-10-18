@@ -277,6 +277,7 @@ class ExperimentalRuntime {
           return acknowledgement.title;
         };
         this._generation = 0;
+        this._preloadSource = normalized.preloadSource;
         this._loading = false;
         this._renderProcessGone = false;
         this._destroyed = false;
@@ -345,10 +346,12 @@ class ExperimentalRuntime {
           runtime.host.request('begin-load', this.id, generation);
           this._generation = generation;
           if (runtime.bridgeSources) {
-            // Install host-owned page/preload bridge sources before load-file.
-            // The host re-verifies source hashes and lengths.
-            runtime.host.request('install-preload-bridge', this.id, generation,
-              runtime.bridgeSources);
+            // Preview the unchanged preload in a disposable VM to discover its
+            // single contextBridge key, then install host-owned sources plus
+            // that key before load-file. The host re-verifies source hashes and
+            // the real WKWebView descriptor must match the key.
+            const sources = runtime.transportSourcesForPreload(this._preloadSource);
+            runtime.host.request('install-preload-bridge', this.id, generation, sources);
           }
         } catch (error) {
           // MoonBit generations are monotonic. Once the core advanced, a

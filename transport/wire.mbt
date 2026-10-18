@@ -358,20 +358,24 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       _ => raise BadProtocol("Preload bridge payload must be an object")
     }
     // The success acknowledgement carries {installed:true}; the request carries
-    // the six bounded host-owned source/digest fields. Keep both shapes exact.
+    // the bounded host-owned sources/digests plus the discovered API key.
     if values.length() == 1 {
       match values.get("installed") {
         Some(True) | Some(False) => ()
         _ => raise BadProtocol("Preload bridge acknowledgement shape")
       }
-    } else if values.length() == 6 {
+    } else if values.length() == 7 {
       for key in ["codecSource", "pageShimSource", "isolatedSource"] {
         match values.get(key) {
           Some(String(value)) if value.length() > 0 && value.length() <= 262144 => ()
           _ => raise BadProtocol("Preload bridge source")
         }
       }
-      for key in ["codecSHA256", "pageShimSHA256", "isolatedSHA256"] {
+      match values.get("apiKey") {
+      Some(String(value)) if value.length() > 0 && value.length() <= 64 => ()
+      _ => raise BadProtocol("Preload bridge api key")
+    }
+    for key in ["codecSHA256", "pageShimSHA256", "isolatedSHA256"] {
         let digest = match values.get(key) {
           Some(String(value)) => value
           _ => raise BadProtocol("Preload bridge digest")

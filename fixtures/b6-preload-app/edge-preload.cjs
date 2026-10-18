@@ -25,7 +25,7 @@ function symbolKey() {
   value[Symbol('edge')] = 1;
   return value;
 }
-contextBridge.exposeInMainWorld('fixture', {
+contextBridge.exposeInMainWorld('edge', {
   data: { nested: { value: 7 }, list: [1, 2, 3] },
   echo: value => value,
   returnUndefined: () => undefined,

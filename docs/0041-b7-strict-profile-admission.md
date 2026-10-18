@@ -38,11 +38,12 @@ B7 needs one of:
 
 The current M1 host does none of these; this is the first hard B7 gate.
 
-## Gate 2 — arbitrary API keys (open; two experiments failed)
+## Gate 2 — arbitrary API keys (closed in the experimental M1 transport; strict runtime port open)
 
-The candidate page shim hard-codes the `fixture` key. The isolated bridge's
-descriptor carries the actual `apiKey`, but the page shim needs the key
-before the first page script to define `window.<key>`.
+The candidate page shim originally hard-coded the `fixture` key. The key must
+be known before the first page script to define `window.<key>`. The current
+experimental M1 transport now resolves this with a preload key preview; the
+strict nodeless runtime still needs the same or an equivalent mechanism.
 
 Three 2026-10-18 experiments were attempted and then reverted:
 
@@ -63,13 +64,42 @@ Three 2026-10-18 experiments were attempted and then reverted:
    be replaced"/"cannot be extended"); `window.<key>` stayed undefined and the
    probe page reported the error. Reverted.
 
-Conclusion: arbitrary keys are an architectural limit of the current
-shared-DOM/lazy page shim, not a small patch. The page global cannot be
+Conclusion for the page-shim-only approaches: the page global cannot be
 proxied in WebKit, and the key is not available to the page shim before the
-first page script. B7 needs an engine-level bridge,
-a predeclared-key contract (which would change the app/page contract), a
-preflight document, or another reviewed mechanism. The working candidate
-remains `fixture`-only and is not a strict-profile API surface.
+first page script. A different mechanism is required.
+
+### Resolved path in the experimental M1 transport (2026-10-18)
+
+The Node runtime previews the unchanged preload in a disposable `node:vm`
+context with a `contextBridge` facade before navigation. It records exactly
+one exposed key, passes it through the trusted `install-preload-bridge`
+control op, and the native host injects it into the host-owned page shim before
+the first page script. The real WKWebView preload still runs unchanged; the
+signed hello verifies that the actual descriptor's `apiKey` equals the preview
+key, so a dynamic/different preload fails closed.
+
+Evidence:
+
+- `tests/context-bridge-preload-key.test.cjs` covers the oracle (`fixture`),
+  the edge fixture (`edge`), computed/custom keys, reserved/empty/oversize
+  keys, missing/multiple exposures, unsupported modules and failing preloads;
+- the B6-C oracle test uses `fixture` and the B6-D edge test uses `edge`, both
+  through the preview → host → page shim path;
+- `npm test` is 452 pass; the default and B6-B paths remain green.
+
+Limits of this path:
+
+- one exposed key, deterministic/synchronous at preload load;
+- the preview executes the trusted preload in a VM with stubs; top-level side
+  effects are stubbed, local modules are unsupported, and the real preload
+  runs again in WebKit (double execution must be reviewed);
+- the strict `electron-nodeless-v1` runtime is QuickJS/native and has no Node
+  `vm`; the preview must be ported to the strict runtime;
+- this does **not** solve page-admission ordering: the page API still
+  materializes before the MoonBit exposure registration.
+
+Arbitrary keys are therefore closed for the **experimental M1 transport**,
+not for the strict profile.
 
 ## Gate 3 — full preload environment (open)
 
@@ -112,4 +142,6 @@ gate is not changed by the B6 acceptance or this plan.
    request the B7 gate decision.
 
 The B7 goal remains active; the strict profile stays blocked until the gates
-above are closed with runtime evidence.
+above are closed with runtime evidence. The next concrete work is porting the
+preload key preview into the strict nodeless runtime and making the exposure
+admission/registration part of the page path.

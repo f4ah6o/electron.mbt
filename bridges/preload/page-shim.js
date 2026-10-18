@@ -17,7 +17,7 @@ const codec = codecFactory.createCodec({
   limits: { maxBytes: 65536, maxDepth: 8, maxNodes: 512, maxString: 32768, maxHandles: 256 },
 });
 
-const API_KEY = 'fixture';
+const API_KEY = __m0ExposedApiKey;
 const META_NAME = 'electron-mbt-m0-bridge';
 const REQUEST_EVENT = 'electron-mbt-m0-bridge-request';
 const RESPONSE_EVENT = 'electron-mbt-m0-bridge-response';

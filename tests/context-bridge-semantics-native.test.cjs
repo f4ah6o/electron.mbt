@@ -94,7 +94,7 @@ test('What: B6-D production transport covers the value/error/callback/Promise ma
     assert.equal(state.callbackPromise.name, 'BridgeCodecError');
     assert.match(state.callbackPromise.code, /^ELECTRON_MBT_BRIDGE_VALUE_/);
     assert.ok(exposures.some(event => event.window === window.id &&
-      event.payload?.apiKey === 'fixture' && event.payload.functionCount >= 20));
+      event.payload?.apiKey === 'edge' && event.payload.functionCount >= 20));
 
     await window.loadFile('edge.html');
     await waitFor(() => reports.filter(event => event.window === window.id).length >= 2,

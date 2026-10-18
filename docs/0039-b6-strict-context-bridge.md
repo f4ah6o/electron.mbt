@@ -267,7 +267,12 @@ no acceptance row is promoted by B6-A/B/C/D/E alone. In the experimental M1
 transport, arbitrary single API keys are now supported by previewing the
 unchanged preload before navigation and injecting the discovered key into the
 host-owned page shim; the strict nodeless runtime still needs that preview and
-the page-admission/registration ordering. See [docs/0041](0041-b7-strict-profile-admission.md).
+the page-admission/registration ordering. The experimental M1 transport now
+also previews the descriptor and pre-registers the exposure with the MoonBit
+authority before load; the real WKWebView descriptor must match the preview or
+the runtime aborts. The strict runtime actual-before-page admission, full
+preload and strict nodeless port remain open. See
+[docs/0041](0041-b7-strict-profile-admission.md).
 
 ## B6 acceptance criteria (not met by B6-A)
 

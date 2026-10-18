@@ -1,6 +1,12 @@
 'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
+const { TextEncoder, TextDecoder } = require('node:util');
 const { runtimeError } = require('./errors.cjs');
+
+const codecSource = fs.readFileSync(path.join(__dirname, '..', 'preload', 'codec.js'), 'utf8');
 
 const RESERVED = new Set([
   'window', 'document', 'globalThis', 'process', 'require', 'module',
@@ -27,6 +33,7 @@ function discoverPreloadApiKey(preloadSource, filename = 'preload.cjs') {
     throw runtimeError('ELECTRON_MBT_PRELOAD_KEY_DISCOVERY', 'Invalid preload source');
   }
   const keys = [];
+  let exposedApi = null;
   const unsupported = name => {
     const error = new Error(`ELECTRON_MBT_UNSUPPORTED_PRELOAD_MODULE: ${name}`);
     error.code = 'ELECTRON_MBT_UNSUPPORTED_PRELOAD_MODULE';
@@ -45,6 +52,8 @@ function discoverPreloadApiKey(preloadSource, filename = 'preload.cjs') {
           'The experimental transport supports one exposed API key');
       }
       keys.push(apiKey);
+      exposedApi = api;
+      sandbox.__m0CbApi = api;
     },
   };
   const ipcRenderer = {
@@ -70,6 +79,8 @@ function discoverPreloadApiKey(preloadSource, filename = 'preload.cjs') {
     exports: module.exports,
     require: requireFn,
     console: { log() {}, warn() {}, error() {} },
+    TextEncoder,
+    TextDecoder,
     process: { platform: 'darwin', env: {}, versions: {} },
     setTimeout() { return 0; },
     clearTimeout() {},
@@ -89,15 +100,50 @@ function discoverPreloadApiKey(preloadSource, filename = 'preload.cjs') {
       context,
       { filename, timeout: 2000, displayErrors: false },
     );
+    sandbox.__m0CbApi = exposedApi;
+    // The API is a VM object; encode it with the same codec source inside the
+    // VM realm so the descriptor is the one the real isolated bridge produces.
+    // Hide the CommonJS module binding so the UMD codec installs on globalThis
+    // exactly as it does in the browser content worlds.
+    sandbox.module = undefined;
+    sandbox.exports = undefined;
+    vm.runInContext(codecSource, context, { filename: 'codec.js', timeout: 2000, displayErrors: false });
+    sandbox.__m0CbSecret = '0'.repeat(32);
+    sandbox.__m0CbDescriptor = vm.runInContext(`(function () {
+      const factory = globalThis.__m0CbCodec;
+      const codec = factory.createCodec({
+        secret: globalThis.__m0CbSecret,
+        limits: { maxBytes: 65536, maxDepth: 8, maxNodes: 512, maxString: 32768, maxHandles: 256 },
+      });
+      let count = 0;
+      const descriptor = codec.encode(globalThis.__m0CbApi, {
+        allowFunctions: true,
+        allowPromises: false,
+        allowUndefined: false,
+        onFunction: function () { count += 1; return 'ef-' + count; },
+      });
+      return { descriptor, functionCount: count };
+    })()`, context, { filename: 'descriptor.js', timeout: 2000, displayErrors: false });
   } catch (error) {
     if (error && error.code === 'ELECTRON_MBT_PRELOAD_KEY_DISCOVERY') throw error;
     throw runtimeError('ELECTRON_MBT_PRELOAD_KEY_DISCOVERY', 'Preload key preview failed');
   }
-  if (keys.length !== 1) {
+  if (keys.length !== 1 || !sandbox.__m0CbDescriptor) {
     throw runtimeError('ELECTRON_MBT_PRELOAD_KEY_DISCOVERY',
       'Preload did not expose exactly one API key');
   }
-  return keys[0];
+  const descriptor = sandbox.__m0CbDescriptor.descriptor;
+  const functionCount = sandbox.__m0CbDescriptor.functionCount;
+  if (typeof descriptor !== 'string' || !Number.isSafeInteger(functionCount) || functionCount < 0) {
+    throw runtimeError('ELECTRON_MBT_PRELOAD_KEY_DISCOVERY', 'Invalid preview descriptor');
+  }
+  return Object.freeze({
+    apiKey: keys[0],
+    descriptorBytes: Buffer.byteLength(descriptor, 'utf8'),
+    functionCount,
+    descriptorSha256: crypto.createHash('sha256').update(descriptor).digest('hex'),
+    descriptor,
+  });
 }
 
 module.exports = { discoverPreloadApiKey, validApiKey };

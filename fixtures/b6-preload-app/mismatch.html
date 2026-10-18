@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>mismatch probe</title></head><body>
+<script>
+try {
+  const api = window['preview-key'];
+  document.title = 'mismatch:preview:' + (api ? 'present' : 'absent');
+} catch (error) {
+  document.title = 'mismatch:blocked:' + (error.code || error.name || 'error');
+}
+</script>
+</body></html>

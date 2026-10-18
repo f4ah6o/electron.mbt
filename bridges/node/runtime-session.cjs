@@ -5,6 +5,7 @@ const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { types } = require('node:util');
 const { NativeHost } = require('./native-host.cjs');
+const { pathToFileURL } = require('node:url');
 const { runtimeError } = require('./errors.cjs');
 const { readPreload } = require('./preload-file.cjs');
 
@@ -347,11 +348,21 @@ class ExperimentalRuntime {
           this._generation = generation;
           if (runtime.bridgeSources) {
             // Preview the unchanged preload in a disposable VM to discover its
-            // single contextBridge key, then install host-owned sources plus
-            // that key before load-file. The host re-verifies source hashes and
-            // the real WKWebView descriptor must match the key.
-            const sources = runtime.transportSourcesForPreload(this._preloadSource);
-            runtime.host.request('install-preload-bridge', this.id, generation, sources);
+            // single contextBridge key/descriptor, pre-register that exposure
+            // with the MoonBit authority, then install the sources before
+            // load-file. The real WKWebView descriptor must match the preview.
+            const preview = runtime.transportSourcesForPreload(this._preloadSource);
+            runtime.host.request('install-preload-bridge', this.id, generation, {
+              codecSource: preview.codecSource,
+              pageShimSource: preview.pageShimSource,
+              isolatedSource: preview.isolatedSource,
+              codecSHA256: preview.codecSHA256,
+              pageShimSHA256: preview.pageShimSHA256,
+              isolatedSHA256: preview.isolatedSHA256,
+              apiKey: preview.apiKey,
+            });
+            runtime.preRegisterExposure(this, generation,
+              pathToFileURL(real).href, preview);
           }
         } catch (error) {
           // MoonBit generations are monotonic. Once the core advanced, a

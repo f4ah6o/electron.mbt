@@ -17,26 +17,34 @@ compatibility row is promoted. `compatible:false`, strict **blocked**, M0
   arbitrary API keys, full preload globals/ipcRenderer/webUtils, frame
   policy, page self-DoS and strict runtime/B7 evidence.
 
-## Gate 1 — page-admission ordering (open)
+## Gate 1 — page-admission ordering (closed in the experimental M1 transport; strict runtime actual-before-page open)
 
-The M1 page shim materializes `window.<key>` from the native-attested
-preload descriptor. The MoonBit exposure registration happens later, on the
-Node side, after `preload-exposure` and the bootstrap/preload attestation.
-The first page script is synchronous; the Node/MoonBit registration is
-asynchronous, so the M1 host cannot make that registration the page gate
-without a different architecture.
+The experimental M1 transport now previews the unchanged preload before
+navigation. The preview encodes the same production descriptor in the VM, and
+the runtime pre-registers that exposure with the MoonBit B6-A authority
+(activate/grant/expose) before `load-file`. The page shim then materializes
+from the actual WKWebView descriptor. The actual `preload-exposure` event must
+match the pre-registered key, descriptor bytes, function count and SHA-256, or
+the runtime aborts.
 
-B7 needs one of:
+Evidence:
 
-- the MoonBit authority in-process in the strict runtime, so admission is
-  decided before the page shim materializes; or
-- a reviewed synchronous native admission token that the page shim requires;
-  or
-- a documented removal of the MoonBit exposure registration from the
-  page-admission path, with the native attestation as the authority (a
-  semantic change requiring review).
+- B6-C and B6-D pass with the pre-registration in front of the page;
+- `tests/context-bridge-admission-native.test.cjs` uses a preload whose key
+  depends on `process` (`preview-key` in the VM preview, `actual-key` in
+  WKWebView); the pre-registration is `preview-key`, the real descriptor is
+  `actual-key`, and the mismatch aborts the runtime (the host is dead).
 
-The current M1 host does none of these; this is the first hard B7 gate.
+Limits that remain for B7:
+
+- the preview is not the actual WKWebView descriptor; the page's first script
+  can run before the Node receives the actual descriptor event. A same-key
+  descriptor-only mismatch is therefore detected after the page;
+- the strict runtime must gate the **actual** descriptor before page calls
+  (host-side actual-before-page admission token) and the strict nodeless
+  runtime must port this path;
+- the page-admission ordering is closed for the experimental M1 preview path
+  only, not for the strict profile.
 
 ## Gate 2 — arbitrary API keys (closed in the experimental M1 transport; strict runtime port open)
 
@@ -142,6 +150,7 @@ gate is not changed by the B6 acceptance or this plan.
    request the B7 gate decision.
 
 The B7 goal remains active; the strict profile stays blocked until the gates
-above are closed with runtime evidence. The next concrete work is porting the
-preload key preview into the strict nodeless runtime and making the exposure
-admission/registration part of the page path.
+above are closed with runtime evidence. The next concrete work is a host-side
+actual-before-page admission token (so the real descriptor gates the page, not
+just the preview), then porting the preview/admission path to the strict
+nodeless runtime and adding the full preload/frame/self-DoS evidence.

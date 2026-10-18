@@ -42,6 +42,7 @@ function checked(core, runtime, operation) {
 
 class ExperimentalRuntime extends session.ExperimentalRuntime {
   #activated = new WeakMap();
+  #preRegistered = new Map();
   constructor(appInfo, options = {}) {
     super(appInfo, options);
     try {
@@ -73,6 +74,20 @@ class ExperimentalRuntime extends session.ExperimentalRuntime {
       // A native-attested event with a malformed authority payload is a
       // protocol failure, not a preload success.
       this.abort();
+      return;
+    }
+    const preRegistered = this.#preRegistered.get(`${details.window}:${details.generation}`);
+    if (preRegistered) {
+      if (payload.apiKey !== preRegistered.apiKey ||
+          payload.descriptorBytes !== preRegistered.descriptorBytes ||
+          payload.functionCount !== preRegistered.functionCount ||
+          payload.descriptorSHA256 !== preRegistered.descriptorSha256) {
+        // The real WKWebView descriptor must match the preview that was
+        // admitted before the page. A mismatch is a document failure.
+        this.abort();
+        return;
+      }
+      this.#preRegistered.delete(`${details.window}:${details.generation}`);
       return;
     }
     const attempt = count => {
@@ -109,8 +124,40 @@ class ExperimentalRuntime extends session.ExperimentalRuntime {
     if (typeof preloadSource !== 'string' || preloadSource.length === 0) {
       throw runtimeError('ELECTRON_MBT_PRELOAD_KEY_DISCOVERY', 'Preload source is required for the transport');
     }
-    const apiKey = discoverPreloadApiKey(preloadSource);
-    return Object.freeze({ ...this.bridgeSources, apiKey });
+    const preview = discoverPreloadApiKey(preloadSource);
+    return Object.freeze({ ...this.bridgeSources, ...preview });
+  }
+
+  preRegisterExposure(window, generation, origin, preview) {
+    if (!this.bridgeSources) return;
+    if (!window || this.windows.get(window.id) !== window || this.terminated ||
+        window._destroyed || window._renderProcessGone ||
+        !Number.isSafeInteger(generation) || generation !== window._generation ||
+        typeof origin !== 'string' || !origin.startsWith('file://') ||
+        !preview || typeof preview.apiKey !== 'string') {
+      throw runtimeError('ELECTRON_MBT_PRELOAD_KEY_DISCOVERY', 'Invalid pre-registration');
+    }
+    const scope = Object.freeze({
+      window: String(window.id), generation: String(generation),
+      origin, mainFrame: true, channel: 'preload-read',
+    });
+    checked(this.core, this.runtime, {
+      op: 'activate', window: scope.window,
+      generation: scope.generation, origin: scope.origin,
+    });
+    checked(this.core, this.runtime, {
+      op: 'grant', window: scope.window,
+      generation: scope.generation, channel: scope.channel,
+    });
+    this.#activated.set(window, generation);
+    this.contextExposures.expose(scope, preview.apiKey, preview.descriptorBytes,
+      preview.functionCount, preview.descriptorSha256);
+    this.#preRegistered.set(`${window.id}:${generation}`, Object.freeze({
+      apiKey: preview.apiKey,
+      descriptorBytes: preview.descriptorBytes,
+      functionCount: preview.functionCount,
+      descriptorSha256: preview.descriptorSha256,
+    }));
   }
 
   invalidateHost(cause) {

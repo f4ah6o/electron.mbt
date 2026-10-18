@@ -12,11 +12,17 @@ function preload(expose) {
 test('What: the preload key preview discovers deterministic contextBridge keys', () => {
   const oracle = fs.readFileSync(path.resolve(__dirname, '../fixtures/oracle/preload.cjs'), 'utf8');
   const edge = fs.readFileSync(path.resolve(__dirname, '../fixtures/b6-preload-app/edge-preload.cjs'), 'utf8');
-  assert.equal(discoverPreloadApiKey(oracle), 'fixture');
-  assert.equal(discoverPreloadApiKey(edge), 'edge');
-  assert.equal(discoverPreloadApiKey(preload('contextBridge.exposeInMainWorld("custom-key", { value: 1 });')),
+  const oraclePreview = discoverPreloadApiKey(oracle);
+  const edgePreview = discoverPreloadApiKey(edge);
+  assert.equal(oraclePreview.apiKey, 'fixture');
+  assert.equal(oraclePreview.functionCount, 10);
+  assert.match(oraclePreview.descriptorSha256, /^[0-9a-f]{64}$/);
+  assert.equal(edgePreview.apiKey, 'edge');
+  assert.equal(edgePreview.functionCount, 31);
+  assert.match(edgePreview.descriptorSha256, /^[0-9a-f]{64}$/);
+  assert.equal(discoverPreloadApiKey(preload('contextBridge.exposeInMainWorld("custom-key", { value: 1 });')).apiKey,
     'custom-key');
-  assert.equal(discoverPreloadApiKey(preload('const key = "computed"; contextBridge.exposeInMainWorld(key, {});')),
+  assert.equal(discoverPreloadApiKey(preload('const key = "computed"; contextBridge.exposeInMainWorld(key, {});')).apiKey,
     'computed');
 });
 

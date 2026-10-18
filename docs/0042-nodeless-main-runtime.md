@@ -2,8 +2,10 @@
 
 Status: **partial main-runtime increment**. A native CLI executes a bounded CJS
 app main on the pinned QuickJS engine without a Node process, and the fixture
-passes. This is not a window, native-host, preload, Moji or Electron acceptance;
-`compatible:false`, strict **blocked** and adapted **partial** remain.
+passes. The separate [window and Moji-main probe](0043-nodeless-window-and-moji-main-boot.md)
+adds a real host window and a pinned Moji main boot against a probe page. This is
+not preload, real-renderer, Moji-UI or Electron acceptance; `compatible:false`,
+strict **blocked** and adapted **partial** remain.
 
 ## What works
 
@@ -18,8 +20,8 @@ builds the CJS graph in MoonBit, and evaluates it through
 | module graph | literal `require` scan, relative paths, extension/index, JSON, nested/scoped `node_modules`, package `main` and require-selected `exports`, cache identity, cycles |
 | CJS realm | `module.exports`, `exports` alias, `module.loaded`, `__filename`, `__dirname`, JSON modules, `require.resolve` fail-closed |
 | Node subset | `path`, `url` file helpers, `process` (platform/arch/argv/env allowlist/versions/nextTick), `events.EventEmitter`, `Buffer` (utf8/base64/ascii, alloc/concat/subarray/equals), `setTimeout`/`clearTimeout`/Timeout ref/unref |
-| fail-closed | `fs`, `fs/promises`, `zlib` throw typed unsupported; computed require fails before evaluation; `electron-updater` is rejected without an explicit adaptation |
-| Electron facade | `app` (name/version/isPackaged/getAppPath/getPath/setPath/whenReady/isReady/on/quit) and `ipcMain` (handle/removeHandler/on/once) |
+| adapted imports | `fs`/`fs.promises` import-only with ENOENT/EACCES; `zlib` import-only with a typed `createDeflate` failure; `electron-updater` is an explicit import-only stub; computed require fails before evaluation |
+| Electron facade | `app`, `ipcMain`, a bounded `BrowserWindow`/`webContents` and a local `Menu`/`screen`/`shell` model; dialog/contextBridge/ipcRenderer remain unsupported |
 | scheduling | MoonBit scheduler owns deadlines; nextTick/Promise jobs are drained and the fixture observes tick → promise → timer; async handler settle uses a bounded 1000-step loop |
 | teardown | live lease count is 0 and no pending job before context/runtime destruction |
 
@@ -28,6 +30,8 @@ builds the CJS graph in MoonBit, and evaluates it through
 ```sh
 moon build --target native native/nodeless
 ./_build/native/debug/build/native/nodeless/nodeless.exe run fixtures/nodeless-app
+./_build/native/debug/build/native/nodeless/nodeless.exe run fixtures/nodeless-window-app --window --entry src/main.js
+node scripts/nodeless-moji-boot.cjs
 node --test tests/nodeless-runtime.test.cjs
 ```
 
@@ -39,12 +43,12 @@ without the `.exe` suffix.
 `native/nodeless run fixtures/nodeless-app` exits 0 and emits one JSON line:
 
 ```json
-{"schema":1,"probe":"nodeless-main-runtime","status":"PASS","engine":"quickjs-2026-06-04","profile":"electron-nodeless-adapted-v1","strict":"blocked","app":{"name":"nodeless-fixture","version":"1.0.0","entry":"src/main.js","modules":6,"manifestSha256":"f44664a235fa2b6375e5f8a6fae0dca6b890e872b3b0cb8fcce94af11dfdd51e"},"results":{"selftest:report":{"ok":true,"result":{"app":"nodeless-fixture","version":"1.0.0","a":"a","b":"b","cycleA":"b","cycleB":"a","pkg":"package","data":"fixture","joined":"src/lib/a.js","b64":"aGk=","event":1,"nextTick":true,"fixtureEnv":null,"secretEnv":null}},"selftest:async":{"ok":true,"result":{"value":9}},"selftest:order":{"ok":true,"result":{"order":["tick","promise","timer"]}},"selftest:unsupported":{"ok":true,"result":{"code":"ELECTRON_MBT_UNSUPPORTED_BUILTIN"}}},"liveLeases":0,"nodeProcesses":0,"notVerified":["window","native-host","preload","moji","strict-contextBridge","asan","external-review"],"compatible":false}
+{"schema":1,"probe":"nodeless-main-runtime","status":"PASS","engine":"quickjs-2026-06-04","profile":"electron-nodeless-adapted-v1","strict":"blocked","app":{"name":"nodeless-fixture","version":"1.0.0","entry":"src/main.js","modules":6,"manifestSha256":"fe9bf1244926e8cc0db4a0992cd0e9e585b0919da53539529691a9d525ce1474"},"results":{"selftest:report":{"ok":true,"result":{"app":"nodeless-fixture","version":"1.0.0","a":"a","b":"b","cycleA":"b","cycleB":"a","pkg":"package","data":"fixture","joined":"src/lib/a.js","b64":"aGk=","event":1,"nextTick":true,"fixtureEnv":null,"secretEnv":null}},"selftest:async":{"ok":true,"result":{"value":9}},"selftest:order":{"ok":true,"result":{"order":["tick","promise","timer"]}},"selftest:unsupported":{"ok":true,"result":{"code":"ENOENT"}}},"liveLeases":0,"nodeProcesses":0,"notVerified":["preload","real-renderer","fs-broker","updater-behavior","strict-contextBridge","asan","external-review"],"compatible":false}
 ```
 
 The fixture exercises cycle A↔B, package `exports`, JSON, Buffer, EventEmitter,
 timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
-(`SECRET_TOKEN` is absent) and typed `node:fs` rejection.
+(`SECRET_TOKEN` is absent) and an import-only `fs` read failure (`ENOENT`).
 
 `tests/nodeless-runtime.test.cjs` additionally:
 
@@ -57,13 +61,16 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
 
 ## Limits and open gates
 
-- No native window/host, `BrowserWindow`, `webContents`, `loadFile`, dialog,
-  shell, screen, menu or renderer. `native/nodeless` is a main-runtime probe,
-  not the M1 host path.
-- `fs`/`fs/promises`/`zlib` are import-fail-closed; the file broker, write
-  semantics and zlib are open (0008 R2b/R3).
-- `electron-updater` is not silently adapted; a profile-specific manifest/ADR
-  is required before Moji can boot unchanged.
+- The main-only fixture has no window. The separate window/Moji probe creates a
+  real host window and `BrowserWindow`/`loadFile`, but bounds/show/hide state is a
+  local facade, `webContents` events are bounded, and there is no dialog,
+  renderer asset graph or production asset loader.
+- `fs`/`fs/promises` are import-only with ENOENT/EACCES and `zlib` import-only
+  with a typed `createDeflate` failure; the file broker, write semantics and
+  zlib stream are open (0008 R2b/R3).
+- `electron-updater` is an explicit import-only `autoUpdater` stub; it performs
+  no package resolution, network or update. The adapted behavior is recorded in
+  `docs/0043` and is not Node/Electron parity.
 - `url.URL`, `path.win32`, `require.resolve`, native modules, ESM, Node-API,
   network/stream/child_process and arbitrary npm are unsupported.
 - The app-facing `path`/`url`/`Buffer`/`EventEmitter` algorithms are JS leaf
@@ -81,8 +88,10 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
   audit are **NOT RUN**. `class` declarations are tested in the engine suite
   after fixing the undefined-text lease bug; no broader app-source matrix is
   claimed.
-- No real Moji/jmd boot, update, save, dialog, renderer or app scenario, and no
-  Electron compatibility row. Strict `electron-nodeless-v1` remains blocked.
+- The pinned Moji bundled main boots against a probe page, but the original
+  preload, real renderer, update, save, dialog and app scenario remain open and
+  no Electron compatibility row exists. Strict `electron-nodeless-v1` remains
+  blocked.
 
 ## Verification split
 
@@ -93,7 +102,7 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
 | `node --test tests/nodeless-runtime.test.cjs` | 4 PASS |
 | `moon test --target native` | 176 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 459 PASS |
+| `npm test` | 461 PASS |
 | sanitizer / ownership review / external audit | NOT RUN |
 
 The reported `nodeProcesses:0` is self-reported by the runtime; the process and

@@ -38,6 +38,6 @@ Node builtins or start a native window.
 - host event queue, I/O completion and process supervision
 - unhandled rejection policy, request-local exception mapping and root ledger
 - a native window/host, `BrowserWindow`/`webContents` and renderer
-- `fs`/`fs/promises` broker, `zlib` and updater adaptation
+- real `fs`/`fs/promises` broker, zlib stream and updater behavior
 - Moji/jmd real app boot and source-preserving asset loading
 - fault injection for host loss and runner kill

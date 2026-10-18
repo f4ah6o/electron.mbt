@@ -33,7 +33,9 @@ state machine.
   `process`/`Buffer` are realm globals installed by the prelude, matching the
   Node wrapper rather than shadowing module-level declarations.
 - `require('node:...')` builtins are resolved from a single prelude object;
-  `fs`/`fs/promises`/`zlib` throw typed unsupported.
+  `fs`/`fs/promises` import-only with ENOENT/EACCES, `zlib` import-only with a
+  typed `createDeflate` failure, and `electron-updater` an import-only adapted
+  stub; real file/update/stream behavior is not implemented.
 - Require-selected package `exports` and package `main` are resolved by MoonBit;
   an `exports` package never falls back to an unexported subpath or `main`.
 - A wrapper syntax error, thrown error or missing declared dependency is a
@@ -78,7 +80,7 @@ tests for duplicate/unknown/limit/state transitions and cycle edges.
 ## Open
 
 - `imports`, wildcard/pattern exports, symlinked package identity and live package discovery
-- `fs`/`fs/promises`, `zlib`, updater adaptation and the native file broker
+- real `fs`/`fs/promises`, zlib stream, updater behavior and the native file broker
 - dynamic/computed require, ESM and Node-API
 - a pinned Node oracle differential for the broader MOD matrix
 - loading the actual Moji/jmd emitted graphs and a native window/host

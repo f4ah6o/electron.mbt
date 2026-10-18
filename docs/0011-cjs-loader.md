@@ -1,9 +1,10 @@
 # In-memory CJS loader (EP-11 / MOD-01 partial)
 
-Status: **partial**. The core module registry and a real QuickJS CJS execution
-leaf are implemented and tested. Filesystem resolution, package.json/main/index
-rules, Node builtins, dynamic require diagnostics and the pinned Node oracle are
-not yet connected. This is not an app loader or Electron compatibility claim.
+Status: **partial**. The core module registry, a real QuickJS CJS execution
+leaf, a bounded Node/Electron prelude and a Node-free fixture graph are
+implemented and tested. `fs`/zlib/updater, dynamic require, ESM and a native
+window/host app loader are not connected. This is not an app or Electron
+compatibility claim.
 
 ## Ownership
 
@@ -28,6 +29,13 @@ state machine.
   object.
 - `module.exports` reassignment and JSON modules are supported for the tested
   in-memory profile.
+- The wrapper receives `__filename`/`__dirname` and uses `exports` as `this`;
+  `process`/`Buffer` are realm globals installed by the prelude, matching the
+  Node wrapper rather than shadowing module-level declarations.
+- `require('node:...')` builtins are resolved from a single prelude object;
+  `fs`/`fs/promises`/`zlib` throw typed unsupported.
+- Require-selected package `exports` and package `main` are resolved by MoonBit;
+  an `exports` package never falls back to an unexported subpath or `main`.
 - A wrapper syntax error, thrown error or missing declared dependency is a
   typed failure; it is not converted to an empty module.
 - `cacheCount`/`cacheIds` are recorded for evidence. They are realm-local
@@ -52,7 +60,7 @@ conditional resolution are intentionally unsupported in this increment.
 ## Verified
 
 `moon test --target native -p bridges/embedded-js` and the full native suite
-pass:
+pass, and `native/nodeless` runs `fixtures/nodeless-app` without Node:
 
 - CJS cycle A↔B with partial exports
 - shared dependency evaluated once (cache identity)
@@ -61,15 +69,16 @@ pass:
 - duplicate ID, missing entry, missing dependency and syntax-error rejection
 - relative file/extension/directory/package-main resolution and escape/unsupported rejection
 - root/nested/scoped package resolution over a registered `node_modules` index
+- Node/Electron prelude values, sync/async dispatch, nextTick→jobs→timer order
+  and typed `node:fs` rejection in the Node-free fixture
 
 `moon test --target js`/native also pass the pure `ModuleRegistry` contract
 tests for duplicate/unknown/limit/state transitions and cycle edges.
 
 ## Open
 
-- exports/imports, conditional resolution, symlinked package identity and live package discovery
-- filesystem source acquisition, source hashes and source maps
-- `require('electron')` identity, Node builtin allowlist and unsupported-symbol diagnostics
-- dynamic/computed require, package exports/imports and ESM
-- pinned Node oracle differential (MOD-01/02/03/04)
-- loading the actual Moji/jmd emitted graphs
+- `imports`, wildcard/pattern exports, symlinked package identity and live package discovery
+- `fs`/`fs/promises`, `zlib`, updater adaptation and the native file broker
+- dynamic/computed require, ESM and Node-API
+- a pinned Node oracle differential for the broader MOD matrix
+- loading the actual Moji/jmd emitted graphs and a native window/host

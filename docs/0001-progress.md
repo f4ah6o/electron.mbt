@@ -64,6 +64,8 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 
 47. B7 page self-DoS evidence: `tests/context-bridge-self-dos-native.test.cjs` loads a page whose first script busy-loops forever. After 500 ms the load is still in flight, but the native `get-web-contents-title` and `get-preload-status` requests both answer (preload status `ok`; the title is empty because the page never finishes parsing). The native control lane is therefore not blocked by page JavaScript. This is one bounded observation; CPU/memory exhaustion and the full fault-injection matrix remain open. npm 455. Strict blocked; no compatibility change.
 
+48. Node-less main runtime increment: `native/nodeless` is a Node-free CLI that admits a pinned `source-manifest.json` (native SHA-256), builds a CJS graph in MoonBit (relative/JSON/package `exports`/nested `node_modules`; cache/cycles), and evaluates it on QuickJS with a bounded Node/Electron prelude. The fixture `fixtures/nodeless-app` passes: `path`, `url` file helpers, `process`, `EventEmitter`, `Buffer`, `electron.app`/`ipcMain`, nextTick→jobs→timers, async handler settle, and typed `node:fs` rejection. A fake `node` on `PATH` plus `otool`/`nm` audits show no Node process or Node-API link. Limits: no native window/host/preload/renderer, no `fs`/zlib/updater, no Moji, strict remains blocked, and ASAN/ownership/external review are NOT RUN. Tests: Moon JS 145, native 176, npm 459; [docs/0042](0042-nodeless-main-runtime.md). `compatible:false`; no compatibility row.
+
 ## Ownership and unfinished wiring
 
 | Area | Owner now | Remaining production connection |
@@ -79,10 +81,11 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 | Profile and app inputs | MoonBit `core` profile contract plus pinned app records | Native execution, actual app build/boot closure, or a profile claim |
 | Main-local IPC listeners/handlers | MoonBit `core` registries plus Node leaf facade | Actual renderer sender, production ingress, `ipcRenderer` or native E2E |
 | contextBridge prerequisites | MoonBit handle registry, JS realm registry, native isolated bootstrap/attestation, B5 test-only repaired-primitive spike (`go` on tested macOS/WebKit), B6-A exposure authority contract, B6-B experimental preload bridge environment | B6 production transport/preload loader/page shim/native host integration, full preload globals and ipcRenderer/WebUtils, full value/error/callback/Promise semantics, native sender/document authority and independent security review |
-| QuickJS ABI | Vendored engine, C adapter and native MoonBit package | CJS loader, Node subset, scheduler, ownership/sanitizer acceptance |
+| QuickJS ABI | Vendored engine, C adapter, native MoonBit package, bounded CJS loader and Node/Electron prelude | QJS-05 callback/OOM exits, full Node subset, ownership/sanitizer acceptance |
 | Embedded scheduler | Pure MoonBit timer contract in `runtime/embedded/` | QuickJS job/nextTick/host-event integration, shutdown and Node parity |
-| CJS module registry | In-memory registry, path/package resolver and Node builtin policy | Node builtin shims, dynamic require, conditional exports or app loader |
-| In-process runner | QuickJS engine/context + scheduler + job/CJS entry points | Native supervisor, host loop, timer callbacks, fault and process ownership |
+| CJS module registry | In-memory registry, path/package resolver, require-selected package exports and `runtime/app_runner` graph | `fs` broker, dynamic require, ESM, Moji/real-app graph |
+| In-process runner | QuickJS engine/context + scheduler + job/CJS entry points | Native supervisor, host loop, fault and process ownership |
+| Node-less main runtime | `native/nodeless` source/hash admission, CJS graph, prelude dispatch, timers/teardown and no-Node audit | Native window/host, `fs`/zlib/updater, preload/renderer, Moji and strict profile |
 | Governance | `compatibility/{decisions,risks,components}.json`, validator, CycloneDX production SBOM, preview-readiness, G0–G4 and verification reports | License selection, signing identity, direct dependency graph or release approval |
 
 Caller-supplied core `host_origin`/`main_frame` arguments are trusted adapter inputs for unit tests, not proof of an authenticated sender. The production adapter must derive them from native frame/document/session state and cannot accept renderer claims. Document grants and pending cancellations do not by themselves secure a disconnected renderer.
@@ -99,10 +102,10 @@ G0 therefore stays open until the boot/first-use closure, native authority and a
 ## G1 progress (partial)
 
 - EP-02, EP-03 and EP-04 are integrated on this branch; the main-local IPC stack, native host and contextBridge prerequisites have tests and macOS probes.
-- EP-08/R1a is partial: the pinned QuickJS ABI passes eval/throw, value lease, job and interrupt tests. QJS-05, ownership/sanitizer review and CJS/MOD gates remain open.
+- EP-08/R1a is partial: the pinned QuickJS ABI passes eval/throw, value lease, job, deadline and call-argument tests. QJS-05 callback/OOM exits, ownership/sanitizer review and the full MOD matrix remain open.
 - EP-09 has a pure timer contract with deterministic ordering/limits. It is not yet connected to QuickJS jobs or host events.
-- EP-11 has an in-memory CJS registry and QuickJS cycle/cache/identity tests. Filesystem resolution, Node builtins and the actual app graph remain open.
-- EP-09/10 have an in-process runner that shares QuickJS jobs, timer ownership and the CJS entry point. Host events, timer callbacks, process supervision and fault tests remain open.
+- EP-11 has an in-memory CJS registry, QuickJS cycle/cache/identity tests and a Node-less fixture graph with package `exports`. The `fs` broker, dynamic require, ESM and Moji/real-app graph remain open.
+- EP-09/10 have an in-process runner and `runtime/app_runner` main runtime with nextTick/jobs/timers and async handler settle. Host events, native window, `fs`, process supervision and fault tests remain open.
 - EP-10/EP-15 production supervisor and snapshot/origin integration are not yet on this branch. The experimental M1 runner is not the Node-less supervisor.
 - G1 remains open. No compatibility row is verified.
 

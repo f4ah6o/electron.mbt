@@ -383,6 +383,7 @@ toolchain・source・実行command・exit・必要observationを0015のevidence�
 
 - 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
 
+- 2026-10-19: Node-less main runtime の第1増分を実装。`native/nodeless` が pinned source manifest を native SHA-256 で検証し、MoonBit の CJS graph / package exports / nested node_modules を構築して、QuickJS + bounded Node/Electron prelude で `fixtures/nodeless-app` を Node なしで実行する。CJS cycle/cache、JSON、`path`/`url`/`process`/`events`/`Buffer`、`app`/`ipcMain`、nextTick→jobs→timers、async handler、`node:fs` の typed fail-closed を確認。`node`/`napi` の link/spawn なしの audit と negative tests を追加。ただし native window/host、`fs`/zlib/updater、preload/renderer、Moji、strict profile は未実装で、ASAN/ownership/external review は NOT RUN。受入行は増やさず `compatible:false`、strict blocked のまま。docs/0042。
 - 2026-10-17: QuickJS pin/FFI ownership、scheduler、CJS/subset、TS build、fs semantics、QJS/MOD/LOOP/SYNC/FS/BUILD/FREE/ESMの受入IDを設計。
 - 2026-10-17: `polish-issue`で関連Node実装・テストと照合し、R1aの限定PR、具体的な回帰entry、判断ownerとscope別準備状態を追加。必須metadata/構成へ再配置し、API/limits/固定SHA/出典/受入IDは保持。runtime codeや既存PRは変更していない。
 

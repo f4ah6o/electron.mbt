@@ -1,9 +1,10 @@
 # In-process runner integration (EP-09/EP-10 partial)
 
-Status: **partial**. A `Runner` now owns one QuickJS engine/context and one
-timer scheduler, and exposes shared job, timer and pre-resolved CJS entry
-points. It is not a native supervisor, host event loop, production process
-topology or app runner.
+Status: **partial**. A `Runner` owns one QuickJS engine/context and one timer
+scheduler, and `runtime/app_runner` adds source/hash admission, a CJS graph,
+Node/Electron prelude dispatch, nextTick/jobs/timers and async handler settle.
+The Node-free `native/nodeless` fixture runs this path. It is not a native
+supervisor, host event loop, window/renderer or production app runner.
 
 ## What is connected
 
@@ -36,5 +37,7 @@ Node builtins or start a native window.
 - timer callback reentrancy, cancellation while running and host-loss interaction
 - host event queue, I/O completion and process supervision
 - unhandled rejection policy, request-local exception mapping and root ledger
-- real CJS file resolution and Node builtins
+- a native window/host, `BrowserWindow`/`webContents` and renderer
+- `fs`/`fs/promises` broker, `zlib` and updater adaptation
+- Moji/jmd real app boot and source-preserving asset loading
 - fault injection for host loss and runner kill

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; frame-src 'none'; object-src 'none'; base-uri 'none'">
+<title>B6 preload bridge probe</title>
+<script>
+'use strict';
+(() => {
+  // B6-B only creates the isolated preload environment and MoonBit exposure
+  // authority. It must not materialize a page API yet.
+  const apiAbsent = typeof window.fixture === 'undefined';
+  const handlers = window.webkit && window.webkit.messageHandlers;
+  const handlersHidden = !handlers ||
+    (!handlers.electronMbtPreloadResult && !handlers.electronMbtPreloadExposure &&
+     !handlers.electronMbtBootstrap);
+  document.title = apiAbsent && handlersHidden
+    ? 'B6_PRELOAD_BRIDGE_OK' : 'B6_PRELOAD_BRIDGE_BAD';
+  globalThis.m0B6PreloadProbe = Object.freeze({ apiAbsent, handlersHidden });
+})();
+</script>
+</head>
+<body>B6 preload bridge probe.</body>
+</html>

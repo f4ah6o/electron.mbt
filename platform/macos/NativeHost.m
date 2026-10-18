@@ -203,6 +203,13 @@ static NSString *preloadDigest(NSData *data) {
   return [NSString stringWithUTF8String:hex];
 }
 
+// B6-B is an explicit experimental preload-bridge environment. The default
+// preload realm keeps the restricted fail-closed require() behavior.
+static BOOL b6PreloadBridgeEnabled(void) {
+  NSString *value = NSProcessInfo.processInfo.environment[@"ELECTRON_MBT_B6_PRELOAD_BRIDGE"];
+  return [value isEqualToString:@"1"];
+}
+
 @interface MBTExportRenderer : NSObject <WKNavigationDelegate>
 @property(nonatomic, strong) WKWebView *web;
 @property(nonatomic, strong) NSWindow *window;
@@ -310,6 +317,9 @@ static NSString *preloadDigest(NSData *data) {
 @property(nonatomic, copy) NSString *preloadLastStatus;
 @property(nonatomic, copy) NSString *preloadLastDetail;
 @property(nonatomic) long long preloadFinishedGeneration;
+@property(nonatomic) BOOL preloadBridgeEnabled;
+@property(nonatomic, strong) NSMutableArray<NSDictionary *> *preloadExposures;
+@property(nonatomic, copy) void (^preloadExposed)(long long, NSDictionary *);
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *loadedFile;
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
@@ -372,6 +382,9 @@ static NSString *preloadDigest(NSData *data) {
   if (self) {
     self.root = root;
     self.preloadSource = preloadSource;
+    self.preloadBridgeEnabled = b6PreloadBridgeEnabled();
+    self.preloadExposures = [NSMutableArray array];
+    self.preloadExposed = nil;
     self.adaptedAdapterSource = nil;
     self.adaptedAdapterNonce = nil;
     self.adaptedEventNonce = nil;
@@ -413,6 +426,10 @@ static NSString *preloadDigest(NSData *data) {
       self.preloadWorld = [WKContentWorld worldWithName:@"electron.mbt.preload"];
       [config.userContentController addScriptMessageHandlerWithReply:self
         contentWorld:self.preloadWorld name:@"electronMbtPreloadResult"];
+      if (self.preloadBridgeEnabled) {
+        [config.userContentController addScriptMessageHandlerWithReply:self
+          contentWorld:self.preloadWorld name:@"electronMbtPreloadExposure"];
+      }
     }
     NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
       NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;
@@ -985,6 +1002,7 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadFinishedGeneration = 0;
   self.preloadStatus = nil;
   self.preloadDetail = nil;
+  [self.preloadExposures removeAllObjects];
   self.adaptedAdapterNonce = nil;
   self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
@@ -1084,30 +1102,102 @@ static NSString *preloadDigest(NSData *data) {
     NSString *encoded = json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : nil;
     if (error || encoded.length < 2) return;
     NSString *quoted = [encoded substringWithRange:NSMakeRange(1, encoded.length - 2)];
-    // Only a status reporter exists in the preload realm. It must not gain
-    // the separate bootstrap realm's handler or nonce.
-    NSString *preloadScriptSource = [NSString stringWithFormat:
-      @"(function(){"
-       "const h=window.webkit.messageHandlers.electronMbtPreloadResult;"
-       "const report=h.postMessage.bind(h);"
-       "let status='ok',requestedUnsupported=false,detail='';"
-       "const record=function(api){requestedUnsupported=true;detail=api;"
-       "throw {code:'ELECTRON_MBT_REQUIRE_UNSUPPORTED'};};"
-       "const stub=function(prefix){return new Proxy(function(){}, {get:function(_target,key){"
-       "return function(){return record(prefix+'.'+String(key));};}});};"
-       "const electron={contextBridge:stub('contextBridge'),ipcRenderer:stub('ipcRenderer'),"
-       "webUtils:stub('webUtils')};"
-       "const require=function(name){if(name==='electron'){requestedUnsupported=true;"
-       "if(!detail)detail='require:electron';return electron;}"
-       "return record('require:'+name);};"
-       "try{const module={exports:{}};"
-       "(new Function('require','module','exports',%@))(require,module,module.exports);}"
-       "catch(error){status=error&&error.code==='ELECTRON_MBT_REQUIRE_UNSUPPORTED'?"
-       "'unsupported':'failed';}"
-       "if(requestedUnsupported)status='unsupported';"
-       "report({nonce:'%@',preload:status,detail:detail.slice(0,128)}).catch(function(){});"
-       "})();",
-      quoted, self.preloadNonce];
+    NSString *preloadScriptSource;
+    if (self.preloadBridgeEnabled) {
+      // B6-B experimental environment: provide a bounded functional
+      // require('electron') surface for contextBridge.exposeInMainWorld. The
+      // page API is NOT materialized yet; the exposure descriptor is recorded
+      // and reported for MoonBit authority registration. ipcRenderer remains
+      // fail-closed until B6-C. This mode is opt-in and still not strict.
+      preloadScriptSource = [NSString stringWithFormat:
+        @"(function(){"
+         "const h=window.webkit.messageHandlers.electronMbtPreloadResult;"
+         "const x=window.webkit.messageHandlers.electronMbtPreloadExposure;"
+         "const report=h.postMessage.bind(h);"
+         "const reportExposure=x?x.postMessage.bind(x):null;"
+         "let status='ok',requestedUnsupported=false,detail='';"
+         "const exposures=[];const exposedFunctions=new Map();"
+         "const record=function(api){requestedUnsupported=true;if(!detail)detail=api;"
+         "throw {code:'ELECTRON_MBT_REQUIRE_UNSUPPORTED'};};"
+         "const unsupported=function(){throw {code:'ELECTRON_MBT_PRELOAD_IPC_UNSUPPORTED'};};"
+         "const contextBridge={exposeInMainWorld:function(apiKey,api){"
+         "try{"
+         "if(typeof apiKey!=='string'||apiKey.length===0||apiKey.length>64)throw new Error('apiKey');"
+         "if(!api||typeof api!=='object'||Array.isArray(api))throw new Error('api');"
+         "const keys=Object.keys(api);if(keys.length>256)throw new Error('keys');"
+         "const entries=[];let functionCount=0;"
+         "for(const key of keys){"
+         "const value=api[key];"
+         "if(typeof value==='function'){"
+         "functionCount+=1;if(functionCount>256)throw new Error('functions');"
+         "const handle='ef-'+functionCount;exposedFunctions.set(handle,value);"
+         "entries.push({key:key,kind:'function',handle:handle,arity:Math.min(value.length,16)});"
+         "}else if(value===null||typeof value==='boolean'||typeof value==='number'||"
+         "typeof value==='string'){"
+         "entries.push({key:key,kind:'data',value:value});"
+         "}else if(typeof value==='object'){"
+         "const data=JSON.stringify(value);"
+         "if(typeof data!=='string'||data.length>32768)throw new Error('data');"
+         "entries.push({key:key,kind:'data',value:JSON.parse(data)});"
+         "}else{throw new Error('value');}"
+         "}"
+         "const descriptor=JSON.stringify({apiKey:apiKey,entries:entries});"
+         "if(descriptor.length>65536)throw new Error('descriptor');"
+         "exposures.push({apiKey:apiKey,descriptor:descriptor,functionCount:functionCount});"
+         "}catch(error){requestedUnsupported=true;"
+         "if(!detail)detail='contextBridge.exposeInMainWorld';"
+         "throw {code:'ELECTRON_MBT_BRIDGE_EXPOSURE'};}"
+         "}};"
+         "const ipcRenderer={send:unsupported,invoke:unsupported,on:unsupported,"
+         "removeListener:unsupported};"
+         "const webUtils={getPathForFile:unsupported};"
+         "const electron={contextBridge:contextBridge,ipcRenderer:ipcRenderer,"
+         "webUtils:webUtils};"
+         "const require=function(name){if(name==='electron')return electron;"
+         "return record('require:'+name);};"
+         "try{const module={exports:{}};"
+         "(new Function('require','module','exports',%@))(require,module,module.exports);}"
+         "catch(error){status=error&&error.code==='ELECTRON_MBT_REQUIRE_UNSUPPORTED'?"
+         "'unsupported':'failed';"
+         "if(!detail)detail=String(error&&error.message||error).slice(0,128);}"
+         "if(requestedUnsupported)status='unsupported';"
+         "if(status==='ok'&&reportExposure){"
+         "for(const exposure of exposures){"
+         "reportExposure({nonce:'%@',apiKey:exposure.apiKey,"
+         "descriptor:exposure.descriptor,functionCount:exposure.functionCount})"
+         ".catch(function(){});"
+         "}}"
+         "report({nonce:'%@',preload:status,detail:detail.slice(0,128)})"
+         ".catch(function(){});"
+         "})();",
+        quoted, self.preloadNonce, self.preloadNonce];
+    } else {
+      // Default restricted preload: only a status reporter exists. It must
+      // not gain the separate bootstrap realm's handler or nonce.
+      preloadScriptSource = [NSString stringWithFormat:
+        @"(function(){"
+         "const h=window.webkit.messageHandlers.electronMbtPreloadResult;"
+         "const report=h.postMessage.bind(h);"
+         "let status='ok',requestedUnsupported=false,detail='';"
+         "const record=function(api){requestedUnsupported=true;detail=api;"
+         "throw {code:'ELECTRON_MBT_REQUIRE_UNSUPPORTED'};};"
+         "const stub=function(prefix){return new Proxy(function(){}, {get:function(_target,key){"
+         "return function(){return record(prefix+'.'+String(key));};}});};"
+         "const electron={contextBridge:stub('contextBridge'),ipcRenderer:stub('ipcRenderer'),"
+         "webUtils:stub('webUtils')};"
+         "const require=function(name){if(name==='electron'){requestedUnsupported=true;"
+         "if(!detail)detail='require:electron';return electron;}"
+         "return record('require:'+name);};"
+         "try{const module={exports:{}};"
+         "(new Function('require','module','exports',%@))(require,module,module.exports);}"
+         "catch(error){status=error&&error.code==='ELECTRON_MBT_REQUIRE_UNSUPPORTED'?"
+         "'unsupported':'failed';}"
+         "if(requestedUnsupported)status='unsupported';"
+         "report({nonce:'%@',preload:status,detail:detail.slice(0,128)})"
+         ".catch(function(){});"
+         "})();",
+        quoted, self.preloadNonce];
+    }
     WKUserScript *preload = [[WKUserScript alloc] initWithSource:preloadScriptSource
       injectionTime:WKUserScriptInjectionTimeAtDocumentStart
       forMainFrameOnly:YES inContentWorld:self.preloadWorld];
@@ -1252,13 +1342,52 @@ static NSString *preloadDigest(NSData *data) {
     [preloadResult isKindOfClass:[NSString class]] &&
     [@[@"ok", @"unsupported", @"failed"] containsObject:preloadResult] &&
     [preloadDetail isKindOfClass:[NSString class]] && preloadDetail.length <= 128;
+  BOOL preloadExposure = common && self.preloadBridgeEnabled &&
+    self.preloadSource != nil &&
+    [message.name isEqualToString:@"electronMbtPreloadExposure"] &&
+    body.count == 4 && self.preloadNonce != nil &&
+    self.preloadExposures.count < 8 &&
+    [nonce isEqualToString:self.preloadNonce] &&
+    [body[@"apiKey"] isKindOfClass:[NSString class]] &&
+    [body[@"apiKey"] length] > 0 && [body[@"apiKey"] length] <= 64 &&
+    [body[@"descriptor"] isKindOfClass:[NSString class]] &&
+    [body[@"descriptor"] length] > 0 && [body[@"descriptor"] length] <= 65536 &&
+    [body[@"functionCount"] isKindOfClass:[NSNumber class]] &&
+    [body[@"functionCount"] integerValue] >= 0 &&
+    [body[@"functionCount"] integerValue] <= 256;
   BOOL adapted = common && [message.name isEqualToString:@"electronMbtAdapterInstalled"] &&
     body.count == 1 && self.adaptedAdapterNonce != nil &&
     self.adaptedAdapterObservedGeneration != self.generation &&
     [nonce isEqualToString:self.adaptedAdapterNonce] &&
     message.world == [WKContentWorld pageWorld];
-  if (!bootstrap && !preload && !adapted) {
+  if (!bootstrap && !preload && !preloadExposure && !adapted) {
     replyHandler(nil, @"ELECTRON_MBT_BOOTSTRAP_DENIED");
+    return;
+  }
+  if (preloadExposure) {
+    NSString *apiKey = body[@"apiKey"];
+    NSString *descriptor = body[@"descriptor"];
+    NSData *descriptorData = [descriptor dataUsingEncoding:NSUTF8StringEncoding];
+    NSString *descriptorSHA256 = descriptorData ? preloadDigest(descriptorData) : nil;
+    if (descriptorData == nil || descriptorSHA256 == nil) {
+      replyHandler(nil, @"ELECTRON_MBT_PRELOAD_EXPOSURE_DENIED");
+      return;
+    }
+    NSDictionary *record = @{
+      @"apiKey": apiKey,
+      @"descriptor": descriptor,
+      @"descriptorBytes": @(descriptorData.length),
+      @"functionCount": body[@"functionCount"],
+      @"descriptorSHA256": descriptorSHA256,
+    };
+    [self.preloadExposures addObject:record];
+    replyHandler(@{@"ok": @YES}, nil);
+    // The normal path publishes after the preload status/load completes. If
+    // that already happened, publish this descriptor immediately; the page API
+    // still does not exist (B6-B only records authority metadata).
+    if (self.preloadExposed && self.bootstrapNotifiedGeneration == self.generation) {
+      self.preloadExposed(self.generation, record);
+    }
     return;
   }
   if (adapted) {
@@ -1299,6 +1428,11 @@ static NSString *preloadDigest(NSData *data) {
   // Neither attests a later page-world message initiator.
   self.bootstrapNotifiedGeneration = self.generation;
   if (self.bootstrapAttested) self.bootstrapAttested(self.generation);
+  if (self.preloadBridgeEnabled && self.preloadExposed) {
+    for (NSDictionary *exposure in self.preloadExposures) {
+      self.preloadExposed(self.generation, exposure);
+    }
+  }
 }
 - (NSDictionary *)bootstrapStatus {
   NSURL *url = self.web.URL;
@@ -1467,6 +1601,8 @@ static NSString *preloadDigest(NSData *data) {
   self.preloadObservedGeneration = 0;
   self.preloadStatus = nil;
   self.preloadFinishedGeneration = 0;
+  self.preloadExposed = nil;
+  [self.preloadExposures removeAllObjects];
   self.adaptedAdapterSource = nil;
   self.adaptedAdapterNonce = nil;
   self.adaptedEventNonce = nil;
@@ -1508,6 +1644,9 @@ static NSString *preloadDigest(NSData *data) {
   if (self.preloadWorld) {
     [self.web.configuration.userContentController
       removeScriptMessageHandlerForName:@"electronMbtPreloadResult" contentWorld:self.preloadWorld];
+    [self.web.configuration.userContentController
+      removeScriptMessageHandlerForName:@"electronMbtPreloadExposure"
+      contentWorld:self.preloadWorld];
   }
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   self.web.navigationDelegate = nil;
@@ -1639,6 +1778,19 @@ static NSString *preloadDigest(NSData *data) {
     window.publishAppRequest = ^(long long eventGeneration, NSDictionary *payload) {
       [weakHost publishNativeEvent:@"app-request" windowID:windowID
         generation:eventGeneration payload:payload];
+    };
+    // B6-B metadata only: the descriptor body stays in the native host for a
+    // future B6-C page shim; Node/MoonBit receives the bounded authority facts.
+    window.preloadExposed = ^(long long eventGeneration, NSDictionary *exposure) {
+      if (![exposure isKindOfClass:[NSDictionary class]]) return;
+      NSDictionary *metadata = @{
+        @"apiKey": exposure[@"apiKey"] ?: @"",
+        @"descriptorBytes": exposure[@"descriptorBytes"] ?: @0,
+        @"functionCount": exposure[@"functionCount"] ?: @0,
+        @"descriptorSHA256": exposure[@"descriptorSHA256"] ?: @"",
+      };
+      [weakHost publishNativeEvent:@"preload-exposure" windowID:windowID
+        generation:eventGeneration payload:metadata];
     };
     self.windows[windowID] = window;
 #if defined(ELECTRON_MBT_TEST_NATIVE_CLOSE)

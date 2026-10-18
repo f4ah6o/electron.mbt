@@ -157,13 +157,22 @@ class NativeHost extends EventEmitter {
       try {
         const envelope = this.gate.observe(bytes);
         if (envelope.session !== this.session ||
-            !['web-content-gone', 'native-close-request', 'isolated-preload-attested'].includes(envelope.operation)) {
+            !['web-content-gone', 'native-close-request', 'isolated-preload-attested',
+              'preload-exposure'].includes(envelope.operation)) {
           throw runtimeError('ELECTRON_MBT_PROTOCOL', 'Unauthenticated or unexpected native event');
         }
-        this.emit(envelope.operation, {
+        const details = {
           request: envelope.request,
           window: envelope.window, generation: envelope.generation,
-        });
+        };
+        if (envelope.operation === 'preload-exposure') {
+          if (!envelope.payload || typeof envelope.payload !== 'object' ||
+              Array.isArray(envelope.payload)) {
+            throw runtimeError('ELECTRON_MBT_PROTOCOL', 'Malformed native exposure event');
+          }
+          details.payload = envelope.payload;
+        }
+        this.emit(envelope.operation, details);
       } catch (error) { this.abort(); return; }
     }
   }

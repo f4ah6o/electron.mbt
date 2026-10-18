@@ -112,11 +112,41 @@ class ContextBridgeRegistry {
   }
 }
 
+class ContextExposureRegistry {
+  #core; #runtime;
+  constructor(core, runtime) { this.#core = core; this.#runtime = runtime; }
+  // B6-B metadata only: the descriptor body and JS functions stay in the
+  // WebView realm. MoonBit owns the key/hash/quota/lifetime authority.
+  expose(scope, apiKey, descriptorBytes, functionCount, descriptorSha256) {
+    const frozen = authority(scope);
+    if (typeof apiKey !== 'string' || apiKey.length === 0 || apiKey.length > 64 ||
+        !Number.isSafeInteger(descriptorBytes) || descriptorBytes < 1 ||
+        descriptorBytes > 65536 || !Number.isSafeInteger(functionCount) ||
+        functionCount < 0 || functionCount > 256 ||
+        typeof descriptorSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(descriptorSha256)) {
+      fail('InvalidPayload');
+    }
+    const result = checked(this.#core.context_bridge_dispatch(this.#runtime, JSON.stringify({
+      op: 'expose', ...frozen, apiKey, descriptorBytes, functionCount, descriptorSha256,
+    })));
+    return Object.freeze({ id: result.id, apiKey });
+  }
+}
+
 function bindContextBridgeCore(core) {
   const bound = { ...core };
+  const exposureRegistries = new WeakMap();
   bound.context_registry = runtime => {
     let registry = registries.get(runtime);
     if (!registry) { registry = new ContextBridgeRegistry(core, runtime); registries.set(runtime, registry); }
+    return registry;
+  };
+  bound.context_exposures = runtime => {
+    let registry = exposureRegistries.get(runtime);
+    if (!registry) {
+      registry = new ContextExposureRegistry(core, runtime);
+      exposureRegistries.set(runtime, registry);
+    }
     return registry;
   };
   for (const operation of ['dispatch', 'window_navigate', 'window_invalidate', 'window_destroy']) {

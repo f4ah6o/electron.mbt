@@ -46,7 +46,8 @@ pub fn Session::register(self : Session, raw : String) -> Result[Unit, String] {
     // Registering them as outgoing control work would conflate two ID ledgers.
     if envelope.operation == "web-content-gone" ||
        envelope.operation == "native-close-request" ||
-       envelope.operation == "isolated-preload-attested" {
+       envelope.operation == "isolated-preload-attested" ||
+       envelope.operation == "preload-exposure" {
       raise BadProtocol("Cannot register a native notification")
     }
     if envelope.request <= self.last_issued { raise BadProtocol("Request ID must increase") }
@@ -120,9 +121,11 @@ pub fn Session::observe(self : Session, raw : String) -> Result[Unit, String] {
   try {
     let envelope = self.read(raw)
     if !(envelope.operation == "web-content-gone" || envelope.operation == "native-close-request" ||
-         envelope.operation == "isolated-preload-attested") || envelope.terminal ||
+         envelope.operation == "isolated-preload-attested" ||
+         envelope.operation == "preload-exposure") || envelope.terminal ||
         envelope.window <= 0L || envelope.request <= self.last_event ||
-        (envelope.operation == "isolated-preload-attested" && envelope.generation <= 0L) {
+        ((envelope.operation == "isolated-preload-attested" ||
+          envelope.operation == "preload-exposure") && envelope.generation <= 0L) {
       raise BadProtocol("Invalid or replayed native event")
     }
     // Event IDs are a separate monotonic sequence from outgoing requests.

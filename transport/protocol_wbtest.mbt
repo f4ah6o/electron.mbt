@@ -421,6 +421,33 @@ test "What: native isolated attestation is one-shot, bounded and cannot be regis
 }
 
 ///|
+test "What: preload exposure events require exact bounded metadata and cannot be registered" {
+  let secret = "0123456789abcdef0123456789abcdef"
+  let session = Session::new(secret)
+  let digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  let valid = "{\"version\":1,\"session\":\"" + secret +
+    "\",\"request\":1,\"window\":2,\"generation\":1,\"operation\":\"preload-exposure\",\"payload\":{\"apiKey\":\"fixture\",\"descriptorBytes\":128,\"functionCount\":10,\"descriptorSHA256\":\"" +
+    digest + "\"}}"
+  assert_true(validate(valid) is Ok(_))
+  assert_true(session.register(valid) is Err(_))
+  assert_true(session.observe(valid) is Ok(_))
+  assert_true(session.observe(valid) is Err(_))
+  let malformed = [
+    "{\"version\":1,\"session\":\"" + secret +
+      "\",\"request\":2,\"window\":2,\"generation\":1,\"operation\":\"preload-exposure\",\"payload\":{\"apiKey\":\"fixture\",\"descriptorBytes\":128,\"functionCount\":10}}",
+    "{\"version\":1,\"session\":\"" + secret +
+      "\",\"request\":2,\"window\":2,\"generation\":1,\"operation\":\"preload-exposure\",\"payload\":{\"apiKey\":\"fixture\",\"descriptorBytes\":0,\"functionCount\":10,\"descriptorSHA256\":\"" + digest + "\"}}",
+    "{\"version\":1,\"session\":\"" + secret +
+      "\",\"request\":2,\"window\":2,\"generation\":1,\"operation\":\"preload-exposure\",\"payload\":{\"apiKey\":\"fixture\",\"descriptorBytes\":128,\"functionCount\":257,\"descriptorSHA256\":\"" + digest + "\"}}",
+    "{\"version\":1,\"session\":\"" + secret +
+      "\",\"request\":2,\"window\":2,\"generation\":1,\"operation\":\"preload-exposure\",\"payload\":{\"apiKey\":\"fixture\",\"descriptorBytes\":128,\"functionCount\":10,\"descriptorSHA256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}}",
+    "{\"version\":1,\"session\":\"" + secret +
+      "\",\"request\":2,\"window\":2,\"generation\":0,\"operation\":\"preload-exposure\",\"payload\":{\"apiKey\":\"fixture\",\"descriptorBytes\":128,\"functionCount\":10,\"descriptorSHA256\":\"" + digest + "\"}}",
+  ]
+  for raw in malformed { assert_true(validate(raw) is Err(_)) }
+}
+
+///|
 test "What: min-size and background operations validate exact payloads" {
   assert_true(validate(visibility_wire("get-window-min-size", "{}", "")) is Ok(_))
   assert_true(validate(visibility_wire("get-window-min-size", "{\"width\":320,\"height\":240}", ",\"terminal\":\"success\"")) is Ok(_))

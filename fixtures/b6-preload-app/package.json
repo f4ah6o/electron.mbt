@@ -1,0 +1,6 @@
+{
+  "name": "electron-mbt-b6-preload-fixture",
+  "version": "1.0.0",
+  "main": "main.cjs",
+  "private": true
+}

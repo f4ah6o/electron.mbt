@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "set-dialog-result" | "probe-renderer" | "trigger-renderer-api" | "open-dialog-ui" | "cancel-active-dialog" | "get-dialog-ui-status" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "load-url" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "set-dialog-result" | "probe-renderer" | "trigger-renderer-api" | "open-dialog-ui" | "cancel-active-dialog" | "get-dialog-ui-status" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "load-url" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "preload-exposure" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -351,6 +351,38 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       _ => raise BadProtocol("Native isolated-preload attestation must have empty payload")
     }
     if generation <= 0L { raise BadProtocol("Attestation requires a live document generation") }
+  }
+  if operation == "preload-exposure" {
+    if generation <= 0L { raise BadProtocol("Exposure requires a live document generation") }
+    let values = match payload {
+      Object(values) => values
+      _ => raise BadProtocol("Exposure payload must be an object")
+    }
+    if values.length() != 4 { raise BadProtocol("Exposure payload shape") }
+    let api_key = match values.get("apiKey") {
+      Some(String(value)) => value
+      _ => raise BadProtocol("Exposure api key")
+    }
+    if api_key.length() == 0 || api_key.length() > 64 { raise BadProtocol("Exposure api key") }
+    let descriptor_bytes = identifier(values.get("descriptorBytes").unwrap_or(null))
+    if descriptor_bytes < 1L || descriptor_bytes > 65536L {
+      raise BadProtocol("Exposure descriptor bytes")
+    }
+    let function_count = identifier(values.get("functionCount").unwrap_or(null))
+    if function_count < 0L || function_count > 256L {
+      raise BadProtocol("Exposure function count")
+    }
+    let digest = match values.get("descriptorSHA256") {
+      Some(String(value)) => value
+      _ => raise BadProtocol("Exposure digest")
+    }
+    if digest.length() != 64 { raise BadProtocol("Exposure digest") }
+    for i = 0; i < digest.length(); i = i + 1 {
+      let c = digest[i].to_int()
+      if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) {
+        raise BadProtocol("Exposure digest")
+      }
+    }
   }
   let terminal = fields.contains("terminal")
   let success = field("terminal") is String("success")

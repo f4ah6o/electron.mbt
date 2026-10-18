@@ -156,10 +156,12 @@ original preload stays `NOT_EXECUTED`; `compatible:false` is unchanged.
 
 B6-A has since implemented the MoonBit-owned exposure authority contract
 (bounded API keys/descriptors, duplicate/quota/lifecycle policy and the
-private `expose`/`release-exposure` dispatch) without adding a transport,
-page API, preload loader or native-host integration. See
-[docs/0039](0039-b6-strict-context-bridge.md). This is contract work, not an
-M0 or strict-compatibility result.
+private `expose`/`release-exposure` dispatch), and B6-B adds an opt-in
+experimental preload bridge environment that runs the unchanged oracle
+preload, registers its exposure metadata through MoonBit and still does not
+materialize a page API. Neither adds a transport or production native-host
+integration. See [docs/0039](0039-b6-strict-context-bridge.md). This is
+contract/environment work, not an M0 or strict-compatibility result.
 
 ## Architecture verdict and next acceptance gate
 

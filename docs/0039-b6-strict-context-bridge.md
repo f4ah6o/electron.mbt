@@ -1,7 +1,8 @@
 # B6 strict contextBridge — production design and pre-registration
 
-Status: **B6 design; B6-A exposure authority implemented. Production
-`contextBridge` remains `NOT_IMPLEMENTED`; M0 OPEN; strict profile blocked.** B5 recorded a
+Status: **B6 design; B6-A exposure authority and a B6-B experimental preload
+environment slice are implemented. Production `contextBridge` remains
+`NOT_IMPLEMENTED`; M0 OPEN; strict profile blocked.** B5 recorded a
 test-only `go` on one macOS/WebKit build ([docs/0038](0038-m0-context-bridge-spike.md)).
 B6 is the production implementation and evidence phase. This document is not
 an adoption decision for the B5 transport and does not authorize the original
@@ -100,14 +101,48 @@ B6-A does not implement a transport, page shim, preload loader, native host
 integration or security review. The strict profile stays blocked and the
 original preload stays `NOT_EXECUTED`.
 
-### B6-B — preload environment
+### B6-B — preload environment (experimental slice implemented 2026-10-18)
+
+The existing M1 loader already provides app-root containment, canonical path,
+symlink escape rejection, UTF-8/64 KiB bounds and SHA-256 re-verification.
+B6-B adds an **opt-in** preload bridge environment behind
+`ELECTRON_MBT_B6_PRELOAD_BRIDGE=1`:
+
+- `require('electron')` returns a bounded `contextBridge.exposeInMainWorld`
+  plus `ipcRenderer`/`webUtils` that fail closed if called.
+- `exposeInMainWorld` records a bounded descriptor (API key, top-level
+  function handles/arities, copied plain data) in the preload realm and posts
+  only bounded metadata to the native host. The descriptor body stays in the
+  native host; Node/MoonBit receives API key, descriptor bytes, function count
+  and SHA-256.
+- The native host publishes a `preload-exposure` event only after the
+  independent bootstrap/preload attestation; `ExperimentalRuntime` registers
+  the exposure through the MoonBit B6-A authority using the trusted bootstrap
+  scope.
+- The default (env unset) preload remains the restricted fail-closed profile.
+  The page API is **not** materialized; `ipcRenderer`, Node globals and the
+  general preload module environment remain unsupported.
+
+Evidence: `tests/context-bridge-preload-bridge-native.test.cjs` runs the
+unchanged oracle preload bytes (same SHA-256 as
+`fixtures/oracle/preload.cjs`), observes preload status `ok`, the native
+exposure event and MoonBit registration, same-url reload revocation, no page
+`window.fixture`, hidden native handlers and preserved source hashes. The
+transport protocol now validates the exact `preload-exposure` metadata shape
+and rejects replayed/malformed events.
+
+Remaining B6-B scope: `ipcRenderer` invoke/on/removeListener, `webUtils`,
+Node-free preload globals/module resolution, arbitrary preload source,
+full first-script/page ordering and the production profile enablement. These
+are not met by this slice.
 
 - Production source loader: app-root containment, canonical path, symlink
-  escape rejection, UTF-8/64 KiB bounds, SHA-256 re-verification.
+  escape rejection, UTF-8/64 KiB bounds, SHA-256 re-verification (existing).
 - Restricted `require('electron')`/CJS execution in the isolated preload
   realm, with explicit unsupported-module failures and no silent empty
-  modules.
-- Unchanged preload source; first-script ordering; preload failure taxonomy.
+  modules (partially implemented; see above).
+- Unchanged preload source; first-script ordering; preload failure taxonomy
+  (unchanged source and status path tested; full environment open).
 
 ### B6-C — native authority and transport
 

@@ -60,6 +60,8 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 
 45. B7 host-side actual descriptor verification: `install-preload-bridge` now carries the preview exposure metadata (apiKey, descriptor bytes, function count, SHA-256); the native host compares the real WKWebView descriptor and replies ok/no while still publishing the actual exposure so the Node pre-registration comparison can abort a mismatch. The mismatch test remains fail-closed; B6-C/B6-D pass. Gating the isolated hello/page on the host reply was attempted and reverted: the reply is asynchronous and the first page script lost the API (both B6-C/B6-D timed out). The host verification is post-hoc; the actual-before-page gate needs a synchronous pre-page admission or the strict nodeless runtime, which remains open. npm 453; strict blocked; no compatibility change.
 
+46. B7 frame policy characterization: the experimental M1 host cancels every subframe navigation (main-frame-only). `tests/context-bridge-frames-native.test.cjs` verifies a same-origin child and a sandboxed `allow-scripts` child are both absent, the parent API still works, and the parent page cannot see the preload/native transport handlers. This is stricter than Electron (which can host child frames) and is therefore not an Electron-compatible frame policy; the child-frame compatibility decision, page self-DoS and the fault-injection matrix remain open. npm 454. Strict blocked; no compatibility change.
+
 ## Ownership and unfinished wiring
 
 | Area | Owner now | Remaining production connection |

@@ -131,11 +131,20 @@ The candidate exposes only `contextBridge.exposeInMainWorld`, the test-only
 Node-free preload globals/module resolution, arbitrary preload source, and
 the full first-script/failure taxonomy.
 
-## Gate 4 — frames, self-DoS and faults (open)
+## Gate 4 — frames, self-DoS and faults (partially characterized; Electron-compatible child frames open)
 
-No same-origin/cross-origin/sandboxed child-frame policy, child-frame
-transport, page self-DoS characterization, or fault-injection matrix has
-been accepted. The B6-C/B6-D tests are main-frame fixtures.
+The experimental M1 host's navigation policy cancels every subframe
+navigation, so the host is currently **main-frame-only**. The frame test
+(`tests/context-bridge-frames-native.test.cjs`) verifies that a same-origin
+child frame and a sandboxed `allow-scripts` child frame are both absent, that
+the parent's API still works, and that the parent page cannot see the
+preload/native transport handlers. No child frame can receive or reach the
+bridge.
+
+This is **stricter than Electron**, which can host child frames; it is not an
+Electron-compatible frame policy. The child-frame compatibility decision,
+same-origin/cross-origin/sandboxed behavior, page self-DoS characterization
+and the fault-injection matrix remain open.
 
 ## Gate 5 — strict runtime and evidence (open)
 
@@ -164,7 +173,7 @@ gate is not changed by the B6 acceptance or this plan.
    request the B7 gate decision.
 
 The B7 goal remains active; the strict profile stays blocked until the gates
-above are closed with runtime evidence. The next concrete work is a host-side
-actual-before-page admission token (so the real descriptor gates the page, not
-just the preview), then porting the preview/admission path to the strict
-nodeless runtime and adding the full preload/frame/self-DoS evidence.
+above are closed with runtime evidence. The next concrete work is a
+synchronous actual-before-page admission (the host reply is asynchronous),
+Electron-compatible child-frame and self-DoS/fault evidence, then porting the
+preview/admission path to the strict nodeless runtime and the full preload.

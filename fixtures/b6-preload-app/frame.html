@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>frame probe</title></head>
+<body>
+<iframe id="same"></iframe>
+<iframe id="sandbox" sandbox="allow-scripts"></iframe>
+<script>
+(async function () {
+  'use strict';
+  const state = { kind: 'frames', fixtureError: null };
+  try {
+    const api = window.edge;
+    state.parentApi = typeof api === 'object';
+    const messages = [];
+    window.addEventListener('message', event => messages.push(event.data));
+    function child(frame) {
+      return '<!doctype html><script>(function(){' +
+        'const own = typeof window.edge;' +
+        'let parent = "absent", value = null;' +
+        'try { const p = window.parent.edge; if (p) { parent = typeof p; value = p.echo(7); } }' +
+        'catch (error) { parent = "denied"; }' +
+        'const handlers = window.webkit && window.webkit.messageHandlers' +
+        ' ? Object.keys(window.webkit.messageHandlers) : [];' +
+        'window.parent.postMessage({frame:' + JSON.stringify(frame) +
+        ', own: own, parent: parent, value: value, handlers: handlers}, "*");' +
+        '})();<\\/script>';
+    }
+    const sameFrame = document.getElementById('same');
+    const sandboxFrame = document.getElementById('sandbox');
+    sameFrame.srcdoc = child('same');
+    sandboxFrame.srcdoc = child('sandbox');
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 2000);
+      const check = () => {
+        if (messages.filter(message => message && message.frame).length >= 2) {
+          clearTimeout(timer);
+          resolve();
+        } else {
+          setTimeout(check, 20);
+        }
+      };
+      check();
+    });
+    const same = messages.find(message => message && message.frame === 'same');
+    const sandbox = messages.find(message => message && message.frame === 'sandbox');
+    state.same = same ? {
+      own: same.own, parent: same.parent, value: same.value, handlers: same.handlers,
+    } : null;
+    state.sandbox = sandbox ? {
+      own: sandbox.own, parent: sandbox.parent, handlers: sandbox.handlers,
+    } : null;
+    state.echo = api ? api.echo(5) : null;
+    state.parentHandlers = window.webkit && window.webkit.messageHandlers
+      ? Object.keys(window.webkit.messageHandlers) : [];
+    api.report(state);
+  } catch (error) {
+    state.fixtureError = { name: error.name, message: error.message };
+    try { window.edge.report(state); } catch (_) {}
+  }
+})();
+</script>
+</body>
+</html>

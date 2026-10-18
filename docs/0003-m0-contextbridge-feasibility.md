@@ -160,9 +160,11 @@ private `expose`/`release-exposure` dispatch), and B6-B adds an opt-in
 experimental preload bridge environment that runs the unchanged oracle
 preload, registers its exposure metadata through MoonBit and still does not
 materialize a page API. B6-C adds an opt-in experimental synchronous transport in the M1 host and
-reaches the pinned observation for the unchanged oracle preload/page, but
-page-admission ordering, independent transport review, full preload globals,
-frame policy and B6-D/E semantics remain open. See
+reaches the pinned observation for the unchanged oracle preload/page; B6-D
+adds an experimental semantics matrix and B6-E prepares the baseline/
+security-review packet. Page-admission ordering, independent review,
+arbitrary API keys, full preload globals, frame policy and page self-DoS
+remain open. See
 [docs/0039](0039-b6-strict-context-bridge.md). This is not an M0 or
 strict-compatibility result.
 

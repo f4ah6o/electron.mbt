@@ -194,6 +194,14 @@ jobs:
         shell: bash
         run: |
           node scripts/m0-context-bridge-probe.cjs 2>&1 | tee evidence/m0-context-bridge.log
+      - name: Run the B6-C transport and B6-D semantics evidence
+        shell: bash
+        run: |
+          ELECTRON_MBT_REQUIRE_ORACLE_BASELINE=1 \
+            node --test tests/context-bridge-transport-native.test.cjs 2>&1 | \
+            tee evidence/b6-context-bridge-transport.log
+          node --test tests/context-bridge-semantics-native.test.cjs 2>&1 | \
+            tee evidence/b6-context-bridge-semantics.log
       - name: Compare initial native outer frame against the pinned Electron oracle
         shell: bash
         run: |

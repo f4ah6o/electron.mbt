@@ -1,9 +1,10 @@
 # B6 strict contextBridge — production design and pre-registration
 
 Status: **B6 design; B6-A exposure authority, B6-B experimental preload
-environment and the B6-C experimental synchronous transport E2E are
-implemented. Production `contextBridge` remains `NOT_IMPLEMENTED`; M0 OPEN;
-strict profile blocked.** B5 recorded a
+environment, the B6-C experimental synchronous transport E2E and the B6-D
+experimental semantic-closure matrix are implemented; B6-E evidence and the
+security-review packet are prepared. Production `contextBridge` remains
+`NOT_IMPLEMENTED`; M0 OPEN; strict profile blocked.** B5 recorded a
 test-only `go` on one macOS/WebKit build ([docs/0038](0038-m0-context-bridge-spike.md)).
 B6 is the production implementation and evidence phase. This document is not
 an adoption decision for the B5 transport and does not authorize the original
@@ -201,8 +202,9 @@ Known B6-C limits (strict remains blocked):
 - `ipcRenderer` exposes only the bounded test report lane; invoke/on/
   removeListener, webUtils, full Node-free preload globals and arbitrary
   preload source remain unsupported;
-- same-origin iframe policy, page self-DoS, the full value/error matrix,
-  fault injection and B6-D/B6-E evidence remain open.
+- arbitrary page API keys, same-origin iframe policy, page self-DoS, the full
+  fault-injection matrix and B7 evidence remain open; B6-D/E cover the broad
+  semantics matrix and the review packet.
 
 - Per-document isolated bootstrap/attestation and sender/frame/document
   binding.
@@ -211,22 +213,52 @@ Known B6-C limits (strict remains blocked):
   values, revocation on navigation/termination/host loss.
 - Frame policy for same-origin/cross-origin/sandboxed children.
 
-### B6-D — semantic closure
+### B6-D — semantic closure (experimental matrix implemented 2026-10-18)
 
-- Full supported value/error matrix and negative tests (undefined, cycles,
-  accessors, proxies, non-finite, Date/Map/Set/typed arrays, frozen copies).
-- Callback identity/lifetime, disposers, nested/reentrant calls, Promise
-  assimilation/settlement, duplicate/missing settlement.
-- Resource bounds, pending-work ledgers, reentrancy and fault tests.
+`tests/context-bridge-semantics-native.test.cjs` drives the production
+transport with `fixtures/b6-preload-app/edge-preload.cjs` and `edge.html`.
+It covers primitives/null/arrays/plain objects, undefined return, returned
+functions, thrown/returned errors, frozen data and primordial isolation; 15
+unsupported arguments and 13 unsupported returns (undefined argument, Date,
+Map, Set, typed array, NaN, Infinity, BigInt, Symbol, cycles, accessors,
+symbol keys, sparse arrays, oversized strings, excessive depth); callback
+add/fire/remove identity, disposers, nested/reentrant calls, callback
+functions, callback throws and callback Promises; Promise fulfillment,
+rejection, unsupported settlement, thenables and double settlement; and a
+same-url reload with fresh observation, exposure revocation and source-hash
+preservation.
 
-### B6-E — evidence and review
+Three transport defects were found and fixed:
 
-- Same unchanged fixture under pinned Electron and electron.mbt; normalized
-  differential.
-- Exact macOS/WebKit/SDK/toolchain environment, source/asset hashes, raw
-  evidence and reproducible commands.
-- Independent security review and profile admission (B7). Only then may the
-  strict profile change; no acceptance row is promoted by B6-A/B/C alone.
+- symbol-keyed properties were silently dropped; they are now rejected with
+  `ELECTRON_MBT_BRIDGE_VALUE_SYMBOL`;
+- sparse arrays were silently converted to `undefined`; holes are now
+  rejected with `ELECTRON_MBT_BRIDGE_VALUE_HOLE`;
+- a synchronously-settling thenable could emit its settlement before the
+  page decoded the promise handle; the page shim now buffers a bounded
+  number (64) of early settlements and applies them when the promise handle
+  is registered.
+
+Still open: arbitrary page API keys (the candidate page shim materializes
+the single `fixture` key), page-admission ordering, the independent HMAC/
+shared-DOM review, same-origin iframe policy, page self-DoS, full
+`ipcRenderer`/`webUtils`/preload globals and fault injection.
+
+### B6-E — evidence and review (packet prepared; review NOT RUN)
+
+The unchanged-oracle B6-C test now compares its normalized observation with
+`evidence/electron-baseline.json` when present, and
+`ELECTRON_MBT_REQUIRE_ORACLE_BASELINE=1` makes a missing baseline fail. The
+macOS CI runs this after the pinned Electron baseline and M0 spike and also
+records the B6-D semantics run:
+`evidence/b6-context-bridge-transport.log` and
+`evidence/b6-context-bridge-semantics.log`.
+
+The exact environment, commands, local PASS/NOT RUN table, threat model,
+controls/residual risks and reviewer checklist are in
+[docs/0040](0040-b6-d-e-evidence.md). The independent security review has
+**not** been performed. Strict profile admission remains B7 and is blocked;
+no acceptance row is promoted by B6-A/B/C/D/E alone.
 
 ## B6 acceptance criteria (not met by B6-A)
 

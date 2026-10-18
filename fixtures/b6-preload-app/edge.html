@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>electron.mbt B6-D edge fixture</title></head>
+<body>
+<script>
+(async function () {
+  'use strict';
+  const state = { fixtureError: null };
+  try {
+    const api = window.fixture;
+    state.available = Boolean(api);
+    state.dataFrozen = Object.isFrozen(api.data) && Object.isFrozen(api.data.nested);
+    const before = JSON.stringify(api.data);
+    try { api.data.nested.value = 9; } catch (error) { state.dataMutationThrew = true; }
+    state.dataUnchanged = JSON.stringify(api.data) === before;
+    state.echo = {
+      number: api.echo(42),
+      string: api.echo('text'),
+      boolean: api.echo(true),
+      nullable: api.echo(null),
+      array: api.echo([1, 'two', null]),
+      object: api.echo({ a: 1, b: { c: 2 } }),
+    };
+    state.undefinedReturn = api.returnUndefined() === undefined;
+    const returnedFunction = api.returnFunction();
+    state.functionReturn = { type: typeof returnedFunction, value: returnedFunction() };
+    try { api.throwTypeError(); } catch (error) {
+      state.thrown = {
+        name: error.name, message: error.message,
+        isError: error instanceof Error, isTypeError: error instanceof TypeError,
+      };
+    }
+    const returnedError = api.returnError();
+    state.returnedError = {
+      name: returnedError.name, message: returnedError.message,
+      isError: returnedError instanceof Error, isTypeError: returnedError instanceof TypeError,
+    };
+
+    function cycle() { const value = {}; value.self = value; return value; }
+    function accessor() {
+      const value = {};
+      Object.defineProperty(value, 'x', { enumerable: true, get() { return 1; } });
+      return value;
+    }
+    function deep() {
+      let value = {};
+      let cursor = value;
+      for (let index = 0; index < 12; index += 1) { cursor.next = {}; cursor = cursor.next; }
+      return value;
+    }
+    function symbolKey() { const value = { visible: 2 }; value[Symbol('edge')] = 1; return value; }
+    function attempt(label, value) {
+      try {
+        const result = api.echo(value);
+        return { label, rejected: false, resultType: typeof result };
+      } catch (error) {
+        return {
+          label, rejected: true,
+          error: { name: error.name, code: error.code || null, message: error.message },
+        };
+      }
+    }
+    state.unsupportedArgs = [
+      attempt('undefined', undefined),
+      attempt('date', new Date(0)),
+      attempt('map', new Map([['a', 1]])),
+      attempt('set', new Set([1])),
+      attempt('typed', new Uint8Array([1])),
+      attempt('nan', NaN),
+      attempt('infinity', Infinity),
+      attempt('bigint', 1n),
+      attempt('symbol', Symbol('edge')),
+      attempt('cycle', cycle()),
+      attempt('accessor', accessor()),
+      attempt('symbolKey', symbolKey()),
+      attempt('hole', [1, , 3]),
+      attempt('oversize', 'x'.repeat(40000)),
+      attempt('deep', deep()),
+    ];
+    state.unsupportedReturns = [
+      'returnDate', 'returnMap', 'returnSet', 'returnTyped', 'returnNonFinite',
+      'returnBigInt', 'returnSymbol', 'returnCycle', 'returnAccessor',
+      'returnSymbolKey', 'returnHole', 'returnOversize', 'returnDeep',
+    ].map(name => {
+      try {
+        const value = api[name]();
+        return { name, rejected: false, resultType: typeof value };
+      } catch (error) {
+        return {
+          name, rejected: true,
+          error: { name: error.name, code: error.code || null, message: error.message },
+        };
+      }
+    });
+
+    const promised = api.promiseResolve(43);
+    state.promise = { isPromise: promised instanceof Promise, value: await promised };
+    try { await api.promiseReject(); } catch (error) {
+      state.promiseRejection = { name: error.name, message: error.message, isError: error instanceof Error };
+    }
+    try {
+      await api.promiseUnsupported();
+      state.promiseUnsupported = { rejected: false };
+    } catch (error) {
+      state.promiseUnsupported = {
+        rejected: true, name: error.name, code: error.code || null, message: error.message,
+      };
+    }
+    const thenable = api.thenableResolve(11);
+    state.thenable = { isPromise: thenable instanceof Promise, value: await thenable };
+    state.thenableDouble = { value: await api.thenableDouble(12) };
+
+    const received = [];
+    const callback = value => { received.push(value); };
+    api.add(callback);
+    api.fire('first');
+    api.remove(callback);
+    api.fire('second');
+    state.callbackValues = received.slice();
+    const subscribed = [];
+    const dispose = api.subscribe(value => subscribed.push(value));
+    api.fire('sub-first');
+    const firstDispose = dispose();
+    const secondDispose = dispose();
+    api.fire('sub-second');
+    state.subscription = {
+      values: subscribed, disposerType: typeof dispose, firstDispose, secondDispose,
+    };
+    let nestedValue = null;
+    api.nested(() => { nestedValue = api.echo('nested'); });
+    state.nested = { value: nestedValue };
+    state.callResult = api.call(value => value * 2);
+    let callbackFunctionValue = null;
+    api.callbackFunction(fn => { callbackFunctionValue = fn(); });
+    state.callbackFunction = { value: callbackFunctionValue };
+    let callbackThrow = null;
+    try { api.call(() => { throw new Error('edge-callback'); }); } catch (error) {
+      callbackThrow = { name: error.name, message: error.message, isError: error instanceof Error };
+    }
+    state.callbackThrow = callbackThrow;
+    let callbackPromise = null;
+    try { api.call(() => Promise.resolve(1)); } catch (error) {
+      callbackPromise = { name: error.name, code: error.code || null, message: error.message };
+    }
+    state.callbackPromise = callbackPromise;
+    document.title = 'EDGE_OK';
+    api.report(state);
+  } catch (error) {
+    state.fixtureError = { name: error && error.name, message: error && error.message };
+    try { document.title = 'EDGE_ERROR:' + (error.name || '') + ':' + (error.message || ''); } catch (_) {}
+    try { window.fixture.report(state); } catch (_) {}
+  }
+})();
+</script>
+</body>
+</html>

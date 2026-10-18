@@ -62,6 +62,16 @@ test('What: B6-C transport runs the unchanged oracle page/preload synchronously'
       event.payload?.channel === 'fixture:report');
     assert.ok(report, 'fixture:report event');
     const observed = validateM0ElectronOracleObservation(report.payload.value);
+    let oracleBaseline = 'NOT_RUN';
+    const baselinePath = path.resolve(__dirname, '../evidence/electron-baseline.json');
+    if (fs.existsSync(baselinePath)) {
+      const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+      assert.ok(baseline?.observed?.observation, 'Electron baseline observation is missing');
+      assert.deepEqual(observed, validateM0ElectronOracleObservation(baseline.observed.observation));
+      oracleBaseline = 'PASS';
+    } else if (process.env.ELECTRON_MBT_REQUIRE_ORACLE_BASELINE === '1') {
+      assert.fail('Electron oracle baseline is required but missing');
+    }
     assert.equal(observed.syncValue, 42);
     assert.equal(observed.promiseValue, 43);
     assert.deepEqual(observed.callbackValues, ['first', 'second']);
@@ -95,6 +105,7 @@ test('What: B6-C transport runs the unchanged oracle page/preload synchronously'
       callbacks: true, frozenCopies: true, primordialIsolation: true,
       exposureRegistered: reload !== undefined,
       reloadObservation: true, sourceHashPreserved: true,
+      oracleBaseline,
       compatible: false, contextBridge: 'NOT_IMPLEMENTED',
       productionContextBridge: 'NOT_IMPLEMENTED',
     }));

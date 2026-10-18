@@ -32,6 +32,8 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 | B6-A exposure authority (contract) | MoonBit exposure registry/dispatch, lifecycle/quotas; `context-bridge-exposure` 4 tests | PASS (contract; no transport) |
 | B6-B preload bridge environment (experimental) | Opt-in `ELECTRON_MBT_B6_PRELOAD_BRIDGE=1`; unchanged oracle preload status ok, exposure event/MoonBit registration, reload revocation, no page API | PASS (experimental slice; no page API/transport) |
 | B6-C synchronous transport (experimental) | Opt-in transport sources + document grant; unchanged oracle preload/page observation, reload/revocation, source hashes | PASS (experimental; strict blocked) |
+| B6-D semantic matrix (experimental) | Value/error/callback/Promise/bounds/fault matrix; three transport defects fixed | PASS (experimental; limits open) |
+| B6-E evidence packet | Baseline differential hook, CI evidence step, threat model/review checklist | PREPARED; baseline NOT RUN locally; independent review NOT RUN |
 | Production asset loading | loopback server is test-only | NOT IMPLEMENTED |
 | Timers/native promises/cancel | not supported by async bridge | NOT IMPLEMENTED |
 
@@ -40,7 +42,7 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 - `verify-state`: 17/17 PASS, `NOT_READY`
 - readiness: 31 checks, 24 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 449 pass
+- `npm test`: 450 pass
 - `moon test --target js`: 143 pass
 - `moon test --target native`: 162 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
@@ -50,12 +52,12 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 1. **M0 contextBridge gate**: the test-only B5 repaired-primitive spike
    recorded `go` on one macOS/WebKit build (checkpoint 1/2 PASS; Electron
    baseline differential CI-only). This is not production contextBridge:
-   B6's production transport/page-admission ordering, independent review,
-   full preload globals/ipcRenderer/webUtils, frame policy and semantics
-   remain open. B6-A provides the exposure authority contract, B6-B the opt-in
-   preload environment and B6-C an experimental synchronous transport E2E;
-   strict remains blocked, M0 stays OPEN and the original preload stays
-   NOT_EXECUTED.
+   B6's page-admission ordering, independent transport review, arbitrary API
+   keys, full preload globals/ipcRenderer/webUtils, frame policy and page
+   self-DoS remain open. B6-A provides the exposure authority contract, B6-B
+   the opt-in preload environment, B6-C an experimental transport E2E, B6-D
+   the semantics matrix and B6-E the evidence/review packet; strict remains
+   blocked, M0 stays OPEN and the original preload stays NOT_EXECUTED.
 2. **Production asset loading**: replace the test-only loopback server with a
    native/custom-scheme or packaged asset path.
 3. **Dialog depth**: real file selection, save panel, user consent and grant

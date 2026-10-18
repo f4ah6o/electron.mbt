@@ -21,6 +21,7 @@
   const jsonParse = JSON.parse;
   const isArray = Array.isArray;
   const objectKeys = Object.keys;
+  const reflectOwnKeys = Reflect.ownKeys;
   const getPrototypeOf = Object.getPrototypeOf;
   const getOwnPropertyDescriptors = Object.getOwnPropertyDescriptors;
   const defineProperty = Object.defineProperty;
@@ -319,6 +320,9 @@
         if (isArray(value)) {
           const items = makeArray();
           for (let index = 0; index < value.length; index += 1) {
+            if (!hasOwn(value, index)) {
+              throw codecError('ELECTRON_MBT_BRIDGE_VALUE_HOLE', 'sparse arrays are not supported');
+            }
             arrayPush(items, encodeValue(value[index], state));
           }
           return makeRecord([['t', 'arr'], ['v', items]]);
@@ -326,6 +330,14 @@
         const prototype = getPrototypeOf(value);
         if (prototype !== objectPrototype && prototype !== null) {
           throw codecError('ELECTRON_MBT_BRIDGE_VALUE_OBJECT', 'only plain objects are supported');
+        }
+        // Symbol-keyed properties are not representable in the page copy;
+        // reject them instead of silently dropping them.
+        const allKeys = reflectOwnKeys(value);
+        for (let index = 0; index < allKeys.length; index += 1) {
+          if (typeof allKeys[index] !== 'string') {
+            throw codecError('ELECTRON_MBT_BRIDGE_VALUE_SYMBOL', 'symbol keys are not supported');
+          }
         }
         const descriptors = getOwnPropertyDescriptors(value);
         const keys = objectKeys(descriptors);

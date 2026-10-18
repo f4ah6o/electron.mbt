@@ -54,6 +54,7 @@ const MAX_HANDLE = 64;
 
 const pageFunctions = create(null);
 const pendingPromises = create(null);
+const earlySettlements = create(null);
 let callbackSequence = 0;
 let callSequence = 0;
 let challenge = null;
@@ -247,15 +248,44 @@ function registerPageCallback(fn) {
   return handle;
 }
 
+function applySettlement(handle, verified) {
+  const pending = pendingPromises[handle];
+  if (!pending) return false;
+  delete pendingPromises[handle];
+  if (verified.ok === true) {
+    try {
+      const value = codec.decode(verified.value, {
+        onFunction: makeRemoteCallable,
+        onPromise: makePagePromise,
+        freeze: false,
+      });
+      pending.resolve(value);
+    } catch (error) {
+      pending.reject(error);
+    }
+  } else {
+    pending.reject(makeError(verified.error));
+  }
+  return true;
+}
+
 function makePagePromise(handle) {
   if (!token(handle)) throw bridgeError('ELECTRON_MBT_BRIDGE_HANDLE', 'invalid Promise handle');
   if (pendingPromises[handle]) throw bridgeError('ELECTRON_MBT_BRIDGE_HANDLE', 'duplicate Promise handle');
   let count = 0;
   for (const key in pendingPromises) { void key; count += 1; if (count > 256) break; }
   if (count > 256) throw bridgeError('ELECTRON_MBT_BRIDGE_HANDLE_LIMIT', 'Promise handle limit reached');
-  return new PromiseCtor(function (resolve, reject) {
+  const promise = new PromiseCtor(function (resolve, reject) {
     pendingPromises[handle] = { resolve, reject };
   });
+  // A custom thenable may settle synchronously from then(); the settlement
+  // event can arrive before the reply carrying this handle is decoded.
+  const early = earlySettlements[handle];
+  if (early) {
+    delete earlySettlements[handle];
+    applySettlement(handle, early);
+  }
+  return promise;
 }
 
 function decodeArgs(json) {
@@ -359,23 +389,13 @@ function handleSettlement(element, envelope) {
     return;
   }
   const handle = verified.handle;
-  const pending = typeof handle === 'string' ? pendingPromises[handle] : undefined;
-  if (!pending) return;
-  delete pendingPromises[handle];
-  if (verified.ok === true) {
-    try {
-      const value = codec.decode(verified.value, {
-        onFunction: makeRemoteCallable,
-        onPromise: makePagePromise,
-        freeze: false,
-      });
-      pending.resolve(value);
-    } catch (error) {
-      pending.reject(error);
-    }
-  } else {
-    pending.reject(makeError(verified.error));
-  }
+  if (applySettlement(handle, verified)) return;
+  if (typeof handle !== 'string' || !token(handle) || earlySettlements[handle]) return;
+  let count = 0;
+  for (const key in earlySettlements) { void key; count += 1; if (count > 64) break; }
+  if (count > 64) return;
+  // Hold the verified settlement until makePagePromise registers the handle.
+  earlySettlements[handle] = verified;
 }
 
 function hello() {

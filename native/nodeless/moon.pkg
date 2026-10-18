@@ -1,0 +1,21 @@
+supported_targets = "native"
+
+import {
+  "f4ah6o/electron/runtime/app_runner" @app,
+  "moonbitlang/core/encoding/utf8" @utf8,
+  "moonbitlang/core/env" @env,
+  "moonbitlang/core/json" @json,
+}
+
+options(
+  "is-main": true,
+  "native-stub": ["file_io.c"],
+  targets: {
+    "main.mbt": ["native"],
+  },
+  link: {
+    "native": {
+      "stub-cc-flags": "-O2 -D_GNU_SOURCE",
+    },
+  },
+)

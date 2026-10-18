@@ -1,0 +1,16 @@
+supported_targets = "native"
+
+import {
+  "f4ah6o/electron/bridges/embedded-js" @engine,
+  "f4ah6o/electron/runtime/embedded" @scheduler,
+  "f4ah6o/electron/runtime/modules" @modules,
+  "moonbitlang/core/json" @json,
+  "moonbitlang/core/encoding/utf8" @utf8,
+}
+
+options(
+  targets: {
+    "app_runner.mbt": ["native"],
+    "app_runner_wbtest.mbt": ["native"],
+  },
+)

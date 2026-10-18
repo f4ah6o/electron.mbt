@@ -7,3 +7,5 @@ node_modules/
 .DS_Store
 !fixtures/native-app/node_modules/
 !fixtures/native-app/node_modules/**
+!fixtures/nodeless-app/node_modules/
+!fixtures/nodeless-app/node_modules/**

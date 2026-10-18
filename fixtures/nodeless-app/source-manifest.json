@@ -1,0 +1,42 @@
+{
+  "schema": 2,
+  "app": "nodeless-app",
+  "entry": "src/main.js",
+  "files": [
+    {
+      "path": "src/main.js",
+      "sha256": "c5b7fec328627fb41bcc928e529926da1f2c9ba2d474527fe424386f448bccb3",
+      "bytes": 2018
+    },
+    {
+      "path": "package.json",
+      "sha256": "a9a64536b1d62daab8b22791cbe7fa451ee78f705562ffe06aa8e512503cf0cd",
+      "bytes": 99
+    },
+    {
+      "path": "src/lib/a.js",
+      "sha256": "c156f0400936cdaf8ccee3e04b1e24770838fd11044d12a7ff2517dde409a4c4",
+      "bytes": 83
+    },
+    {
+      "path": "src/lib/b.js",
+      "sha256": "1d11801f584313cc0dc8366fc6f0b916f0641e1d03fc829138c1148977a14c56",
+      "bytes": 83
+    },
+    {
+      "path": "src/lib/data.json",
+      "sha256": "ce04b71e4956af1f36919b7518519276c4141dd1883332123da18ab04aac0956",
+      "bytes": 38
+    },
+    {
+      "path": "node_modules/fixture-pkg/package.json",
+      "sha256": "2025006585c670b26d4cda71fdd8407744871dcf0d760746b3b059979bd4aa08",
+      "bytes": 170
+    },
+    {
+      "path": "node_modules/fixture-pkg/index.js",
+      "sha256": "a4161ab5bd901270798dc405cabbf259d5294702c3369a79ea1192f18e9b816b",
+      "bytes": 109
+    }
+  ]
+}

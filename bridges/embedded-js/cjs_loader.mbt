@@ -70,29 +70,35 @@ fn cjs_error(message : String) -> CjsResult {
 
 ///|
 fn cjs_bootstrap() -> String {
-  "globalThis.__mbt_cjs_entry = " +
-  "globalThis.__mbt_cjs_entry || null;\n" +
   "(function () {\n" +
+  "  function has(object, key) { return Object.prototype.hasOwnProperty.call(object, key); }\n" +
   "  const graph = globalThis.__mbt_cjs_graph;\n" +
   "  const entry = globalThis.__mbt_cjs_entry;\n" +
+  "  const builtins = globalThis.__mbt_builtins || Object.create(null);\n" +
   "  const cache = Object.create(null);\n" +
   "  function load(id) {\n" +
-  "    if (Object.prototype.hasOwnProperty.call(cache, id)) return cache[id].exports;\n" +
-  "    const record = Object.prototype.hasOwnProperty.call(graph, id) ? graph[id] : null;\n" +
+  "    if (has(cache, id)) return cache[id].exports;\n" +
+  "    const record = has(graph, id) ? graph[id] : null;\n" +
   "    if (!record) throw new Error('ELECTRON_MBT_MODULE_NOT_FOUND:' + id);\n" +
-  "    const module = { exports: {} };\n" +
+  "    const module = { id: id, filename: id, loaded: false, exports: {} };\n" +
   "    cache[id] = module;\n" +
   "    const deps = record.deps || {};\n" +
   "    function localRequire(specifier) {\n" +
-  "      if (!Object.prototype.hasOwnProperty.call(deps, specifier)) throw new Error('ELECTRON_MBT_MODULE_DEPENDENCY:' + specifier);\n" +
+  "      if (typeof specifier !== 'string' || specifier.length === 0) throw new Error('ELECTRON_MBT_INVALID_REQUIRE');\n" +
+  "      if (has(builtins, specifier)) return builtins[specifier];\n" +
+  "      if (!has(deps, specifier)) throw new Error('ELECTRON_MBT_MODULE_DEPENDENCY:' + specifier);\n" +
   "      return load(deps[specifier]);\n" +
   "    }\n" +
+  "    localRequire.resolve = function () { throw new Error('ELECTRON_MBT_UNSUPPORTED_API:require.resolve'); };\n" +
+  "    module.require = localRequire;\n" +
   "    if (record.json) {\n" +
   "      module.exports = JSON.parse(record.source);\n" +
   "    } else {\n" +
-  "      const wrapper = new Function('exports', 'require', 'module', record.source + '\\n//# sourceURL=' + id);\n" +
-  "      wrapper(module.exports, localRequire, module);\n" +
+  "      const dirname = id.indexOf('/') >= 0 ? id.slice(0, id.lastIndexOf('/')) : '';\n" +
+  "      const wrapper = new Function('exports', 'require', 'module', '__filename', '__dirname', record.source + '\\n//# sourceURL=' + id);\n" +
+  "      wrapper.call(module.exports, module.exports, localRequire, module, id, dirname);\n" +
   "    }\n" +
+  "    module.loaded = true;\n" +
   "    return module.exports;\n" +
   "  }\n" +
   "  const value = load(entry);\n" +
@@ -101,13 +107,12 @@ fn cjs_bootstrap() -> String {
 }
 
 ///|
-// Execute a pre-resolved in-memory CJS graph. MoonBit has already admitted
-// module IDs, source sizes and dependency targets; the JS leaf owns only
-// module.exports and realm-local cache identity.
-pub fn Context::eval_cjs(
-  self : Context,
+fn cjs_eval_graph(
+  context : Context,
   modules : Array[ModuleSource],
   entry : String,
+  prelude : String,
+  config_json : String,
 ) -> CjsResult {
   let registry = @modules.ModuleRegistry::new(4096)
   let mut total = 0
@@ -157,13 +162,25 @@ pub fn Context::eval_cjs(
       "json": Json(mod.json),
     }
   }
-  let script = "globalThis.__mbt_cjs_graph = " +
+  let config_prefix = if config_json.length() > 0 {
+    "globalThis.__mbt_config = " + config_json + ";\n"
+  } else {
+    ""
+  }
+  let prelude_prefix = if prelude.length() > 0 {
+    prelude + "\n"
+  } else {
+    ""
+  }
+  let script = config_prefix +
+    prelude_prefix +
+    "globalThis.__mbt_cjs_graph = " +
     Json(graph).stringify() +
     ";\nglobalThis.__mbt_cjs_entry = " +
     Json(entry).stringify() +
     ";\n" +
     cjs_bootstrap()
-  let result = self.eval_script(script, "<cjs-loader>")
+  let result = context.eval_script(script, "<cjs-loader>")
   if result.status is Exception {
     {
       status: Exception,
@@ -182,4 +199,30 @@ pub fn Context::eval_cjs(
       cache_ids: cjs_texts(cjs_field(parsed, "cacheIds")),
     }
   }
+}
+
+///|
+// Execute a pre-resolved in-memory CJS graph. MoonBit has already admitted
+// module IDs, source sizes and dependency targets; the JS leaf owns only
+// module.exports and realm-local cache identity.
+pub fn Context::eval_cjs(
+  self : Context,
+  modules : Array[ModuleSource],
+  entry : String,
+) -> CjsResult {
+  cjs_eval_graph(self, modules, entry, "", "")
+}
+
+///|
+// Install a runtime-owned Node/Electron prelude before the CJS graph. The
+// prelude is JS leaf glue for realm identity; it is not a second module
+// cache, lifecycle or request ledger.
+pub fn Context::eval_cjs_with_prelude(
+  self : Context,
+  modules : Array[ModuleSource],
+  entry : String,
+  prelude : String,
+  config_json : String,
+) -> CjsResult {
+  cjs_eval_graph(self, modules, entry, prelude, config_json)
 }

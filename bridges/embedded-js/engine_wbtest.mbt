@@ -110,3 +110,55 @@ test "QJS-04 interrupt terminates an unbounded script" {
   context.destroy()
   engine.destroy()
 }
+
+///|
+test "QJS-04 a monotonic deadline interrupts an unbounded script" {
+  let engine = Engine::new()
+  let context = Context::new(engine)
+  engine.set_deadline(Engine::now_ms() + 50L)
+  let stopped = context.eval_script("while (true) {}", "qjs-04-deadline.js")
+  assert_true(stopped.status is Exception)
+  engine.clear_deadline()
+  let after = context.eval_script("6 * 7", "qjs-04-deadline-after.js")
+  assert_true(after.status is Value)
+  assert_eq(after.text, "42")
+  assert_eq(context.live_count(), 0)
+  context.destroy()
+  engine.destroy()
+}
+
+///|
+test "global, string and call arguments keep explicit ownership" {
+  let engine = Engine::new()
+  let context = Context::new(engine)
+  let queued = context.eval_raw(
+    "globalThis.__qjs_call = function (left, right) { return left + right; };",
+    "qjs-call-setup.js",
+  )
+  queued.release()
+  let function_lease = context.get_global("__qjs_call")
+  assert_eq(function_lease.kind(), 0)
+  let left = context.new_string("ab")
+  let right = context.new_string("cd")
+  let result = function_lease.call2(left, right)
+  assert_eq(result.text(), "\"abcd\"")
+  assert_eq(context.live_count(), 4)
+  result.release()
+  left.release()
+  right.release()
+  function_lease.release()
+  assert_eq(context.live_count(), 0)
+  context.destroy()
+  engine.destroy()
+}
+
+///|
+test "class declarations evaluate after the undefined text fix" {
+  let engine = Engine::new()
+  let context = Context::new(engine)
+  let result = context.eval_script("class X { constructor() { this.value = 7; } } new X().value", "qjs-class.js")
+  assert_true(result.status is Value)
+  assert_eq(result.text, "7")
+  context.destroy()
+  engine.destroy()
+}

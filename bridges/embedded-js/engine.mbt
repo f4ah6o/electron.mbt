@@ -30,6 +30,15 @@ extern "C" fn emb_interrupt(engine : Engine) = "moonbit_emb_interrupt"
 extern "C" fn emb_clear_interrupt(engine : Engine) = "moonbit_emb_clear_interrupt"
 
 ///|
+extern "C" fn emb_set_deadline(engine : Engine, deadline_ms : Int64) = "moonbit_emb_set_deadline"
+
+///|
+extern "C" fn emb_clear_deadline(engine : Engine) = "moonbit_emb_clear_deadline"
+
+///|
+extern "C" fn emb_now_ms() -> Int64 = "moonbit_emb_now_ms"
+
+///|
 extern "C" fn emb_context_create(engine : Engine) -> Context = "moonbit_emb_context_create"
 
 ///|
@@ -50,10 +59,36 @@ extern "C" fn emb_value_kind(value : ValueLease) -> Int = "moonbit_emb_value_kin
 extern "C" fn emb_value_text(value : ValueLease) -> Bytes = "moonbit_emb_value_text"
 
 ///|
+extern "C" fn emb_value_text_limit(value : ValueLease, max_bytes : Int) -> Bytes = "moonbit_emb_value_text_limit"
+
+///|
 extern "C" fn emb_value_dup(value : ValueLease) -> ValueLease = "moonbit_emb_value_dup"
 
 ///|
+#borrow(target, arg0)
+extern "C" fn emb_call1(target : ValueLease, arg0 : ValueLease) -> ValueLease = "moonbit_emb_call1"
+
+///|
+#borrow(target, arg0, arg1)
+extern "C" fn emb_call2(
+  target : ValueLease,
+  arg0 : ValueLease,
+  arg1 : ValueLease,
+) -> ValueLease = "moonbit_emb_call2"
+
+///|
 extern "C" fn emb_call(value : ValueLease) -> ValueLease = "moonbit_emb_call"
+
+///|
+#borrow(name)
+extern "C" fn emb_get_global(context : Context, name : Bytes) -> ValueLease = "moonbit_emb_get_global"
+
+///|
+#borrow(bytes)
+extern "C" fn emb_new_string(context : Context, bytes : Bytes) -> ValueLease = "moonbit_emb_new_string"
+
+///|
+extern "C" fn emb_context_live(context : Context) -> Int = "moonbit_emb_context_live"
 
 ///|
 extern "C" fn emb_value_release(value : ValueLease) = "moonbit_emb_value_release"
@@ -108,6 +143,21 @@ pub fn Engine::clear_interrupt(self : Engine) -> Unit {
 }
 
 ///|
+pub fn Engine::set_deadline(self : Engine, deadline_ms : Int64) -> Unit {
+  emb_set_deadline(self, deadline_ms)
+}
+
+///|
+pub fn Engine::clear_deadline(self : Engine) -> Unit {
+  emb_clear_deadline(self)
+}
+
+///|
+pub fn Engine::now_ms() -> Int64 {
+  emb_now_ms()
+}
+
+///|
 pub fn Engine::execute_one_job(self : Engine) -> Int {
   emb_execute_one_job(self)
 }
@@ -135,6 +185,21 @@ pub fn Context::new(engine : Engine) -> Context {
 ///|
 pub fn Context::destroy(self : Context) -> Unit {
   emb_context_destroy(self)
+}
+
+///|
+pub fn Context::get_global(self : Context, name : String) -> ValueLease {
+  emb_get_global(self, @utf8.encode(name))
+}
+
+///|
+pub fn Context::new_string(self : Context, text : String) -> ValueLease {
+  emb_new_string(self, @utf8.encode(text))
+}
+
+///|
+pub fn Context::live_count(self : Context) -> Int {
+  emb_context_live(self)
 }
 
 ///|
@@ -166,6 +231,11 @@ pub fn ValueLease::text(self : ValueLease) -> String {
 }
 
 ///|
+pub fn ValueLease::text_limit(self : ValueLease, max_bytes : Int) -> String {
+  @utf8.decode_lossy(emb_value_text_limit(self, max_bytes))
+}
+
+///|
 pub fn ValueLease::dup(self : ValueLease) -> ValueLease {
   emb_value_dup(self)
 }
@@ -173,6 +243,20 @@ pub fn ValueLease::dup(self : ValueLease) -> ValueLease {
 ///|
 pub fn ValueLease::call(self : ValueLease) -> ValueLease {
   emb_call(self)
+}
+
+///|
+pub fn ValueLease::call1(self : ValueLease, arg0 : ValueLease) -> ValueLease {
+  emb_call1(self, arg0)
+}
+
+///|
+pub fn ValueLease::call2(
+  self : ValueLease,
+  arg0 : ValueLease,
+  arg1 : ValueLease,
+) -> ValueLease {
+  emb_call2(self, arg0, arg1)
 }
 
 ///|

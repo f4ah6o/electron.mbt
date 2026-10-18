@@ -69,3 +69,28 @@ test "file index admission rejects empty, absolute and escaping paths" {
   assert_eq(index.resolve("a", "./b"), Ok("a/b.js"))
   assert_eq(index.add_package_main("pkg", ""), Err(UnsupportedSpecifier))
 }
+
+///|
+test "package exports encapsulate subpaths and never fall back to main" {
+  let index = FileIndex::new()
+  let _ = index.add_file("node_modules/exp/main.js")
+  let _ = index.add_file("node_modules/exp/lib/sub.js")
+  let _ = index.add_file("node_modules/exp/private.js")
+  let _ = index.add_package("exp", "node_modules/exp", main="main.js")
+  let _ = index.add_package_exports("node_modules/exp", {
+    ".": "./main.js",
+    "./sub": "./lib/sub.js",
+  })
+  assert_eq(index.resolve("out", "exp"), Ok("node_modules/exp/main.js"))
+  assert_eq(index.resolve("out", "exp/sub"), Ok("node_modules/exp/lib/sub.js"))
+  assert_eq(index.resolve("out", "exp/private"), Err(NotFound))
+  assert_eq(index.resolve("out", "exp/missing"), Err(NotFound))
+}
+
+///|
+test "package exports reject absolute, non-dot and empty targets" {
+  let index = FileIndex::new()
+  assert_eq(index.add_package_exports("node_modules/bad", { ".": "/abs.js" }), Err(UnsupportedSpecifier))
+  assert_eq(index.add_package_exports("node_modules/bad", { "x": "./x.js" }), Err(UnsupportedSpecifier))
+  assert_eq(index.add_package_exports("node_modules/bad", { ".": "" }), Err(UnsupportedSpecifier))
+}

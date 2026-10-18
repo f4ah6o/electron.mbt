@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // A minimal, explicit-lifetime QuickJS adapter. C owns the engine/context/value
 // handles; MoonBit owns the policy, request ledger and scheduling decisions.
@@ -14,6 +15,7 @@ typedef struct {
   JSRuntime *rt;
   volatile int interrupted;
   int64_t memory_limit;
+  int64_t deadline_ms;
 } EmbEngine;
 
 typedef struct {
@@ -59,10 +61,20 @@ static void emb_unregister_value(EmbValue *value) {
   }
 }
 
+static int64_t emb_now_ms(void) {
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+  return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000);
+}
+
 static int emb_interrupt_handler(JSRuntime *rt, void *opaque) {
   (void)rt;
   EmbEngine *engine = (EmbEngine *)opaque;
-  return engine != NULL && engine->interrupted;
+  if (engine == NULL) return 0;
+  if (engine->interrupted) return 1;
+  // A deadline is a bounded fallback for an unbounded script. It is checked
+  // from the engine's own interrupt hook so no other thread calls QuickJS.
+  return engine->deadline_ms > 0 && emb_now_ms() >= engine->deadline_ms;
 }
 
 static moonbit_bytes_t emb_bytes(const char *data, size_t len) {
@@ -136,6 +148,23 @@ void moonbit_emb_clear_interrupt(void *raw) {
 }
 
 MOONBIT_FFI_EXPORT
+void moonbit_emb_set_deadline(void *raw, int64_t deadline_ms) {
+  EmbEngine *engine = (EmbEngine *)raw;
+  if (engine != NULL) engine->deadline_ms = deadline_ms;
+}
+
+MOONBIT_FFI_EXPORT
+void moonbit_emb_clear_deadline(void *raw) {
+  EmbEngine *engine = (EmbEngine *)raw;
+  if (engine != NULL) engine->deadline_ms = 0;
+}
+
+MOONBIT_FFI_EXPORT
+int64_t moonbit_emb_now_ms(void) {
+  return emb_now_ms();
+}
+
+MOONBIT_FFI_EXPORT
 void *moonbit_emb_context_create(void *raw_engine) {
   EmbEngine *engine = (EmbEngine *)raw_engine;
   if (engine == NULL || engine->rt == NULL) return NULL;
@@ -201,24 +230,26 @@ int32_t moonbit_emb_value_kind(void *raw) {
 
 // Return a bounded UTF-8 JSON/text representation. The lease's JSValue is not
 // consumed; the caller releases it separately.
-MOONBIT_FFI_EXPORT
-moonbit_bytes_t moonbit_emb_value_text(void *raw) {
+static moonbit_bytes_t emb_value_text_impl(void *raw, size_t max_bytes) {
   EmbValue *value = (EmbValue *)raw;
   if (value == NULL || !emb_value_live(value) || !value->alive) return emb_literal("released value handle");
   JSContext *ctx = value->ctx;
   if (ctx == NULL) return emb_literal("evaluation failed: no context");
   JSValue printable = JS_UNDEFINED;
   int owns_printable = 0;
+  int owns_text = 0;
   const char *text = NULL;
   size_t length = 0;
   if (value->is_exception) {
     text = JS_ToCStringLen(ctx, &length, value->value);
+    owns_text = text != NULL;
   } else {
     printable = JS_JSONStringify(ctx, value->value, JS_UNDEFINED, JS_UNDEFINED);
     if (JS_IsException(printable)) {
       JSValue exception = JS_GetException(ctx);
       JS_FreeValue(ctx, printable);
       text = JS_ToCStringLen(ctx, &length, exception);
+      owns_text = text != NULL;
       JS_FreeValue(ctx, exception);
     } else if (JS_IsUndefined(printable)) {
       text = "undefined";
@@ -226,40 +257,141 @@ moonbit_bytes_t moonbit_emb_value_text(void *raw) {
     } else {
       owns_printable = 1;
       text = JS_ToCStringLen(ctx, &length, printable);
+      owns_text = text != NULL;
     }
   }
   moonbit_bytes_t bytes;
   if (text == NULL) {
     bytes = emb_literal("unprintable value");
   } else {
-    bytes = emb_bytes(text, length);
-    JS_FreeCString(ctx, text);
+    if (max_bytes > 0 && length > max_bytes) {
+      bytes = emb_literal("ELECTRON_MBT_OUTPUT_LIMIT");
+    } else {
+      bytes = emb_bytes(text, length);
+    }
+    if (owns_text) JS_FreeCString(ctx, text);
   }
   if (owns_printable) JS_FreeValue(ctx, printable);
   return bytes;
 }
 
 MOONBIT_FFI_EXPORT
-void *moonbit_emb_call(void *raw) {
-  EmbValue *value = (EmbValue *)raw;
-  if (value == NULL || !emb_value_live(value) || !value->alive || value->is_exception) return NULL;
+moonbit_bytes_t moonbit_emb_value_text(void *raw) {
+  return emb_value_text_impl(raw, 1048576);
+}
+
+MOONBIT_FFI_EXPORT
+moonbit_bytes_t moonbit_emb_value_text_limit(void *raw, int32_t max_bytes) {
+  if (max_bytes < 0) return emb_literal("ELECTRON_MBT_OUTPUT_LIMIT");
+  return emb_value_text_impl(raw, (size_t)max_bytes);
+}
+
+static void *emb_wrap_result(JSContext *ctx, JSValue value, int is_exception) {
   EmbValue *result = (EmbValue *)calloc(1, sizeof(EmbValue));
-  if (result == NULL) return NULL;
-  result->ctx = value->ctx;
-  result->alive = 1;
-  JSValue call_result = JS_Call(value->ctx, value->value, JS_UNDEFINED, 0, NULL);
-  if (JS_IsException(call_result)) {
-    result->is_exception = 1;
-    result->value = JS_GetException(value->ctx);
-  } else {
-    result->value = call_result;
+  if (result == NULL) {
+    JS_FreeValue(ctx, value);
+    return NULL;
   }
+  result->ctx = ctx;
+  result->value = value;
+  result->is_exception = is_exception;
+  result->alive = 1;
   if (!emb_register_value(result)) {
-    JS_FreeValue(result->ctx, result->value);
+    JS_FreeValue(ctx, value);
     free(result);
     return NULL;
   }
   return result;
+}
+
+MOONBIT_FFI_EXPORT
+void *moonbit_emb_get_global(void *raw_context, moonbit_bytes_t name) {
+  EmbContext *context = (EmbContext *)raw_context;
+  if (context == NULL || context->ctx == NULL || name == NULL) return NULL;
+  int32_t name_length = Moonbit_array_length(name);
+  if (name_length < 0 || name_length > 256) return NULL;
+  char *copy = (char *)malloc((size_t)name_length + 1);
+  if (copy == NULL) return NULL;
+  memcpy(copy, name, (size_t)name_length);
+  copy[name_length] = 0;
+  if (strlen(copy) != (size_t)name_length) {
+    free(copy);
+    return NULL;
+  }
+  JSContext *ctx = context->ctx;
+  JSValue global = JS_GetGlobalObject(ctx);
+  JSValue value = JS_GetPropertyStr(ctx, global, copy);
+  JS_FreeValue(ctx, global);
+  free(copy);
+  if (JS_IsException(value)) {
+    JSValue exception = JS_GetException(ctx);
+    JS_FreeValue(ctx, value);
+    return emb_wrap_result(ctx, exception, 1);
+  }
+  return emb_wrap_result(ctx, value, 0);
+}
+
+MOONBIT_FFI_EXPORT
+void *moonbit_emb_new_string(void *raw_context, moonbit_bytes_t bytes) {
+  EmbContext *context = (EmbContext *)raw_context;
+  if (context == NULL || context->ctx == NULL || bytes == NULL) return NULL;
+  int32_t length = Moonbit_array_length(bytes);
+  if (length < 0) return NULL;
+  JSContext *ctx = context->ctx;
+  JSValue value = JS_NewStringLen(ctx, (const char *)bytes, (size_t)length);
+  if (JS_IsException(value)) {
+    JSValue exception = JS_GetException(ctx);
+    JS_FreeValue(ctx, value);
+    return emb_wrap_result(ctx, exception, 1);
+  }
+  return emb_wrap_result(ctx, value, 0);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t moonbit_emb_context_live(void *raw_context) {
+  EmbContext *context = (EmbContext *)raw_context;
+  if (context == NULL || context->ctx == NULL) return -1;
+  int32_t count = 0;
+  for (int i = 0; i < emb_live_count; i++) {
+    if (emb_live[i]->ctx == context->ctx) count += 1;
+  }
+  return count;
+}
+
+static void *emb_call_args(void *raw, int argc, void *raw0, void *raw1) {
+  EmbValue *fn = (EmbValue *)raw;
+  if (fn == NULL || !emb_value_live(fn) || !fn->alive || fn->is_exception) return NULL;
+  if (argc < 0 || argc > 2) return NULL;
+  EmbValue *raw_args[2] = { (EmbValue *)raw0, (EmbValue *)raw1 };
+  JSValue args[2];
+  for (int i = 0; i < argc; i++) {
+    EmbValue *arg = raw_args[i];
+    if (arg == NULL || !emb_value_live(arg) || !arg->alive || arg->ctx != fn->ctx) return NULL;
+    args[i] = arg->value;
+  }
+  JSContext *ctx = fn->ctx;
+  JSValue value = JS_Call(ctx, fn->value, JS_UNDEFINED, argc, argc == 0 ? NULL : args);
+  if (JS_IsException(value)) {
+    JSValue exception = JS_GetException(ctx);
+    JS_FreeValue(ctx, value);
+    return emb_wrap_result(ctx, exception, 1);
+  }
+  return emb_wrap_result(ctx, value, 0);
+}
+
+MOONBIT_FFI_EXPORT
+void *moonbit_emb_call1(void *fn, void *arg0) {
+  return emb_call_args(fn, 1, arg0, NULL);
+}
+
+MOONBIT_FFI_EXPORT
+void *moonbit_emb_call2(void *fn, void *arg0, void *arg1) {
+  return emb_call_args(fn, 2, arg0, arg1);
+}
+
+MOONBIT_FFI_EXPORT
+void *moonbit_emb_call(void *raw) {
+  return emb_call_args(raw, 0, NULL, NULL);
 }
 
 MOONBIT_FFI_EXPORT

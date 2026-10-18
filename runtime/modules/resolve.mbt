@@ -17,6 +17,8 @@ pub struct FileIndex {
   directories : Map[String, Bool]
   package_mains : Map[String, String]
   package_dirs : Map[String, Bool]
+  package_exports : Map[String, Map[String, String]]
+  package_exported : Map[String, Bool]
 }
 
 ///|
@@ -26,6 +28,8 @@ pub fn FileIndex::new() -> FileIndex {
     directories: {},
     package_mains: {},
     package_dirs: {},
+    package_exports: {},
+    package_exported: {},
   }
 }
 
@@ -147,6 +151,37 @@ pub fn FileIndex::add_package(
 }
 
 ///|
+// Register a require-condition-selected package `exports` map. The caller has
+// already rejected unsupported conditions and wildcard patterns; this index
+// only owns encapsulation: an exports package never falls back to `main` or an
+// unexported subpath.
+pub fn FileIndex::add_package_exports(
+  self : FileIndex,
+  directory : String,
+  exports : Map[String, String],
+) -> Result[Unit, ResolveError] {
+  let normalized = match resolve_normalize(directory) {
+    Some(value) => value
+    None => return Err(EscapesRoot)
+  }
+  if normalized.length() == 0 {
+    return Err(UnsupportedSpecifier)
+  }
+  let copy : Map[String, String] = {}
+  for key, target in exports {
+    if !key.has_prefix(".") || target.length() == 0 || target.has_prefix("/") {
+      return Err(UnsupportedSpecifier)
+    }
+    copy[key] = target
+  }
+  self.package_exports[normalized] = copy
+  self.package_exported[normalized] = true
+  self.package_dirs[normalized] = true
+  self.directories[normalized] = true
+  Ok(())
+}
+
+///|
 fn resolve_parent_directory(path : String) -> String {
   let parts : Array[String] = []
   for part in path.split("/") {
@@ -209,6 +244,35 @@ fn FileIndex::resolve_package(
       current + "/node_modules/" + name
     }
     if self.package_dirs.contains(candidate) {
+      if self.package_exported.contains(candidate) {
+        let key = if subpath.length() == 0 {
+          "."
+        } else {
+          "./" + subpath
+        }
+        let exports = match self.package_exports.get(candidate) {
+          Some(value) => value
+          None => return Err(NotFound)
+        }
+        let exported = match exports.get(key) {
+          Some(value) => value
+          None => return Err(NotFound)
+        }
+        let cleaned = if exported.has_prefix("./") {
+          exported[2:].to_owned()
+        } else {
+          exported
+        }
+        let combined = candidate + "/" + cleaned
+        let target = match resolve_normalize(combined) {
+          Some(value) => value
+          None => return Err(EscapesRoot)
+        }
+        if !target.has_prefix(candidate + "/") {
+          return Err(EscapesRoot)
+        }
+        return self.resolve_candidate(target, 0)
+      }
       if subpath.length() == 0 {
         return self.resolve_candidate(candidate, 0)
       }

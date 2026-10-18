@@ -18,6 +18,8 @@ options(
     "engine_wbtest.mbt": ["native"],
     "cjs_loader.mbt": ["native"],
     "cjs_loader_wbtest.mbt": ["native"],
+    "node_prelude.mbt": ["native"],
+    "node_prelude_wbtest.mbt": ["native"],
   },
   link: {
     "native": {

@@ -718,7 +718,7 @@ test "What: native ingress status, release and trigger envelopes are bounded" {
 test "What: preload bridge install/report shapes are exact and native reports cannot be registered" {
   let secret = "0123456789abcdef0123456789abcdef"
   let digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  let request = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":1,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"apiKey\":\"fixture\",\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}"
+  let request = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":1,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"apiKey\":\"fixture\",\"exposure\":{\"apiKey\":\"fixture\",\"descriptorBytes\":1,\"functionCount\":0,\"descriptorSHA256\":\"" + digest + "\"},\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}"
   let session = Session::new(secret)
   assert_true(validate(request) is Ok(_))
   assert_true(session.register(request) is Ok(_))
@@ -730,6 +730,7 @@ test "What: preload bridge install/report shapes are exact and native reports ca
     "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"codecSHA256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}",
     "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}",
     "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"apiKey\":\"\",\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}",
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"apiKey\":\"fixture\",\"exposure\":{\"apiKey\":\"other\",\"descriptorBytes\":1,\"functionCount\":0,\"descriptorSHA256\":\"" + digest + "\"},\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}",
   ]
   for raw in malformed { assert_true(validate(raw) is Err(_)) }
 

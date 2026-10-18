@@ -358,24 +358,54 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       _ => raise BadProtocol("Preload bridge payload must be an object")
     }
     // The success acknowledgement carries {installed:true}; the request carries
-    // the bounded host-owned sources/digests plus the discovered API key.
+    // the bounded host-owned sources/digests, the discovered API key and the
+    // preview exposure metadata. Keep both shapes exact.
     if values.length() == 1 {
       match values.get("installed") {
         Some(True) | Some(False) => ()
         _ => raise BadProtocol("Preload bridge acknowledgement shape")
       }
-    } else if values.length() == 7 {
+    } else if values.length() == 8 {
       for key in ["codecSource", "pageShimSource", "isolatedSource"] {
         match values.get(key) {
           Some(String(value)) if value.length() > 0 && value.length() <= 262144 => ()
           _ => raise BadProtocol("Preload bridge source")
         }
       }
-      match values.get("apiKey") {
-      Some(String(value)) if value.length() > 0 && value.length() <= 64 => ()
-      _ => raise BadProtocol("Preload bridge api key")
-    }
-    for key in ["codecSHA256", "pageShimSHA256", "isolatedSHA256"] {
+      let api_key = match values.get("apiKey") {
+        Some(String(value)) if value.length() > 0 && value.length() <= 64 => value
+        _ => raise BadProtocol("Preload bridge api key")
+      }
+      let exposure = match values.get("exposure") {
+        Some(Object(exposure)) => exposure
+        _ => raise BadProtocol("Preload bridge exposure")
+      }
+      if exposure.length() != 4 { raise BadProtocol("Preload bridge exposure shape") }
+      let exposure_key = match exposure.get("apiKey") {
+        Some(String(value)) if value == api_key => value
+        _ => raise BadProtocol("Preload bridge exposure api key")
+      }
+      ignore(exposure_key)
+      let descriptor_bytes = identifier(exposure.get("descriptorBytes").unwrap_or(null))
+      if descriptor_bytes < 1L || descriptor_bytes > 65536L {
+        raise BadProtocol("Preload bridge exposure bytes")
+      }
+      let function_count = identifier(exposure.get("functionCount").unwrap_or(null))
+      if function_count < 0L || function_count > 256L {
+        raise BadProtocol("Preload bridge exposure functions")
+      }
+      let exposure_sha = match exposure.get("descriptorSHA256") {
+        Some(String(value)) => value
+        _ => raise BadProtocol("Preload bridge exposure digest")
+      }
+      if exposure_sha.length() != 64 { raise BadProtocol("Preload bridge exposure digest") }
+      for i = 0; i < exposure_sha.length(); i = i + 1 {
+        let c = exposure_sha[i].to_int()
+        if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) {
+          raise BadProtocol("Preload bridge exposure digest")
+        }
+      }
+      for key in ["codecSHA256", "pageShimSHA256", "isolatedSHA256"] {
         let digest = match values.get(key) {
           Some(String(value)) => value
           _ => raise BadProtocol("Preload bridge digest")

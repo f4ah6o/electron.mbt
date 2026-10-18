@@ -346,6 +346,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic, copy) NSString *bridgePageShimSource;
 @property(nonatomic, copy) NSString *bridgeIsolatedSource;
 @property(nonatomic, copy) NSString *bridgeApiKey;
+@property(nonatomic, copy) NSDictionary<NSString *, id> *bridgeExpectedExposure;
 @property(nonatomic, copy) NSString *bridgeSecret;
 @property(nonatomic, copy) NSString *bridgeGrant;
 @property(nonatomic) BOOL bridgeSourcesInstalled;
@@ -420,6 +421,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     self.bridgePageShimSource = nil;
     self.bridgeIsolatedSource = nil;
     self.bridgeApiKey = nil;
+    self.bridgeExpectedExposure = nil;
     self.bridgeSecret = nil;
     self.bridgeGrant = nil;
     self.bridgeSourcesInstalled = NO;
@@ -1516,6 +1518,14 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       replyHandler(nil, @"ELECTRON_MBT_PRELOAD_EXPOSURE_DENIED");
       return;
     }
+    BOOL admitted = YES;
+    NSDictionary<NSString *, id> *expected = self.bridgeExpectedExposure;
+    if (expected != nil) {
+      admitted = [apiKey isEqual:expected[@"apiKey"]] &&
+        [@(descriptorData.length) isEqualToNumber:expected[@"descriptorBytes"]] &&
+        [body[@"functionCount"] isEqualToNumber:expected[@"functionCount"]] &&
+        [descriptorSHA256 isEqual:expected[@"descriptorSHA256"]];
+    }
     NSDictionary *record = @{
       @"apiKey": apiKey,
       @"descriptor": descriptor,
@@ -1524,7 +1534,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       @"descriptorSHA256": descriptorSHA256,
     };
     [self.preloadExposures addObject:record];
-    replyHandler(@{@"ok": @YES}, nil);
+    replyHandler(@{@"ok": admitted ? @YES : @NO}, nil);
     // The normal path publishes after the preload status/load completes. If
     // that already happened, publish this descriptor immediately; the page API
     // still does not exist (B6-B only records authority metadata).
@@ -1751,6 +1761,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   self.bridgePageShimSource = nil;
   self.bridgeIsolatedSource = nil;
   self.bridgeApiKey = nil;
+  self.bridgeExpectedExposure = nil;
   self.bridgeSecret = nil;
   self.bridgeGrant = nil;
   self.bridgeSourcesInstalled = NO;
@@ -2296,13 +2307,15 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     NSString *pageShimSHA = payload[@"pageShimSHA256"];
     NSString *isolatedSHA = payload[@"isolatedSHA256"];
     NSString *apiKey = payload[@"apiKey"];
+    NSDictionary<NSString *, id> *exposure = payload[@"exposure"];
     BOOL strings = [codec isKindOfClass:[NSString class]] &&
       [pageShim isKindOfClass:[NSString class]] &&
       [isolated isKindOfClass:[NSString class]] &&
       [codecSHA isKindOfClass:[NSString class]] &&
       [pageShimSHA isKindOfClass:[NSString class]] &&
       [isolatedSHA isKindOfClass:[NSString class]] &&
-      [apiKey isKindOfClass:[NSString class]];
+      [apiKey isKindOfClass:[NSString class]] &&
+      [exposure isKindOfClass:[NSDictionary class]] && exposure.count == 4;
     BOOL bounds = strings && codec.length > 0 && codec.length <= 262144 &&
       pageShim.length > 0 && pageShim.length <= 262144 &&
       isolated.length > 0 && isolated.length <= 262144;
@@ -2317,7 +2330,17 @@ static BOOL bridgeApiKeyValid(NSString *key) {
         [preloadDigest(pageData) isEqualToString:pageShimSHA] &&
         [preloadDigest(isolatedData) isEqualToString:isolatedSHA];
     }
-    if (payload.count != 7 || !digests || !bridgeApiKeyValid(apiKey) ||
+    BOOL exposureValid = strings && exposure != nil &&
+      [exposure[@"apiKey"] isEqual:apiKey] &&
+      [exposure[@"descriptorBytes"] isKindOfClass:[NSNumber class]] &&
+      [exposure[@"descriptorBytes"] longLongValue] >= 1 &&
+      [exposure[@"descriptorBytes"] longLongValue] <= 65536 &&
+      [exposure[@"functionCount"] isKindOfClass:[NSNumber class]] &&
+      [exposure[@"functionCount"] longLongValue] >= 0 &&
+      [exposure[@"functionCount"] longLongValue] <= 256 &&
+      [exposure[@"descriptorSHA256"] isKindOfClass:[NSString class]] &&
+      [exposure[@"descriptorSHA256"] length] == 64;
+    if (payload.count != 8 || !digests || !bridgeApiKeyValid(apiKey) || !exposureValid ||
         !window.bridgeTransportEnabled || !window.contentAlive ||
         window.loadDone != nil || window.loadingNavigation != nil ||
         generation.longLongValue != window.generation || window.preloadSource == nil) {
@@ -2328,6 +2351,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     window.bridgePageShimSource = pageShim;
     window.bridgeIsolatedSource = isolated;
     window.bridgeApiKey = apiKey;
+    window.bridgeExpectedExposure = exposure;
     window.bridgeSourcesInstalled = YES;
     done(@"success", @{@"installed": @YES});
     return;

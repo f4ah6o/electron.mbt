@@ -35,14 +35,28 @@ Evidence:
   WKWebView); the pre-registration is `preview-key`, the real descriptor is
   `actual-key`, and the mismatch aborts the runtime (the host is dead).
 
+### Host-side actual descriptor verification (2026-10-18)
+
+`install-preload-bridge` now carries the preview exposure metadata (apiKey,
+descriptor bytes, function count, SHA-256). The native host compares the real
+WKWebView descriptor against that metadata and replies `{ok:true/false}`; the
+actual exposure is still stored/published so the Node pre-registration
+comparison can abort a mismatch.
+
+Gating the isolated hello/page on that host reply was attempted and reverted:
+the reply is asynchronous, and both B6-C and B6-D timed out because the first
+page script lost the API before the reply settled. The host verification is
+therefore **post-hoc**, not an actual-before-page gate.
+
 Limits that remain for B7:
 
 - the preview is not the actual WKWebView descriptor; the page's first script
   can run before the Node receives the actual descriptor event. A same-key
-  descriptor-only mismatch is therefore detected after the page;
+  descriptor-only mismatch is detected after the page;
 - the strict runtime must gate the **actual** descriptor before page calls
-  (host-side actual-before-page admission token) and the strict nodeless
-  runtime must port this path;
+  with a synchronous pre-page admission (the async reply is insufficient) or
+  the strict nodeless runtime; the host-side expected verification alone does
+  not close this;
 - the page-admission ordering is closed for the experimental M1 preview path
   only, not for the strict profile.
 

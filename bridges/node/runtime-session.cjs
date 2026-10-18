@@ -360,6 +360,12 @@ class ExperimentalRuntime {
               pageShimSHA256: preview.pageShimSHA256,
               isolatedSHA256: preview.isolatedSHA256,
               apiKey: preview.apiKey,
+              exposure: {
+                apiKey: preview.apiKey,
+                descriptorBytes: preview.descriptorBytes,
+                functionCount: preview.functionCount,
+                descriptorSHA256: preview.descriptorSha256,
+              },
             });
             runtime.preRegisterExposure(this, generation,
               pathToFileURL(real).href, preview);

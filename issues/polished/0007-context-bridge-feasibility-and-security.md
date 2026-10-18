@@ -144,6 +144,29 @@ Electron も incoming IPC の sender/frame 検証を求める一方、app が公
 4. 2 checkpoint の判定後に `go` / `no-go` / `blocked by named missing evidence` のいずれかを必ず残す。OS/compiler がない場合は未実行であり、技術的不可能を結論にしない。
 5. no-go なら原因、失敗 fixture、対応 public API、再開に必要な新情報を ADR に残し、初版 adapted の作業を継続する。期限が来たことを理由に safety gate を通さない。
 
+**2026-10-18 pre-registration:** B5 は [docs/0038](../../docs/0038-m0-context-bridge-spike.md)
+で、修復候補を「synchronous cross-world `dispatchEvent` + 両 world の closure
+にだけ渡す per-probe secret の HMAC + per-document sessionId/challenge」に限定
+して開始する。checkpoint 1 は unchanged `fixtures/oracle/preload.cjs` の
+first-script sync return/throw と page response forgery の失敗、checkpoint 2 は
+callback・nested/reentrant・Promise・frozen copy・navigation revocation。失敗時は
+機能追加を止め、`no-go` または named missing evidence を記録する。これは
+production `contextBridge` の実装開始ではなく、B6 の前提を判定する test-only
+spike である。
+
+**2026-10-18 result:** macOS 26.5.2 / WebKit `21624.2.5.11.8` 上の test-only
+spike は checkpoint 1（first-script sync return/throw、page forgery 不受容、
+secret 非可視）と checkpoint 2（callback・nested/reentrant・Promise・frozen
+copy・sandboxed child・reload/stale grant）を PASS し、decision を **go** とした。
+unchanged oracle observation は pinned validator を満たした。ただしこれは
+test-only の shared-DOM/HMAC candidate であり Electron の engine-level proxy
+ではない。Electron baseline differential は local では NOT RUN（CI で収集後に
+比較）、B6 の production loader・MoonBit authority/lifetime/bounds・native
+sender/document authority・独立 security review は未実装である。strict
+profile は **blocked** のまま、original preload は NOT_EXECUTED、
+`compatible:false` と M0 OPEN は不変。詳細は
+[docs/0038](../../docs/0038-m0-context-bridge-spike.md)。
+
 ### 6. native attestation と document lease
 
 #### 6.1 PR #13 の再利用
@@ -285,7 +308,8 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 | B3 adapted manifest / page proxy | 新規 `bridges/preload/` のadapted adapter、`platform/macos/`、`compatibility/` | B1/B2、0006。adapter-install observation、ingress/loadの分離、bounded first-call queueをactual native senderで実証 |
 | B4 adapted events / disposal | `bridges/preload/` のadapted page leaf、`core/`、`fixtures/` | B3/0010。Moji固定topicと同期local disposer、登録/配送/解除/revoke、diagnosticsのnative証跡 |
 | B5 strict public primitive spike | test-only native probeと`fixtures/worlds/` | B1。§5のbounded go/no-go。失敗をprofile変更で隠さない |
-| B6 strict preload shim / codec | isolated preload adapter、realm registry、MoonBit boundary | **B5 goの場合のみ**。require/exposure/type/error/callbackの同一fixture acceptance |
+| B6 strict preload shim / codec | isolated preload adapter、realm registry、MoonBit boundary | **B5 goの場合のみ**。B6-A exposure authority contract は実装済み。require/transport/page shim/type/error/callback の同一fixture acceptance は未達 |
+| B6-A exposure authority (2026-10-18) | `core/context_bridge.mbt`, `bridge/context_bridge.mbt`, tests | 実装済み contract。API key/descriptor/クォータ/lifetime/`expose` dispatch のみ。transport・preload loader・native host・独立 review は未実装 |
 | B7 exact profile evidence | `compatibility/`、native/Node-less CI、evidence validator | B3/B4またはB6、0010。profile別required caseとnegative全てのnative証跡 |
 
 1. B1/B2 と main engine の実装は並行可能。B5 が no-go でも B3/B4 の独立した adapted 実装を止める必要はない。
@@ -393,6 +417,10 @@ runtime を変更しない文書整備のため、ここでは runtime/oracle/GU
 B1 oracle、B2 統合、local listener/codec の contract 実装、拒否専用の native ingress の準備は上記と並行して着手できる。
 
 ## 変更履歴
+
+- 2026-10-18: B5 repaired-primitive spike の test-only 実測を追記。checkpoint 1/2 PASS・decision go（tested macOS/WebKit）だが、M0 は OPEN、strict は blocked、B6 と独立 review は未達。
+
+- 2026-10-18: B6-A exposure authority contract を実装（MoonBit exposure registry、quotas/duplicate/lifetime、private `expose`/`release-exposure` dispatch、JS/native/Node tests）。transport・preload loader・page shim・native host integration・独立 review は未達のため strict は blocked、original preload は NOT_EXECUTED。設計は `docs/0039`。
 
 - 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
 

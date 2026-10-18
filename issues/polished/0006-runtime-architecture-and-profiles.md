@@ -56,7 +56,7 @@ Issue 0001と現行AGENTSが規定する実Node利用は既存 `desktop-core-v1`
 | ID | Main | preload / bridge | 初期状態 | 表示できる達成 |
 | --- | --- | --- | --- | --- |
 | `desktop-core-v1` | 実Node | 厳密contextBridgeを目標 | M0 OPEN / `compatible:false` | Node-backed契約・実機probeの個別結果 |
-| `electron-nodeless-v1` | QuickJS | 元preload、同期return/throwを含む厳密互換 | blocked。PR #3の初版No-Goを保持 | strict gateを新証拠で閉じた範囲だけ |
+| `electron-nodeless-v1` | QuickJS | 元preload、同期return/throwを含む厳密互換 | blocked。B5 test-only go（tested macOS/WebKit）を保持し、B6 production/security review 待ち | strict gateを新証拠で閉じた範囲だけ |
 | `electron-nodeless-adapted-v1` | QuickJS | 監査済み生成adapter、列挙した非同期API | planned / 実装・実アプリ未検証 | `App Scenario Supported (adapted)` |
 | `moonbit-native-v1` | MoonBit | 新規アプリ向け契約 | 別用途 / 今回の実用化判定対象外 | MoonBitアプリ実行。既存Electron互換ではない |
 
@@ -257,7 +257,7 @@ shared schema/ownershipの受入と受入表にある将来native/release受入�
 | 判断が必要な点 | 判断owner / 必要な証拠 | 再開条件・依存scope |
 | --- | --- | --- |
 | adaptedのload完了前に必要なactual document identityを取得できるか | WebView/security担当。0007のfirst-call、iframe、旧generation、偽readyのnative fixture | 必要観測が同じpublic API構成でPASSしたらearly ingressを接続。profile/schema/sole-owner実装の着手は妨げない |
-| 任意の厳密sync contextBridgeが成立するか | bridge担当＋独立reviewer。0007 B5の有限Go/No-Go証拠 | Goと別ADRが揃ったscopeだけstrictを追加。No-Goでもadaptedと共有契約は継続 |
+| 任意の厳密sync contextBridgeが成立するか | bridge担当＋独立reviewer。0007 B5の有限Go/No-Go証拠とB6 production実装 | B5 test-only go は記録済み。B6 production loader・MoonBit authority・native sender/document authority・独立review・Electron baseline differential が揃ったscopeだけstrictを追加。No-Goでもadaptedと共有契約は継続 |
 
 ## 変更履歴
 

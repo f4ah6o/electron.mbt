@@ -8,14 +8,14 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 129, passed: 129, failed: 0."
+      "detail": "Total tests: 141, passed: 141, failed: 0."
     },
     {
       "id": "moon-native",
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 148, passed: 148, failed: 0."
+      "detail": "───╯"
     },
     {
       "id": "npm-test",
@@ -111,6 +111,16 @@
       "detail": {
         "status": "PASS",
         "probe": "native-supervisor-retry"
+      }
+    },
+    {
+      "id": "m0-context-bridge",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": {
+        "status": "PASS",
+        "probe": "m0-context-bridge-spike"
       }
     },
     {

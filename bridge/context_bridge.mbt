@@ -60,6 +60,11 @@ pub fn context_bridge_dispatch(runtime : @core.Runtime, raw : String) -> String 
     "register" => ["op", "window", "generation", "origin", "mainFrame", "channel", "kind"]
     "validate" | "release" | "settle" =>
       ["op", "window", "generation", "origin", "mainFrame", "channel", "kind", "id"]
+    "expose" =>
+      ["op", "window", "generation", "origin", "mainFrame", "channel", "apiKey",
+       "descriptorBytes", "functionCount", "descriptorSha256"]
+    "release-exposure" =>
+      ["op", "window", "generation", "origin", "mainFrame", "channel", "id", "apiKey"]
     _ => return invalid
   }
   if !bridge_shape(value, keys) { return invalid }
@@ -87,6 +92,44 @@ pub fn context_bridge_dispatch(runtime : @core.Runtime, raw : String) -> String 
     True => true
     False => false
     _ => return invalid
+  }
+  if operation == "expose" {
+    let descriptor_bytes = match arg_int(value, "descriptorBytes") {
+      Ok(number) => number
+      Err(_) => return invalid
+    }
+    let function_count = match arg_int(value, "functionCount") {
+      Ok(number) => number
+      Err(_) => return invalid
+    }
+    let response : Json = match runtime.register_bridge_exposure(
+      window,
+      generation,
+      origin,
+      main_frame,
+      channel,
+      text(value, "apiKey"),
+      descriptor_bytes,
+      function_count,
+      text(value, "descriptorSha256"),
+    ) {
+      Ok(id) => { "ok": true, "id": id.to_json() }
+      Err(error) => { "ok": false, "code": error.code().to_json() }
+    }
+    return response.stringify()
+  }
+  if operation == "release-exposure" {
+    let id = match bridge_id(field(value, "id")) {
+      Some(id) => id
+      None => return invalid
+    }
+    let response : Json = match runtime.release_bridge_exposure(
+      window, generation, origin, main_frame, channel, id, text(value, "apiKey"),
+    ) {
+      Ok(released) => { "ok": true, "released": released.to_json() }
+      Err(error) => { "ok": false, "code": error.code().to_json() }
+    }
+    return response.stringify()
   }
   let kind : @core.BridgeHandleKind = match text(value, "kind") {
     "function" => FunctionProxy
@@ -139,4 +182,9 @@ pub fn context_bridge_retained(runtime : @core.Runtime, id : Int32) -> Bool {
 ///|
 pub fn context_bridge_count(runtime : @core.Runtime) -> Int {
   runtime.bridge_handle_count()
+}
+
+///|
+pub fn context_bridge_exposure_count(runtime : @core.Runtime) -> Int {
+  runtime.bridge_exposure_count()
 }

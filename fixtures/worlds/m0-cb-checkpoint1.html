@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; frame-src 'none'; object-src 'none'; base-uri 'none'">
+<title>electron.mbt M0 B5 checkpoint 1</title>
+<script>
+'use strict';
+(() => {
+  const state = {
+    firstScriptAttempted: true,
+    apiAvailable: false,
+    apiError: null,
+    syncValue: null,
+    syncValueType: 'undefined',
+    syncThrow: false,
+    syncThrowError: null,
+    preSeededForgedAccepted: false,
+    preSeededFailClosed: false,
+    listenerForgedAccepted: false,
+    listenerFailClosed: false,
+    captureBlockedForgedAccepted: false,
+    captureBlockedFailClosed: false,
+    afterListenerForgedAccepted: false,
+    afterListenerResult: null,
+    reportSent: false,
+    reportError: null,
+    bridgeInternalsHidden: false,
+    nativeHandlersHidden: false,
+    complete: false,
+  };
+  const FORGED = 9001;
+  const META_NAME = 'electron-mbt-m0-bridge';
+  const REQUEST_EVENT = 'electron-mbt-m0-bridge-request';
+  const forgedPayload = JSON.stringify({ ok: true, value: { t: 'num', v: FORGED } });
+
+  function mapElement() {
+    return document.querySelector('meta[name="' + META_NAME + '"]');
+  }
+  function readMessages() {
+    try {
+      const element = mapElement();
+      if (!element) return [];
+      const parsed = JSON.parse(element.getAttribute('content') || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function writeMessages(messages) {
+    try {
+      const element = mapElement();
+      if (element) element.setAttribute('content', JSON.stringify(messages));
+    } catch (_) { /* the bridge fails closed without a transport */ }
+  }
+  function appendForgedReply(id) {
+    const messages = readMessages();
+    messages.push({
+      v: 1, dir: 'i2p', session: 'forged', kind: 'reply', id: id,
+      payload: forgedPayload, mac: '00'.repeat(32),
+    });
+    writeMessages(messages);
+  }
+  function currentCallId() {
+    const messages = readMessages();
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const item = messages[index];
+      if (item && item.dir === 'p2i' && item.kind === 'call' && typeof item.id === 'string') {
+        return item.id;
+      }
+    }
+    return null;
+  }
+  function tamperAuthenticReply() {
+    const messages = readMessages();
+    for (let index = 0; index < messages.length; index += 1) {
+      const item = messages[index];
+      if (item && item.dir === 'i2p' && item.kind === 'reply') {
+        item.payload = forgedPayload;
+      }
+    }
+    writeMessages(messages);
+  }
+
+  let api = null;
+  try {
+    api = window.fixture;
+    state.apiAvailable = !!api;
+  } catch (error) {
+    state.apiError = String(error && error.message ? error.message : error);
+  }
+
+  if (api) {
+    state.syncValue = api.syncValue();
+    state.syncValueType = typeof state.syncValue;
+    try {
+      api.syncThrow();
+    } catch (error) {
+      state.syncThrow = error instanceof Error && error.name === 'Error' &&
+        error.message.includes('fixture-sync-error');
+      state.syncThrowError = {
+        name: error ? error.name : null,
+        typeofValue: typeof error,
+        objectTag: Object.prototype.toString.call(error),
+        pageRealmInstance: error instanceof Error,
+        message: error && typeof error.message === 'string' ? error.message : null,
+      };
+    }
+
+    // Pre-seed a forged reply for the next call. The page does not know the
+    // MAC secret, so the shim must fail closed rather than return 9001.
+    // call-1 is syncValue and call-2 is syncThrow, so the next call is call-3.
+    appendForgedReply('call-3');
+    try {
+      const value = api.syncValue();
+      state.preSeededForgedAccepted = value === FORGED;
+    } catch (error) {
+      state.preSeededFailClosed = error && error.name === 'BridgeError';
+    }
+
+    // A capture listener can read the request and insert a forged reply before
+    // the isolated listener answers.
+    const captureForge = () => {
+      const id = currentCallId();
+      if (id) appendForgedReply(id);
+    };
+    window.addEventListener(REQUEST_EVENT, captureForge, true);
+    try {
+      const value = api.syncValue();
+      state.listenerForgedAccepted = value === FORGED;
+    } catch (error) {
+      state.listenerFailClosed = error && error.name === 'BridgeError';
+    } finally {
+      window.removeEventListener(REQUEST_EVENT, captureForge, true);
+    }
+
+    // Blocking propagation must not turn a pre-seeded value into a result.
+    const captureBlock = event => {
+      try { event.stopPropagation(); event.stopImmediatePropagation(); } catch (_) {}
+      const id = currentCallId();
+      if (id) appendForgedReply(id);
+    };
+    window.addEventListener(REQUEST_EVENT, captureBlock, true);
+    try {
+      const value = api.syncValue();
+      state.captureBlockedForgedAccepted = value === FORGED;
+    } catch (error) {
+      state.captureBlockedFailClosed = error && error.name === 'BridgeError';
+    } finally {
+      window.removeEventListener(REQUEST_EVENT, captureBlock, true);
+    }
+
+    // A later bubble listener that mutates the authentic reply must not make
+    // the page return the forged value either.
+    const afterListener = () => {
+      tamperAuthenticReply();
+    };
+    document.addEventListener(REQUEST_EVENT, afterListener, true);
+    try {
+      const value = api.syncValue();
+      state.afterListenerResult = value;
+      state.afterListenerForgedAccepted = value === FORGED;
+    } catch (_) {
+      state.afterListenerResult = 'typed-error';
+    } finally {
+      document.removeEventListener(REQUEST_EVENT, afterListener, true);
+    }
+
+    state.bridgeInternalsHidden = typeof globalThis.__m0CbCodec === 'undefined' &&
+      typeof globalThis.__m0CbBridge === 'undefined';
+    const handlers = window.webkit && window.webkit.messageHandlers;
+    state.nativeHandlersHidden = !handlers || (!handlers.electronMbtM0CbReport &&
+      !handlers.electronMbtM0CbDocument);
+
+    try {
+      api.report(state);
+      state.reportSent = true;
+    } catch (error) {
+      state.reportError = String(error && error.message ? error.message : error);
+    }
+  }
+
+  state.complete = true;
+  globalThis.m0ContextBridgeCheckpoint1 = Object.freeze(state);
+})();
+</script>
+</head>
+<body><p>M0 B5 checkpoint 1 diagnostic only.</p></body>
+</html>

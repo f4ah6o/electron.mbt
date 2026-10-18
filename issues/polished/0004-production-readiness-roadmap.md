@@ -55,7 +55,7 @@ PR #6のsync probe validatorは、候補7件の `observed:{}` を拒否すべき
 
 **実用化の最初の目標を、NodeなしのmacOSアプリとしてMojiの代表操作を安全に完了し、他のMacへ署名済み成果物を配れる状態に置く。** Main engineはPR #3で選定済みのQuickJS 2026-06-04、UIはAppKit/WKWebView、lifecycle・権限・transport・互換判定の正本はMoonBitとする。JSはrealm内の関数identityやengine境界に必要なleafへ限定する。
 
-厳密な `electron-nodeless-v1` の同期contextBridgeは現時点で **No-Go / blocked**。対象public APIと実証したfixtureに関する現状判断であり、全OS・将来の方式に対する不可能証明ではない。有限の追加spikeで根拠を更新する。既存の `electron-nodeless-adapted-v1` は、generated preload adapterと変更した依存・振舞いを明示した独立profileとして実装する。native sender/document/grantの受入に失敗した場合はadaptedもblockedにする。[P3], [D7]
+厳密な `electron-nodeless-v1` の同期contextBridgeは現時点で **blocked**。対象public APIと実証したfixtureに関する現状判断であり、全OS・将来の方式に対する不可能証明ではない。2026-10-18 の test-only B5 repaired-primitive spike は macOS 26.5.2 / WebKit `21624.2.5.11.8` で checkpoint 1/2 PASS・decision go を記録したが、これは Electron engine proxy ではなく、B6 の production loader・MoonBit authority/lifetime/bounds・native sender/document authority・独立 review は未達のため strict は blocked のまま。CI の Electron baseline differential も必要。既存の `electron-nodeless-adapted-v1` は、generated preload adapterと変更した依存・振舞いを明示した独立profileとして実装する。native sender/document/grantの受入に失敗した場合はadaptedもblockedにする。[P3], [D7]
 
 0001の `desktop-core-v1` は実Nodeを用いる別経路として保持する。Node-lessの実装開始時に共存範囲と `AGENTS.md` の適用をADRで具体化し、既存Node経路を無断に置換しない。新規MoonBitアプリ向け `moonbit-native-v1` が動いても、既存Electronアプリの移行実績へ数えない。
 

@@ -23,6 +23,7 @@ pub(all) enum RuntimeError {
   InvalidPayload
   UnknownRequest
   UnknownBridgeHandle
+  UnknownBridgeExposure
   AlreadyCompleted
   IdExhausted
 } derive(Eq)
@@ -57,6 +58,7 @@ pub fn RuntimeError::code(self : RuntimeError) -> String {
     InvalidPayload => "InvalidPayload"
     UnknownRequest => "UnknownRequest"
     UnknownBridgeHandle => "UnknownBridgeHandle"
+    UnknownBridgeExposure => "UnknownBridgeExposure"
     AlreadyCompleted => "AlreadyCompleted"
     IdExhausted => "IdExhausted"
   }
@@ -85,6 +87,8 @@ pub struct Runtime {
   pending : Map[Int32, Pending]
   bridge_handles : Map[Int32, BridgeHandle]
   mut next_bridge_handle : Int32
+  bridge_exposures : Map[Int32, BridgeExposure]
+  mut next_bridge_exposure : Int32
   terminal : Array[Int32]
   cancelled : Array[Int32]
   ipc_listeners : Array[MainListener]
@@ -102,6 +106,8 @@ pub fn Runtime::new() -> Runtime {
     pending: {},
     bridge_handles: {},
     next_bridge_handle: 1,
+    bridge_exposures: {},
+    next_bridge_exposure: 1,
     terminal: [],
     cancelled: [],
     ipc_listeners: [],
@@ -155,6 +161,7 @@ pub fn Runtime::stop(self : Runtime) -> Unit {
   self.pending.clear()
   self.ipc_listeners.clear()
   self.bridge_handles.clear()
+  self.bridge_exposures.clear()
   self.queue_bytes = 0
 }
 

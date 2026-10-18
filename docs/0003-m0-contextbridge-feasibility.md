@@ -1,6 +1,6 @@
 # M0 isolated synchronous contextBridge feasibility — public WKWebView diagnostic
 
-Status: **feasibility probe only; M0 OPEN, no production `contextBridge`.** PR #2 remains Draft and `compatibility/manifest.json` keeps `compatible:false` and row C planned. The unchanged Electron 44.7.0 oracle exercises an actual Electron preload; this diagnostic intentionally does **not** implement that preload in electron.mbt.
+Status: **feasibility probes only; M0 OPEN, no production `contextBridge`.** The separate B5 repaired-primitive spike recorded a `go` on one macOS/WebKit build (see below), but it is test-only and does not close M0. The unchanged Electron 44.7.0 oracle exercises an actual Electron preload; this diagnostic intentionally does **not** implement that preload in electron.mbt. `compatibility/manifest.json` keeps `compatible:false` and row C planned, and ordinary `run`/`pack` stay fail-closed.
 
 ## Pinned Electron 44.7.0 sandboxed preload reference
 
@@ -130,6 +130,37 @@ the page or child. The candidate's
 
 **Critical security negative:** the page can install a later event listener and overwrite the reply on the shared DOM after the isolated listener responds, and can synthesize invocation events itself. The additional test-only echo operation checks whether that same synthetic event causes the isolated world to send a main-frame-attributed native message even though the page cannot directly access its message handler. This native reply is asynchronous and gives the page no privileges in the probe. The native observer cannot infer the initiating realm from `frameInfo` or a source field supplied by JavaScript. The candidate deliberately measures whether the page reads that forged value. Therefore the shared DOM, a CustomEvent, page-supplied token, DOM attribute and callback ID are **not** sender or response authentication. Even if the synchronous primitive probe succeeds, this is not a privileged IPC transport and must never be promoted to production based on its timing result. Tests independently confirm the isolated-side invocation count, but this test-only counter does not itself establish an authenticated page sender.
 
+## B5 repaired-primitive spike (2026-10-18)
+
+A separate test-only spike, [docs/0038](0038-m0-context-bridge-spike.md),
+re-investigated the "repaired renderer public primitive" candidate required by
+issue 0007 §5.1. It installed a page-world shim and a named isolated
+`WKContentWorld` shim at document start, executed the **unchanged**
+`fixtures/oracle/preload.cjs` through a test-only CommonJS wrapper, and used
+synchronous shared-DOM `dispatchEvent` with a per-probe HMAC-SHA-256 secret
+and a per-document session/grant. On macOS 26.5.2 / WebKit
+`21624.2.5.11.8`, checkpoint 1 (first-script sync return/throw, forged replies
+not accepted, secret not observable) and checkpoint 2 (callbacks,
+nested/reentrant calls, Promise, frozen copies, isolated primordials,
+sandboxed child denial, reload and stale-grant rejection) passed. The unchanged
+oracle observation matched the pinned validator on both documents.
+
+**Decision: `go` for the tested environment, not M0 closure.** The Electron
+baseline differential was NOT RUN in the local spike because no pinned
+Electron install was present; CI runs it after collecting the baseline. The
+candidate is a test-only shared-DOM/HMAC mechanism, not Electron's
+engine-level proxy. B6 must still implement a production preload/bridge leaf,
+native document/frame authority, full value/error/callback/Promise semantics
+and an independent security review. Strict profile stays blocked; the
+original preload stays `NOT_EXECUTED`; `compatible:false` is unchanged.
+
+B6-A has since implemented the MoonBit-owned exposure authority contract
+(bounded API keys/descriptors, duplicate/quota/lifecycle policy and the
+private `expose`/`release-exposure` dispatch) without adding a transport,
+page API, preload loader or native-host integration. See
+[docs/0039](0039-b6-strict-context-bridge.md). This is contract work, not an
+M0 or strict-compatibility result.
+
 ## Architecture verdict and next acceptance gate
 
 1. The current public `WKContentWorld` APIs create isolated JavaScript namespaces while sharing the document DOM; they do not automatically create a cross-realm function proxy.
@@ -142,4 +173,5 @@ the page or child. The candidate's
 - [Apple WKContentWorld](https://developer.apple.com/documentation/webkit/wkcontentworld) — isolated JavaScript namespaces, shared DOM, document-scoped state.
 - [Apple WKScriptMessageHandlerWithReply](https://developer.apple.com/documentation/webkit/wkscriptmessagehandlerwithreply) and [WKUserContentController reply handler registration](https://developer.apple.com/documentation/webkit/wkusercontentcontroller/addscriptmessagehandler%28_%3Acontentworld%3Aname%3A%29?language=objc) — asynchronous native reply channel scoped to a content world.
 - [Electron contextBridge API](https://www.electronjs.org/docs/latest/api/context-bridge) — synchronous cross-world functions, copied/frozen values and callbacks.
-- [Parent feasibility and security contract](../issues/open/0001-electron-compatible-lightweight-runtime.md) §6.2 and §10.
+- [B5 repaired-primitive spike](0038-m0-context-bridge-spike.md)
+- [Parent feasibility and security contract](../issues/polished/0001-electron-compatible-lightweight-runtime.md) §6.2 and §10.

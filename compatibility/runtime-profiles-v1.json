@@ -44,7 +44,7 @@
         "native-ingress",
         "app-scenario"
       ],
-      "blockedReason": "strict synchronous isolated contextBridge remains No-Go/blocked; EP-07 finite spike and public-primitive evidence are required"
+      "blockedReason": "B5 test-only repaired-primitive spike recorded go on the tested macOS/WebKit build and B6-A implemented the MoonBit exposure authority contract; B6 production transport/preload loader, native sender/document authority, page shim/semantics and independent security review remain required; strict synchronous isolated contextBridge stays blocked"
     },
     "electron-nodeless-adapted-v1": {
       "engine": "quickjs",

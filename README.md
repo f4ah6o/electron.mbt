@@ -2,13 +2,13 @@
 
 MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/polished/0001-electron-compatible-lightweight-runtime.md).
 
-**Status: M0 gates open; experimental macOS M1 native-window path runs an unchanged CommonJS fixture. NOT an Electron-compatible runtime release.** The implementation contains executable core contracts, admission inputs, feasibility probes and a constrained native host. The isolated synchronous `contextBridge` remains unresolved. Standard `run` and `pack` still reject; an explicit `run --experimental-m1` profile can load static HTML in a real WKWebView with no preload or renderer IPC. The design issues are organized under `issues/polished`; their runtime acceptance criteria remain unmet.
+**Status: M0 gates open; experimental macOS M1 native-window path runs an unchanged CommonJS fixture. NOT an Electron-compatible runtime release.** The implementation contains executable core contracts, admission inputs, feasibility probes and a constrained native host. Production isolated synchronous `contextBridge` remains unimplemented; a test-only B5 repaired-primitive spike recorded `go` on one macOS/WebKit build, and B6-A added the MoonBit-owned exposure authority contract, but that is not an Electron engine proxy or a production transport and M0 stays OPEN. Standard `run` and `pack` still reject; an explicit `run --experimental-m1` profile can load static HTML in a real WKWebView with no preload or renderer IPC. The design issues are organized under `issues/polished`; their runtime acceptance criteria remain unmet.
 
 ## Implemented paths
 
 | Path | What works now | What it does not prove |
 | --- | --- | --- |
-| `core/` | MoonBit lifecycle, monotonic handles, native-ack state, close/quit cancellation, document generations, grants, bounded requests, exactly-once terminal bookkeeping, pinned-baseline and profile admission | Complete Electron event ordering, native sender authentication or a fully compatible desktop host |
+| `core/` | MoonBit lifecycle, monotonic handles, B6-A exposure authority, native-ack state, close/quit cancellation, document generations, grants, bounded requests, exactly-once terminal bookkeeping, pinned-baseline and profile admission | Complete Electron event ordering, native sender authentication or a fully compatible desktop host |
 | `bridge/` | Compiled MoonBit CJS exports, state/diagnostic contracts, host session bridge, `validate_baseline`, `validate_profile`, main-local IPC registries | A replacement of MoonBit lifecycle with handwritten JavaScript |
 | `scripts/` | Bounded saved-baseline admission, probe-report validation, profile/manifest/evidence admission, app inventory/pruning/SBOM and governance validation, native-host smoke/fault, native-supervisor handshake/fault/retry harnesses and preview-readiness validation, G0–G4 gate reports and full state verification | Actual Electron, native, app or compatibility evidence by itself |
 | `compatibility/` | Runtime profiles, evidence schema v2, app records for Moji/jmd, decision/risk/component ledgers; schema 1 manifest remains active | A verified profile, app scenario, SBOM or release |
@@ -75,7 +75,7 @@ Linux is used for contract and transport tests only. There is no Linux GUI backe
    node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1
    ```
 
-   See [experimental M1 native runner](docs/0002-native-host.md) for its exact supported and unsupported APIs, OS-close limitations, secure boundaries and evidence. This is a deliberately partial profile. The separate `node scripts/m0-bridge-probe.cjs` diagnostic measures isolated-world native Promise replies and a deliberately **untrusted** DOM-event synchronous candidate over two real WKWebView documents. It does not enable `contextBridge`; see [M0 feasibility evidence](docs/0003-m0-contextbridge-feasibility.md).
+   See [experimental M1 native runner](docs/0002-native-host.md) for its exact supported and unsupported APIs, OS-close limitations, secure boundaries and evidence. This is a deliberately partial profile. The separate `node scripts/m0-bridge-probe.cjs` diagnostic measures isolated-world native Promise replies and a deliberately **untrusted** DOM-event synchronous candidate over two real WKWebView documents. The B5 `node scripts/m0-context-bridge-probe.cjs` spike runs the unchanged oracle preload through a test-only synchronous shared-DOM/HMAC candidate and records a bounded go/no-go; it does not enable production `contextBridge` or the original preload. See [B5 spike results](docs/0038-m0-context-bridge-spike.md) and [M0 feasibility evidence](docs/0003-m0-contextbridge-feasibility.md).
 
 6. To collect a reference baseline, install Electron **44.7.0** separately, then pass its actual executable path:
 

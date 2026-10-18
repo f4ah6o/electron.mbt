@@ -7,7 +7,7 @@ It exits 0 only when every command behaves as expected, including the expected
 
 ## Result
 
-16 checks, 0 unexpected failures:
+17 checks, 0 unexpected failures:
 
 - `moon test --target js`
 - `moon test --target native`
@@ -19,6 +19,7 @@ It exits 0 only when every command behaves as expected, including the expected
 - `scripts/m1-native-supervisor.cjs`
 - `scripts/m1-native-supervisor-fault.cjs`
 - `scripts/m1-native-supervisor-retry.cjs`
+- `scripts/m0-context-bridge-probe.cjs` (test-only B5 spike; checkpoint 1/2 PASS, decision go on the tested macOS/WebKit build)
 - `scripts/m1-source-snapshot.cjs`
 - `scripts/adapted-preload-check.cjs`
 - `scripts/adapted-api-check.cjs`

@@ -387,3 +387,249 @@ test "repeated document revocation stays bounded and IDs keep increasing" {
     runtime.grant(window, generation, "read-text") |> ignore
   }
 }
+
+///|
+fn bridge_test_sha() -> String {
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}
+
+///|
+fn bridge_register(
+  runtime : Runtime,
+  window : Int32,
+  generation : Int32,
+  key : String,
+  descriptor_bytes : Int32,
+  function_count : Int32,
+  descriptor_sha256 : String,
+) -> Result[Int32, RuntimeError] {
+  runtime.register_bridge_exposure(
+    window,
+    generation,
+    "file:///fixture/",
+    true,
+    "read-text",
+    key,
+    descriptor_bytes,
+    function_count,
+    descriptor_sha256,
+  )
+}
+
+///|
+fn bridge_test_exposure(
+  runtime : Runtime,
+  window : Int32,
+  generation : Int32,
+  key : String,
+) -> Int32 {
+  match bridge_register(runtime, window, generation, key, 128, 2, bridge_test_sha()) {
+    Ok(id) => id
+    Err(_) => abort("bridge fixture exposure registration failed")
+  }
+}
+
+///|
+test "bridge exposures validate page names/descriptors and release without reuse" {
+  let (runtime, window, generation) = live_runtime()
+  let id = bridge_test_exposure(runtime, window, generation, "fixture")
+  assert_eq(runtime.bridge_exposure_count(), 1)
+  assert_eq(runtime.bridge_exposure_metrics(id), Some((128, 2, bridge_test_sha())))
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "fixture",
+  ) is Ok(_))
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "other",
+  ) is Err(Denied))
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", 99, "fixture",
+  ) is Err(UnknownBridgeExposure))
+  assert_eq(UnknownBridgeExposure.code(), "UnknownBridgeExposure")
+  assert_true(runtime.release_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "fixture",
+  ) is Ok(true))
+  assert_true(runtime.release_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "fixture",
+  ) is Ok(false))
+  assert_eq(runtime.bridge_exposure_count(), 0)
+  let next = bridge_test_exposure(runtime, window, generation, "fixture")
+  assert_true(next > id)
+}
+
+///|
+test "bridge exposure metadata rejects untrusted names sizes and authority" {
+  let (runtime, window, generation) = live_runtime()
+  let sha = bridge_test_sha()
+  for key in ["", "window", "document", "globalThis", "process", "require",
+    "module", "exports", "electron", "__proto__", "prototype", "constructor",
+    "line\nbreak"] {
+    assert_true(bridge_register(runtime, window, generation, key, 128, 2, sha) is Err(InvalidPayload))
+  }
+  assert_true(bridge_register(runtime, window, generation, "fixture", 0, 2, sha) is Err(InvalidPayload))
+  assert_true(bridge_register(runtime, window, generation, "fixture", 65537, 2, sha) is Err(LimitExceeded))
+  assert_true(bridge_register(runtime, window, generation, "fixture", 128, -1, sha) is Err(InvalidPayload))
+  assert_true(bridge_register(runtime, window, generation, "fixture", 128, 257, sha) is Err(LimitExceeded))
+  assert_true(bridge_register(runtime, window, generation, "fixture", 128, 2, "") is Err(InvalidPayload))
+  assert_true(bridge_register(runtime, window, generation, "fixture", 128, 2, "f") is Err(InvalidPayload))
+  // The helper fixes the origin, so check authority through the direct call.
+  assert_true(runtime.register_bridge_exposure(
+    window, generation, "https://attacker.invalid", true, "read-text", "fixture", 128, 2, sha,
+  ) is Err(Denied))
+  assert_true(runtime.register_bridge_exposure(
+    window, generation, "file:///fixture/", false, "read-text", "fixture", 128, 2, sha,
+  ) is Err(Denied))
+  assert_true(runtime.register_bridge_exposure(
+    window, generation, "file:///fixture/", true, "ungranted", "fixture", 128, 2, sha,
+  ) is Err(Denied))
+  assert_true(runtime.register_bridge_exposure(
+    window, generation + 1, "file:///fixture/", true, "read-text", "fixture", 128, 2, sha,
+  ) is Err(StaleDocument))
+  assert_eq(runtime.bridge_exposure_count(), 0)
+  assert_eq(runtime.next_bridge_exposure, 1)
+}
+
+///|
+test "bridge exposures reject duplicate page names per document" {
+  let (runtime, window, generation) = live_runtime()
+  let id = bridge_test_exposure(runtime, window, generation, "fixture")
+  assert_true(bridge_register(runtime, window, generation, "fixture", 128, 2, bridge_test_sha()) is Err(Denied))
+  assert_eq(runtime.bridge_exposure_count(), 1)
+  let next_generation = match runtime.navigate(window) {
+    Ok(value) => value
+    Err(_) => abort("bridge fixture navigation failed")
+  }
+  runtime.activate_document(window, next_generation, "file:///fixture/") |> ignore
+  runtime.grant(window, next_generation, "read-text") |> ignore
+  let next_id = bridge_test_exposure(runtime, window, next_generation, "fixture")
+  assert_true(next_id > id)
+  assert_eq(runtime.bridge_exposure_count(), 1)
+}
+
+///|
+test "bridge exposure quotas bound one document and the runtime" {
+  let (runtime, window, generation) = live_runtime()
+  for index in 0..<32 {
+    bridge_test_exposure(runtime, window, generation, "api" + index.to_string()) |> ignore
+  }
+  assert_eq(runtime.bridge_exposure_count(), 32)
+  let next_id = runtime.next_bridge_exposure
+  assert_true(bridge_register(runtime, window, generation, "api32", 128, 2, bridge_test_sha()) is Err(LimitExceeded))
+  assert_eq(runtime.next_bridge_exposure, next_id)
+  // Release restores one document slot; the released key can be reused by a
+  // fresh exposure ID.
+  assert_true(runtime.release_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", 1, "api0",
+  ) is Ok(true))
+  assert_eq(runtime.bridge_exposure_count(), 31)
+  bridge_test_exposure(runtime, window, generation, "api32") |> ignore
+  assert_eq(runtime.bridge_exposure_count(), 32)
+}
+
+///|
+test "bridge exposure runtime quota spans documents and destroy restores capacity" {
+  let runtime = Runtime::new()
+  runtime.ready() |> ignore
+  let mut first_window = 0
+  for index in 0..<4 {
+    let (window, generation) = bridge_test_window(runtime)
+    if index == 0 { first_window = window }
+    for slot in 0..<32 {
+      bridge_test_exposure(runtime, window, generation, "api" + slot.to_string()) |> ignore
+    }
+  }
+  let (window, generation) = bridge_test_window(runtime)
+  assert_eq(runtime.bridge_exposure_count(), 128)
+  assert_true(bridge_register(runtime, window, generation, "api0", 128, 2, bridge_test_sha()) is Err(LimitExceeded))
+  runtime.destroy_window(first_window) |> ignore
+  assert_eq(runtime.bridge_exposure_count(), 96)
+  bridge_test_exposure(runtime, window, generation, "api0") |> ignore
+  assert_eq(runtime.bridge_exposure_count(), 97)
+}
+
+///|
+test "navigation invalidation destroy and stop revoke exposures" {
+  let (runtime, window, generation) = live_runtime()
+  bridge_test_exposure(runtime, window, generation, "fixture") |> ignore
+  let next_generation = match runtime.navigate(window) {
+    Ok(value) => value
+    Err(_) => abort("bridge fixture navigation failed")
+  }
+  assert_eq(runtime.bridge_exposure_count(), 0)
+  runtime.activate_document(window, next_generation, "file:///fixture/") |> ignore
+  runtime.grant(window, next_generation, "read-text") |> ignore
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", 1, "fixture",
+  ) is Err(StaleDocument))
+  assert_true(runtime.validate_bridge_exposure(
+    window, next_generation, "file:///fixture/", true, "read-text", 1, "fixture",
+  ) is Err(UnknownBridgeExposure))
+  bridge_test_exposure(runtime, window, next_generation, "fixture") |> ignore
+  runtime.invalidate_document(window, next_generation) |> ignore
+  assert_eq(runtime.bridge_exposure_count(), 0)
+  assert_true(runtime.validate_bridge_exposure(
+    window, next_generation, "file:///fixture/", true, "read-text", 2, "fixture",
+  ) is Err(InvalidState))
+  runtime.destroy_window(window) |> ignore
+  assert_eq(runtime.bridge_exposure_count(), 0)
+  runtime.stop()
+  assert_eq(runtime.bridge_exposure_count(), 0)
+}
+
+///|
+test "cancelled close/quit preserve exposures but deny use while closing" {
+  let (runtime, window, generation) = live_runtime()
+  let id = bridge_test_exposure(runtime, window, generation, "fixture")
+  runtime.begin_close(window) |> ignore
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "fixture",
+  ) is Err(InvalidState))
+  assert_eq(runtime.bridge_exposure_count(), 1)
+  runtime.cancel_close(window) |> ignore
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "fixture",
+  ) is Ok(_))
+  runtime.begin_quit() |> ignore
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "fixture",
+  ) is Err(InvalidState))
+  assert_eq(runtime.bridge_exposure_count(), 1)
+  runtime.cancel_quit() |> ignore
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "fixture",
+  ) is Ok(_))
+}
+
+///|
+test "bridge exposure IDs never reuse a released slot and fail before overflow" {
+  let (runtime, window, generation) = live_runtime()
+  let first = bridge_test_exposure(runtime, window, generation, "fixture")
+  runtime.release_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", first, "fixture",
+  ) |> ignore
+  let second = bridge_test_exposure(runtime, window, generation, "fixture")
+  assert_true(second > first)
+  runtime.release_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", second, "fixture",
+  ) |> ignore
+  runtime.next_bridge_exposure = 2147483646
+  let last = bridge_test_exposure(runtime, window, generation, "fixture")
+  assert_eq(last, 2147483646)
+  runtime.release_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", last, "fixture",
+  ) |> ignore
+  assert_true(bridge_register(runtime, window, generation, "fixture", 128, 2, bridge_test_sha()) is Err(IdExhausted))
+  assert_eq(runtime.next_bridge_exposure, 2147483647)
+}
+
+///|
+test "failed stale transitions leave current exposures intact" {
+  let (runtime, window, generation) = live_runtime()
+  let id = bridge_test_exposure(runtime, window, generation, "fixture")
+  assert_true(runtime.invalidate_document(window, generation + 1) is Err(StaleDocument))
+  assert_eq(runtime.bridge_exposure_count(), 1)
+  assert_true(runtime.navigate(window + 1) is Err(UnknownWindow))
+  assert_eq(runtime.bridge_exposure_count(), 1)
+  assert_true(runtime.validate_bridge_exposure(
+    window, generation, "file:///fixture/", true, "read-text", id, "fixture",
+  ) is Ok(_))
+}

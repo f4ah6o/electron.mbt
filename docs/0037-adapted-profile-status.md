@@ -27,24 +27,31 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 | Adapted API → native broker | real renderer open/save/export/sample | PASS |
 | Async Main microtasks | `updateCheckOk` via `checkForUpdate` | PASS |
 | Preload virtual evaluation | `api`, 18 methods | PASS (virtual) |
-| Preload in WebKit / contextBridge | not executed; M0 gate unresolved | FAIL/NOT RUN |
+| Preload in WebKit / contextBridge | production preload not executed; M0 OPEN | FAIL/NOT RUN |
+| B5 repaired-primitive spike (test-only) | `m0-context-bridge`: checkpoint 1/2 PASS, decision go (macOS 26.5.2 / WebKit 21624.2.5.11.8; baseline CI) | PASS (test-only) |
+| B6-A exposure authority (contract) | MoonBit exposure registry/dispatch, lifecycle/quotas; `context-bridge-exposure` 4 tests | PASS (contract; no transport) |
 | Production asset loading | loopback server is test-only | NOT IMPLEMENTED |
 | Timers/native promises/cancel | not supported by async bridge | NOT IMPLEMENTED |
 
 ## Aggregate evidence
 
-- `verify-state`: 16/16 PASS, `NOT_READY`
+- `verify-state`: 17/17 PASS, `NOT_READY`
 - readiness: 31 checks, 24 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 428 pass
-- `moon test --target js`: 129 pass
-- `moon test --target native`: 148 pass
+- `npm test`: 447 pass
+- `moon test --target js`: 141 pass
+- `moon test --target native`: 160 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
 
 ## Remaining scope
 
-1. **M0 contextBridge gate**: safe synchronous contextBridge across
-   WKContentWorlds; until resolved, the original preload stays NOT_EXECUTED.
+1. **M0 contextBridge gate**: the test-only B5 repaired-primitive spike
+   recorded `go` on one macOS/WebKit build (checkpoint 1/2 PASS; Electron
+   baseline differential CI-only). This is not production contextBridge:
+   B6's production transport/preload loader, native host integration,
+   page shim/semantics and independent review remain open. B6-A now provides
+   the MoonBit-owned exposure authority contract, but it creates no page API
+   or transport; M0 stays OPEN and the original preload stays NOT_EXECUTED.
 2. **Production asset loading**: replace the test-only loopback server with a
    native/custom-scheme or packaged asset path.
 3. **Dialog depth**: real file selection, save panel, user consent and grant

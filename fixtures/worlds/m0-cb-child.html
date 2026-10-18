@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>M0 B5 sandboxed child</title>
+<script>
+'use strict';
+(() => {
+  let accessDenied = false;
+  try {
+    // The sandbox gives this frame an opaque origin, so reaching into the
+    // parent's page world must throw rather than return a callable API.
+    if (parent.fixture) parent.fixture.syncValue();
+  } catch (_) {
+    accessDenied = true;
+  }
+  const handlers = window.webkit && window.webkit.messageHandlers;
+  const handlerHidden = !handlers ||
+    (!handlers.electronMbtM0CbReport && !handlers.electronMbtM0CbDocument);
+  try {
+    parent.postMessage({ probe: 'm0-cb-child', accessDenied, handlerHidden }, '*');
+  } catch (_) { /* the parent observation fails closed if no message arrives */ }
+})();
+</script>
+</head>
+<body><p>Sandboxed child fixture.</p></body>
+</html>

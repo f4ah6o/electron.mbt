@@ -190,6 +190,10 @@ jobs:
           node scripts/oracle.cjs "$ORACLE"
           node scripts/ipc-listener-oracle.cjs "$ORACLE"
           node scripts/ipc-handler-oracle.cjs "$ORACLE"
+      - name: Run the bounded M0 synchronous contextBridge spike
+        shell: bash
+        run: |
+          node scripts/m0-context-bridge-probe.cjs 2>&1 | tee evidence/m0-context-bridge.log
       - name: Compare initial native outer frame against the pinned Electron oracle
         shell: bash
         run: |

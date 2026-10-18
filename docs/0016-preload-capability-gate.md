@@ -42,6 +42,13 @@ WKContentWorlds. A postMessage/async shim does not prove synchronous
 `contextBridge` semantics, renderer exception mapping, origin/document
 generation or sender authentication. This increment only records the gate.
 
+The test-only B5 spike ([docs/0038](0038-m0-context-bridge-spike.md)) recorded
+`go` for a repaired synchronous shared-DOM/HMAC candidate on one macOS/WebKit
+build. It does **not** change this gate: production `contextBridge`/
+`ipcRenderer`, MoonBit authority/lifetime/bounds, native sender/document
+authority and independent review remain unimplemented, the original preload
+stays `NOT_EXECUTED`, and M0 remains OPEN.
+
 ## Verified
 
 - `transport/protocol_wbtest.mbt`: exact `get-preload-status` ACK validation.

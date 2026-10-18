@@ -15,6 +15,7 @@ const checks = [
   { id: 'native-supervisor', command: 'node', args: ['scripts/m1-native-supervisor.cjs'], expect: 0 },
   { id: 'native-supervisor-fault', command: 'node', args: ['scripts/m1-native-supervisor-fault.cjs'], expect: 0 },
   { id: 'native-supervisor-retry', command: 'node', args: ['scripts/m1-native-supervisor-retry.cjs'], expect: 0 },
+  { id: 'm0-context-bridge', command: 'node', args: ['scripts/m0-context-bridge-probe.cjs'], expect: 0 },
   { id: 'source-snapshot', command: 'node', args: ['scripts/m1-source-snapshot.cjs'], expect: 0 },
   { id: 'adapted-preload', command: 'node', args: ['scripts/adapted-preload-check.cjs'], expect: 0 },
   { id: 'adapted-api', command: 'node', args: ['scripts/adapted-api-check.cjs'], expect: 0 },

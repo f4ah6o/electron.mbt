@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; frame-src 'self'; object-src 'none'; base-uri 'none'">
+<title>electron.mbt M0 B5 negative checks</title>
+<script>
+'use strict';
+(() => {
+  const state = {
+    complete: false,
+    nestedReentrant: false,
+    callbackThrowReconstructed: false,
+    bridgeUnaffected: false,
+    unsupportedRejected: false,
+    oversizeRejected: false,
+    cyclicRejected: false,
+    childAccessDenied: false,
+    childMessageObserved: false,
+    childOpaqueOrigin: false,
+    childNotRelayed: true,
+    handlerHidden: false,
+    internalsHidden: false,
+    secretVisible: false,
+    errors: [],
+  };
+  function note(label, error) {
+    state.errors.push(label + ': ' + String(error && error.message ? error.message : error));
+  }
+
+  let api = null;
+  try { api = window.fixture; } catch (error) { note('api', error); }
+
+  if (api) {
+    try {
+      let nestedValue = null;
+      const callback = () => { nestedValue = api.syncValue(); };
+      api.add(callback);
+      api.fire('nested');
+      state.nestedReentrant = nestedValue === 42;
+    } catch (error) { note('nested', error); }
+
+    try {
+      api.add(() => { throw new Error('callback-boom'); });
+      try {
+        api.fire('boom');
+      } catch (error) {
+        state.callbackThrowReconstructed = error instanceof Error &&
+          typeof error.message === 'string' && error.message.includes('callback-boom');
+      }
+    } catch (error) { note('callbackThrow', error); }
+
+    try {
+      api.report({ unsupported: new Date() });
+    } catch (error) {
+      state.unsupportedRejected = String(error && error.code || '').includes('VALUE') ||
+        String(error && error.message || '').includes('plain objects');
+      if (!state.unsupportedRejected) note('unsupported', error);
+    }
+    try {
+      api.report({ oversized: 'x'.repeat(40000) });
+    } catch (error) {
+      state.oversizeRejected = String(error && error.code || '').includes('VALUE') ||
+        String(error && error.message || '').includes('limit');
+      if (!state.oversizeRejected) note('oversize', error);
+    }
+    try {
+      const cyclic = {};
+      cyclic.self = cyclic;
+      api.report(cyclic);
+    } catch (error) {
+      state.cyclicRejected = String(error && error.code || '').includes('VALUE') ||
+        String(error && error.message || '').includes('cycle');
+      if (!state.cyclicRejected) note('cyclic', error);
+    }
+
+    // Page-side tampering must not affect the bridge's captured primordials or
+    // the isolated world. Restore afterwards so the native can read the state.
+    const saved = {
+      map: Array.prototype.map,
+      json: JSON.stringify,
+      keys: Object.keys,
+      freeze: Object.freeze,
+      dispatch: EventTarget.prototype.dispatchEvent,
+      getAttribute: Element.prototype.getAttribute,
+      toJSON: Object.prototype.toJSON,
+    };
+    let tamperValue = null;
+    let tamperError = null;
+    try {
+      Array.prototype.map = function pollutedMap() { return 'polluted'; };
+      JSON.stringify = function pollutedStringify() { return '"polluted"'; };
+      Object.keys = function pollutedKeys() { return []; };
+      Object.freeze = function pollutedFreeze(value) { return value; };
+      EventTarget.prototype.dispatchEvent = function pollutedDispatch() { return false; };
+      Element.prototype.getAttribute = function pollutedGetAttribute() { return 'polluted'; };
+      Object.prototype.toJSON = function pollutedToJSON() { return 'polluted'; };
+      tamperValue = api.syncValue();
+    } catch (error) {
+      tamperError = error;
+    } finally {
+      Array.prototype.map = saved.map;
+      JSON.stringify = saved.json;
+      Object.keys = saved.keys;
+      Object.freeze = saved.freeze;
+      EventTarget.prototype.dispatchEvent = saved.dispatch;
+      Element.prototype.getAttribute = saved.getAttribute;
+      if (saved.toJSON === undefined) delete Object.prototype.toJSON;
+      else Object.prototype.toJSON = saved.toJSON;
+    }
+    state.bridgeUnaffected = tamperValue === 42;
+    if (!state.bridgeUnaffected) note('tamper', tamperError || tamperValue);
+
+    const handlers = window.webkit && window.webkit.messageHandlers;
+    state.handlerHidden = !handlers || (!handlers.electronMbtM0CbReport &&
+      !handlers.electronMbtM0CbDocument);
+    state.internalsHidden = typeof globalThis.__m0CbCodec === 'undefined' &&
+      typeof globalThis.__m0CbBridge === 'undefined';
+  }
+
+  let childDone = false;
+  function finish() {
+    if (state.complete) return;
+    state.complete = true;
+    globalThis.m0ContextBridgeNegative = Object.freeze(state);
+  }
+  window.addEventListener('message', event => {
+    const data = event.data;
+    if (!data || data.probe !== 'm0-cb-child') return;
+    const frame = document.querySelector('iframe[title="M0 B5 sandboxed child"]');
+    state.childMessageObserved = true;
+    state.childOpaqueOrigin = event.origin === 'null';
+    state.childAccessDenied = data.accessDenied === true;
+    state.childNotRelayed = frame != null && event.source === frame.contentWindow;
+    state.handlerHidden = state.handlerHidden && data.handlerHidden === true;
+    childDone = true;
+    finish();
+  });
+  function startChild() {
+    if (childDone) return;
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts');
+    iframe.setAttribute('title', 'M0 B5 sandboxed child');
+    iframe.setAttribute('src', 'm0-cb-child.html');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    setTimeout(finish, 3000);
+  }
+  if (document.body) startChild();
+  else document.addEventListener('DOMContentLoaded', startChild, { once: true });
+})();
+</script>
+</head>
+<body><p>M0 B5 negative checks only.</p></body>
+</html>

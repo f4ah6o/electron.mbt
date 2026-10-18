@@ -153,6 +153,7 @@ pub fn SourceSnapshot::from_manifest(
   manifest_json : String,
   sources : Map[String, String],
   hashes : Map[String, String],
+  module_entry? : String = "",
 ) -> Result[SourceSnapshot, AppError] {
   let parsed = match app_parse_json(manifest_json) {
     Some(value) => value
@@ -232,11 +233,20 @@ pub fn SourceSnapshot::from_manifest(
     }
     files[path] = { path, source, sha256, bytes: encoded }
   }
-  match files.get(entry) {
-    Some(_) => ()
-    None => return Err(Manifest("entry is not listed in the manifest"))
+  let source_entry = entry
+  let module_entry = if module_entry.length() > 0 {
+    if !app_valid_relative(module_entry) {
+      return Err(Manifest("invalid module entry path"))
+    }
+    module_entry
+  } else {
+    source_entry
   }
-  Ok({ app, entry, files })
+  match files.get(module_entry) {
+    Some(_) => ()
+    None => return Err(Manifest("module entry is not listed in the manifest"))
+  }
+  Ok({ app, entry: module_entry, files })
 }
 
 ///|
@@ -526,11 +536,9 @@ pub fn build_graph(snapshot : SourceSnapshot) -> Result[Array[@engine.ModuleSour
       }
       for specifier in requires {
         if specifier == "electron" || specifier == "electron-updater" {
-          if specifier == "electron-updater" {
-            // The adapted profile must declare an explicit module for the
-            // updater. It is never silently mapped to a package or a stub.
-            return Err(ModuleResolve(specifier, id))
-          }
+          // Both are runtime-owned modules for the adapted profile. The
+          // updater is an explicit import-only adaptation, never a package
+          // fallback; it is recorded in the report/evidence.
           continue
         }
         if @modules.builtin_status(specifier) is Some(_) {
@@ -953,6 +961,29 @@ pub fn AppRunner::stop(self : AppRunner) -> Unit {
   self.stopped = true
   self.context.destroy()
   self.engine.destroy()
+}
+
+///|
+pub fn AppRunner::install_host_bridge(self : AppRunner) -> Bool {
+  self.context.install_host_bridge()
+}
+
+///|
+pub fn AppRunner::global_text(self : AppRunner, name : String) -> String {
+  let value = self.context.get_global(name)
+  let kind = value.kind()
+  let text = value.text_limit(65536)
+  value.release()
+  if kind < 0 || text == "undefined" {
+    ""
+  } else {
+    text
+  }
+}
+
+///|
+pub fn AppRunner::last_rejection(self : AppRunner) -> String {
+  self.context.last_rejection()
 }
 
 ///|

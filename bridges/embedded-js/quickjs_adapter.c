@@ -67,6 +67,38 @@ static int64_t emb_now_ms(void) {
   return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000);
 }
 
+static char emb_last_rejection[1024];
+
+static void emb_rejection_tracker(JSContext *ctx, JSValueConst promise,
+                                  JSValueConst reason, JS_BOOL is_handled,
+                                  void *opaque) {
+  (void)promise; (void)opaque;
+  if (is_handled) return;
+  size_t length = 0;
+  JSValue stack = JS_GetPropertyStr(ctx, reason, "stack");
+  const char *text = NULL;
+  if (!JS_IsUndefined(stack) && !JS_IsException(stack)) {
+    text = JS_ToCStringLen(ctx, &length, stack);
+  }
+  if (text == NULL) text = JS_ToCStringLen(ctx, &length, reason);
+  JS_FreeValue(ctx, stack);
+  if (text == NULL) return;
+  if (length >= sizeof(emb_last_rejection)) length = sizeof(emb_last_rejection) - 1;
+  memcpy(emb_last_rejection, text, length);
+  emb_last_rejection[length] = 0;
+  JS_FreeCString(ctx, text);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t moonbit_emb_last_rejection(moonbit_bytes_t out, int32_t capacity) {
+  if (out == NULL || capacity <= 0 || Moonbit_array_length(out) < capacity) return -1;
+  size_t length = strlen(emb_last_rejection);
+  if (length + 1 > (size_t)capacity) return -1;
+  memcpy(out, emb_last_rejection, length);
+  out[length] = 0;
+  return (int32_t)length;
+}
+
 static int emb_interrupt_handler(JSRuntime *rt, void *opaque) {
   (void)rt;
   EmbEngine *engine = (EmbEngine *)opaque;
@@ -103,6 +135,8 @@ void *moonbit_emb_engine_create_with_limit(int64_t memory_limit) {
   JS_SetMemoryLimit(engine->rt, (size_t)engine->memory_limit);
   JS_SetMaxStackSize(engine->rt, (size_t)1 * 1024 * 1024);
   JS_SetInterruptHandler(engine->rt, emb_interrupt_handler, engine);
+  JS_SetHostPromiseRejectionTracker(engine->rt, emb_rejection_tracker, engine);
+  emb_last_rejection[0] = 0;
   return engine;
 }
 
@@ -151,6 +185,58 @@ MOONBIT_FFI_EXPORT
 void moonbit_emb_set_deadline(void *raw, int64_t deadline_ms) {
   EmbEngine *engine = (EmbEngine *)raw;
   if (engine != NULL) engine->deadline_ms = deadline_ms;
+}
+
+// A synchronous host bridge is a leaf transport only. MoonBit decides which
+// operations are admissible; the C callback performs one bounded frame
+// exchange and never re-enters JavaScript.
+typedef int32_t (*EmbHostRequestFn)(const char *operation, const char *payload,
+                                    char *out, int32_t capacity);
+static EmbHostRequestFn emb_host_request_fn = NULL;
+
+MOONBIT_FFI_EXPORT
+void moonbit_emb_register_host_request(void *fn) {
+  emb_host_request_fn = (EmbHostRequestFn)fn;
+}
+
+static JSValue emb_js_host_request(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv) {
+  (void)this_val;
+  if (emb_host_request_fn == NULL || argc < 2) {
+    return JS_ThrowTypeError(ctx, "host bridge unavailable");
+  }
+  const char *operation = JS_ToCString(ctx, argv[0]);
+  if (operation == NULL) return JS_EXCEPTION;
+  const char *payload = JS_ToCString(ctx, argv[1]);
+  if (payload == NULL) {
+    JS_FreeCString(ctx, operation);
+    return JS_EXCEPTION;
+  }
+  char output[65536];
+  int32_t length = emb_host_request_fn(operation, payload, output, (int32_t)sizeof(output));
+  JS_FreeCString(ctx, operation);
+  JS_FreeCString(ctx, payload);
+  if (length < 0 || length >= (int32_t)sizeof(output)) {
+    return JS_ThrowTypeError(ctx, "host request failed");
+  }
+  return JS_NewStringLen(ctx, output, (size_t)length);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t moonbit_emb_install_host_bridge(void *raw_context) {
+  EmbContext *context = (EmbContext *)raw_context;
+  if (context == NULL || context->ctx == NULL) return 0;
+  JSValue global = JS_GetGlobalObject(context->ctx);
+  JSValue function = JS_NewCFunction(context->ctx, emb_js_host_request,
+                                     "__mbt_host_request", 2);
+  if (JS_IsException(function)) {
+    JS_FreeValue(context->ctx, function);
+    JS_FreeValue(context->ctx, global);
+    return 0;
+  }
+  JS_SetPropertyStr(context->ctx, global, "__mbt_host_request", function);
+  JS_FreeValue(context->ctx, global);
+  return 1;
 }
 
 MOONBIT_FFI_EXPORT

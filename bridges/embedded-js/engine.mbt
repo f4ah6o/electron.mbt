@@ -91,6 +91,13 @@ extern "C" fn emb_new_string(context : Context, bytes : Bytes) -> ValueLease = "
 extern "C" fn emb_context_live(context : Context) -> Int = "moonbit_emb_context_live"
 
 ///|
+extern "C" fn emb_install_host_bridge(context : Context) -> Int = "moonbit_emb_install_host_bridge"
+
+///|
+#borrow(out)
+extern "C" fn emb_last_rejection(out : Bytes, capacity : Int) -> Int = "moonbit_emb_last_rejection"
+
+///|
 extern "C" fn emb_value_release(value : ValueLease) = "moonbit_emb_value_release"
 
 ///|
@@ -200,6 +207,22 @@ pub fn Context::new_string(self : Context, text : String) -> ValueLease {
 ///|
 pub fn Context::live_count(self : Context) -> Int {
   emb_context_live(self)
+}
+
+///|
+pub fn Context::install_host_bridge(self : Context) -> Bool {
+  emb_install_host_bridge(self) == 1
+}
+
+///|
+pub fn Context::last_rejection(self : Context) -> String {
+  let buffer = Bytes::new(1024)
+  let length = emb_last_rejection(buffer, buffer.length())
+  if length <= 0 {
+    ""
+  } else {
+    @utf8.decode_lossy(buffer[:length])
+  }
 }
 
 ///|

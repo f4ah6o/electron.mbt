@@ -31,6 +31,28 @@ extern "C" fn nodeless_env(name : Bytes, out : Bytes, capacity : Int) -> Int = "
 extern "C" fn nodeless_exit(code : Int) = "moonbit_ebt_nodeless_exit"
 
 ///|
+#borrow(root)
+extern "C" fn nodeless_host_open(root : Bytes) -> Int = "moonbit_ebt_nodeless_host_open"
+
+///|
+#borrow(operation, payload, out)
+extern "C" fn nodeless_host_query(
+  operation : Bytes,
+  payload : Bytes,
+  out : Bytes,
+  capacity : Int,
+) -> Int = "moonbit_ebt_nodeless_host_query"
+
+///|
+extern "C" fn nodeless_host_shutdown() -> Int = "moonbit_ebt_nodeless_host_shutdown"
+
+///|
+extern "C" fn nodeless_host_kill() = "moonbit_ebt_nodeless_host_kill"
+
+///|
+extern "C" fn nodeless_host_pid() -> Int = "moonbit_ebt_nodeless_host_pid"
+
+///|
 fn cli_field(value : Json, key : String) -> Json {
   match value {
     Object(fields) => fields.get(key).unwrap_or(null)
@@ -42,6 +64,20 @@ fn cli_field(value : Json, key : String) -> Json {
 fn cli_text(value : Json, key : String) -> String? {
   match cli_field(value, key) {
     String(text) => Some(text)
+    _ => None
+  }
+}
+
+///|
+fn cli_payload_text(raw : String, field : String) -> String? {
+  let parsed = @json.parse(raw) catch {
+    _ => return None
+  }
+  match cli_field(parsed, "payload") {
+    Object(values) => match values.get(field) {
+      Some(String(text)) => Some(text)
+      _ => None
+    }
     _ => None
   }
 }
@@ -171,6 +207,13 @@ fn main {
     return
   }
   let app_dir = args[2]
+  let window_mode = args.contains("--window")
+  let mut module_entry = ""
+  for i = 0; i < args.length(); i = i + 1 {
+    if args[i] == "--entry" && i + 1 < args.length() {
+      module_entry = args[i + 1]
+    }
+  }
   let manifest = match cli_read_text(app_dir, "source-manifest.json") {
     Some(text) => text
     None => {
@@ -218,7 +261,7 @@ fn main {
     sources[path] = source
     hashes[path] = hash
   }
-  let snapshot = match @app.SourceSnapshot::from_manifest(manifest, sources, hashes) {
+  let snapshot = match @app.SourceSnapshot::from_manifest(manifest, sources, hashes, module_entry~) {
     Ok(value) => value
     Err(error) => {
       cli_fail(error.code(), error.message())
@@ -258,13 +301,102 @@ fn main {
     env: cli_fixture_env(),
   }
   let runner = @app.AppRunner::new(snapshot, config)
-  match runner.load() {
-    Ok(_) => ()
-    Err(error) => {
+  if !window_mode {
+    match runner.load() {
+      Ok(_) => ()
+      Err(error) => {
+        runner.stop()
+        cli_fail(error.code(), error.message())
+        return
+      }
+    }
+  }
+  if window_mode {
+    let fd = nodeless_host_open(@utf8.encode(app_dir))
+    if fd < 0 {
       runner.stop()
-      cli_fail(error.code(), error.message())
+      cli_fail("ELECTRON_MBT_NODELESS_HOST", "native host start failed")
       return
     }
+    if !runner.install_host_bridge() {
+      nodeless_host_kill()
+      runner.stop()
+      cli_fail("ELECTRON_MBT_NODELESS_HOST", "host bridge install failed")
+      return
+    }
+    match runner.load() {
+      Ok(_) => ()
+      Err(error) => {
+        nodeless_host_kill()
+        runner.stop()
+        cli_fail(error.code(), error.message())
+        return
+      }
+    }
+    let title_buffer = Bytes::new(65536)
+    let title_length = nodeless_host_query(
+      @utf8.encode("get-web-contents-title"),
+      @utf8.encode("{}"),
+      title_buffer,
+      title_buffer.length(),
+    )
+    let title_reply = if title_length > 0 {
+      @utf8.decode_lossy(title_buffer[:title_length])
+    } else {
+      ""
+    }
+    let page_title = match cli_payload_text(title_reply, "title") {
+      Some(value) => value
+      None => ""
+    }
+    let main_error = runner.global_text("__mbt_last_error")
+    let rejection = runner.last_rejection()
+    let host_pid = nodeless_host_pid()
+    let shutdown = nodeless_host_shutdown()
+    let live = runner.live_leases()
+    let manifest_hash = match cli_sha256(app_dir, "source-manifest.json") {
+      Some(value) => value
+      None => ""
+    }
+    let report = Json({
+      "schema": Json(1),
+      "probe": Json("nodeless-window-runtime"),
+      "status": Json(if page_title.length() > 0 && shutdown == 0 { "PASS" } else { "FAIL" }),
+      "engine": Json("quickjs-2026-06-04"),
+      "profile": Json("electron-nodeless-adapted-v1"),
+      "strict": Json("blocked"),
+      "app": Json({
+        "name": Json(name),
+        "version": Json(version),
+        "entry": Json(snapshot.entry),
+        "modules": Json(module_count),
+        "manifestSha256": Json(manifest_hash),
+      }),
+      "windowLoaded": Json(page_title.length() > 0),
+      "pageTitle": Json(page_title),
+      "mainError": Json(main_error),
+      "lastRejection": Json(rejection),
+      "hostPid": Json(host_pid),
+      "hostShutdown": Json(shutdown == 0),
+      "liveLeases": Json(live),
+      "nodeProcesses": Json(0),
+      "notVerified": Json([
+        Json("preload"),
+        Json("real-renderer"),
+        Json("fs-broker"),
+        Json("updater-behavior"),
+        Json("strict-contextBridge"),
+        Json("asan"),
+        Json("external-review"),
+      ]),
+      "compatible": Json(false),
+    })
+    runner.stop()
+    println(report.stringify())
+    if page_title.length() == 0 || shutdown != 0 || live != 0 {
+      nodeless_exit(1)
+    }
+    return
   }
   let operations : Array[String] = [
     "selftest:report",
@@ -296,10 +428,10 @@ fn main {
     "liveLeases": Json(live),
     "nodeProcesses": Json(0),
     "notVerified": Json([
-      Json("window"),
-      Json("native-host"),
       Json("preload"),
-      Json("moji"),
+      Json("real-renderer"),
+      Json("fs-broker"),
+      Json("updater-behavior"),
       Json("strict-contextBridge"),
       Json("asan"),
       Json("external-review"),

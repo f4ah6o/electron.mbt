@@ -52,7 +52,7 @@ app.whenReady().then(function () {
   });
   ipcMain.handle('selftest:unsupported', function () {
     try {
-      require('node:fs');
+      require('node:fs').readFileSync('/missing');
       return { code: 'unexpected' };
     } catch (error) {
       return { code: error.code };

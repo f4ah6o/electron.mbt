@@ -25,12 +25,12 @@ function buildBinary() {
   return binary;
 }
 
-function run(binary, appDir, extraEnv = {}) {
+function run(binary, appDir, args = [], extraEnv = {}) {
   const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-path-'));
   const fakeNode = path.join(fakeBin, 'node');
   fs.writeFileSync(fakeNode, '#!/bin/sh\nexit 99\n');
   fs.chmodSync(fakeNode, 0o700);
-  const result = spawnSync(binary, ['run', appDir], {
+  const result = spawnSync(binary, ['run', appDir, ...args], {
     cwd: root,
     encoding: 'utf8',
     timeout: 30000,
@@ -109,7 +109,7 @@ test('Node-less runtime executes the fixture without Node and fails closed', () 
   assert.equal(main.secretEnv, null);
   assert.equal(resultOf('selftest:async').value, 9);
   assert.deepEqual(resultOf('selftest:order').order, ['tick', 'promise', 'timer']);
-  assert.equal(resultOf('selftest:unsupported').code, 'ELECTRON_MBT_UNSUPPORTED_BUILTIN');
+  assert.equal(resultOf('selftest:unsupported').code, 'ENOENT');
 });
 
 test('the nodeless binary does not link or import Node/Node-API', () => {
@@ -131,6 +131,48 @@ test('the nodeless binary does not link or import Node/Node-API', () => {
     assert.equal(text.includes('napi_'), false);
     assert.equal(text.includes('node::'), false);
   }
+});
+
+test('a native window loads a page and reads its title without Node', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const { result, report } = run(binary, path.join(root, 'fixtures/nodeless-window-app'),
+    ['--window', '--entry', 'src/main.js']);
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.ok(report, 'missing JSON report');
+  assert.equal(report.probe, 'nodeless-window-runtime');
+  assert.equal(report.status, 'PASS');
+  assert.equal(report.windowLoaded, true);
+  assert.equal(report.pageTitle, 'nodeless-window-ready');
+  assert.equal(report.hostShutdown, true);
+  assert.equal(report.liveLeases, 0);
+  assert.equal(report.nodeProcesses, 0);
+  assert.equal(report.compatible, false);
+});
+
+test('the pinned Moji main boots without Node against a probe page', {
+  skip: process.platform !== 'darwin' ||
+    !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')) ||
+    !fs.existsSync(process.env.ELECTRON_MBT_MOJI_ROOT || '/tmp/electron-mbt-apps/moji'),
+}, () => {
+  const result = spawnSync(process.execPath, ['scripts/nodeless-moji-boot.cjs'], {
+    cwd: root, encoding: 'utf8', timeout: 180000,
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  const lines = `${result.stdout || ''}\n${result.stderr || ''}`.split('\n')
+    .map(line => line.trim()).filter(line => line.startsWith('{') && line.endsWith('}'));
+  assert.ok(lines.length > 0, 'missing Moji boot report');
+  const report = JSON.parse(lines.at(-1));
+  assert.equal(report.status, 'PASS');
+  assert.equal(report.mainSHA256, '41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e');
+  assert.equal(report.preloadSHA256, 'bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544');
+  assert.equal(report.windowLoaded, true);
+  assert.equal(report.pageTitle, 'moji-nodeless-ready');
+  assert.equal(report.preloadExecuted, false);
+  assert.equal(report.rendererLoaded, false);
+  assert.equal(report.liveLeases, 0);
+  assert.equal(report.compatible, false);
 });
 
 test('a source hash mismatch fails closed', () => {

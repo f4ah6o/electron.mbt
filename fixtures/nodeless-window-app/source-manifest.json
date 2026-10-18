@@ -1,0 +1,22 @@
+{
+  "schema": 2,
+  "app": "nodeless-window",
+  "entry": "index.html",
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "c3a0eddf75d8894a2b35933ade130f83d99d98f9dcac63ec898fc8219141c0b2",
+      "bytes": 212
+    },
+    {
+      "path": "package.json",
+      "sha256": "78f3bf6c3cf929d7e926b63697b427be181867ebe96076ab615a2dedc412e41e",
+      "bytes": 106
+    },
+    {
+      "path": "src/main.js",
+      "sha256": "9bcf23f62c51bcc27b4f427ba13dd041bfd0628fb26d1dcf8ac2935059583525",
+      "bytes": 344
+    }
+  ]
+}

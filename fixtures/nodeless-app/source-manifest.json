@@ -5,8 +5,8 @@
   "files": [
     {
       "path": "src/main.js",
-      "sha256": "c5b7fec328627fb41bcc928e529926da1f2c9ba2d474527fe424386f448bccb3",
-      "bytes": 2018
+      "sha256": "68db084745bd59e8070f61f4859e8aea0f30db56f3631883b4479d2f9d3aa9ae",
+      "bytes": 2043
     },
     {
       "path": "package.json",

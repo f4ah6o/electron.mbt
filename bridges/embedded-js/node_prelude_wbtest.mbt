@@ -14,7 +14,10 @@ test "node prelude provides bounded builtins and fail-closed modules" {
       "const path = require('node:path');\n" +
       "const { Buffer } = require('node:buffer');\n" +
       "const { EventEmitter } = require('node:events');\n" +
-      "const fsCode = (function () { try { require('node:fs'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
+      "const fsCode = (function () { try { require('node:fs').readFileSync('/missing'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
+      "const zlibCode = (function () { try { require('node:zlib').createDeflate(); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
+      "const updater = require('electron-updater');\n" +
+      "const electronMenu = require('electron').Menu;\n" +
       "const emitter = new EventEmitter();\n" +
       "let seen = '';\n" +
       "emitter.once('x', function (value) { seen = value; });\n" +
@@ -29,6 +32,9 @@ test "node prelude provides bounded builtins and fail-closed modules" {
       "  event: seen,\n" +
       "  count: emitter.listenerCount('x'),\n" +
       "  fsCode: fsCode,\n" +
+      "  zlibCode: zlibCode,\n" +
+      "  updaterOk: typeof updater.autoUpdater.checkForUpdates === 'function',\n" +
+      "  menuOk: typeof electronMenu.buildFromTemplate === 'function',\n" +
       "};\n",
       {},
       false,
@@ -44,7 +50,10 @@ test "node prelude provides bounded builtins and fail-closed modules" {
   assert_true(result.exports.contains("\"b64\":\"aGk=\""))
   assert_true(result.exports.contains("\"event\":\"yes\""))
   assert_true(result.exports.contains("\"count\":0"))
-  assert_true(result.exports.contains("\"fsCode\":\"ELECTRON_MBT_UNSUPPORTED_BUILTIN\""))
+  assert_true(result.exports.contains("\"fsCode\":\"ENOENT\""))
+  assert_true(result.exports.contains("\"zlibCode\":\"ELECTRON_MBT_UNSUPPORTED_API\""))
+  assert_true(result.exports.contains("\"updaterOk\":true"))
+  assert_true(result.exports.contains("\"menuOk\":true"))
   context.destroy()
   engine.destroy()
 }

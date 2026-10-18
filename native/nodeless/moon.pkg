@@ -9,7 +9,7 @@ import {
 
 options(
   "is-main": true,
-  "native-stub": ["file_io.c"],
+  "native-stub": ["file_io.c", "host_client.c"],
   targets: {
     "main.mbt": ["native"],
   },

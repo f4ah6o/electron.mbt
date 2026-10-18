@@ -142,9 +142,18 @@ preload/native transport handlers. No child frame can receive or reach the
 bridge.
 
 This is **stricter than Electron**, which can host child frames; it is not an
-Electron-compatible frame policy. The child-frame compatibility decision,
-same-origin/cross-origin/sandboxed behavior, page self-DoS characterization
-and the fault-injection matrix remain open.
+Electron-compatible frame policy. The child-frame compatibility decision and
+same-origin/cross-origin/sandboxed behavior remain open.
+
+### Page self-DoS (2026-10-18)
+
+`tests/context-bridge-self-dos-native.test.cjs` loads a page whose first
+script busy-loops forever. After 500 ms the load is still in flight
+(`window._loading === true`), but the native title and preload-status requests
+both answer (`preloadStatus: "ok"`; the title is empty because the page never
+finishes parsing). The native control lane is therefore not blocked by page
+JavaScript. This is one bounded self-DoS observation, not a CPU/memory
+exhaustion or full fault-injection matrix.
 
 ## Gate 5 — strict runtime and evidence (open)
 
@@ -175,5 +184,6 @@ gate is not changed by the B6 acceptance or this plan.
 The B7 goal remains active; the strict profile stays blocked until the gates
 above are closed with runtime evidence. The next concrete work is a
 synchronous actual-before-page admission (the host reply is asynchronous),
-Electron-compatible child-frame and self-DoS/fault evidence, then porting the
-preview/admission path to the strict nodeless runtime and the full preload.
+Electron-compatible child frames, a broader self-DoS/CPU/memory fault matrix,
+then porting the preview/admission path to the strict nodeless runtime and the
+full preload.

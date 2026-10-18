@@ -62,6 +62,8 @@ Status: M0 in progress. This document does not replace or close `issues/polished
 
 46. B7 frame policy characterization: the experimental M1 host cancels every subframe navigation (main-frame-only). `tests/context-bridge-frames-native.test.cjs` verifies a same-origin child and a sandboxed `allow-scripts` child are both absent, the parent API still works, and the parent page cannot see the preload/native transport handlers. This is stricter than Electron (which can host child frames) and is therefore not an Electron-compatible frame policy; the child-frame compatibility decision, page self-DoS and the fault-injection matrix remain open. npm 454. Strict blocked; no compatibility change.
 
+47. B7 page self-DoS evidence: `tests/context-bridge-self-dos-native.test.cjs` loads a page whose first script busy-loops forever. After 500 ms the load is still in flight, but the native `get-web-contents-title` and `get-preload-status` requests both answer (preload status `ok`; the title is empty because the page never finishes parsing). The native control lane is therefore not blocked by page JavaScript. This is one bounded observation; CPU/memory exhaustion and the full fault-injection matrix remain open. npm 455. Strict blocked; no compatibility change.
+
 ## Ownership and unfinished wiring
 
 | Area | Owner now | Remaining production connection |

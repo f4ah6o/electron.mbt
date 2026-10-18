@@ -34,6 +34,7 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 | B6-C synchronous transport (experimental) | Opt-in transport sources + document grant; unchanged oracle preload/page observation, reload/revocation, source hashes | PASS (experimental; strict blocked) |
 | B6-D semantic matrix (experimental) | Value/error/callback/Promise/bounds/fault matrix; three transport defects fixed | PASS (experimental; limits open) |
 | B6-E evidence packet | Baseline differential hook, CI evidence step, threat model/review checklist; project-owner acceptance for B7 design work | PREPARED + ACCEPTED (2026-10-18) for B7; strict admission gates open; baseline NOT RUN locally; external audit NOT RUN |
+| B7 strict-profile admission | Plan, arbitrary-key experiments (failed/reverted), page-admission/strict-runtime gates | STARTED; strict blocked; no profile promotion |
 | Production asset loading | loopback server is test-only | NOT IMPLEMENTED |
 | Timers/native promises/cancel | not supported by async bridge | NOT IMPLEMENTED |
 

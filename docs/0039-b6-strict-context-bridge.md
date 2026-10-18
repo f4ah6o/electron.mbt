@@ -327,3 +327,16 @@ no acceptance row is promoted by B6-A/B/C/D/E alone.
 - [Issue 0007 strict feasibility and security](../issues/polished/0007-context-bridge-feasibility-and-security.md)
 - [Issue 0001 §6.2 and §16](../issues/polished/0001-electron-compatible-lightweight-runtime.md)
 - [Electron contextBridge](https://www.electronjs.org/docs/latest/api/context-bridge)
+
+
+## B7 — strict profile admission
+
+B7 design work started on 2026-10-18 after the project-owner acceptance of
+the B6-C/B6-D transport. The strict profile (`electron-nodeless-v1`) remains
+**planned/blocked**; the accepted transport is still in the Node-backed
+experimental M1 host. Page-admission ordering, arbitrary API keys, full
+preload globals/ipcRenderer/webUtils, frame policy, page self-DoS and the
+strict runtime evidence are open. The plan, the two failed arbitrary-key
+experiments and the B7 acceptance criteria are in
+[docs/0041](0041-b7-strict-profile-admission.md). No compatibility row is
+promoted.

@@ -44,7 +44,7 @@ The candidate page shim hard-codes the `fixture` key. The isolated bridge's
 descriptor carries the actual `apiKey`, but the page shim needs the key
 before the first page script to define `window.<key>`.
 
-Two 2026-10-18 experiments were attempted and then reverted:
+Three 2026-10-18 experiments were attempted and then reverted:
 
 1. **Document-start `<meta>` marker**: the isolated preload publishes the
    non-secret key in a meta element; the host adds the preload user script
@@ -56,9 +56,17 @@ Two 2026-10-18 experiments were attempted and then reverted:
    document comment when the document element is not yet available; the page
    shim reads the comment and retries in a microtask before the first body
    script. The same B6-C/B6-D timeouts occurred; reverted.
+3. **Window-prototype proxy**: install a Proxy above `Window.prototype` so
+   the first unknown global access drives the hello, learns the key and
+   defines it. WebKit rejected both `Object.setPrototypeOf(window, proxy)` and
+   `Object.setPrototypeOf(Window.prototype, proxy)` ("window prototype cannot
+   be replaced"/"cannot be extended"); `window.<key>` stayed undefined and the
+   probe page reported the error. Reverted.
 
 Conclusion: arbitrary keys are an architectural limit of the current
-shared-DOM/lazy page shim, not a small patch. B7 needs an engine-level bridge,
+shared-DOM/lazy page shim, not a small patch. The page global cannot be
+proxied in WebKit, and the key is not available to the page shim before the
+first page script. B7 needs an engine-level bridge,
 a predeclared-key contract (which would change the app/page contract), a
 preflight document, or another reviewed mechanism. The working candidate
 remains `fixture`-only and is not a strict-profile API surface.

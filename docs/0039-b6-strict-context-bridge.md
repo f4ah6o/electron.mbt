@@ -3,8 +3,10 @@
 Status: **B6 design; B6-A exposure authority, B6-B experimental preload
 environment, the B6-C experimental synchronous transport E2E and the B6-D
 experimental semantic-closure matrix are implemented; B6-E evidence and the
-security-review packet are prepared. Production `contextBridge` remains
-`NOT_IMPLEMENTED`; M0 OPEN; strict profile blocked.** B5 recorded a
+security-review packet are prepared, and the B6-C/B6-D transport candidate
+was accepted by the project owner on 2026-10-18 for B7 design work. Production
+`contextBridge` remains `NOT_IMPLEMENTED`; M0 OPEN; strict profile blocked
+pending the B7 runtime and security gates.** B5 recorded a
 test-only `go` on one macOS/WebKit build ([docs/0038](0038-m0-context-bridge-spike.md)).
 B6 is the production implementation and evidence phase. This document is not
 an adoption decision for the B5 transport and does not authorize the original
@@ -256,8 +258,11 @@ records the B6-D semantics run:
 
 The exact environment, commands, local PASS/NOT RUN table, threat model,
 controls/residual risks and reviewer checklist are in
-[docs/0040](0040-b6-d-e-evidence.md). The independent security review has
-**not** been performed. Strict profile admission remains B7 and is blocked;
+[docs/0040](0040-b6-d-e-evidence.md). The project owner accepted the transport
+for B7 design work on 2026-10-18; no external independent audit was
+performed. Strict profile admission remains B7 and is blocked on the
+page-admission ordering, arbitrary API keys, full preload globals/
+ipcRenderer/webUtils, frame policy, page self-DoS and the B7 runtime evidence;
 no acceptance row is promoted by B6-A/B/C/D/E alone.
 
 ## B6 acceptance criteria (not met by B6-A)

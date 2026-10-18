@@ -1,10 +1,13 @@
 # B6-D/B6-E — experimental semantics, evidence and security-review packet
 
-Status: **experimental evidence only.** This document does not promote the
-strict profile, does not authorize the original preload, and does not claim
-Electron compatibility. `compatible:false`, `contextBridge:NOT_IMPLEMENTED`,
-strict **blocked**, M0 **OPEN** and the original preload **NOT_EXECUTED** are
-unchanged. The independent security review has **not** been performed.
+Status: **the B6-C/B6-D transport candidate was accepted by the project owner
+on 2026-10-18 for B7 design work.** This is not a strict-profile admission,
+does not authorize the original preload, and does not claim Electron
+compatibility. `compatible:false`, `contextBridge:NOT_IMPLEMENTED`, strict
+**blocked**, M0 **OPEN** and the original preload **NOT_EXECUTED** are
+unchanged. No external independent security audit was performed; the
+reviewer accepted the residual risks for B7 work, and the remaining security
+items stay tracked below.
 
 ## B6-D — semantic closure (experimental, implemented 2026-10-18)
 
@@ -76,7 +79,7 @@ Local 2026-10-18 evidence:
 | `moon test --target native` | 162 pass |
 | `npm test` | 450 pass (macOS) |
 | `verify-state` | 17/17, `NOT_READY` expected |
-| Independent security review | NOT RUN |
+| External independent security audit | NOT RUN (project-owner reviewer decision: ACCEPT) |
 | Original preload | NOT EXECUTED |
 
 ## Security-review packet
@@ -127,8 +130,19 @@ the threat model and the residual risks below.
 7. Are the source-integrity and install-op checks sufficient for the
    trusted-runner boundary?
 
-## Decision requested
+## Reviewer decision (2026-10-18)
 
-Accept, reject or replace the B6-C/B6-D experimental transport for B6-E/B7.
-Until that decision and the independent review, the strict profile stays
-blocked and no acceptance row is promoted.
+The project owner **accepted** the B6-C/B6-D experimental transport for B7
+design work. Scope and conditions:
+
+- accepted: the experimental transport candidate, the B6-D semantics matrix,
+  the source-integrity/control-channel design and the review packet;
+- not accepted as a strict-profile admission or compatibility result;
+- no external independent audit was performed; if B7 requires one, it remains
+  open;
+- the residual risks (page-admission ordering, arbitrary API keys, the custom
+  HMAC/shared-DOM transport, full preload globals/ipcRenderer/webUtils, frame
+  policy, page self-DoS, fault injection) remain tracked and must be closed
+  for B7;
+- the strict profile stays **blocked**; no acceptance row is promoted until
+  the B7 runtime gates and evidence pass.

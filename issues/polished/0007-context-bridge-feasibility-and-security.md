@@ -313,7 +313,7 @@ strict の「任意 preload 関数が任意関数を返す」と、この用途�
 | B6-B preload bridge environment (partial, 2026-10-18) | opt-in native preload surface、exposure event、MoonBit registration、test | `ELECTRON_MBT_B6_PRELOAD_BRIDGE=1` のみ。contextBridge descriptor/authority registration は実装、page API・transport・ipcRenderer/webUtils・Node-free preload environment は未実装 |
 | B6-C experimental synchronous transport (2026-10-18) | host-owned `bridges/preload/` sources、install op、page/preload injection、document grant/report、oracle E2E | opt-in `ELECTRON_MBT_B6_TRANSPORT=1` のみ。unchanged oracle preload/page の pinned observation は PASS。page-admission ordering・独立 review・full preload globals/ipcRenderer/webUtils・frame policy は未達 |
 | B6-D experimental semantics (2026-10-18) | edge preload/page、15 args/13 returns、callbacks/Promises/bounds/reload test、defect fixes | symbol key/sparse array/synchronous thenable race を修正。single API key・admission ordering・fault injection は未達 |
-| B6-E evidence packet (2026-10-18) | baseline hook、CI evidence step、threat model/reviewer checklist | local baseline NOT RUN、independent review NOT RUN。strict promotion 不可 |
+| B6-E evidence packet (2026-10-18) | baseline hook、CI evidence step、threat model/reviewer checklist | project owner が B6-C/B6-D transport を B7 design work 用に accept。strict admission/compatibility ではない。local baseline NOT RUN、external audit NOT RUN、strict promotion 不可 |
 | B7 exact profile evidence | `compatibility/`、native/Node-less CI、evidence validator | B3/B4またはB6、0010。profile別required caseとnegative全てのnative証跡 |
 
 1. B1/B2 と main engine の実装は並行可能。B5 が no-go でも B3/B4 の独立した adapted 実装を止める必要はない。
@@ -424,7 +424,7 @@ B1 oracle、B2 統合、local listener/codec の contract 実装、拒否専用�
 
 - 2026-10-18: B5 repaired-primitive spike の test-only 実測を追記。checkpoint 1/2 PASS・decision go（tested macOS/WebKit）だが、M0 は OPEN、strict は blocked、B6 と独立 review は未達。
 
-- 2026-10-18: B6-A exposure authority、B6-B preload environment、B6-C transport E2E、B6-D semantics matrix、B6-E evidence packet を実装/準備（MoonBit exposure registry、quotas/duplicate/lifetime、private `expose`/`release-exposure` dispatch、JS/native/Node tests）。transport・preload loader・page shim・native host integration・独立 review は未達のため strict は blocked、original preload は NOT_EXECUTED。設計は `docs/0039`。
+- 2026-10-18: B6-A exposure authority、B6-B preload environment、B6-C transport E2E、B6-D semantics matrix、B6-E evidence packet を実装/準備。B6-C/B6-D transport は project owner が B7 design work 用に accept（MoonBit exposure registry、quotas/duplicate/lifetime、private `expose`/`release-exposure` dispatch、JS/native/Node tests）。transport・preload loader・page shim・native host integration・独立 review は未達のため strict は blocked、original preload は NOT_EXECUTED。設計は `docs/0039`。
 
 - 2026-10-17: ユーザー指示により `issues/open` から `issues/polished` へ移動し、`Status: polished` と現行参照を同期。実装の準備状態・未解決事項・受入証拠は変更していない。
 

@@ -1,8 +1,9 @@
 # B6 strict contextBridge — production design and pre-registration
 
-Status: **B6 design; B6-A exposure authority and a B6-B experimental preload
-environment slice are implemented. Production `contextBridge` remains
-`NOT_IMPLEMENTED`; M0 OPEN; strict profile blocked.** B5 recorded a
+Status: **B6 design; B6-A exposure authority, B6-B experimental preload
+environment and the B6-C experimental synchronous transport E2E are
+implemented. Production `contextBridge` remains `NOT_IMPLEMENTED`; M0 OPEN;
+strict profile blocked.** B5 recorded a
 test-only `go` on one macOS/WebKit build ([docs/0038](0038-m0-context-bridge-spike.md)).
 B6 is the production implementation and evidence phase. This document is not
 an adoption decision for the B5 transport and does not authorize the original
@@ -144,7 +145,64 @@ are not met by this slice.
 - Unchanged preload source; first-script ordering; preload failure taxonomy
   (unchanged source and status path tested; full environment open).
 
-### B6-C — native authority and transport
+### B6-C — native authority and transport (experimental E2E implemented 2026-10-18)
+
+The B5 transport is an **opt-in experimental** B6-C integration, not a
+production default. The independent transport review remains a prerequisite
+for strict promotion.
+
+Implemented slice:
+
+1. Add host-owned candidate sources under `bridges/preload/` (codec,
+   page-shim, isolated bridge), adapted from the tested B5 sources with the
+   exposure-metadata and preload-status hooks. The app cannot supply these
+   sources.
+2. Add an `install-preload-bridge` trusted-host control op. The Node runtime
+   reads the candidate sources, passes bounded source bytes plus SHA-256 to
+   the native host before `load-file`; the host re-verifies and stores them.
+3. In `installBootstrapScript`, when the transport is installed, generate a
+   per-document secret and inject:
+   - the page shim in `pageWorld` at document start;
+   - the isolated bridge + codec + unchanged CJS preload wrapper in the
+     preload world at document start.
+   The preload status and exposure metadata continue through the existing
+   `preload-result` / `preload-exposure` lanes.
+4. Register native `electronMbtM0CbDocument` / `electronMbtM0CbReport`
+   handlers in the preload world. The document handler returns a per-document
+   grant only to the isolated main frame; the report handler checks the real
+   frame/URL/generation/grant and publishes a bounded `preload-report` event.
+5. Extend the transport protocol with the exact `install-preload-bridge`
+   request and `preload-report` event shapes. `preload-report` is evidence/
+   fixture transport only; it is not production IPC.
+6. Add a macOS-only E2E with the unchanged oracle preload **and** oracle page
+   copies: first-script sync return/throw, callbacks, nested/reentrant calls,
+   Promise, frozen copies, the report observation through the pinned
+   validator, same-url reload/revocation, source hashes and no page-visible
+   native handlers.
+7. Keep `ELECTRON_MBT_B6_TRANSPORT=1` plus the B6-B preload flag opt-in; the
+   default preload, strict profile, M0 and `compatible:false` stay unchanged.
+
+The slice is covered by `tests/context-bridge-transport-native.test.cjs`:
+the unchanged oracle preload and page copies run in the M1 host, the page's
+first script gets synchronous `42`/throw, Promise fulfillment/rejection,
+callbacks, frozen copies and isolated primordials, the same pinned validator
+passes for the initial and reloaded documents, the exposure is registered and
+revoked, source hashes are preserved, and the page cannot see native handlers.
+The transport sources are `bridges/preload/{codec,page-shim,isolated-bridge}.js`.
+The native `preload-report` lane is evidence/fixture transport only.
+
+Known B6-C limits (strict remains blocked):
+
+- the page API materializes from the native-attested preload descriptor
+  before the MoonBit exposure metadata registration settles; making that
+  registration part of admission is B6-D work;
+- the hand-written HMAC/shared-DOM transport has not received the independent
+  security review required for strict promotion;
+- `ipcRenderer` exposes only the bounded test report lane; invoke/on/
+  removeListener, webUtils, full Node-free preload globals and arbitrary
+  preload source remain unsupported;
+- same-origin iframe policy, page self-DoS, the full value/error matrix,
+  fault injection and B6-D/B6-E evidence remain open.
 
 - Per-document isolated bootstrap/attestation and sender/frame/document
   binding.

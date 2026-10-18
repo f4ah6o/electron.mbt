@@ -713,3 +713,35 @@ test "What: native ingress status, release and trigger envelopes are bounded" {
     assert_true(validate(ingress_wire("trigger-adapted-ingress", malformed, ",\"terminal\":\"success\"")) is Err(_))
   }
 }
+
+///|
+test "What: preload bridge install/report shapes are exact and native reports cannot be registered" {
+  let secret = "0123456789abcdef0123456789abcdef"
+  let digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  let request = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":1,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}"
+  let session = Session::new(secret)
+  assert_true(validate(request) is Ok(_))
+  assert_true(session.register(request) is Ok(_))
+  let acknowledgement = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":1,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"installed\":true},\"terminal\":\"success\"}"
+  assert_true(validate(acknowledgement) is Ok(_))
+  let malformed = [
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\"}}",
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\",\"extra\":true}}",
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"c\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"codecSHA256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}",
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"install-preload-bridge\",\"payload\":{\"codecSource\":\"\",\"pageShimSource\":\"p\",\"isolatedSource\":\"i\",\"codecSHA256\":\"" + digest + "\",\"pageShimSHA256\":\"" + digest + "\",\"isolatedSHA256\":\"" + digest + "\"}}",
+  ]
+  for raw in malformed { assert_true(validate(raw) is Err(_)) }
+
+  let report = "{\"version\":1,\"session\":\"" + secret + "\",\"request\":3,\"window\":2,\"generation\":3,\"operation\":\"preload-report\",\"payload\":{\"channel\":\"fixture:report\",\"value\":{\"syncValue\":42}}}"
+  let eventSession = Session::new(secret)
+  assert_true(validate(report) is Ok(_))
+  assert_true(eventSession.register(report) is Err(_))
+  assert_true(eventSession.observe(report) is Ok(_))
+  assert_true(eventSession.observe(report) is Err(_))
+  for raw in [
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"preload-report\",\"payload\":{\"channel\":\"fixture:report\"}}",
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"preload-report\",\"payload\":{\"channel\":\"fixture:report\",\"value\":\"text\"}}",
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":0,\"operation\":\"preload-report\",\"payload\":{\"channel\":\"fixture:report\",\"value\":{}}}",
+    "{\"version\":1,\"session\":\"" + secret + "\",\"request\":2,\"window\":2,\"generation\":3,\"operation\":\"preload-report\",\"payload\":{\"channel\":\"fixture:report\",\"value\":{},\"extra\":true}}",
+  ] { assert_true(validate(raw) is Err(_)) }
+}

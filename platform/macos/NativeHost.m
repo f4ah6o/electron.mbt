@@ -210,6 +210,11 @@ static BOOL b6PreloadBridgeEnabled(void) {
   return [value isEqualToString:@"1"];
 }
 
+static BOOL b6TransportEnabled(void) {
+  NSString *value = NSProcessInfo.processInfo.environment[@"ELECTRON_MBT_B6_TRANSPORT"];
+  return [value isEqualToString:@"1"];
+}
+
 @interface MBTExportRenderer : NSObject <WKNavigationDelegate>
 @property(nonatomic, strong) WKWebView *web;
 @property(nonatomic, strong) NSWindow *window;
@@ -320,6 +325,14 @@ static BOOL b6PreloadBridgeEnabled(void) {
 @property(nonatomic) BOOL preloadBridgeEnabled;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *preloadExposures;
 @property(nonatomic, copy) void (^preloadExposed)(long long, NSDictionary *);
+@property(nonatomic) BOOL bridgeTransportEnabled;
+@property(nonatomic, copy) NSString *bridgeCodecSource;
+@property(nonatomic, copy) NSString *bridgePageShimSource;
+@property(nonatomic, copy) NSString *bridgeIsolatedSource;
+@property(nonatomic, copy) NSString *bridgeSecret;
+@property(nonatomic, copy) NSString *bridgeGrant;
+@property(nonatomic) BOOL bridgeSourcesInstalled;
+@property(nonatomic, copy) void (^preloadReported)(long long, NSDictionary *);
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *loadedFile;
 @property(nonatomic, copy) void (^loadDone)(BOOL, NSString *);
@@ -383,8 +396,16 @@ static BOOL b6PreloadBridgeEnabled(void) {
     self.root = root;
     self.preloadSource = preloadSource;
     self.preloadBridgeEnabled = b6PreloadBridgeEnabled();
+    self.bridgeTransportEnabled = b6TransportEnabled();
     self.preloadExposures = [NSMutableArray array];
     self.preloadExposed = nil;
+    self.bridgeCodecSource = nil;
+    self.bridgePageShimSource = nil;
+    self.bridgeIsolatedSource = nil;
+    self.bridgeSecret = nil;
+    self.bridgeGrant = nil;
+    self.bridgeSourcesInstalled = NO;
+    self.preloadReported = nil;
     self.adaptedAdapterSource = nil;
     self.adaptedAdapterNonce = nil;
     self.adaptedEventNonce = nil;
@@ -429,6 +450,12 @@ static BOOL b6PreloadBridgeEnabled(void) {
       if (self.preloadBridgeEnabled) {
         [config.userContentController addScriptMessageHandlerWithReply:self
           contentWorld:self.preloadWorld name:@"electronMbtPreloadExposure"];
+      }
+      if (self.bridgeTransportEnabled) {
+        [config.userContentController addScriptMessageHandlerWithReply:self
+          contentWorld:self.preloadWorld name:@"electronMbtM0CbDocument"];
+        [config.userContentController addScriptMessageHandlerWithReply:self
+          contentWorld:self.preloadWorld name:@"electronMbtM0CbReport"];
       }
     }
     NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
@@ -1003,6 +1030,8 @@ static BOOL b6PreloadBridgeEnabled(void) {
   self.preloadStatus = nil;
   self.preloadDetail = nil;
   [self.preloadExposures removeAllObjects];
+  self.bridgeSecret = nil;
+  self.bridgeGrant = nil;
   self.adaptedAdapterNonce = nil;
   self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
@@ -1095,7 +1124,60 @@ static BOOL b6PreloadBridgeEnabled(void) {
       forMainFrameOnly:YES inContentWorld:[WKContentWorld pageWorld]];
     [controller addUserScript:adapted];
   }
-  if (self.preloadSource) {
+  if (self.preloadSource && self.bridgeSourcesInstalled) {
+    // B6-C experimental transport: the app preload remains unchanged. The
+    // page shim and isolated bridge are host-owned sources installed before
+    // load-file. The secret is per document and never reaches page globals.
+    if (self.bridgeSecret == nil) {
+      NSMutableData *secretData = [NSMutableData dataWithLength:32];
+      if (secretData.length == 32) {
+        arc4random_buf(secretData.mutableBytes, secretData.length);
+        const unsigned char *secretBytes = secretData.bytes;
+        NSMutableString *secret = [NSMutableString string];
+        for (NSUInteger index = 0; index < secretData.length; index++) {
+          [secret appendFormat:@"%02x", secretBytes[index]];
+        }
+        self.bridgeSecret = secret;
+      }
+    }
+    if (self.bridgeGrant == nil) self.bridgeGrant = [[NSUUID UUID] UUIDString];
+    if (self.bridgeSecret == nil || self.bridgeGrant == nil ||
+        self.bridgeCodecSource.length == 0 || self.bridgePageShimSource.length == 0 ||
+        self.bridgeIsolatedSource.length == 0) return;
+    NSString *pageSource = [NSString stringWithFormat:
+      @"(function(__m0Secret){\n%@\n%@\n})(\"%@\");",
+      self.bridgeCodecSource, self.bridgePageShimSource, self.bridgeSecret];
+    WKUserScript *pageShim = [[WKUserScript alloc] initWithSource:pageSource
+      injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+      forMainFrameOnly:YES inContentWorld:[WKContentWorld pageWorld]];
+    [controller addUserScript:pageShim];
+    NSString *isolatedSource = [NSString stringWithFormat:
+      @"(function(__m0Secret, __m0PreloadNonce){\n%@\n%@\n"
+       "(function(){"
+       "const bridge=globalThis.__m0CbBridge;delete globalThis.__m0CbBridge;"
+       "const unsupported=function(){const e=new Error('ELECTRON_MBT_UNSUPPORTED_PRELOAD_MODULE');"
+       "e.code='ELECTRON_MBT_UNSUPPORTED_PRELOAD_MODULE';throw e;};"
+       "const electron={contextBridge:{exposeInMainWorld:bridge.exposeInMainWorld},"
+       "ipcRenderer:{send:bridge.send},webUtils:{getPathForFile:unsupported}};"
+       "const module={exports:{}};"
+       "const require=function(name){if(name==='electron')return electron;"
+       "const e=new Error('ELECTRON_MBT_UNSUPPORTED_PRELOAD_MODULE: '+name);"
+       "e.code='ELECTRON_MBT_UNSUPPORTED_PRELOAD_MODULE';throw e;};"
+       "let status='ok',detail='';"
+       "try{(function(module,exports,require){\n%@\n})(module,module.exports,require);}"
+       "catch(error){status=error&&error.code==='ELECTRON_MBT_UNSUPPORTED_PRELOAD_MODULE'?"
+       "'unsupported':'failed';detail=String(error&&error.message||error).slice(0,128);}"
+       "const h=window.webkit.messageHandlers.electronMbtPreloadResult;"
+       "h.postMessage({nonce:'%@',preload:status,detail:detail}).catch(function(){});"
+       "})();\n"
+       "})(\"%@\", \"%@\");",
+      self.bridgeCodecSource, self.bridgeIsolatedSource, self.preloadSource,
+      self.preloadNonce, self.bridgeSecret, self.preloadNonce];
+    WKUserScript *isolated = [[WKUserScript alloc] initWithSource:isolatedSource
+      injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+      forMainFrameOnly:YES inContentWorld:self.preloadWorld];
+    [controller addUserScript:isolated];
+  } else if (self.preloadSource) {
     NSError *error = nil;
     NSData *json = [NSJSONSerialization dataWithJSONObject:@[self.preloadSource]
       options:0 error:&error];
@@ -1218,6 +1300,42 @@ static BOOL b6PreloadBridgeEnabled(void) {
     self.generation > 0 && self.generation == self.loadedGeneration &&
     self.loadedFile != nil && message.frameInfo.isMainFrame &&
     [nonce isKindOfClass:[NSString class]] && loadedTarget;
+  // B6-C transport handlers. They use the native document grant instead of a
+  // JS nonce because the unchanged preload/bridge does not receive the preload
+  // nonce. Both handlers are registered only in the isolated preload world.
+  BOOL bridgeCommon = controller == self.web.configuration.userContentController &&
+    message.webView == self.web && self.contentAlive &&
+    self.generation > 0 && self.generation == self.loadedGeneration &&
+    self.loadedFile != nil && message.frameInfo.isMainFrame && loadedTarget &&
+    self.bridgeTransportEnabled && self.bridgeSourcesInstalled &&
+    self.bridgeGrant != nil;
+  BOOL bridgeDocument = bridgeCommon &&
+    [message.name isEqualToString:@"electronMbtM0CbDocument"] &&
+    [body isKindOfClass:[NSDictionary class]] && body.count == 2 &&
+    [body[@"probe"] isEqual:@"m0-cb-context-bridge"] &&
+    [body[@"source"] isEqual:@"document-start"];
+  BOOL bridgeReport = bridgeCommon &&
+    [message.name isEqualToString:@"electronMbtM0CbReport"] &&
+    [body isKindOfClass:[NSDictionary class]] && body.count == 4 &&
+    [body[@"probe"] isEqual:@"m0-cb-context-bridge"] &&
+    [body[@"grant"] isEqual:self.bridgeGrant] &&
+    [body[@"channel"] isKindOfClass:[NSString class]] &&
+    [body[@"channel"] length] <= 256 &&
+    [body[@"value"] isKindOfClass:[NSDictionary class]];
+  if (bridgeDocument) {
+    replyHandler(@{@"grant": self.bridgeGrant}, nil);
+    return;
+  }
+  if (bridgeReport) {
+    if (self.preloadReported) {
+      self.preloadReported(self.generation, @{
+        @"channel": body[@"channel"],
+        @"value": body[@"value"],
+      });
+    }
+    replyHandler(@{@"ok": @YES}, nil);
+    return;
+  }
   if ([message.name isEqualToString:@"electronMbtApp"]) {
     NSDictionary *request = [message.body isKindOfClass:[NSDictionary class]] ? message.body : nil;
     BOOL mainFrame = message.frameInfo.isMainFrame;
@@ -1602,7 +1720,14 @@ static BOOL b6PreloadBridgeEnabled(void) {
   self.preloadStatus = nil;
   self.preloadFinishedGeneration = 0;
   self.preloadExposed = nil;
+  self.preloadReported = nil;
   [self.preloadExposures removeAllObjects];
+  self.bridgeCodecSource = nil;
+  self.bridgePageShimSource = nil;
+  self.bridgeIsolatedSource = nil;
+  self.bridgeSecret = nil;
+  self.bridgeGrant = nil;
+  self.bridgeSourcesInstalled = NO;
   self.adaptedAdapterSource = nil;
   self.adaptedAdapterNonce = nil;
   self.adaptedEventNonce = nil;
@@ -1646,6 +1771,12 @@ static BOOL b6PreloadBridgeEnabled(void) {
       removeScriptMessageHandlerForName:@"electronMbtPreloadResult" contentWorld:self.preloadWorld];
     [self.web.configuration.userContentController
       removeScriptMessageHandlerForName:@"electronMbtPreloadExposure"
+      contentWorld:self.preloadWorld];
+    [self.web.configuration.userContentController
+      removeScriptMessageHandlerForName:@"electronMbtM0CbDocument"
+      contentWorld:self.preloadWorld];
+    [self.web.configuration.userContentController
+      removeScriptMessageHandlerForName:@"electronMbtM0CbReport"
       contentWorld:self.preloadWorld];
   }
   [self completeLoad:NO reason:@"ELECTRON_MBT_WINDOW_DESTROYED"];
@@ -1781,6 +1912,11 @@ static BOOL b6PreloadBridgeEnabled(void) {
     };
     // B6-B metadata only: the descriptor body stays in the native host for a
     // future B6-C page shim; Node/MoonBit receives the bounded authority facts.
+    window.preloadReported = ^(long long eventGeneration, NSDictionary *report) {
+      if (![report isKindOfClass:[NSDictionary class]]) return;
+      [weakHost publishNativeEvent:@"preload-report" windowID:windowID
+        generation:eventGeneration payload:report];
+    };
     window.preloadExposed = ^(long long eventGeneration, NSDictionary *exposure) {
       if (![exposure isKindOfClass:[NSDictionary class]]) return;
       NSDictionary *metadata = @{
@@ -2124,6 +2260,46 @@ static BOOL b6PreloadBridgeEnabled(void) {
       return;
     }
     done(@"success", observed);
+    return;
+  }
+  if ([operation isEqualToString:@"install-preload-bridge"]) {
+    NSString *codec = payload[@"codecSource"];
+    NSString *pageShim = payload[@"pageShimSource"];
+    NSString *isolated = payload[@"isolatedSource"];
+    NSString *codecSHA = payload[@"codecSHA256"];
+    NSString *pageShimSHA = payload[@"pageShimSHA256"];
+    NSString *isolatedSHA = payload[@"isolatedSHA256"];
+    BOOL strings = [codec isKindOfClass:[NSString class]] &&
+      [pageShim isKindOfClass:[NSString class]] &&
+      [isolated isKindOfClass:[NSString class]] &&
+      [codecSHA isKindOfClass:[NSString class]] &&
+      [pageShimSHA isKindOfClass:[NSString class]] &&
+      [isolatedSHA isKindOfClass:[NSString class]];
+    BOOL bounds = strings && codec.length > 0 && codec.length <= 262144 &&
+      pageShim.length > 0 && pageShim.length <= 262144 &&
+      isolated.length > 0 && isolated.length <= 262144;
+    BOOL digests = bounds && codecSHA.length == 64 && pageShimSHA.length == 64 &&
+      isolatedSHA.length == 64;
+    if (digests) {
+      NSData *codecData = [codec dataUsingEncoding:NSUTF8StringEncoding];
+      NSData *pageData = [pageShim dataUsingEncoding:NSUTF8StringEncoding];
+      NSData *isolatedData = [isolated dataUsingEncoding:NSUTF8StringEncoding];
+      digests = codecData != nil && pageData != nil && isolatedData != nil &&
+        [preloadDigest(codecData) isEqualToString:codecSHA] &&
+        [preloadDigest(pageData) isEqualToString:pageShimSHA] &&
+        [preloadDigest(isolatedData) isEqualToString:isolatedSHA];
+    }
+    if (payload.count != 6 || !digests || !window.bridgeTransportEnabled ||
+        !window.contentAlive || window.loadDone != nil || window.loadingNavigation != nil ||
+        generation.longLongValue != window.generation || window.preloadSource == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_PRELOAD_BRIDGE_INVALID"});
+      return;
+    }
+    window.bridgeCodecSource = codec;
+    window.bridgePageShimSource = pageShim;
+    window.bridgeIsolatedSource = isolated;
+    window.bridgeSourcesInstalled = YES;
+    done(@"success", @{@"installed": @YES});
     return;
   }
   if ([operation isEqualToString:@"get-preload-status"]) {

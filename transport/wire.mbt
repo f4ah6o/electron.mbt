@@ -336,7 +336,7 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
   let generation = identifier(field("generation"))
   let operation = match field("operation") {
     String(op) => match op {
-      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "set-dialog-result" | "probe-renderer" | "trigger-renderer-api" | "open-dialog-ui" | "cancel-active-dialog" | "get-dialog-ui-status" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "load-url" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "preload-exposure" | "cancel-close" => op
+      "hello" | "ready" | "create-window" | "show-window" | "hide-window" | "is-window-visible" | "get-window-title" | "set-window-title" | "get-window-bounds" | "set-window-bounds" | "get-window-min-size" | "set-window-min-size" | "get-window-background-color" | "set-window-background-color" | "get-preload-status" | "get-web-contents-url" | "get-web-contents-title" | "get-bootstrap-status" | "get-adapted-status" | "prepare-source" | "grant-file" | "set-dialog-result" | "probe-renderer" | "trigger-renderer-api" | "open-dialog-ui" | "cancel-active-dialog" | "get-dialog-ui-status" | "get-document-identity" | "get-ingress-status" | "release-adapted-ingress" | "trigger-adapted-ingress" | "dispatch-adapted-event" | "install-adapted-adapter" | "begin-load" | "load-file" | "load-url" | "close-window" | "destroy-window" | "shutdown" | "web-content-gone" | "native-close-request" | "isolated-preload-attested" | "preload-exposure" | "preload-report" | "install-preload-bridge" | "cancel-close" => op
       _ => raise BadProtocol("Unsupported operation")
     }
     _ => raise BadProtocol("Invalid operation")
@@ -351,6 +351,58 @@ fn parse_wire(raw : String) -> Envelope raise BadProtocol {
       _ => raise BadProtocol("Native isolated-preload attestation must have empty payload")
     }
     if generation <= 0L { raise BadProtocol("Attestation requires a live document generation") }
+  }
+  if operation == "install-preload-bridge" {
+    let values = match payload {
+      Object(values) => values
+      _ => raise BadProtocol("Preload bridge payload must be an object")
+    }
+    // The success acknowledgement carries {installed:true}; the request carries
+    // the six bounded host-owned source/digest fields. Keep both shapes exact.
+    if values.length() == 1 {
+      match values.get("installed") {
+        Some(True) | Some(False) => ()
+        _ => raise BadProtocol("Preload bridge acknowledgement shape")
+      }
+    } else if values.length() == 6 {
+      for key in ["codecSource", "pageShimSource", "isolatedSource"] {
+        match values.get(key) {
+          Some(String(value)) if value.length() > 0 && value.length() <= 262144 => ()
+          _ => raise BadProtocol("Preload bridge source")
+        }
+      }
+      for key in ["codecSHA256", "pageShimSHA256", "isolatedSHA256"] {
+        let digest = match values.get(key) {
+          Some(String(value)) => value
+          _ => raise BadProtocol("Preload bridge digest")
+        }
+        if digest.length() != 64 { raise BadProtocol("Preload bridge digest") }
+        for i = 0; i < digest.length(); i = i + 1 {
+          let c = digest[i].to_int()
+          if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) {
+            raise BadProtocol("Preload bridge digest")
+          }
+        }
+      }
+    } else {
+      raise BadProtocol("Preload bridge payload shape")
+    }
+  }
+  if operation == "preload-report" {
+    if generation <= 0L { raise BadProtocol("Preload report requires a live document generation") }
+    let values = match payload {
+      Object(values) => values
+      _ => raise BadProtocol("Preload report payload must be an object")
+    }
+    if values.length() != 2 { raise BadProtocol("Preload report payload shape") }
+    match values.get("channel") {
+      Some(String(value)) if value.length() > 0 && value.length() <= 256 => ()
+      _ => raise BadProtocol("Preload report channel")
+    }
+    match values.get("value") {
+      Some(Object(_)) => ()
+      _ => raise BadProtocol("Preload report value")
+    }
   }
   if operation == "preload-exposure" {
     if generation <= 0L { raise BadProtocol("Exposure requires a live document generation") }

@@ -1,9 +1,35 @@
 'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
 const session = require('./runtime-session.cjs');
 const { bindContextBridgeCore } = require('./context-bridge-registry.cjs');
 const { createIpcMain } = require('./ipc-main.cjs');
 const { createMenu } = require('./menu.cjs');
 const { runtimeError } = require('./errors.cjs');
+
+function readTransportSources() {
+  // Host-owned candidate sources; the application cannot substitute them.
+  // This is opt-in experimental B6-C, not a production compatibility profile.
+  const directory = path.join(__dirname, '..', 'preload');
+  const files = {
+    codecSource: 'codec.js',
+    pageShimSource: 'page-shim.js',
+    isolatedSource: 'isolated-bridge.js',
+  };
+  const sources = {};
+  for (const [field, name] of Object.entries(files)) {
+    const source = fs.readFileSync(path.join(directory, name), 'utf8');
+    if (typeof source !== 'string' || source.length === 0 || source.length > 262144 ||
+        !source.isWellFormed()) {
+      throw runtimeError('ELECTRON_MBT_PRELOAD_BRIDGE_INVALID', 'Invalid host-owned bridge source');
+    }
+    sources[field] = source;
+    sources[field.replace('Source', 'SHA256')] =
+      crypto.createHash('sha256').update(source).digest('hex');
+  }
+  return Object.freeze(sources);
+}
 
 function checked(core, runtime, operation) {
   const reply = JSON.parse(core.context_bridge_dispatch(runtime, JSON.stringify(operation)));
@@ -21,6 +47,8 @@ class ExperimentalRuntime extends session.ExperimentalRuntime {
       this.core = bindContextBridgeCore(this.core);
       this.contextHandles = this.core.context_registry(this.runtime);
       this.contextExposures = this.core.context_exposures(this.runtime);
+      this.bridgeSources = process.env.ELECTRON_MBT_B6_TRANSPORT === '1'
+        ? readTransportSources() : null;
       this.host.on('preload-exposure', details => this.#registerPreloadExposure(details));
       this.ipc = createIpcMain(this.core, this.runtime, name => {
         throw runtimeError('ELECTRON_MBT_UNSUPPORTED_API',

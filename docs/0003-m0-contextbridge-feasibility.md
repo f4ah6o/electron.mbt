@@ -159,9 +159,12 @@ B6-A has since implemented the MoonBit-owned exposure authority contract
 private `expose`/`release-exposure` dispatch), and B6-B adds an opt-in
 experimental preload bridge environment that runs the unchanged oracle
 preload, registers its exposure metadata through MoonBit and still does not
-materialize a page API. Neither adds a transport or production native-host
-integration. See [docs/0039](0039-b6-strict-context-bridge.md). This is
-contract/environment work, not an M0 or strict-compatibility result.
+materialize a page API. B6-C adds an opt-in experimental synchronous transport in the M1 host and
+reaches the pinned observation for the unchanged oracle preload/page, but
+page-admission ordering, independent transport review, full preload globals,
+frame policy and B6-D/E semantics remain open. See
+[docs/0039](0039-b6-strict-context-bridge.md). This is not an M0 or
+strict-compatibility result.
 
 ## Architecture verdict and next acceptance gate
 

@@ -44,7 +44,7 @@
         "native-ingress",
         "app-scenario"
       ],
-      "blockedReason": "B5 test-only repaired-primitive spike recorded go on the tested macOS/WebKit build; B6-A implemented the MoonBit exposure authority contract and B6-B an opt-in experimental preload bridge environment; B6 production transport/page shim/native sender/document authority, full preload globals/ipcRenderer/WebUtils, semantics and independent security review remain required; strict synchronous isolated contextBridge stays blocked"
+      "blockedReason": "B5 test-only repaired-primitive spike recorded go on the tested macOS/WebKit build; B6-A implemented the MoonBit exposure authority contract, B6-B an opt-in preload bridge environment and B6-C an opt-in experimental synchronous transport E2E; page-admission ordering, independent transport review, full preload globals/ipcRenderer/WebUtils, frame policy and B6-D/E semantics remain required; strict synchronous isolated contextBridge stays blocked"
     },
     "electron-nodeless-adapted-v1": {
       "engine": "quickjs",

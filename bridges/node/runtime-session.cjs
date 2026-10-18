@@ -344,6 +344,12 @@ class ExperimentalRuntime {
           // show/close/destroy can observe the new MoonBit document generation.
           runtime.host.request('begin-load', this.id, generation);
           this._generation = generation;
+          if (runtime.bridgeSources) {
+            // Install host-owned page/preload bridge sources before load-file.
+            // The host re-verifies source hashes and lengths.
+            runtime.host.request('install-preload-bridge', this.id, generation,
+              runtime.bridgeSources);
+          }
         } catch (error) {
           // MoonBit generations are monotonic. Once the core advanced, a
           // failed native reservation cannot be rolled back to the old

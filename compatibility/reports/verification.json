@@ -8,14 +8,14 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 142, passed: 142, failed: 0."
+      "detail": "Total tests: 143, passed: 143, failed: 0."
     },
     {
       "id": "moon-native",
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 161, passed: 161, failed: 0."
+      "detail": "Total tests: 162, passed: 162, failed: 0."
     },
     {
       "id": "npm-test",
@@ -24,7 +24,7 @@
       "expectedExit": 0,
       "detail": {
         "status": "PASS",
-        "probe": "contextbridge-preload-file"
+        "probe": "b6-context-bridge-transport"
       }
     },
     {

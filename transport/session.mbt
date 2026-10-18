@@ -47,7 +47,8 @@ pub fn Session::register(self : Session, raw : String) -> Result[Unit, String] {
     if envelope.operation == "web-content-gone" ||
        envelope.operation == "native-close-request" ||
        envelope.operation == "isolated-preload-attested" ||
-       envelope.operation == "preload-exposure" {
+       envelope.operation == "preload-exposure" ||
+       envelope.operation == "preload-report" {
       raise BadProtocol("Cannot register a native notification")
     }
     if envelope.request <= self.last_issued { raise BadProtocol("Request ID must increase") }
@@ -122,10 +123,12 @@ pub fn Session::observe(self : Session, raw : String) -> Result[Unit, String] {
     let envelope = self.read(raw)
     if !(envelope.operation == "web-content-gone" || envelope.operation == "native-close-request" ||
          envelope.operation == "isolated-preload-attested" ||
-         envelope.operation == "preload-exposure") || envelope.terminal ||
+         envelope.operation == "preload-exposure" ||
+         envelope.operation == "preload-report") || envelope.terminal ||
         envelope.window <= 0L || envelope.request <= self.last_event ||
         ((envelope.operation == "isolated-preload-attested" ||
-          envelope.operation == "preload-exposure") && envelope.generation <= 0L) {
+          envelope.operation == "preload-exposure" ||
+          envelope.operation == "preload-report") && envelope.generation <= 0L) {
       raise BadProtocol("Invalid or replayed native event")
     }
     // Event IDs are a separate monotonic sequence from outgoing requests.

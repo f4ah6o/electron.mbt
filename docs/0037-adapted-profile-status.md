@@ -71,7 +71,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
    from a staged snapshot over `electron-mbt-app://`; the Node-backed supervisor
    still uses a test-only loopback server.
 3. **File/dialog depth**: session-scoped exact main user-file grants now work
-   for panel/test selections; grant persistence/revocation, directory grants,
+   for panel/test selections; grant persistence/revocation, production directory consent,
    real file-selection human consent and save-panel acceptance remain open.
    App-local main fs is host-backed, including partial directory/metadata
    `stat`/`readdir`/`mkdir`

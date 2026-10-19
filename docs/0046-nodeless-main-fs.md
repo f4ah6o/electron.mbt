@@ -4,8 +4,8 @@ Status: **partial main-runtime increment**. The trusted QuickJS main now reads
 app-local files and atomically writes the runtime data roots through the native
 host, and can read/write exact user files granted by a native panel or the
 explicit test scenario. This closes the import-only `fs`/`fs.promises` stubs,
-but it is not Node's file system: grant persistence, directory grants, stream
-APIs, metadata preservation and true thread-pool I/O remain open. `compatible:false`,
+but it is not Node's file system: grant persistence, production directory
+consent, stream APIs, metadata preservation and true thread-pool I/O remain open. `compatible:false`,
 adapted **partial**, strict **blocked** and original preload **NOT_EXECUTED**
 are unchanged.
 
@@ -51,7 +51,9 @@ operations directly, and the page file broker keeps its own per-window grants.
 Main reads of user-selected files outside the app root are supported after an
 explicit native panel/test grant; grants are session-scoped and exact-file only
 ([docs/0047](0047-nodeless-user-file-grants.md)). Grant persistence and
-directory grants are **NOT IMPLEMENTED**; only the bounded partial
+production directory consent remain open. Directory grants are a separate
+session model ([docs/0049](0049-nodeless-directory-grants.md)); this file's
+exact-file grants do not make a parent directory usable. The bounded
 directory/metadata surface in [docs/0048](0048-nodeless-directory-fs.md) exists.
 
 ## User-file grants
@@ -129,7 +131,7 @@ write is a test-scenario operation, not production consent.
 ## Limits
 
 - main user-file grants are session-scoped and exact-file only; persistence,
-  revocation, directory grants and human panel interaction are open
+  revocation, production directory consent and human panel interaction are open
   ([docs/0047](0047-nodeless-user-file-grants.md));
 - directory APIs beyond the partial `statSync`/`readdirSync`/`mkdirSync` surface
   (`lstat`, recursive `readdir`, `rm`/`unlink`), streams, append flags,

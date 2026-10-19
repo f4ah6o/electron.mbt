@@ -3,8 +3,8 @@
 Status: **partial user-file increment**. The trusted QuickJS main can read and
 write exact user files outside the app root when a native open/save/export panel
 or the explicit `--user-file-selftest` scenario grants them. Grants are
-session-scoped and exact-path only; persistence, revocation, directory grants
-and human panel interaction remain open. `compatible:false`, adapted **partial**,
+session-scoped and exact-path only; persistence, revocation, production
+directory consent and human panel interaction remain open. `compatible:false`, adapted **partial**,
 strict **blocked** and the original preload **NOT_EXECUTED** are unchanged.
 
 ## What works
@@ -126,9 +126,12 @@ attempts to call `grant-main-file` and `grant-file`.
 ## Limits
 
 - grants are not persisted across app restarts and there is no revocation UI;
-- exact-file grants only; no directory, recursive or wildcard grants;
+- exact-file grants only; directory grants are a separate model
+  ([docs/0049](0049-nodeless-directory-grants.md)), not recursive or wildcard
+  file grants;
 - a granted file can be stat'ed/read/written, but its parent cannot be listed and
-  `mkdirSync` next to it is denied; directory access needs a future grant model;
+  `mkdirSync` next to it is denied; directory access uses the separate
+  directory-grant model;
 - the real human open/save panel flow is **NOT RUN**; test injection exercises
   the same native grant methods but is not production consent;
 - user-file writes use atomic replace, not Node's truncate/write or metadata
@@ -136,8 +139,9 @@ attempts to call `grant-main-file` and `grant-file`.
 - canonicalization is checked before the read/write; a trusted-main TOCTOU
   window remains;
 - read/write limits are 256 KiB, so larger user files fail `EFBIG`;
-- directory grants, stream/callback-style `fs`, true thread-pool I/O, `zlib`,
-  updater, the original preload/contextBridge and strict profile remain open
+- production directory consent, stream/callback-style `fs`, true thread-pool
+  I/O, `zlib`, updater, the original preload/contextBridge and strict profile
+  remain open
   (bounded directory/metadata calls exist only for the app/data roots; see
   [docs/0048](0048-nodeless-directory-fs.md)).
 

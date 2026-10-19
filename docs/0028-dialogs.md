@@ -39,7 +39,7 @@ removed by the probe wrappers.
 - the AppKit panels are compiled but the UI is **NOT RUN**; no human click or
   file-system sandbox consent is exercised
 - `set-dialog-result` is test-only, not a production consent path
-- single-file selection only; no directory grants, no multiple selection
+- single-file selection only; no directory selection in this broker, no multiple selection (main-side test-injected directory grants are separate; see [docs/0049](0049-nodeless-directory-grants.md))
 - no `file:open-local-path`
 - no export / save-panel document export
 - the save path is an exact grant; directory-level grants are read-only in this

@@ -4,7 +4,8 @@ Status: **partial directory/metadata increment**. The trusted QuickJS main can
 inspect app-local paths and create bounded directories under the runtime data
 roots through the native host. This extends the existing exact-file main `fs`
 surface ([docs/0046](0046-nodeless-main-fs.md)); it is not Node's full
-`fs.Stats`/`fs.Dirent`, has no directory grants, streams, `lstat`, `rm`/`unlink`
+`fs.Stats`/`fs.Dirent`, has no directory grants in this increment (added in
+[docs/0049](0049-nodeless-directory-grants.md)), streams, `lstat`, `rm`/`unlink`
 or true thread-pool I/O, and keeps `compatible:false`, adapted **partial**,
 strict **blocked** and the original preload **NOT_EXECUTED**.
 
@@ -39,7 +40,7 @@ Unsupported Node fields are absent rather than fabricated.
 | created directory mode | `0700` for each component created by the runtime |
 | symlinks | canonicalized before access; escaping/dangling targets are denied; readdir classifies entries with `lstat` and never follows them |
 | ordering | `readdir` order is host/filesystem order; no sorting guarantee |
-| lifetime | no directory grants, no persistence; state is the host session |
+| lifetime | state is the host session; no persistence. Directory grants are a separate model ([docs/0049](0049-nodeless-directory-grants.md)) |
 
 `mkdirSync` creates recursive components one at a time so each new directory
 gets `0700`. It is not atomic: a later failure can leave earlier components in
@@ -129,7 +130,9 @@ Environment: macOS 26.5.2 arm64, Node 24.22.0, pinned QuickJS 2026-06-04, built
 - `mkdirSync` applies `0700`, rejects explicit `mode`, is not atomic, and its
   recursive first-created return value is absolute rather than the caller's
   relative spelling;
-- no directory grants; user selections remain exact-file only;
+- directory grants were added later
+  ([docs/0049](0049-nodeless-directory-grants.md)); this increment's user
+  selections remain exact-file only;
 - canonicalization is checked before the operation, so a trusted-main TOCTOU
   window remains;
 - non-window `run` has no host bridge, so the new APIs fail with

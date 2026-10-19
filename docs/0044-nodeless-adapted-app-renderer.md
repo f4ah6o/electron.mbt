@@ -82,7 +82,7 @@ Key fields:
   "mainSHA256": "41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e",
   "preloadSHA256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
   "adapterSHA256": "bdfe8bddb4bc07389060e805464a554ff1b0a24d998a88512564c8a91dcc7501",
-  "bootGraphFiles": 113,
+  "bootGraphFiles": 114,
   "pageURL": "electron-mbt-app://app/out/renderer/index.html",
   "pageTitle": "Moji v1.0.5",
   "rendererLoaded": true,
@@ -93,7 +93,14 @@ Key fields:
     "released": true,
     "requests": 2,
     "replyErrors": 0,
-    "ingress": { "admitted": 2, "denied": 0, "unhandled": 0 }
+    "ingress": { "admitted": 14, "denied": 0, "unhandled": 0 }
+  },
+  "broker": {
+    "mode": "test-injected",
+    "grants": 1,
+    "dialogs": 6,
+    "triggered": true,
+    "apiProbe": { "state": "done", "saveOk": true, "readOk": true, "pdfOk": true, "pngOk": true }
   },
   "preloadExecuted": false,
   "mainError": "",
@@ -105,7 +112,7 @@ Key fields:
 }
 ```
 
-The report records hashes, the manifest SHA-256, 113 admitted files, the custom
+The report records hashes, the manifest SHA-256, 114 admitted files (including the broker scenario), the custom
 page URL and the bounded page text containing the real UI labels. A source hash
 mismatch exits 1 before any window is created.
 
@@ -114,11 +121,14 @@ mismatch exits 1 before any window is created.
 - The original preload is **NOT_EXECUTED**. `contextBridge`, `ipcRenderer`,
   `webUtils` and the general preload environment remain unimplemented; strict
   `electron-nodeless-v1` is still blocked.
-- `fs`/`fs.promises` remain import-only (`ENOENT`/`EACCES`), `zlib` is
-  import-only and `electron-updater` is an explicit import-only stub. Real
-  file, save, dialog, export, update and zlib-stream behavior is not verified.
-- The native host still owns `file:` operations. The Node-less runtime exposes
-  no production grant/dialog control for them.
+- `fs`/`fs.promises` remain import-only (`ENOENT`/`EACCES`) in main, `zlib` is
+  import-only and `electron-updater` is an explicit import-only stub. The page
+  `file:` calls go to the native broker; a test-injected save/open/export flow
+  now passes ([broker E2E](0045-nodeless-broker-e2e.md)). Production consent,
+  human dialog UI, grant persistence, real updater behavior and zlib streams
+  remain unverified.
+- `grant-file` / `set-dialog-result` are applied only with the explicit
+  `--broker-selftest` flag; an app cannot enable them by source alone.
 - The custom scheme is not a general origin or navigation surface. It serves
   only snapshot files under the manifest entry's directory and only the main
   frame; child frames, navigation, downloads, service workers and
@@ -147,11 +157,11 @@ mismatch exits 1 before any window is created.
 | `moon build --target native native/nodeless` | PASS |
 | `node scripts/build-macos-host.cjs` | PASS |
 | `fixtures/nodeless-adapted-app` | PASS |
-| `node scripts/nodeless-moji-app.cjs` | PASS |
-| `node --test tests/nodeless-runtime.test.cjs` | 10 PASS |
+| `node scripts/nodeless-moji-app.cjs` | PASS (renderer + test-injected broker) |
+| `node --test tests/nodeless-runtime.test.cjs` | 11 PASS |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 465 PASS |
+| `npm test` | 466 PASS |
 | `node scripts/m1-macos-smoke.cjs` | PASS |
 | `node scripts/m1-source-snapshot.cjs` | PASS |
 | `node scripts/nodeless-moji-boot.cjs` (probe page) | PASS |

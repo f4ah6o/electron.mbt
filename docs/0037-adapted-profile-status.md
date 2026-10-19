@@ -25,6 +25,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | Moji handler invocation | settings/update/readSample/confirmClose | PASS (virtual) |
 | Real Moji renderer | `moji-renderer`: real UI text, `rootChildren:1` | PASS (loopback HTTP) |
 | Node-less real renderer | `nodeless-moji-app`: real UI text, custom app scheme, 2 main requests | PASS (adapted; custom scheme) |
+| Node-less broker E2E | `nodeless-moji-app` broker: 1 grant/6 dialogs, open/save/sample/saveAs/HTML/PDF/PNG, 6 output files | PASS (test-injected) |
 | Adapted page API → Main | `moji-adapted-native`: dark/unsupported | PASS |
 | Adapted API → native broker | real renderer open/save/export/sample | PASS |
 | Async Main microtasks | `updateCheckOk` via `checkForUpdate` | PASS |
@@ -43,9 +44,9 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 ## Aggregate evidence
 
 - `verify-state`: 17/17 PASS, `NOT_READY`
-- readiness: 32 checks, 25 PASS, 2 FAIL (`moji-preload-runtime`,
+- readiness: 33 checks, 26 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 465 pass
+- `npm test`: 466 pass
 - `moon test --target js`: 145 pass
 - `moon test --target native`: 177 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS

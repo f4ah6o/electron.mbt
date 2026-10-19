@@ -226,6 +226,28 @@ function buildReport() {
     nodelessApp === null
       ? 'Node-less Moji renderer report is absent'
       : `Node-less Moji: status=${nodelessApp.status}, title=${nodelessApp.pageTitle}, url=${nodelessApp.pageURL}, rootChildren=${nodelessApp.rootChildren}, api=${nodelessApp.apiPresent}, requests=${nodelessApp.adapted && nodelessApp.adapted.requests}, preloadExecuted=${nodelessApp.preloadExecuted}`));
+  const nodelessBroker = nodelessApp && nodelessApp.broker ? nodelessApp.broker : null;
+  const nodelessApi = nodelessApp && nodelessApp.apiProbe ? nodelessApp.apiProbe : {};
+  const nodelessOutputs = nodelessApp && nodelessApp.brokerOutputs ? nodelessApp.brokerOutputs : {};
+  const nodelessBrokerOk = nodelessApp !== null && nodelessApp.status === 'PASS' &&
+    nodelessBroker !== null && nodelessBroker.configured === true &&
+    nodelessBroker.mode === 'test-injected' && nodelessBroker.grants === 1 &&
+    nodelessBroker.dialogs === 6 && nodelessBroker.triggered === true &&
+    nodelessBroker.error === '' && nodelessApi.state === 'done' &&
+    nodelessApi.openOk === true && nodelessApi.saveAsOk === true &&
+    nodelessApi.exportOk === true && nodelessApi.pngOk === true &&
+    nodelessApi.pdfOk === true && nodelessApi.pdfLandscapeOk === true &&
+    nodelessApi.docPngOk === true && nodelessApi.saveOk === true &&
+    nodelessApi.readOk === true && nodelessApi.sampleOk === true &&
+    nodelessApi.updateCheckOk === true && nodelessApi.settingsTheme === 'dark' &&
+    Object.values(nodelessOutputs).length === 6 &&
+    Object.values(nodelessOutputs).every(value => value === true);
+  checks.push(check('nodeless-moji-broker',
+    nodelessApp === null || nodelessApp.status === 'NOT_RUN' ? 'NOT_RUN' :
+      (nodelessBrokerOk ? 'PASS' : 'FAIL'),
+    nodelessBroker === null
+      ? 'Node-less Moji broker report is absent'
+      : `Node-less broker (test-injected): grants=${nodelessBroker.grants}, dialogs=${nodelessBroker.dialogs}, triggered=${nodelessBroker.triggered}, open=${nodelessApi.openOk}, saveAs=${nodelessApi.saveAsOk}, export=${nodelessApi.exportOk}, pdf=${nodelessApi.pdfOk}, png=${nodelessApi.pngOk}, read=${nodelessApi.readOk}, sample=${nodelessApi.sampleOk}, update=${nodelessApi.updateCheckOk}, files=${JSON.stringify(nodelessOutputs)}`));
   checks.push(check('node-less-moji-app-main', mojiRendererOk && nodelessAppOk ? 'PASS' : 'NOT_RUN',
     mojiRendererOk && nodelessAppOk
       ? 'Moji main boots and the adapted Moji renderer loads Node-lessly; original preload NOT_EXECUTED'

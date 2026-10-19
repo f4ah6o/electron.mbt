@@ -9,8 +9,8 @@
   "preloadSHA256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
   "adapterSHA256": "bdfe8bddb4bc07389060e805464a554ff1b0a24d998a88512564c8a91dcc7501",
   "rendererIndexSHA256": "fafe339fee4ccecc164748984e77c03f9089c624a24cac62cf3b18ffe4e9e301",
-  "manifestSHA256": "f9b932d227096ab68254294ced410f55e8c43c2521447f01b48acdebe9840a54",
-  "bootGraphFiles": 113,
+  "manifestSHA256": "314545a2345fd971909d3637dbd5c0f13f967b0bf860f8757c6fdada2a5b6087",
+  "bootGraphFiles": 114,
   "pageURL": "electron-mbt-app://app/out/renderer/index.html",
   "pageTitle": "Moji v1.0.5",
   "rendererLoaded": true,
@@ -36,7 +36,7 @@
       "unhandled": 0,
       "denied": 0,
       "generation": 1,
-      "admitted": 2,
+      "admitted": 14,
       "lastCode": ""
     }
   },
@@ -44,8 +44,60 @@
     "unhandled": 0,
     "denied": 0,
     "generation": 1,
-    "admitted": 2,
+    "admitted": 14,
     "lastCode": ""
+  },
+  "broker": {
+    "configured": true,
+    "mode": "test-injected",
+    "grants": 1,
+    "dialogs": 6,
+    "triggered": true,
+    "apiProbe": {
+      "state": "done",
+      "openOk": true,
+      "openPath": "/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-nodeless-app-RQ7JE2/samples/markdown-guide.en.md",
+      "saveAsOk": true,
+      "exportOk": true,
+      "pngOk": true,
+      "pdfOk": true,
+      "pdfLandscapeOk": true,
+      "docPngOk": true,
+      "saveOk": true,
+      "readOk": true,
+      "readContent": "# renderer save\n",
+      "sampleOk": true,
+      "sampleContent": "# Complete Markdown Guide\n\nA practical Markdown reference for wr",
+      "settingsTheme": "dark",
+      "updateCheckOk": true
+    },
+    "error": ""
+  },
+  "apiProbe": {
+    "state": "done",
+    "openOk": true,
+    "openPath": "/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-nodeless-app-RQ7JE2/samples/markdown-guide.en.md",
+    "saveAsOk": true,
+    "exportOk": true,
+    "pngOk": true,
+    "pdfOk": true,
+    "pdfLandscapeOk": true,
+    "docPngOk": true,
+    "saveOk": true,
+    "readOk": true,
+    "readContent": "# renderer save\n",
+    "sampleOk": true,
+    "sampleContent": "# Complete Markdown Guide\n\nA practical Markdown reference for wr",
+    "settingsTheme": "dark",
+    "updateCheckOk": true
+  },
+  "brokerOutputs": {
+    "save": true,
+    "saveAs": true,
+    "exportHtml": true,
+    "exportPdf": true,
+    "exportPng": true,
+    "exportDocPng": true
   },
   "preloadExecuted": false,
   "mainError": "",
@@ -57,5 +109,5 @@
   "nodeFreeChildPath": true,
   "rendererProvenance": "main/preload/adapter hashes match build-provenance; the renderer tree is pinned per file by the generated source manifest, and the provenance renderer tree hash was not independently re-derived.",
   "compatible": false,
-  "note": "Pinned Moji main and real renderer run on the Node-less QuickJS runtime under the generated adapted page API. The original preload is NOT_EXECUTED; no Electron compatibility is claimed."
+  "note": "Pinned Moji main and real renderer run on the Node-less QuickJS runtime under the generated adapted page API. The original preload is NOT_EXECUTED; file/dialog/export paths use test-injected grants and are not production consent. No Electron compatibility is claimed."
 }

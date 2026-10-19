@@ -10,8 +10,8 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 32,
-    "pass": 25,
+    "checks": 33,
+    "pass": 26,
     "fail": 2,
     "notRun": 5
   },
@@ -155,6 +155,11 @@
       "id": "nodeless-moji-app",
       "status": "PASS",
       "detail": "Node-less Moji: status=PASS, title=Moji v1.0.5, url=electron-mbt-app://app/out/renderer/index.html, rootChildren=1, api=true, requests=2, preloadExecuted=false"
+    },
+    {
+      "id": "nodeless-moji-broker",
+      "status": "PASS",
+      "detail": "Node-less broker (test-injected): grants=1, dialogs=6, triggered=true, open=true, saveAs=true, export=true, pdf=true, png=true, read=true, sample=true, update=true, files={\"save\":true,\"saveAs\":true,\"exportHtml\":true,\"exportPdf\":true,\"exportPng\":true,\"exportDocPng\":true}"
     },
     {
       "id": "node-less-moji-app-main",

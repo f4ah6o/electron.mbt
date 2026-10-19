@@ -51,11 +51,20 @@ app.whenReady().then(function () {
     });
   });
   ipcMain.handle('selftest:unsupported', function () {
-    try {
-      require('node:fs').readFileSync('/missing');
-      return { code: 'unexpected' };
-    } catch (error) {
-      return { code: error.code };
+    const fs = require('node:fs');
+    function codeOf(callback) {
+      try {
+        callback();
+        return 'unexpected';
+      } catch (error) {
+        return error.code;
+      }
     }
+    return {
+      code: codeOf(function () { fs.readFileSync('/missing'); }),
+      stat: codeOf(function () { fs.statSync('/missing'); }),
+      readdir: codeOf(function () { fs.readdirSync('/missing'); }),
+      mkdir: codeOf(function () { fs.mkdirSync('/missing'); }),
+    };
   });
 });

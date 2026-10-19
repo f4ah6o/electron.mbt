@@ -2,6 +2,7 @@
 #import <WebKit/WebKit.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <dispatch/dispatch.h>
+#import <dirent.h>
 #import <sys/stat.h>
 #import <sys/types.h>
 #import <fcntl.h>
@@ -139,6 +140,12 @@ static const unsigned long long MaxSnapshotTotalBytes = 64ULL * 1024ULL * 1024UL
 static const NSUInteger MaxMainReadBytes = 256 * 1024;
 static const NSUInteger MaxMainWriteBytes = 256 * 1024;
 static const NSUInteger MaxMainBase64Bytes = 400 * 1024;
+// Directory listing and creation stay deliberately smaller than the 1 MiB
+// control frame. The entry count mirrors the 4096-file source snapshot bound;
+// the name-byte bound leaves room for JSON keys and escaping in one reply.
+static const NSUInteger MaxMainDirEntries = 4096;
+static const NSUInteger MaxMainDirNameBytes = 512 * 1024;
+static const NSUInteger MaxMainMkdirComponents = 64;
 // Exact-file grants issued by native open/save/export panel completion or the
 // explicit test scenario. They are session-scoped and never persisted; the
 // bound keeps a long-running app from turning the host into an open file table.
@@ -2168,6 +2175,58 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   return [self path:canonical isStrictlyUnderRoot:appData] ||
          [self path:canonical isStrictlyUnderRoot:userData];
 }
+// mkdir may create the data-root directory itself as well as descendants.
+// Exact-file grants deliberately do not extend to directory creation.
+- (BOOL)mainDirWriteAllowed:(NSString *)canonical {
+  NSString *appData = [self.root stringByAppendingPathComponent:@".appData"];
+  NSString *userData = [self.root stringByAppendingPathComponent:@".userData"];
+  return [self path:canonical isUnderRoot:appData] ||
+         [self path:canonical isUnderRoot:userData];
+}
+- (NSString *)mainDirectoryErrorCode:(NSError *)error {
+  if (error == nil) return @"ELECTRON_MBT_FILE_WRITE";
+  if ([error.domain isEqualToString:NSCocoaErrorDomain]) {
+    switch (error.code) {
+      case NSFileWriteFileExistsError: return @"ELECTRON_MBT_FILE_EXISTS";
+      case NSFileNoSuchFileError: return @"ELECTRON_MBT_FILE_NOT_FOUND";
+      case NSFileReadNoPermissionError:
+      case NSFileWriteNoPermissionError: return @"ELECTRON_MBT_FILE_DENIED";
+      case NSFileWriteOutOfSpaceError: return @"ELECTRON_MBT_FILE_LIMIT";
+      default: break;
+    }
+  }
+  if ([error.domain isEqualToString:NSPOSIXErrorDomain]) {
+    if (error.code == EEXIST) return @"ELECTRON_MBT_FILE_EXISTS";
+    if (error.code == ENOENT) return @"ELECTRON_MBT_FILE_NOT_FOUND";
+    if (error.code == ENOTDIR) return @"ELECTRON_MBT_FILE_NOT_DIR";
+    if (error.code == EACCES || error.code == EPERM) return @"ELECTRON_MBT_FILE_DENIED";
+    if (error.code == ENAMETOOLONG) return @"ELECTRON_MBT_FILE_LIMIT";
+    if (error.code == ENOSPC || error.code == EROFS) return @"ELECTRON_MBT_FILE_WRITE";
+  }
+  return @"ELECTRON_MBT_FILE_WRITE";
+}
+// Return the missing suffix of an already canonicalized path and, through
+// existingOut, the deepest existing ancestor. A file in the prefix means the
+// target cannot be a directory; the caller maps nil to ENOTDIR.
+- (NSArray<NSString *> *)missingMainComponentsForPath:(NSString *)canonical
+                                             existing:(NSString **)existingOut {
+  NSFileManager *manager = [NSFileManager defaultManager];
+  NSMutableArray<NSString *> *missing = [NSMutableArray array];
+  NSString *cursor = canonical;
+  while (cursor.length > 1) {
+    BOOL isDirectory = NO;
+    if ([manager fileExistsAtPath:cursor isDirectory:&isDirectory]) {
+      if (!isDirectory) return nil;
+      if (existingOut != NULL) *existingOut = cursor;
+      return missing;
+    }
+    NSString *component = cursor.lastPathComponent;
+    if (component.length == 0) return nil;
+    [missing insertObject:component atIndex:0];
+    cursor = cursor.stringByDeletingLastPathComponent;
+  }
+  return nil;
+}
 - (BOOL)grantMainPath:(NSString *)path mode:(NSString *)mode canonical:(NSString **)canonical {
   NSInteger bits = 0;
   if ([mode isEqualToString:@"read"]) bits = 1;
@@ -2251,9 +2310,176 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       attributesOfItemAtPath:canonical error:nil];
     unsigned long long size = attributes != nil ?
       [attributes[NSFileSize] unsignedLongLongValue] : 0;
-    done(@"success", @{@"exists": @YES, @"isFile": @(!isDirectory),
+    NSDate *modified = attributes != nil ? attributes[NSFileModificationDate] : nil;
+    double mtimeMs = [modified isKindOfClass:[NSDate class]] ?
+      [modified timeIntervalSince1970] * 1000.0 : 0.0;
+    done(@"success", @{@"exists": @YES, @"isFile": (isDirectory ? @NO : @YES),
       @"isDirectory": @(isDirectory), @"size": @(size),
-      @"path": canonical, @"denied": @NO});
+      @"mtimeMs": @(mtimeMs), @"path": canonical, @"denied": @NO});
+    return;
+  }
+  if ([operation isEqualToString:@"main-read-dir"]) {
+    NSString *path = payload[@"path"];
+    if (payload.count != 1 || ![path isKindOfClass:[NSString class]] || path.length == 0 ||
+        path.length > 4096 ||
+        [path rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]].location != NSNotFound) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *canonical = [self canonicalMainPath:path];
+    if (canonical == nil || ![self mainReadAllowed:canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
+      return;
+    }
+    NSFileManager *manager = [NSFileManager defaultManager];
+    BOOL isDirectory = NO;
+    if (![manager fileExistsAtPath:canonical isDirectory:&isDirectory]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_NOT_FOUND"});
+      return;
+    }
+    if (!isDirectory) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_NOT_DIR"});
+      return;
+    }
+    // A bounded shallow opendir loop avoids Foundation's unbounded directory
+    // array. Entries are classified with lstat and never followed.
+    DIR *directory = opendir(canonical.fileSystemRepresentation);
+    if (directory == NULL) {
+      int opened = errno;
+      NSString *code = opened == ENOENT ? @"ELECTRON_MBT_FILE_NOT_FOUND" :
+        (opened == ENOTDIR ? @"ELECTRON_MBT_FILE_NOT_DIR" :
+         ((opened == EACCES || opened == EPERM) ? @"ELECTRON_MBT_FILE_DENIED" :
+          @"ELECTRON_MBT_FILE_READ"));
+      done(@"failure", @{@"code": code});
+      return;
+    }
+    NSMutableArray<NSDictionary *> *entries = [NSMutableArray array];
+    NSUInteger totalNameBytes = 0;
+    BOOL limited = NO;
+    BOOL malformed = NO;
+    struct dirent *entry = NULL;
+    while ((entry = readdir(directory)) != NULL) {
+      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+      if (entries.count >= MaxMainDirEntries) { limited = YES; break; }
+      NSString *name = [NSString stringWithUTF8String:entry->d_name];
+      if (name.length == 0) { malformed = YES; break; }
+      NSUInteger nameBytes = [name lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+      if (nameBytes == 0 || nameBytes > MaxMainDirNameBytes ||
+          totalNameBytes > MaxMainDirNameBytes - nameBytes) {
+        limited = YES;
+        break;
+      }
+      totalNameBytes += nameBytes;
+      NSString *kind = @"other";
+      char fullPath[PATH_MAX];
+      int written = snprintf(fullPath, sizeof(fullPath), "%s/%s",
+        canonical.fileSystemRepresentation, entry->d_name);
+      if (written > 0 && (size_t)written < sizeof(fullPath)) {
+        struct stat info;
+        if (lstat(fullPath, &info) == 0) {
+          if (S_ISLNK(info.st_mode)) kind = @"symlink";
+          else if (S_ISREG(info.st_mode)) kind = @"file";
+          else if (S_ISDIR(info.st_mode)) kind = @"directory";
+        }
+      }
+      [entries addObject:@{@"name": name, @"kind": kind}];
+    }
+    closedir(directory);
+    if (limited) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_LIMIT"});
+      return;
+    }
+    if (malformed) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_MALFORMED"});
+      return;
+    }
+    done(@"success", @{@"path": canonical, @"entries": entries});
+    return;
+  }
+  if ([operation isEqualToString:@"main-mkdir"]) {
+    NSString *path = payload[@"path"];
+    NSNumber *recursiveValue = payload[@"recursive"];
+    if (payload.count != 2 || ![path isKindOfClass:[NSString class]] ||
+        ![recursiveValue isKindOfClass:[NSNumber class]] || path.length == 0 ||
+        path.length > 4096 ||
+        [path rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]].location != NSNotFound) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    BOOL recursive = recursiveValue.boolValue;
+    NSString *canonical = [self canonicalMainPath:path];
+    if (canonical == nil || ![self mainDirWriteAllowed:canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
+      return;
+    }
+    NSFileManager *manager = [NSFileManager defaultManager];
+    BOOL targetIsDirectory = NO;
+    BOOL targetExists = [manager fileExistsAtPath:canonical isDirectory:&targetIsDirectory];
+    if (targetExists) {
+      if (!targetIsDirectory || !recursive) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_EXISTS"});
+        return;
+      }
+      done(@"success", @{@"path": canonical, @"existed": @YES,
+        @"firstCreated": [NSNull null]});
+      return;
+    }
+    NSError *error = nil;
+    if (!recursive) {
+      NSString *parent = canonical.stringByDeletingLastPathComponent;
+      BOOL parentIsDirectory = NO;
+      if (![manager fileExistsAtPath:parent isDirectory:&parentIsDirectory]) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_NOT_FOUND"});
+        return;
+      }
+      if (!parentIsDirectory) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_NOT_DIR"});
+        return;
+      }
+      if (![manager createDirectoryAtPath:canonical withIntermediateDirectories:NO
+          attributes:@{NSFilePosixPermissions: @0700} error:&error]) {
+        done(@"failure", @{@"code": [self mainDirectoryErrorCode:error]});
+        return;
+      }
+      done(@"success", @{@"path": canonical, @"existed": @NO,
+        @"firstCreated": [NSNull null]});
+      return;
+    }
+    NSString *existing = nil;
+    NSArray<NSString *> *missing = [self missingMainComponentsForPath:canonical
+      existing:&existing];
+    if (missing == nil || existing == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_NOT_DIR"});
+      return;
+    }
+    if (missing.count == 0) {
+      done(@"success", @{@"path": canonical, @"existed": @YES,
+        @"firstCreated": [NSNull null]});
+      return;
+    }
+    if (missing.count > MaxMainMkdirComponents) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_LIMIT"});
+      return;
+    }
+    NSString *firstCreated = [existing stringByAppendingPathComponent:missing.firstObject];
+    NSString *cursor = existing;
+    for (NSString *component in missing) {
+      cursor = [cursor stringByAppendingPathComponent:component];
+      error = nil;
+      if (![manager createDirectoryAtPath:cursor withIntermediateDirectories:NO
+          attributes:@{NSFilePosixPermissions: @0700} error:&error]) {
+        BOOL nowDirectory = NO;
+        if ([error.domain isEqualToString:NSCocoaErrorDomain] &&
+            error.code == NSFileWriteFileExistsError &&
+            [manager fileExistsAtPath:cursor isDirectory:&nowDirectory] && nowDirectory) {
+          continue;
+        }
+        done(@"failure", @{@"code": [self mainDirectoryErrorCode:error]});
+        return;
+      }
+    }
+    done(@"success", @{@"path": canonical, @"existed": @NO,
+      @"firstCreated": firstCreated});
     return;
   }
   if ([operation isEqualToString:@"main-read-file"]) {

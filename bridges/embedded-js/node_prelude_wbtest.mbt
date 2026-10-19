@@ -12,9 +12,13 @@ test "node prelude provides bounded builtins and fail-closed modules" {
       "entry",
       "sha256:entry",
       "const path = require('node:path');\n" +
+      "const fs = require('node:fs');\n" +
       "const { Buffer } = require('node:buffer');\n" +
       "const { EventEmitter } = require('node:events');\n" +
-      "const fsCode = (function () { try { require('node:fs').readFileSync('/missing'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
+      "const fsCode = (function () { try { fs.readFileSync('/missing'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
+      "const statCode = (function () { try { fs.statSync('/missing'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
+      "const readdirCode = (function () { try { fs.readdirSync('/missing'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
+      "const mkdirCode = (function () { try { fs.mkdirSync('/missing'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
       "const existsMissing = require('node:fs').existsSync('/missing');\n" +
       "const zlibCode = (function () { try { require('node:zlib').createDeflate(); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
       "const updater = require('electron-updater');\n" +
@@ -33,6 +37,9 @@ test "node prelude provides bounded builtins and fail-closed modules" {
       "  event: seen,\n" +
       "  count: emitter.listenerCount('x'),\n" +
       "  fsCode: fsCode,\n" +
+      "  statCode: statCode,\n" +
+      "  readdirCode: readdirCode,\n" +
+      "  mkdirCode: mkdirCode,\n" +
       "  existsMissing: existsMissing,\n" +
       "  zlibCode: zlibCode,\n" +
       "  updaterOk: typeof updater.autoUpdater.checkForUpdates === 'function',\n" +
@@ -53,6 +60,9 @@ test "node prelude provides bounded builtins and fail-closed modules" {
   assert_true(result.exports.contains("\"event\":\"yes\""))
   assert_true(result.exports.contains("\"count\":0"))
   assert_true(result.exports.contains("\"fsCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
+  assert_true(result.exports.contains("\"statCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
+  assert_true(result.exports.contains("\"readdirCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
+  assert_true(result.exports.contains("\"mkdirCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
   assert_true(result.exports.contains("\"existsMissing\":false"))
   assert_true(result.exports.contains("\"zlibCode\":\"ELECTRON_MBT_UNSUPPORTED_API\""))
   assert_true(result.exports.contains("\"updaterOk\":true"))

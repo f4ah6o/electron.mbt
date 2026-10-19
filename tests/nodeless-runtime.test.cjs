@@ -120,6 +120,9 @@ test('Node-less runtime executes the fixture without Node and fails closed', () 
   assert.equal(resultOf('selftest:async').value, 9);
   assert.deepEqual(resultOf('selftest:order').order, ['tick', 'promise', 'timer']);
   assert.equal(resultOf('selftest:unsupported').code, 'ELECTRON_MBT_HOST_UNAVAILABLE');
+  assert.equal(resultOf('selftest:unsupported').stat, 'ELECTRON_MBT_HOST_UNAVAILABLE');
+  assert.equal(resultOf('selftest:unsupported').readdir, 'ELECTRON_MBT_HOST_UNAVAILABLE');
+  assert.equal(resultOf('selftest:unsupported').mkdir, 'ELECTRON_MBT_HOST_UNAVAILABLE');
 });
 
 test('the nodeless binary does not link or import Node/Node-API', () => {
@@ -170,6 +173,8 @@ test('main fs reads app files and atomically writes appData without Node', {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-fs-'));
   try {
     fs.cpSync(source, dir, { recursive: true });
+    fs.mkdirSync(path.join(dir, '.appData'), { recursive: true });
+    fs.symlinkSync('../sample.txt', path.join(dir, '.appData', 'sample-link'));
     const { result, report } = run(binary, dir,
       ['--window', '--fs-selftest', '--entry', 'src/main.js']);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
@@ -199,6 +204,36 @@ test('main fs reads app files and atomically writes appData without Node', {
     assert.equal(fsReport.oversize, 'EFBIG');
     assert.equal(fsReport.unknownFlag, 'ELECTRON_MBT_UNSUPPORTED_API');
     assert.equal(fsReport.escapeCode, 'ENOENT');
+    assert.equal(fsReport.mkdirRecursive, true);
+    assert.equal(fsReport.mkdirExistingRecursive, true);
+    assert.equal(fsReport.dirListNested, true);
+    assert.equal(fsReport.dirListSrc, true);
+    assert.equal(fsReport.dirListUtf8, true);
+    assert.equal(fsReport.direntFile, true);
+    assert.equal(fsReport.direntLink, true);
+    assert.equal(fsReport.statFile, true);
+    assert.equal(fsReport.statDirectory, true);
+    assert.equal(fsReport.statMissing, 'ENOENT');
+    assert.equal(fsReport.statOutside, 'EACCES');
+    assert.equal(fsReport.statNoThrow, true);
+    assert.equal(fsReport.statBigint, 'ELECTRON_MBT_UNSUPPORTED_API');
+    assert.equal(fsReport.listMissing, 'ENOENT');
+    assert.equal(fsReport.listFile, 'ENOTDIR');
+    assert.equal(fsReport.listOutside, 'EACCES');
+    assert.equal(fsReport.listBadEncoding, 'ELECTRON_MBT_UNSUPPORTED_API');
+    assert.equal(fsReport.listRecursive, 'ELECTRON_MBT_UNSUPPORTED_API');
+    assert.equal(fsReport.mkdirExists, 'EEXIST');
+    assert.equal(fsReport.mkdirFile, 'EEXIST');
+    assert.equal(fsReport.mkdirMissingParent, 'ENOENT');
+    assert.equal(fsReport.mkdirDenied, 'EACCES');
+    assert.equal(fsReport.mkdirTraversal, 'EACCES');
+    assert.equal(fsReport.mkdirMode, 'ELECTRON_MBT_UNSUPPORTED_API');
+    assert.equal(fsReport.asyncStat, true);
+    assert.equal(fsReport.asyncReaddir, true);
+    assert.equal(fsReport.asyncMkdir, true);
+    assert.equal(fsReport.mkdirDataRoot, true);
+    assert.equal(fsReport.escapeListCode, 'ENOENT');
+    assert.equal(fsReport.escapeStatCode, 'ENOENT');
     assert.equal(report.pageTitle, 'nodeless-fs-ready');
     assert.equal(report.hostShutdown, true);
     assert.equal(report.liveLeases, 0);
@@ -228,6 +263,82 @@ test('main fs denies a symlink that escapes the app root', {
     assert.equal(report.status, 'PASS');
     assert.equal(report.fsSelftestOk, true);
     assert.equal(report.fsSelftest.escapeCode, 'EACCES');
+    assert.equal(report.fsSelftest.escapeListCode, 'EACCES');
+    assert.equal(report.fsSelftest.escapeStatCode, 'EACCES');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('main fs denies directory escape and enforces directory bounds', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const mainSource = `'use strict';
+const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('node:fs');
+function codeOf(callback) {
+  try { callback(); return 'no-error'; } catch (error) { return error && error.code ? error.code : 'no-code'; }
+}
+app.whenReady().then(function () {
+  ipcMain.handle('fs:selftest', function () {
+    const result = { ok: true };
+    result.mkdirEscape = codeOf(function () {
+      fs.mkdirSync('.appData/escape/newdir', { recursive: true });
+    });
+    result.listEscape = codeOf(function () { fs.readdirSync('.appData/escape'); });
+    result.statEscape = codeOf(function () { fs.statSync('.appData/escape/secret.txt'); });
+    result.many = codeOf(function () { fs.readdirSync('.appData/many'); });
+    let deep = '.appData';
+    for (let i = 0; i < 66; i++) deep += '/d';
+    deep += '/leaf';
+    result.deep = codeOf(function () { fs.mkdirSync(deep, { recursive: true }); });
+    if (result.mkdirEscape !== 'EACCES' || result.listEscape !== 'EACCES' ||
+        result.statEscape !== 'EACCES' || result.many !== 'EFBIG' ||
+        result.deep !== 'EFBIG') {
+      result.ok = false;
+    }
+    return result;
+  });
+  const window = new BrowserWindow({ width: 480, height: 320, title: 'dir-negative', show: false });
+  window.loadFile('index.html');
+});
+`;
+  const dir = temporaryApp(mainSource, {
+    'index.html': '<!doctype html>\n<html><head><meta charset="utf-8">' +
+      '<title>nodeless-dir-negative</title></head><body><div id="root">dir</div></body></html>\n',
+  });
+  writeSourceManifest(path.join(dir, 'source-manifest.json'),
+    buildSourceManifest(dir, 'index.html', 'nodeless-test',
+      ['index.html', 'package.json', 'src/main.js']));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-dir-outside-'));
+  try {
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'outside\n');
+    fs.mkdirSync(path.join(dir, '.appData'), { recursive: true });
+    fs.symlinkSync(outside, path.join(dir, '.appData', 'escape'));
+    fs.mkdirSync(path.join(dir, '.appData', 'many'), { recursive: true });
+    for (let i = 0; i < 4097; i++) {
+      fs.writeFileSync(path.join(dir, '.appData', 'many', `f${i}`), '');
+    }
+    const { result, report } = run(binary, dir,
+      ['--window', '--fs-selftest', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.fsSelftestOk, true);
+    const fsReport = report.fsSelftest;
+    assert.equal(fsReport.ok, true);
+    assert.equal(fsReport.mkdirEscape, 'EACCES');
+    assert.equal(fsReport.listEscape, 'EACCES');
+    assert.equal(fsReport.statEscape, 'EACCES');
+    assert.equal(fsReport.many, 'EFBIG');
+    assert.equal(fsReport.deep, 'EFBIG');
+    assert.equal(fs.existsSync(path.join(outside, 'newdir')), false);
+    assert.equal(report.hostShutdown, true);
+    assert.equal(report.liveLeases, 0);
+    assert.equal(report.nodeProcesses, 0);
+    assert.equal(report.compatible, false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
@@ -274,12 +385,17 @@ test('main fs reads and writes user files granted by the test scenario', {
     assert.equal(report.userFileSelftest.readText, '# user read\n');
     assert.equal(report.userFileSelftest.readAsync, '# user read\n');
     assert.equal(report.userFileSelftest.existsRead, true);
+    assert.equal(report.userFileSelftest.statRead, true);
+    assert.equal(report.userFileSelftest.listGrantedFile, 'ENOTDIR');
+    assert.equal(report.userFileSelftest.listDeniedParent, 'EACCES');
     assert.equal(report.userFileSelftest.writeReadBack, true);
     assert.equal(report.userFileSelftest.writeAsync, true);
     assert.equal(report.userFileSelftest.existsWrite, true);
     assert.equal(report.userFileSelftest.deniedRead, 'EACCES');
     assert.equal(report.userFileSelftest.deniedExists, false);
     assert.equal(report.userFileSelftest.deniedWrite, 'EACCES');
+    assert.equal(report.userFileSelftest.statDenied, 'EACCES');
+    assert.equal(report.userFileSelftest.mkdirDeniedNearGrant, 'EACCES');
     assert.equal(report.userFileSelftest.selfGrantBlocked, true);
     assert.equal(report.userFileSelftest.controlGrantBlocked, true);
     assert.equal(fs.readFileSync(writePath, 'utf8'), 'user-write');

@@ -34,6 +34,16 @@ app.whenReady().then(function () {
       result.readText = fs.readFileSync(scenario.readPath, 'utf8');
       result.readAsync = await fsp.readFile(scenario.readPath, 'utf8');
       result.existsRead = fs.existsSync(scenario.readPath);
+      const readStats = fs.statSync(scenario.readPath);
+      result.statRead = readStats.isFile() === true &&
+        readStats.size === '# user read\n'.length;
+      result.listGrantedFile = codeOf(function () {
+        fs.readdirSync(scenario.readPath);
+      });
+      result.listDeniedParent = codeOf(function () {
+        const parent = scenario.readPath.slice(0, scenario.readPath.lastIndexOf('/'));
+        fs.readdirSync(parent);
+      });
 
       await fsp.writeFile(scenario.writePath, 'user-write-async', 'utf8');
       result.writeAsync =
@@ -48,6 +58,12 @@ app.whenReady().then(function () {
       result.deniedExists = fs.existsSync(scenario.deniedPath);
       result.deniedWrite = codeOf(function () {
         fs.writeFileSync(scenario.deniedWritePath, 'denied');
+      });
+      result.statDenied = codeOf(function () {
+        fs.statSync(scenario.deniedPath);
+      });
+      result.mkdirDeniedNearGrant = codeOf(function () {
+        fs.mkdirSync(scenario.writePath + '-dir', { recursive: true });
       });
 
       result.selfGrantBlocked =
@@ -64,8 +80,12 @@ app.whenReady().then(function () {
     if (result.readText !== '# user read\n' || result.readAsync !== '# user read\n' ||
         result.existsRead !== true || result.writeReadBack !== true ||
         result.writeAsync !== true || result.existsWrite !== true ||
+        result.statRead !== true || result.listGrantedFile !== 'ENOTDIR' ||
+        result.listDeniedParent !== 'EACCES' ||
         result.deniedRead !== 'EACCES' || result.deniedExists !== false ||
-        result.deniedWrite !== 'EACCES' || result.selfGrantBlocked !== true ||
+        result.deniedWrite !== 'EACCES' || result.statDenied !== 'EACCES' ||
+        result.mkdirDeniedNearGrant !== 'EACCES' ||
+        result.selfGrantBlocked !== true ||
         result.controlGrantBlocked !== true) {
       result.ok = false;
     }

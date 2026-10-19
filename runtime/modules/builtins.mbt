@@ -79,8 +79,8 @@ fn builtin_symbols_table() -> Map[String, Array[String]] {
   {
     "path": ["join", "dirname", "extname", "isAbsolute", "resolve"],
     "url": ["fileURLToPath", "pathToFileURL", "URL"],
-    "fs": ["existsSync", "readFileSync", "writeFileSync"],
-    "fs/promises": ["readFile", "writeFile"],
+    "fs": ["existsSync", "readFileSync", "writeFileSync", "statSync", "readdirSync", "mkdirSync"],
+    "fs/promises": ["readFile", "writeFile", "stat", "readdir", "mkdir"],
     "buffer": ["from", "alloc", "concat", "subarray", "toString"],
     "events": ["EventEmitter", "on", "once", "off", "emit"],
     "process": ["platform", "arch", "argv", "env", "resourcesPath"],

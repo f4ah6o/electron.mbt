@@ -278,7 +278,9 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "app-reply") == 0 ||
       strcmp(operation, "main-stat") == 0 ||
       strcmp(operation, "main-read-file") == 0 ||
-      strcmp(operation, "main-write-file") == 0) {
+      strcmp(operation, "main-write-file") == 0 ||
+      strcmp(operation, "main-read-dir") == 0 ||
+      strcmp(operation, "main-mkdir") == 0) {
     return send_control_frame(operation, payload, 1, 1, out, capacity);
   }
   if (strcmp(operation, "grant-main-file") == 0) {
@@ -309,6 +311,8 @@ static int js_host_operation_allowed(const char *operation) {
     "main-stat",
     "main-read-file",
     "main-write-file",
+    "main-read-dir",
+    "main-mkdir",
     NULL
   };
   for (int i = 0; allowed[i] != NULL; i++) {

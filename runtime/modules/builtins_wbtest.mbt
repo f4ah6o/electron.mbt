@@ -16,6 +16,12 @@ test "planned Node builtins are separated from unsupported builtins" {
 test "planned symbol manifests are explicit and unsupported builtins expose none" {
   assert_true(builtin_symbols("node:path").contains("join"))
   assert_true(builtin_symbols("fs").contains("readFileSync"))
+  assert_true(builtin_symbols("fs").contains("statSync"))
+  assert_true(builtin_symbols("fs").contains("readdirSync"))
+  assert_true(builtin_symbols("fs").contains("mkdirSync"))
+  assert_true(builtin_symbols("node:fs/promises").contains("stat"))
+  assert_true(builtin_symbols("node:fs/promises").contains("readdir"))
+  assert_true(builtin_symbols("node:fs/promises").contains("mkdir"))
   assert_true(builtin_symbols("node:zlib").contains("createDeflate"))
   assert_eq(builtin_symbols("node:child_process"), [])
   assert_eq(builtin_symbols("electron"), [])

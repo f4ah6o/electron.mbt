@@ -28,6 +28,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | Node-less real renderer | `nodeless-moji-app`: real UI text, custom app scheme, 2 main requests | PASS (adapted; custom scheme) |
 | Node-less broker E2E | `nodeless-moji-app` broker: 1 grant/6 dialogs, open/save/sample/saveAs/HTML/PDF/PNG, 6 output files | PASS (test-injected) |
 | Main-side fs (app root / data roots) | `nodeless-fs-app`: sync/async read, 200 KiB round-trip, atomic `.appData` write, symlink-escape denial; Moji `settingsPersisted:true` | PASS (partial; host-required) |
+| Directory/metadata fs | `nodeless-fs-app`: partial stat, bounded readdir/Dirent, bounded mkdir; generated escape and 4,097-entry/65-component bound tests | PASS (partial; host-required) |
 | Adapted page API → Main | `moji-adapted-native`: dark/unsupported | PASS |
 | Adapted API → native broker | real renderer open/save/export/sample | PASS |
 | Async Main microtasks | `updateCheckOk` via `checkForUpdate` | PASS |
@@ -48,10 +49,10 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 - `verify-state`: 18/18 PASS, `NOT_READY`
 - readiness: 33 checks, 26 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 471 pass
+- `npm test`: 472 pass
 - `moon test --target js`: 145 pass
 - `moon test --target native`: 177 pass
-- `node --test tests/nodeless-runtime.test.cjs`: 16 pass
+- `node --test tests/nodeless-runtime.test.cjs`: 17 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
 
 ## Remaining scope
@@ -72,9 +73,11 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 3. **File/dialog depth**: session-scoped exact main user-file grants now work
    for panel/test selections; grant persistence/revocation, directory grants,
    real file-selection human consent and save-panel acceptance remain open.
-   App-local main fs is host-backed
+   App-local main fs is host-backed, including partial directory/metadata
+   `stat`/`readdir`/`mkdir`
    ([docs/0046](0046-nodeless-main-fs.md),
-   [docs/0047](0047-nodeless-user-file-grants.md)).
+   [docs/0047](0047-nodeless-user-file-grants.md),
+   [docs/0048](0048-nodeless-directory-fs.md)).
 4. **Async depth**: timers/native completion promises, cancellation, deadlines.
 5. **Export depth**: multi-page/print-accurate PDF/PNG, `assetBaseUrl`.
 6. **Compatibility**: no verified rows; strict profile remains blocked.

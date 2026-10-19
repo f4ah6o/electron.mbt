@@ -223,7 +223,7 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "ℹ duration_ms 12232.776208"
+      "detail": "ℹ duration_ms 13896.317459"
     },
     {
       "id": "readiness",

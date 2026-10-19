@@ -70,11 +70,12 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
   local facade, `webContents` events are bounded, and there is no dialog,
   renderer asset graph or production asset loader.
 - `fs`/`fs.promises` are host-backed only in `--window` mode: they read under
-  the app root, atomically write `.appData`/`.userData`, and can use exact
-  session grants for user-selected paths outside the app root. Grant
-  persistence, revocation, directory/stream APIs and true async I/O are open;
-  `zlib` remains import-only with a typed `createDeflate` failure (0008
-  R2b/R3, docs/0046, docs/0047).
+  the app root, atomically write `.appData`/`.userData`, can use exact session
+  grants for user-selected paths outside the app root, and expose bounded
+  `statSync`/`readdirSync`/`mkdirSync` plus Promise wrappers. Grant persistence,
+  revocation, directory grants, streams/lstat/rm and true async I/O remain open;
+  `zlib` remains import-only with a typed `createDeflate` failure (0008 R2b/R3,
+  docs/0046, docs/0047, docs/0048).
 - `electron-updater` is an explicit import-only `autoUpdater` stub; it performs
   no package resolution, network or update. The adapted behavior is recorded in
   `docs/0043` and is not Node/Electron parity.
@@ -106,10 +107,10 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
 | --- | --- |
 | `moon build --target native native/nodeless` | PASS |
 | `native/nodeless run fixtures/nodeless-app` | PASS |
-| `node --test tests/nodeless-runtime.test.cjs` | 16 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 17 PASS |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 471 PASS |
+| `npm test` | 472 PASS |
 | sanitizer / ownership review / external audit | NOT RUN |
 
 The reported `nodeProcesses:0` is self-reported by the runtime; the process and

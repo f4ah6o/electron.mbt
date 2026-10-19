@@ -17,6 +17,7 @@ increment adds a host-level grant registry that `fs.existsSync`,
 | API | Behavior with a session grant |
 | --- | --- |
 | `fs.existsSync(path)` | `true` for an existing granted path; `false` for missing, ungranted or host-unavailable paths. |
+| `fs.statSync(path, options?)` | Partial Stats for a granted file; ungranted paths stay `EACCES`. Exact grants do not make the parent directory listable. |
 | `fs.readFileSync(path, options?)` | Same Buffer/string handling as app-root reads; the path may be outside the app root. |
 | `fs.writeFileSync(path, data, options?)` | Atomic replace for an exact granted write target. |
 | `fs.promises.readFile` / `writeFile` | Promise wrappers over the same bounded synchronous host call. |
@@ -112,12 +113,12 @@ attempts to call `grant-main-file` and `grant-file`.
 | --- | --- |
 | `moon build --target native native/nodeless` | PASS |
 | `node scripts/build-macos-host.cjs` | PASS |
-| `node --test tests/nodeless-runtime.test.cjs` | 16 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 17 PASS |
 | `node scripts/nodeless-moji-app.cjs` | PASS |
 | `node scripts/nodeless-moji-boot.cjs` | PASS |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 471 PASS |
+| `npm test` | 472 PASS |
 | `node scripts/preview-readiness.cjs` | NOT_READY (33 checks; expected exit 2) |
 | `node scripts/verify-state.cjs` | NOT_READY (18/18 checks PASS) |
 | ASAN / ownership review / external audit | NOT RUN |
@@ -126,6 +127,8 @@ attempts to call `grant-main-file` and `grant-file`.
 
 - grants are not persisted across app restarts and there is no revocation UI;
 - exact-file grants only; no directory, recursive or wildcard grants;
+- a granted file can be stat'ed/read/written, but its parent cannot be listed and
+  `mkdirSync` next to it is denied; directory access needs a future grant model;
 - the real human open/save panel flow is **NOT RUN**; test injection exercises
   the same native grant methods but is not production consent;
 - user-file writes use atomic replace, not Node's truncate/write or metadata
@@ -133,8 +136,10 @@ attempts to call `grant-main-file` and `grant-file`.
 - canonicalization is checked before the read/write; a trusted-main TOCTOU
   window remains;
 - read/write limits are 256 KiB, so larger user files fail `EFBIG`;
-- directory/stream/callback-style `fs`, true thread-pool I/O, `zlib`, updater,
-  the original preload/contextBridge and strict profile remain open.
+- directory grants, stream/callback-style `fs`, true thread-pool I/O, `zlib`,
+  updater, the original preload/contextBridge and strict profile remain open
+  (bounded directory/metadata calls exist only for the app/data roots; see
+  [docs/0048](0048-nodeless-directory-fs.md)).
 
 This is a session user-file increment, not an Electron-compatible runtime
 release.

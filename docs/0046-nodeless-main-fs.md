@@ -4,8 +4,8 @@ Status: **partial main-runtime increment**. The trusted QuickJS main now reads
 app-local files and atomically writes the runtime data roots through the native
 host, and can read/write exact user files granted by a native panel or the
 explicit test scenario. This closes the import-only `fs`/`fs.promises` stubs,
-but it is not Node's file system: grant persistence, directory/stream APIs,
-metadata preservation and true thread-pool I/O remain open. `compatible:false`,
+but it is not Node's file system: grant persistence, directory grants, stream
+APIs, metadata preservation and true thread-pool I/O remain open. `compatible:false`,
 adapted **partial**, strict **blocked** and original preload **NOT_EXECUTED**
 are unchanged.
 
@@ -24,7 +24,8 @@ then exposes:
 
 `fs.promises` is also available on the `fs` module. The async methods run the
 same synchronous, bounded host call and settle on a microtask; they do not use a
-Node thread pool.
+Node thread pool. Directory listing, partial `Stats` and bounded `mkdirSync` are
+documented separately in [docs/0048](0048-nodeless-directory-fs.md).
 
 ## Policy and bounds
 
@@ -50,7 +51,8 @@ operations directly, and the page file broker keeps its own per-window grants.
 Main reads of user-selected files outside the app root are supported after an
 explicit native panel/test grant; grants are session-scoped and exact-file only
 ([docs/0047](0047-nodeless-user-file-grants.md)). Grant persistence and
-directory/stream APIs are **NOT IMPLEMENTED**.
+directory grants are **NOT IMPLEMENTED**; only the bounded partial
+directory/metadata surface in [docs/0048](0048-nodeless-directory-fs.md) exists.
 
 ## User-file grants
 
@@ -115,12 +117,12 @@ write is a test-scenario operation, not production consent.
 | --- | --- |
 | `moon build --target native native/nodeless` | PASS |
 | `node scripts/build-macos-host.cjs` | PASS |
-| `node --test tests/nodeless-runtime.test.cjs` | 16 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 17 PASS |
 | `node scripts/nodeless-moji-boot.cjs` | PASS |
 | `node scripts/nodeless-moji-app.cjs` | PASS (settings persisted) |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 471 PASS |
+| `npm test` | 472 PASS |
 | `node scripts/preview-readiness.cjs` | NOT_READY (33 checks; expected exit 2) |
 | ASAN / ownership review / external audit | NOT RUN |
 
@@ -129,8 +131,10 @@ write is a test-scenario operation, not production consent.
 - main user-file grants are session-scoped and exact-file only; persistence,
   revocation, directory grants and human panel interaction are open
   ([docs/0047](0047-nodeless-user-file-grants.md));
-- directory APIs (`readdir`, `statSync`, `mkdirSync`), streams, append flags,
-  descriptors and callback-style `readFile` are unsupported;
+- directory APIs beyond the partial `statSync`/`readdirSync`/`mkdirSync` surface
+  (`lstat`, recursive `readdir`, `rm`/`unlink`), streams, append flags,
+  descriptors and callback-style `readFile` are unsupported; see
+  [docs/0048](0048-nodeless-directory-fs.md);
 - async fs is Promise-wrapped synchronous host I/O, not Node thread-pool I/O;
 - atomic replace is not a CAS commit, does not preserve every Node metadata
   behavior, and is not a crash-durability proof;

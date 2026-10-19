@@ -243,6 +243,63 @@ fn cli_apply_broker_scenario(
 }
 
 ///|
+fn cli_user_file_path(path : String) -> Bool {
+  path.length() > 0 && path.length() <= 4096 && path.has_prefix("/")
+}
+
+///|
+fn cli_user_file_scenario(
+  sources : Map[String, String],
+) -> Result[(String, String), String] {
+  let raw = match sources.get("nodeless-user-file.json") {
+    Some(value) => value
+    None => return Err("nodeless-user-file.json is missing")
+  }
+  let parsed = @json.parse(raw) catch {
+    _ => return Err("invalid nodeless-user-file.json")
+  }
+  let schema = match cli_field(parsed, "schema") {
+    Number(number, ..) => number.to_int()
+    _ => return Err("missing nodeless-user-file.json schema")
+  }
+  if schema != 1 {
+    return Err("unsupported nodeless-user-file.json schema")
+  }
+  let read_path = match cli_text(parsed, "readPath") {
+    Some(value) if cli_user_file_path(value) => value
+    _ => return Err("invalid nodeless-user-file readPath")
+  }
+  let write_path = match cli_text(parsed, "writePath") {
+    Some(value) if cli_user_file_path(value) => value
+    _ => return Err("invalid nodeless-user-file writePath")
+  }
+  Ok((read_path, write_path))
+}
+
+///|
+fn cli_apply_user_file_grants(
+  scenario : (String, String),
+) -> Result[Bool, String] {
+  let (read_path, write_path) = scenario
+  let requests : Array[(String, String)] = [
+    (read_path, "read"),
+    (write_path, "readwrite"),
+  ]
+  for request in requests {
+    let (path, mode) = request
+    let payload = Json({ "path": Json(path), "mode": Json(mode) }).stringify()
+    let reply = match cli_host_payload("grant-main-file", payload) {
+      Some(value) => value
+      None => return Err("main file grant failed")
+    }
+    if !(cli_field(reply, "granted") is True) {
+      return Err("main file grant was not acknowledged")
+    }
+  }
+  Ok(true)
+}
+
+///|
 fn cli_pump_events(
   runner : @app.AppRunner,
   session : String,
@@ -475,7 +532,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest]")
+    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest]")
     nodeless_exit(2)
     return
   }
@@ -493,8 +550,13 @@ fn main {
   let window_mode = args.contains("--window")
   let broker_selftest = args.contains("--broker-selftest")
   let fs_selftest = args.contains("--fs-selftest")
+  let user_file_selftest = args.contains("--user-file-selftest")
   if fs_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--fs-selftest requires --window")
+    return
+  }
+  if user_file_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--user-file-selftest requires --window")
     return
   }
   let mut module_entry = ""
@@ -594,6 +656,20 @@ fn main {
       return
     }
   }
+  let mut user_file_read_path = ""
+  let mut user_file_write_path = ""
+  if user_file_selftest {
+    match cli_user_file_scenario(sources) {
+      Ok((read_path, write_path)) => {
+        user_file_read_path = read_path
+        user_file_write_path = write_path
+      }
+      Err(message) => {
+        cli_fail("ELECTRON_MBT_NODELESS_USER_FILE", message)
+        return
+      }
+    }
+  }
   let config : @app.AppConfig = {
     name,
     version,
@@ -661,6 +737,19 @@ fn main {
     let mut broker_error = ""
     let mut fs_selftest_json : Json = null
     let mut fs_selftest_ok = true
+    let mut user_file_selftest_json : Json = null
+    let mut user_file_selftest_ok = true
+    if user_file_selftest {
+      match cli_apply_user_file_grants((user_file_read_path, user_file_write_path)) {
+        Ok(_) => ()
+        Err(message) => {
+          let _ = nodeless_host_shutdown()
+          runner.stop()
+          cli_fail("ELECTRON_MBT_NODELESS_USER_FILE", message)
+          return
+        }
+      }
+    }
     if adapted_configured {
       for _attempt = 0; _attempt < 50; _attempt = _attempt + 1 {
         match cli_host_payload("get-adapted-status", "{}") {
@@ -767,6 +856,17 @@ fn main {
       }
       fs_selftest_ok = fs_dispatch_ok && (cli_field(fs_selftest_json, "ok") is True)
     }
+    if user_file_selftest {
+      let (user_results, user_dispatch_ok) = cli_dispatch_results(runner, ["userfile:selftest"])
+      let user_dispatch_value = user_results.get("userfile:selftest").unwrap_or(null)
+      user_file_selftest_json = if cli_field(user_dispatch_value, "ok") is True {
+        cli_field(user_dispatch_value, "result")
+      } else {
+        user_dispatch_value
+      }
+      user_file_selftest_ok =
+        user_dispatch_ok && (cli_field(user_file_selftest_json, "ok") is True)
+    }
     ingress = cli_host_payload("get-ingress-status", "{}").unwrap_or(null)
     let title_buffer = Bytes::new(65536)
     let title_length = nodeless_host_query(
@@ -820,7 +920,7 @@ fn main {
     let not_verified : Array[Json] = [
       Json("preload"),
       Json("production-file-grants"),
-      Json("main-fs-user-grants"),
+      Json("grant-persistence"),
       Json("human-dialog-ui"),
       Json("print-accurate-export"),
       Json("updater-behavior"),
@@ -834,7 +934,7 @@ fn main {
       not_verified.push(Json("real-renderer"))
     }
     let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 &&
-      adapted_ok && broker_ok && fs_selftest_ok
+      adapted_ok && broker_ok && fs_selftest_ok && user_file_selftest_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
@@ -881,6 +981,8 @@ fn main {
       }),
       "fsSelftest": fs_selftest_json,
       "fsSelftestOk": Json(fs_selftest_ok),
+      "userFileSelftest": user_file_selftest_json,
+      "userFileSelftestOk": Json(user_file_selftest_ok),
       "mainError": Json(main_error),
       "lastRejection": Json(rejection),
       "hostPid": Json(host_pid),

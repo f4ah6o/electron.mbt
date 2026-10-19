@@ -139,6 +139,10 @@ static const unsigned long long MaxSnapshotTotalBytes = 64ULL * 1024ULL * 1024UL
 static const NSUInteger MaxMainReadBytes = 256 * 1024;
 static const NSUInteger MaxMainWriteBytes = 256 * 1024;
 static const NSUInteger MaxMainBase64Bytes = 400 * 1024;
+// Exact-file grants issued by native open/save/export panel completion or the
+// explicit test scenario. They are session-scoped and never persisted; the
+// bound keeps a long-running app from turning the host into an open file table.
+static const NSUInteger MaxMainFileGrants = 64;
 
 static BOOL safeRelativePath(NSString *path) {
   if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 256 ||
@@ -434,6 +438,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic) long long ingressUnhandled;
 @property(nonatomic, copy) NSString *ingressLastCode;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *fileGrants;
+// Mirrors a completed user selection into the host-level main grant registry.
+// The block returns NO when the selected path cannot be recorded, so the
+// dialog can fail closed instead of reporting a half-granted success.
+@property(nonatomic, copy) BOOL (^grantMainFile)(NSString *canonical, NSString *mode);
 @property(nonatomic, copy) NSString *testOpenDialogPath;
 @property(nonatomic, copy) NSString *testSaveDialogPath;
 @property(nonatomic, copy) NSString *testExportHtmlPath;
@@ -451,6 +459,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 - (void)publishVerifiedBootstrapIfReady;
 - (void)clearSnapshot;
 - (void)failPendingAppReplies:(NSString *)code;
+- (BOOL)grantMainSelection:(NSString *)canonical mode:(NSString *)mode;
 - (void)tearDown;
 @end
 
@@ -656,10 +665,17 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   self.ingressLastCode = code;
   reply(nil, code);
 }
+- (BOOL)grantMainSelection:(NSString *)canonical mode:(NSString *)mode {
+  return self.grantMainFile != nil && self.grantMainFile(canonical, mode);
+}
 - (void)openDialogWithReply:(void (^)(id, NSString *))reply {
   if (self.testOpenDialogPath != nil) {
     NSString *granted = nil;
     if (![self grantCanonicalFile:self.testOpenDialogPath mode:@"read" canonical:&granted]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
+    if (![self grantMainSelection:granted mode:@"read"]) {
       [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
@@ -714,6 +730,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
+    if (![window grantMainSelection:granted mode:@"read"]) {
+      [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
     NSData *data = [NSData dataWithContentsOfFile:granted options:NSDataReadingMappedIfSafe error:nil];
     if (data == nil || data.length > 1048576) {
       [window denyFile:@"ELECTRON_MBT_FILE_READ" reply:reply];
@@ -740,6 +760,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if (self.testSaveDialogPath != nil) {
     NSString *granted = nil;
     if (![self grantCanonicalFile:self.testSaveDialogPath mode:@"readwrite" canonical:&granted]) {
+      [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
+    if (![self grantMainSelection:granted mode:@"readwrite"]) {
       [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
@@ -772,6 +796,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
+    if (![window grantMainSelection:granted mode:@"readwrite"]) {
+      [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      return;
+    }
     if (![data writeToFile:granted atomically:YES]) {
       [window denyFile:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
       return;
@@ -791,6 +819,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if (testPath != nil) {
     NSString *granted = nil;
     if (![self grantCanonicalFile:testPath mode:@"readwrite" canonical:&granted]) {
+      [self denyFile:@"ELECTRON_MBT_EXPORT_DENIED" reply:reply];
+      return;
+    }
+    if (![self grantMainSelection:granted mode:@"readwrite"]) {
       [self denyFile:@"ELECTRON_MBT_EXPORT_DENIED" reply:reply];
       return;
     }
@@ -819,6 +851,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     NSString *resolved = [window canonicalBrokerPath:panel.URL.path];
     NSString *granted = nil;
     if (resolved == nil || ![window grantCanonicalFile:resolved mode:@"readwrite" canonical:&granted]) {
+      [window denyFile:@"ELECTRON_MBT_EXPORT_DENIED" reply:reply];
+      return;
+    }
+    if (![window grantMainSelection:granted mode:@"readwrite"]) {
       [window denyFile:@"ELECTRON_MBT_EXPORT_DENIED" reply:reply];
       return;
     }
@@ -2002,6 +2038,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *session;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, MBTWindow *> *windows;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *mainFileGrants;
 @property(nonatomic, strong) dispatch_queue_t notificationQueue;
 @property(nonatomic) long long nextEvent;
 - (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation;
@@ -2018,6 +2055,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   self = [super init];
   if (self) {
     self.windows = [NSMutableDictionary dictionary];
+    self.mainFileGrants = [NSMutableDictionary dictionary];
     self.notificationQueue = dispatch_queue_create("electron.mbt.content.events", DISPATCH_QUEUE_SERIAL);
     self.nextEvent = 0;
   }
@@ -2053,9 +2091,11 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 - (long long)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation {
   return [self publishNativeEvent:@"native-close-request" windowID:windowID generation:generation];
 }
-// Main-side fs is host-level: the trusted QuickJS main may read app sources and
-// write only the runtime data roots, even before a BrowserWindow exists. The
-// renderer file broker keeps its own per-window grants and is not widened here.
+// Main-side fs is host-level: the trusted QuickJS main may always read app
+// sources and write the runtime data roots. Native open/save/export completion
+// can additionally grant an exact user file outside the app root. Those grants
+// are session-scoped, exact-path only (no directory subtrees), and distinct
+// from the renderer file broker's per-window grants.
 - (NSString *)canonicalMainPath:(NSString *)path {
   if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096 ||
       [path rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]].location != NSNotFound) {
@@ -2107,20 +2147,61 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if (canonical == nil || root == nil) return NO;
   return [canonical hasPrefix:[root stringByAppendingString:@"/"]];
 }
+- (NSInteger)mainGrantBits:(NSString *)canonical {
+  NSNumber *bits = canonical != nil ? self.mainFileGrants[canonical] : nil;
+  return bits != nil ? bits.integerValue : 0;
+}
 - (BOOL)mainReadAllowed:(NSString *)canonical {
-  return [self path:canonical isUnderRoot:self.root];
+  if ([self path:canonical isUnderRoot:self.root]) return YES;
+  return ([self mainGrantBits:canonical] & 1) == 1;
 }
 - (BOOL)mainWriteAllowed:(NSString *)canonical {
+  NSString *appData = [self.root stringByAppendingPathComponent:@".appData"];
+  NSString *userData = [self.root stringByAppendingPathComponent:@".userData"];
+  if ([self path:canonical isStrictlyUnderRoot:appData] ||
+      [self path:canonical isStrictlyUnderRoot:userData]) return YES;
+  return ([self mainGrantBits:canonical] & 2) == 2;
+}
+- (BOOL)mainWriteMayCreateParents:(NSString *)canonical {
   NSString *appData = [self.root stringByAppendingPathComponent:@".appData"];
   NSString *userData = [self.root stringByAppendingPathComponent:@".userData"];
   return [self path:canonical isStrictlyUnderRoot:appData] ||
          [self path:canonical isStrictlyUnderRoot:userData];
 }
-- (BOOL)ensureMainParentDirectory:(NSString *)canonical {
+- (BOOL)grantMainPath:(NSString *)path mode:(NSString *)mode canonical:(NSString **)canonical {
+  NSInteger bits = 0;
+  if ([mode isEqualToString:@"read"]) bits = 1;
+  else if ([mode isEqualToString:@"write"]) bits = 2;
+  else if ([mode isEqualToString:@"readwrite"]) bits = 3;
+  else return NO;
+  NSString *resolved = [self canonicalMainPath:path];
+  if (resolved == nil) return NO;
+  NSFileManager *manager = [NSFileManager defaultManager];
+  BOOL isDirectory = NO;
+  BOOL exists = [manager fileExistsAtPath:resolved isDirectory:&isDirectory];
+  struct stat info;
+  BOOL regular = exists && !isDirectory &&
+    stat(resolved.fileSystemRepresentation, &info) == 0 && S_ISREG(info.st_mode);
+  if (exists && !regular) return NO;
+  if (!exists && (bits & 2) == 0) return NO;
+  if ((bits & 2) != 0) {
+    NSString *parent = [resolved stringByDeletingLastPathComponent];
+    BOOL parentIsDirectory = NO;
+    if (![manager fileExistsAtPath:parent isDirectory:&parentIsDirectory] ||
+        !parentIsDirectory) return NO;
+  }
+  NSNumber *existing = self.mainFileGrants[resolved];
+  if (existing == nil && self.mainFileGrants.count >= MaxMainFileGrants) return NO;
+  self.mainFileGrants[resolved] = @((existing != nil ? existing.integerValue : 0) | bits);
+  if (canonical != NULL) *canonical = resolved;
+  return YES;
+}
+- (BOOL)ensureMainParentDirectory:(NSString *)canonical allowCreate:(BOOL)allowCreate {
   NSString *parent = [canonical stringByDeletingLastPathComponent];
   NSFileManager *manager = [NSFileManager defaultManager];
   BOOL isDirectory = NO;
   if ([manager fileExistsAtPath:parent isDirectory:&isDirectory]) return isDirectory;
+  if (!allowCreate) return NO;
   NSError *error = nil;
   return [manager createDirectoryAtPath:parent withIntermediateDirectories:YES
     attributes:@{NSFilePosixPermissions: @0700} error:&error];
@@ -2144,6 +2225,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if ([operation isEqualToString:@"shutdown"]) {
     for (MBTWindow *window in self.windows.allValues) [window tearDown];
     [self.windows removeAllObjects];
+    [self.mainFileGrants removeAllObjects];
     done(@"success", @{@"closed": @YES});
     return;
   }
@@ -2246,7 +2328,8 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_TYPE"});
       return;
     }
-    if (![self ensureMainParentDirectory:canonical]) {
+    if (![self ensureMainParentDirectory:canonical
+        allowCreate:[self mainWriteMayCreateParents:canonical]]) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_WRITE"});
       return;
     }
@@ -2258,6 +2341,23 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       return;
     }
     done(@"success", @{@"path": canonical, @"bytes": @(data.length)});
+    return;
+  }
+  if ([operation isEqualToString:@"grant-main-file"]) {
+    NSString *path = payload[@"path"];
+    NSString *mode = payload[@"mode"];
+    if (payload.count != 2 || ![path isKindOfClass:[NSString class]] ||
+        ![mode isKindOfClass:[NSString class]] || path.length == 0 ||
+        path.length > 4096) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *canonical = nil;
+    if (![self grantMainPath:path mode:mode canonical:&canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
+      return;
+    }
+    done(@"success", @{@"granted": @YES, @"path": canonical, @"mode": mode});
     return;
   }
   if ([operation isEqualToString:@"create-window"]) {
@@ -2303,6 +2403,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     window.publishAppRequest = ^(long long eventGeneration, NSDictionary *payload) {
       [weakHost publishNativeEvent:@"app-request" windowID:windowID
         generation:eventGeneration payload:payload];
+    };
+    window.grantMainFile = ^BOOL(NSString *canonical, NSString *mode) {
+      MBTHost *host = weakHost;
+      return host != nil && [host grantMainPath:canonical mode:mode canonical:NULL];
     };
     // B6-B metadata only: the descriptor body stays in the native host for a
     // future B6-C page shim; Node/MoonBit receives the bounded authority facts.

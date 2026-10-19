@@ -281,10 +281,55 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "main-write-file") == 0) {
     return send_control_frame(operation, payload, 1, 1, out, capacity);
   }
+  if (strcmp(operation, "grant-main-file") == 0) {
+    return send_control_frame(operation, payload, 0, 0, out, capacity);
+  }
   if (strcmp(operation, "shutdown") == 0) {
     return send_control_frame(operation, payload, 0, 0, out, capacity);
   }
   return -1;
+}
+
+// QuickJS app code shares the private host channel with the MoonBit CLI, but it
+// must not be able to mint grants or drive host/test control operations. Use an
+// explicit allowlist rather than a deny list so a future control operation is
+// closed to app code by default. The CLI keeps the full ebt_host_request path.
+static int js_host_operation_allowed(const char *operation) {
+  static const char *const allowed[] = {
+    "create-window",
+    "prepare-source",
+    "install-adapted-adapter",
+    "load-file",
+    "load-app-file",
+    "get-window-title",
+    "set-window-title",
+    "get-web-contents-title",
+    "get-web-contents-url",
+    "destroy-window",
+    "main-stat",
+    "main-read-file",
+    "main-write-file",
+    NULL
+  };
+  for (int i = 0; allowed[i] != NULL; i++) {
+    if (strcmp(operation, allowed[i]) == 0) return 1;
+  }
+  return 0;
+}
+
+static int ebt_js_host_request(const char *operation, const char *payload,
+                               char *out, int32_t capacity) {
+  if (operation == NULL || payload == NULL || out == NULL || capacity <= 0) return -1;
+  if (!js_host_operation_allowed(operation)) {
+    static const char denied[] =
+      "{\"terminal\":\"failure\",\"payload\":{\"code\":\"ELECTRON_MBT_HOST_REQUEST_DENIED\"}}";
+    size_t length = sizeof(denied) - 1;
+    if ((size_t)capacity <= length) return -1;
+    memcpy(out, denied, length);
+    out[length] = 0;
+    return (int32_t)length;
+  }
+  return ebt_host_request(operation, payload, out, capacity);
 }
 
 int32_t moonbit_ebt_nodeless_host_open(moonbit_bytes_t root_bytes) {
@@ -307,7 +352,7 @@ int32_t moonbit_ebt_nodeless_host_open(moonbit_bytes_t root_bytes) {
   if (hello <= 0 || ready <= 0 || !contains_success(reply)) {
     return -1;
   }
-  moonbit_emb_register_host_request((void *)ebt_host_request);
+  moonbit_emb_register_host_request((void *)ebt_js_host_request);
   return fd;
 }
 

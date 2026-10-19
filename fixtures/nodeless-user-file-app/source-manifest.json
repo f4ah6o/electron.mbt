@@ -1,0 +1,22 @@
+{
+  "schema": 2,
+  "app": "nodeless-user-file",
+  "entry": "index.html",
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "e89cf39f52a466401bc9459bea5169215076a1a152a77471beb1b92db74b4039",
+      "bytes": 150
+    },
+    {
+      "path": "package.json",
+      "sha256": "2b047bdbfb44916319c48b40eb91a70c3a58c415fb82b7bef5bd09c63672b803",
+      "bytes": 90
+    },
+    {
+      "path": "src/main.js",
+      "sha256": "93a1b162bde226c51bd19bc08bb8401d4eb147958e20c44d90866026766943b5",
+      "bytes": 3087
+    }
+  ]
+}

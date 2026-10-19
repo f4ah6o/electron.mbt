@@ -234,6 +234,114 @@ test('main fs denies a symlink that escapes the app root', {
   }
 });
 
+test('main fs reads and writes user files granted by the test scenario', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-user-file-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-user-file-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-user-outside-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    const readPath = path.join(outside, 'read.md');
+    const writePath = path.join(outside, 'write.md');
+    const deniedPath = path.join(outside, 'denied.md');
+    const deniedWritePath = path.join(outside, 'denied-write.md');
+    fs.writeFileSync(readPath, '# user read\n');
+    fs.writeFileSync(deniedPath, 'denied\n');
+    fs.writeFileSync(path.join(dir, 'nodeless-user-file.json'), `${JSON.stringify({
+      schema: 1,
+      readPath,
+      writePath,
+      deniedPath,
+      deniedWritePath,
+    })}\n`);
+    const files = [
+      'index.html',
+      'package.json',
+      'src/main.js',
+      'nodeless-user-file.json',
+    ];
+    writeSourceManifest(path.join(dir, 'source-manifest.json'),
+      buildSourceManifest(dir, 'index.html', 'nodeless-user-file', files));
+    const { result, report } = run(binary, dir,
+      ['--window', '--user-file-selftest', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.userFileSelftestOk, true);
+    assert.equal(report.userFileSelftest.ok, true);
+    assert.equal(report.userFileSelftest.readText, '# user read\n');
+    assert.equal(report.userFileSelftest.readAsync, '# user read\n');
+    assert.equal(report.userFileSelftest.existsRead, true);
+    assert.equal(report.userFileSelftest.writeReadBack, true);
+    assert.equal(report.userFileSelftest.writeAsync, true);
+    assert.equal(report.userFileSelftest.existsWrite, true);
+    assert.equal(report.userFileSelftest.deniedRead, 'EACCES');
+    assert.equal(report.userFileSelftest.deniedExists, false);
+    assert.equal(report.userFileSelftest.deniedWrite, 'EACCES');
+    assert.equal(report.userFileSelftest.selfGrantBlocked, true);
+    assert.equal(report.userFileSelftest.controlGrantBlocked, true);
+    assert.equal(fs.readFileSync(writePath, 'utf8'), 'user-write');
+    assert.equal(report.pageTitle, 'nodeless-user-file-ready');
+    assert.equal(report.hostShutdown, true);
+    assert.equal(report.liveLeases, 0);
+    assert.equal(report.nodeProcesses, 0);
+    assert.equal(report.compatible, false);
+    assert.ok(report.notVerified.includes('grant-persistence'));
+    assert.ok(report.notVerified.includes('human-dialog-ui'));
+    assert.ok(!report.notVerified.includes('main-fs-user-grants'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('invalid user-file scenarios fail closed', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-user-file-app');
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-user-invalid-'));
+  const readPath = path.join(outside, 'read.md');
+  fs.writeFileSync(readPath, '# user read\n');
+  const cases = [
+    ['missing scenario', null],
+    ['relative read path', { schema: 1, readPath: 'read.md', writePath: path.join(outside, 'write.md') }],
+    ['missing write parent', {
+      schema: 1,
+      readPath,
+      writePath: path.join(outside, 'missing', 'write.md'),
+    }],
+  ];
+  try {
+    for (const [label, scenario] of cases) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-user-file-case-'));
+      try {
+        fs.cpSync(source, dir, { recursive: true });
+        const files = ['index.html', 'package.json', 'src/main.js'];
+        if (scenario !== null) {
+          fs.writeFileSync(path.join(dir, 'nodeless-user-file.json'),
+            `${JSON.stringify(scenario)}\n`);
+          files.push('nodeless-user-file.json');
+        }
+        writeSourceManifest(path.join(dir, 'source-manifest.json'),
+          buildSourceManifest(dir, 'index.html', 'nodeless-user-file', files));
+        const { result, report } = run(binary, dir,
+          ['--window', '--user-file-selftest', '--entry', 'src/main.js']);
+        assert.notEqual(result.status, 0, `${label}: ${result.stdout}\n${result.stderr}`);
+        assert.ok(report, `${label}: missing JSON report`);
+        assert.equal(report.status, 'FAIL', label);
+        assert.equal(report.code, 'ELECTRON_MBT_NODELESS_USER_FILE', label);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('fs selftest requires the native window host', () => {
   const binary = buildBinary();
   const { result, report } = run(binary, fixture, ['--fs-selftest']);

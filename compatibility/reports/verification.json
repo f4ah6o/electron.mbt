@@ -8,14 +8,14 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 143, passed: 143, failed: 0."
+      "detail": "Total tests: 145, passed: 145, failed: 0."
     },
     {
       "id": "moon-native",
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 162, passed: 162, failed: 0."
+      "detail": "Total tests: 177, passed: 177, failed: 0."
     },
     {
       "id": "npm-test",
@@ -226,8 +226,8 @@
       "detail": {
         "status": "NOT_READY",
         "counts": {
-          "checks": 31,
-          "pass": 24,
+          "checks": 33,
+          "pass": 26,
           "fail": 2,
           "notRun": 5
         }

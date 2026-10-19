@@ -48,7 +48,7 @@ and runs the Node-less window runtime with `--entry out/main/main.js`.
 Result:
 
 ```json
-{"status":"PASS","probe":"moji-nodeless-boot","mainSHA256":"41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e","preloadSHA256":"bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544","bootGraphFiles":4,"mainEvaluated":true,"windowLoaded":true,"pageTitle":"moji-nodeless-ready","preloadExecuted":false,"rendererLoaded":false,"adaptedImports":["electron-updater","node:fs","node:fs/promises","node:zlib"],"lastRejection":"","liveLeases":0,"nodeProcesses":0,"compatible":false}
+{"status":"PASS","probe":"moji-nodeless-boot","mainSHA256":"41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e","preloadSHA256":"bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544","bootGraphFiles":4,"mainEvaluated":true,"windowLoaded":true,"pageTitle":"moji-nodeless-ready","preloadExecuted":false,"rendererLoaded":false,"adaptedImports":["electron-updater","node:fs","node:fs/promises","node:zlib"],"fsMode":"host-backed app-root read and appData/userData atomic write; user-file grants and streams remain open","zlibMode":"import-only; createDeflate throws ELECTRON_MBT_UNSUPPORTED_API","updaterMode":"explicit import-only autoUpdater adaptation","lastRejection":"","liveLeases":0,"nodeProcesses":0,"compatible":false}
 ```
 
 The report is stored at
@@ -58,8 +58,8 @@ The report is stored at
 
 | import | current behavior | open |
 | --- | --- | --- |
-| `node:fs` | import succeeds; `existsSync` returns false; `readFileSync` throws `ENOENT`; `writeFileSync` throws `EACCES` | real broker, grants, atomic-save contract |
-| `node:fs/promises` | import succeeds; `readFile`/`writeFile` reject with `ENOENT`/`EACCES` | real async file broker and cancellation |
+| `node:fs` | host-backed when `--window`: app-root reads, `.appData`/`.userData` atomic writes, `existsSync`/`readFileSync`/`writeFileSync`; no host bridge fails with `ELECTRON_MBT_HOST_UNAVAILABLE` | main user-file grants, directory/stream APIs, symlink-race hardening |
+| `node:fs/promises` | `readFile`/`writeFile` Promise wrappers over the same bounded host call; not thread-pool async | true async I/O and cancellation |
 | `node:zlib` | import succeeds; `createDeflate` throws `ELECTRON_MBT_UNSUPPORTED_API` | real deflate/stream surface |
 | `electron-updater` | import resolves to an import-only `autoUpdater` stub; no package resolution, network or update | profile-specific updater ADR or real implementation |
 
@@ -74,10 +74,10 @@ does not make the adapted behavior equivalent to Electron/Node.
 | `moon build --target native native/nodeless` | PASS |
 | window fixture | PASS |
 | `node scripts/nodeless-moji-boot.cjs` | PASS (probe page) |
-| `node --test tests/nodeless-runtime.test.cjs` | 6 PASS |
-| `moon test --target native` | 176 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 14 PASS |
+| `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 461 PASS |
+| `npm test` | 469 PASS |
 | ASAN / ownership review / external audit | NOT RUN |
 
 ## Open G-2/G-3 gates
@@ -88,8 +88,9 @@ does not make the adapted behavior equivalent to Electron/Node.
 2. `webContents` navigation events, `will-navigate`, `setWindowOpenHandler`
    behavior, `send`, `executeJavaScript`, `printToPDF` and sender/event
    ordering.
-3. `fs`/`fs/promises` broker with app/userData roots, grants, readback,
-   atomic-replace metadata and failure/commit semantics.
+3. Main-side fs now covers app-root reads and `.appData`/`.userData` atomic
+   writes; user-file grants, directory/stream APIs, metadata and failure/commit
+   semantics remain open (docs/0046).
 4. `zlib` stream behavior and the PNG/PDF export paths.
 5. Real Moji renderer asset loading and the adapted page adapter are covered by
    [the adapted renderer boot](0044-nodeless-adapted-app-renderer.md); the

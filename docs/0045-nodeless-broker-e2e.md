@@ -35,11 +35,12 @@ The runtime calls `grant-file` / `set-dialog-result`, then the host's
 - `saveAs()` against the injected save path;
 - `exportAs({format:'html'|'pdf'|'png'})` against injected export paths;
 - `exportDiagramPng()` against the injected diagram path;
-- `getSettings()` / `checkForUpdate()` through the QuickJS main handlers.
+- `setSettings({language:"ja"})` / `getSettings()` through the QuickJS main
+  handlers, which persists `.appData/moji/settings.json`;
+- `checkForUpdate()` through the QuickJS main handlers.
 
-The runtime pumps `app-request` events while the probe is pending, so the final
-`getSettings`/`checkForUpdate` calls settle, then reports the page's
-`__mojiApiProbe`.
+The runtime pumps `app-request` events while the probe is pending, so the final `setSettings`/`getSettings`/`checkForUpdate` calls settle, then
+reports the page's `__mojiApiProbe`.
 
 ## Evidence
 
@@ -68,7 +69,9 @@ Observed broker fields:
     "readOk": true,
     "sampleOk": true,
     "updateCheckOk": true,
-    "settingsTheme": "dark"
+    "settingsTheme": "dark",
+    "settingsSetOk": true,
+    "settingsLanguage": "ja"
   }
 }
 ```
@@ -83,6 +86,7 @@ The harness also verifies the written outputs before deleting the temp app:
 | `renderer-export.pdf` | `%PDF` prefix |
 | `renderer-export.png` | PNG magic |
 | `renderer-export-doc.png` | PNG magic |
+| `.appData/moji/settings.json` | `language === "ja"` (`settingsPersisted:true`) |
 
 ## Security boundary
 
@@ -90,7 +94,9 @@ The harness also verifies the written outputs before deleting the temp app:
   ignored without it. A negative test runs a window app with a broker file but
   no flag and observes `broker.configured:false`.
 - Grants and dialog paths are resolved by the host through `canonicalAppPath`
-  and remain confined to the app root.
+  and remain confined to the app root. Main-side fs writes are confined to
+  `.appData`/`.userData`; main reads are confined to the app root. User-file
+  main grants outside the app root remain unimplemented.
 - `grant-file` / `set-dialog-result` are test controls, not a production consent
   API. No human selection, save-panel consent, grant persistence or real
   `NSOpenPanel`/`NSSavePanel` interaction is exercised by this report.
@@ -104,6 +110,8 @@ The harness also verifies the written outputs before deleting the temp app:
   separate adapted dialog smoke covers open/cancel only)
 - PDF/PNG exports are not print-accurate or multi-page, and `assetBaseUrl` is
   ignored
+- main-side user-file grants outside the app root, directory/stream APIs and
+  true async fs remain unimplemented
 - updater behavior is the import-only `unsupported` stub
 - original preload/contextBridge, strict profile, ASAN, ownership review and
   external audit remain open
@@ -114,9 +122,9 @@ The harness also verifies the written outputs before deleting the temp app:
 | command | result |
 | --- | --- |
 | `node scripts/nodeless-moji-app.cjs` | PASS (broker test-injected) |
-| `node --test tests/nodeless-runtime.test.cjs` | 11 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 14 PASS |
 | `node scripts/preview-readiness.cjs` | NOT_READY (33 checks; expected exit 2) |
-| `npm test` | 466 PASS |
+| `npm test` | 469 PASS |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
 | ASAN / ownership review / external audit | NOT RUN |

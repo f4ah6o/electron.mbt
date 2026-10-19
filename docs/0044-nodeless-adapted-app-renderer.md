@@ -121,7 +121,9 @@ mismatch exits 1 before any window is created.
 - The original preload is **NOT_EXECUTED**. `contextBridge`, `ipcRenderer`,
   `webUtils` and the general preload environment remain unimplemented; strict
   `electron-nodeless-v1` is still blocked.
-- `fs`/`fs.promises` remain import-only (`ENOENT`/`EACCES`) in main, `zlib` is
+- Main-side `fs`/`fs.promises` is host-backed for app-root reads and atomic
+  `.appData`/`.userData` writes; user-file main grants, directory/stream APIs and
+  true async I/O remain open ([main fs](0046-nodeless-main-fs.md)). `zlib` is
   import-only and `electron-updater` is an explicit import-only stub. The page
   `file:` calls go to the native broker; a test-injected save/open/export flow
   now passes ([broker E2E](0045-nodeless-broker-e2e.md)). Production consent,
@@ -158,10 +160,10 @@ mismatch exits 1 before any window is created.
 | `node scripts/build-macos-host.cjs` | PASS |
 | `fixtures/nodeless-adapted-app` | PASS |
 | `node scripts/nodeless-moji-app.cjs` | PASS (renderer + test-injected broker) |
-| `node --test tests/nodeless-runtime.test.cjs` | 11 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 14 PASS |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 466 PASS |
+| `npm test` | 469 PASS |
 | `node scripts/m1-macos-smoke.cjs` | PASS |
 | `node scripts/m1-source-snapshot.cjs` | PASS |
 | `node scripts/nodeless-moji-boot.cjs` (probe page) | PASS |

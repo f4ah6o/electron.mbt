@@ -36,7 +36,7 @@
       "unhandled": 0,
       "denied": 0,
       "generation": 1,
-      "admitted": 14,
+      "admitted": 15,
       "lastCode": ""
     }
   },
@@ -44,7 +44,7 @@
     "unhandled": 0,
     "denied": 0,
     "generation": 1,
-    "admitted": 14,
+    "admitted": 15,
     "lastCode": ""
   },
   "broker": {
@@ -56,7 +56,7 @@
     "apiProbe": {
       "state": "done",
       "openOk": true,
-      "openPath": "/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-nodeless-app-RQ7JE2/samples/markdown-guide.en.md",
+      "openPath": "/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-nodeless-app-QuyCXQ/samples/markdown-guide.en.md",
       "saveAsOk": true,
       "exportOk": true,
       "pngOk": true,
@@ -69,6 +69,8 @@
       "sampleOk": true,
       "sampleContent": "# Complete Markdown Guide\n\nA practical Markdown reference for wr",
       "settingsTheme": "dark",
+      "settingsSetOk": true,
+      "settingsLanguage": "ja",
       "updateCheckOk": true
     },
     "error": ""
@@ -76,7 +78,7 @@
   "apiProbe": {
     "state": "done",
     "openOk": true,
-    "openPath": "/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-nodeless-app-RQ7JE2/samples/markdown-guide.en.md",
+    "openPath": "/var/folders/lb/zfx9k8x5337c1kp4g_3bflx80000gn/T/electron-mbt-moji-nodeless-app-QuyCXQ/samples/markdown-guide.en.md",
     "saveAsOk": true,
     "exportOk": true,
     "pngOk": true,
@@ -89,6 +91,8 @@
     "sampleOk": true,
     "sampleContent": "# Complete Markdown Guide\n\nA practical Markdown reference for wr",
     "settingsTheme": "dark",
+    "settingsSetOk": true,
+    "settingsLanguage": "ja",
     "updateCheckOk": true
   },
   "brokerOutputs": {
@@ -98,6 +102,11 @@
     "exportPdf": true,
     "exportPng": true,
     "exportDocPng": true
+  },
+  "settingsPersisted": true,
+  "settingsFile": {
+    "exists": true,
+    "language": "ja"
   },
   "preloadExecuted": false,
   "mainError": "",

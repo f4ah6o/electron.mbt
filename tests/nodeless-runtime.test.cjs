@@ -458,6 +458,191 @@ test('invalid user-file scenarios fail closed', {
   }
 });
 
+test('main fs reads and writes inside session directory grants', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-directory-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-directory-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-directory-outside-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    const readDir = path.join(outside, 'read');
+    const writeDir = path.join(outside, 'write');
+    const writeOnlyDir = path.join(outside, 'write-only');
+    const deniedDir = `${writeDir}-evil`;
+    const deniedFile = path.join(deniedDir, 'secret.txt');
+    const escapeTarget = path.join(outside, 'escape-target');
+    fs.mkdirSync(readDir, { recursive: true });
+    fs.mkdirSync(writeDir, { recursive: true });
+    fs.mkdirSync(writeOnlyDir, { recursive: true });
+    fs.mkdirSync(deniedDir, { recursive: true });
+    fs.mkdirSync(escapeTarget, { recursive: true });
+    fs.writeFileSync(path.join(readDir, 'read.txt'), 'directory-read\n');
+    fs.writeFileSync(path.join(readDir, 'oversize.txt'), 'x'.repeat(262145));
+    fs.mkdirSync(path.join(readDir, 'many'), { recursive: true });
+    for (let i = 0; i < 4097; i++) {
+      fs.writeFileSync(path.join(readDir, 'many', `f${i}`), '');
+    }
+    fs.writeFileSync(path.join(deniedDir, 'secret.txt'), 'denied\n');
+    fs.writeFileSync(path.join(escapeTarget, 'secret.txt'), 'outside\n');
+    fs.symlinkSync(escapeTarget, path.join(readDir, 'escape'));
+    fs.symlinkSync(escapeTarget, path.join(writeDir, 'escape'));
+
+    const scenario = {
+      schema: 1,
+      grants: [
+        { path: readDir, mode: 'read' },
+        { path: writeDir, mode: 'read' },
+        { path: writeDir, mode: 'readwrite' },
+        { path: writeOnlyDir, mode: 'write' },
+      ],
+      deniedDir,
+      deniedFile,
+    };
+    fs.writeFileSync(path.join(dir, 'nodeless-directory.json'),
+      `${JSON.stringify(scenario, null, 2)}\n`);
+    const files = ['index.html', 'package.json', 'src/main.js', 'nodeless-directory.json'];
+    writeSourceManifest(path.join(dir, 'source-manifest.json'),
+      buildSourceManifest(dir, 'index.html', 'nodeless-directory', files));
+
+    const { result, report } = run(binary, dir,
+      ['--window', '--directory-selftest', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.directorySelftestOk, true);
+    const directory = report.directorySelftest;
+    assert.ok(directory, 'missing directory selftest payload');
+    assert.equal(directory.ok, true);
+    assert.equal(directory.grantCount, 4);
+    assert.equal(directory.readGrant, readDir);
+    assert.equal(directory.writeGrant, writeDir);
+    assert.equal(directory.writeOnlyGrant, writeOnlyDir);
+    assert.equal(directory.readList, true);
+    assert.equal(directory.readStatDir, true);
+    assert.equal(directory.readStatFile, true);
+    assert.equal(directory.readText, 'directory-read\n');
+    assert.equal(directory.readExists, true);
+    assert.equal(directory.readAsync, true);
+    assert.equal(directory.readDirent, true);
+    assert.equal(directory.readSymlinkList, 'EACCES');
+    assert.equal(directory.readSymlinkStat, 'EACCES');
+    assert.equal(directory.readSymlinkRead, 'EACCES');
+    assert.equal(directory.readWriteDenied, 'EACCES');
+    assert.equal(directory.readMkdirDenied, 'EACCES');
+    assert.equal(directory.readTraversal, 'EACCES');
+    assert.equal(directory.writeList, true);
+    assert.equal(directory.writeMkdirFirstCreated, true);
+    assert.equal(directory.writeReadBack, true);
+    assert.equal(directory.writeStatDir, true);
+    assert.equal(directory.writeAsync, true);
+    assert.equal(directory.writeAsyncMkdir, true);
+    assert.equal(directory.writeEscapeWrite, 'EACCES');
+    assert.equal(directory.writeEscapeMkdir, 'EACCES');
+    assert.equal(directory.writeSymlinkList, 'EACCES');
+    assert.equal(directory.writeMissingParent, 'EIO');
+    assert.equal(directory.writeOnlyList, 'EACCES');
+    assert.equal(directory.writeOnlyStat, 'EACCES');
+    assert.equal(directory.writeOnlyRead, 'EACCES');
+    assert.equal(directory.writeOnlyWrite, 'no-error');
+    assert.equal(directory.writeOnlyReadBack, 'EACCES');
+    assert.equal(directory.writeOnlyMkdir, true);
+    assert.equal(directory.deniedList, 'EACCES');
+    assert.equal(directory.deniedStat, 'EACCES');
+    assert.equal(directory.deniedRead, 'EACCES');
+    assert.equal(directory.deniedWrite, 'EACCES');
+    assert.equal(directory.deniedMkdir, 'EACCES');
+    assert.equal(directory.prefixList, 'EACCES');
+    assert.equal(directory.prefixWrite, 'EACCES');
+    assert.equal(directory.oversizeRead, 'EFBIG');
+    assert.equal(directory.oversizeWrite, 'EFBIG');
+    assert.equal(directory.listLimit, 'EFBIG');
+    assert.equal(directory.selfGrantBlocked, true);
+    assert.equal(directory.fileGrantBlocked, true);
+    assert.equal(fs.readFileSync(path.join(writeDir, 'created', 'write.txt'), 'utf8'),
+      'directory-write');
+    assert.equal(fs.readFileSync(path.join(writeOnlyDir, 'write-only.txt'), 'utf8'),
+      'write-only');
+    assert.equal(fs.statSync(path.join(writeOnlyDir, 'dir')).isDirectory(), true);
+    assert.equal(fs.existsSync(path.join(deniedDir, 'prefix.txt')), false);
+    assert.equal(fs.existsSync(path.join(escapeTarget, 'new.txt')), false);
+    assert.equal(report.pageTitle, 'nodeless-directory-ready');
+    assert.equal(report.hostShutdown, true);
+    assert.equal(report.liveLeases, 0);
+    assert.equal(report.nodeProcesses, 0);
+    assert.equal(report.compatible, false);
+    assert.ok(report.notVerified.includes('production-directory-consent'));
+    assert.ok(report.notVerified.includes('human-dialog-ui'));
+    assert.ok(!report.notVerified.includes('main-fs-directory-grants'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('invalid directory grant scenarios fail closed', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-directory-app');
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-directory-invalid-'));
+  const readDir = path.join(outside, 'read');
+  const filePath = path.join(outside, 'file.txt');
+  fs.mkdirSync(readDir, { recursive: true });
+  fs.writeFileSync(filePath, 'file\n');
+  const validGrant = { path: readDir, mode: 'read' };
+  const tooMany = [];
+  for (let i = 0; i < 17; i++) tooMany.push(validGrant);
+  const cases = [
+    ['missing scenario', null],
+    ['schema 2', { schema: 2, grants: [validGrant] }],
+    ['relative path', { schema: 1, grants: [{ path: 'read', mode: 'read' }] }],
+    ['missing directory', { schema: 1, grants: [{ path: path.join(outside, 'missing'), mode: 'read' }] }],
+    ['file path', { schema: 1, grants: [{ path: filePath, mode: 'read' }] }],
+    ['invalid mode', { schema: 1, grants: [{ path: readDir, mode: 'admin' }] }],
+    ['empty grants', { schema: 1, grants: [] }],
+    ['too many grants', { schema: 1, grants: tooMany }],
+    ['filesystem root', { schema: 1, grants: [{ path: '/', mode: 'read' }] }],
+  ];
+  try {
+    for (const [label, scenario] of cases) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-directory-case-'));
+      try {
+        fs.cpSync(source, dir, { recursive: true });
+        const files = ['index.html', 'package.json', 'src/main.js'];
+        if (scenario !== null) {
+          fs.writeFileSync(path.join(dir, 'nodeless-directory.json'),
+            `${JSON.stringify(scenario)}\n`);
+          files.push('nodeless-directory.json');
+        }
+        writeSourceManifest(path.join(dir, 'source-manifest.json'),
+          buildSourceManifest(dir, 'index.html', 'nodeless-directory', files));
+        const { result, report } = run(binary, dir,
+          ['--window', '--directory-selftest', '--entry', 'src/main.js']);
+        assert.notEqual(result.status, 0, `${label}: ${result.stdout}\n${result.stderr}`);
+        assert.ok(report, `${label}: missing JSON report`);
+        assert.equal(report.status, 'FAIL', label);
+        assert.equal(report.code, 'ELECTRON_MBT_NODELESS_DIRECTORY', label);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('directory selftest requires the native window host', () => {
+  const binary = buildBinary();
+  const { result, report } = run(binary, path.join(root, 'fixtures/nodeless-directory-app'),
+    ['--directory-selftest']);
+  assert.notEqual(result.status, 0);
+  assert.ok(report);
+  assert.equal(report.status, 'FAIL');
+  assert.equal(report.code, 'ELECTRON_MBT_NODELESS_USAGE');
+});
+
 test('fs selftest requires the native window host', () => {
   const binary = buildBinary();
   const { result, report } = run(binary, fixture, ['--fs-selftest']);

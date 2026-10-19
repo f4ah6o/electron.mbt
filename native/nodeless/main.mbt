@@ -277,6 +277,66 @@ fn cli_user_file_scenario(
 }
 
 ///|
+fn cli_directory_scenario(
+  sources : Map[String, String],
+) -> Result[Array[(String, String)], String] {
+  let raw = match sources.get("nodeless-directory.json") {
+    Some(value) => value
+    None => return Err("nodeless-directory.json is missing")
+  }
+  let parsed = @json.parse(raw) catch {
+    _ => return Err("invalid nodeless-directory.json")
+  }
+  let schema = match cli_field(parsed, "schema") {
+    Number(number, ..) => number.to_int()
+    _ => return Err("missing nodeless-directory.json schema")
+  }
+  if schema != 1 {
+    return Err("unsupported nodeless-directory.json schema")
+  }
+  let grant_items : Array[Json] = match cli_field(parsed, "grants") {
+    Array(values) => values
+    _ => return Err("invalid nodeless-directory.json grants")
+  }
+  if grant_items.length() == 0 || grant_items.length() > 16 {
+    return Err("nodeless-directory.json grant limit exceeded")
+  }
+  let grants : Array[(String, String)] = []
+  for item in grant_items {
+    let path = match cli_text(item, "path") {
+      Some(value) if cli_user_file_path(value) => value
+      _ => return Err("invalid directory grant path")
+    }
+    let mode = match cli_text(item, "mode") {
+      Some(value) if value == "read" || value == "write" || value == "readwrite" => value
+      _ => return Err("invalid directory grant mode")
+    }
+    grants.push((path, mode))
+  }
+  Ok(grants)
+}
+
+///|
+fn cli_apply_directory_grants(
+  grants : Array[(String, String)],
+) -> Result[Int, String] {
+  let mut count = 0
+  for grant in grants {
+    let (path, mode) = grant
+    let payload = Json({ "path": Json(path), "mode": Json(mode) }).stringify()
+    let reply = match cli_host_payload("grant-main-directory", payload) {
+      Some(value) => value
+      None => return Err("main directory grant failed")
+    }
+    if !(cli_field(reply, "granted") is True) {
+      return Err("main directory grant was not acknowledged")
+    }
+    count += 1
+  }
+  Ok(count)
+}
+
+///|
 fn cli_apply_user_file_grants(
   scenario : (String, String),
 ) -> Result[Bool, String] {
@@ -532,7 +592,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest]")
+    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest]")
     nodeless_exit(2)
     return
   }
@@ -551,12 +611,17 @@ fn main {
   let broker_selftest = args.contains("--broker-selftest")
   let fs_selftest = args.contains("--fs-selftest")
   let user_file_selftest = args.contains("--user-file-selftest")
+  let directory_selftest = args.contains("--directory-selftest")
   if fs_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--fs-selftest requires --window")
     return
   }
   if user_file_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--user-file-selftest requires --window")
+    return
+  }
+  if directory_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--directory-selftest requires --window")
     return
   }
   let mut module_entry = ""
@@ -670,6 +735,16 @@ fn main {
       }
     }
   }
+  let mut directory_grants : Array[(String, String)] = []
+  if directory_selftest {
+    match cli_directory_scenario(sources) {
+      Ok(grants) => directory_grants = grants
+      Err(message) => {
+        cli_fail("ELECTRON_MBT_NODELESS_DIRECTORY", message)
+        return
+      }
+    }
+  }
   let config : @app.AppConfig = {
     name,
     version,
@@ -739,6 +814,8 @@ fn main {
     let mut fs_selftest_ok = true
     let mut user_file_selftest_json : Json = null
     let mut user_file_selftest_ok = true
+    let mut directory_selftest_json : Json = null
+    let mut directory_selftest_ok = true
     if user_file_selftest {
       match cli_apply_user_file_grants((user_file_read_path, user_file_write_path)) {
         Ok(_) => ()
@@ -746,6 +823,17 @@ fn main {
           let _ = nodeless_host_shutdown()
           runner.stop()
           cli_fail("ELECTRON_MBT_NODELESS_USER_FILE", message)
+          return
+        }
+      }
+    }
+    if directory_selftest {
+      match cli_apply_directory_grants(directory_grants) {
+        Ok(_) => ()
+        Err(message) => {
+          let _ = nodeless_host_shutdown()
+          runner.stop()
+          cli_fail("ELECTRON_MBT_NODELESS_DIRECTORY", message)
           return
         }
       }
@@ -867,6 +955,18 @@ fn main {
       user_file_selftest_ok =
         user_dispatch_ok && (cli_field(user_file_selftest_json, "ok") is True)
     }
+    if directory_selftest {
+      let (directory_results, directory_dispatch_ok) =
+        cli_dispatch_results(runner, ["directory:selftest"])
+      let directory_dispatch_value = directory_results.get("directory:selftest").unwrap_or(null)
+      directory_selftest_json = if cli_field(directory_dispatch_value, "ok") is True {
+        cli_field(directory_dispatch_value, "result")
+      } else {
+        directory_dispatch_value
+      }
+      directory_selftest_ok =
+        directory_dispatch_ok && (cli_field(directory_selftest_json, "ok") is True)
+    }
     ingress = cli_host_payload("get-ingress-status", "{}").unwrap_or(null)
     let title_buffer = Bytes::new(65536)
     let title_length = nodeless_host_query(
@@ -922,6 +1022,7 @@ fn main {
       Json("production-file-grants"),
       Json("grant-persistence"),
       Json("human-dialog-ui"),
+      Json("production-directory-consent"),
       Json("print-accurate-export"),
       Json("updater-behavior"),
       Json("zlib-stream"),
@@ -934,7 +1035,8 @@ fn main {
       not_verified.push(Json("real-renderer"))
     }
     let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 &&
-      adapted_ok && broker_ok && fs_selftest_ok && user_file_selftest_ok
+      adapted_ok && broker_ok && fs_selftest_ok && user_file_selftest_ok &&
+      directory_selftest_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
@@ -983,6 +1085,8 @@ fn main {
       "fsSelftestOk": Json(fs_selftest_ok),
       "userFileSelftest": user_file_selftest_json,
       "userFileSelftestOk": Json(user_file_selftest_ok),
+      "directorySelftest": directory_selftest_json,
+      "directorySelftestOk": Json(directory_selftest_ok),
       "mainError": Json(main_error),
       "lastRejection": Json(rejection),
       "hostPid": Json(host_pid),

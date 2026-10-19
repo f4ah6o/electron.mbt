@@ -150,6 +150,9 @@ static const NSUInteger MaxMainMkdirComponents = 64;
 // explicit test scenario. They are session-scoped and never persisted; the
 // bound keeps a long-running app from turning the host into an open file table.
 static const NSUInteger MaxMainFileGrants = 64;
+// Directory grants authorize a whole subtree, so the bound is deliberately
+// smaller than the exact-file table while still allowing a few selected roots.
+static const NSUInteger MaxMainDirectoryGrants = 16;
 
 static BOOL safeRelativePath(NSString *path) {
   if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 256 ||
@@ -2046,6 +2049,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic, copy) NSString *session;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, MBTWindow *> *windows;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *mainFileGrants;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *mainDirectoryGrants;
 @property(nonatomic, strong) dispatch_queue_t notificationQueue;
 @property(nonatomic) long long nextEvent;
 - (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation;
@@ -2063,6 +2067,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if (self) {
     self.windows = [NSMutableDictionary dictionary];
     self.mainFileGrants = [NSMutableDictionary dictionary];
+    self.mainDirectoryGrants = [NSMutableDictionary dictionary];
     self.notificationQueue = dispatch_queue_create("electron.mbt.content.events", DISPATCH_QUEUE_SERIAL);
     self.nextEvent = 0;
   }
@@ -2100,8 +2105,9 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 }
 // Main-side fs is host-level: the trusted QuickJS main may always read app
 // sources and write the runtime data roots. Native open/save/export completion
-// can additionally grant an exact user file outside the app root. Those grants
-// are session-scoped, exact-path only (no directory subtrees), and distinct
+// can additionally grant an exact user file outside the app root. The explicit
+// test scenario can also grant a directory subtree with independent read/write
+// bits. Both grant tables are session-scoped, never persisted, and distinct
 // from the renderer file broker's per-window grants.
 - (NSString *)canonicalMainPath:(NSString *)path {
   if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096 ||
@@ -2158,16 +2164,30 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   NSNumber *bits = canonical != nil ? self.mainFileGrants[canonical] : nil;
   return bits != nil ? bits.integerValue : 0;
 }
+// Directory grants are subtree grants, not exact paths. The component-aware
+// prefix check (root + "/") keeps /tmp/grant-evil outside /tmp/grant. Canonical
+// paths are resolved before this check, so an escaping symlink is denied.
+- (BOOL)mainDirectoryGrantAllows:(NSString *)canonical write:(BOOL)write {
+  NSInteger needed = write ? 2 : 1;
+  for (NSString *grantPath in self.mainDirectoryGrants) {
+    NSNumber *bits = self.mainDirectoryGrants[grantPath];
+    if ((bits.integerValue & needed) != needed) continue;
+    if ([self path:canonical isUnderRoot:grantPath]) return YES;
+  }
+  return NO;
+}
 - (BOOL)mainReadAllowed:(NSString *)canonical {
   if ([self path:canonical isUnderRoot:self.root]) return YES;
-  return ([self mainGrantBits:canonical] & 1) == 1;
+  if (([self mainGrantBits:canonical] & 1) == 1) return YES;
+  return [self mainDirectoryGrantAllows:canonical write:NO];
 }
 - (BOOL)mainWriteAllowed:(NSString *)canonical {
   NSString *appData = [self.root stringByAppendingPathComponent:@".appData"];
   NSString *userData = [self.root stringByAppendingPathComponent:@".userData"];
   if ([self path:canonical isStrictlyUnderRoot:appData] ||
       [self path:canonical isStrictlyUnderRoot:userData]) return YES;
-  return ([self mainGrantBits:canonical] & 2) == 2;
+  if (([self mainGrantBits:canonical] & 2) == 2) return YES;
+  return [self mainDirectoryGrantAllows:canonical write:YES];
 }
 - (BOOL)mainWriteMayCreateParents:(NSString *)canonical {
   NSString *appData = [self.root stringByAppendingPathComponent:@".appData"];
@@ -2176,12 +2196,14 @@ static BOOL bridgeApiKeyValid(NSString *key) {
          [self path:canonical isStrictlyUnderRoot:userData];
 }
 // mkdir may create the data-root directory itself as well as descendants.
-// Exact-file grants deliberately do not extend to directory creation.
+// Exact-file grants deliberately do not extend to directory creation. A
+// directory write grant does, including the granted directory itself.
 - (BOOL)mainDirWriteAllowed:(NSString *)canonical {
   NSString *appData = [self.root stringByAppendingPathComponent:@".appData"];
   NSString *userData = [self.root stringByAppendingPathComponent:@".userData"];
-  return [self path:canonical isUnderRoot:appData] ||
-         [self path:canonical isUnderRoot:userData];
+  if ([self path:canonical isUnderRoot:appData] ||
+      [self path:canonical isUnderRoot:userData]) return YES;
+  return [self mainDirectoryGrantAllows:canonical write:YES];
 }
 - (NSString *)mainDirectoryErrorCode:(NSError *)error {
   if (error == nil) return @"ELECTRON_MBT_FILE_WRITE";
@@ -2255,6 +2277,30 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if (canonical != NULL) *canonical = resolved;
   return YES;
 }
+// Directory grants require an existing canonical directory. The filesystem
+// root is rejected so a single grant cannot silently authorize the whole disk;
+// a user-selected subtree is the intended unit. Duplicate grants merge bits.
+- (BOOL)grantMainDirectoryPath:(NSString *)path mode:(NSString *)mode
+                     canonical:(NSString **)canonical {
+  NSInteger bits = 0;
+  if ([mode isEqualToString:@"read"]) bits = 1;
+  else if ([mode isEqualToString:@"write"]) bits = 2;
+  else if ([mode isEqualToString:@"readwrite"]) bits = 3;
+  else return NO;
+  NSString *resolved = [self canonicalMainPath:path];
+  if (resolved == nil || [resolved isEqualToString:@"/"]) return NO;
+  NSFileManager *manager = [NSFileManager defaultManager];
+  BOOL isDirectory = NO;
+  if (![manager fileExistsAtPath:resolved isDirectory:&isDirectory] || !isDirectory) return NO;
+  struct stat info;
+  if (stat(resolved.fileSystemRepresentation, &info) != 0 || !S_ISDIR(info.st_mode)) return NO;
+  NSNumber *existing = self.mainDirectoryGrants[resolved];
+  if (existing == nil && self.mainDirectoryGrants.count >= MaxMainDirectoryGrants) return NO;
+  self.mainDirectoryGrants[resolved] =
+    @((existing != nil ? existing.integerValue : 0) | bits);
+  if (canonical != NULL) *canonical = resolved;
+  return YES;
+}
 - (BOOL)ensureMainParentDirectory:(NSString *)canonical allowCreate:(BOOL)allowCreate {
   NSString *parent = [canonical stringByDeletingLastPathComponent];
   NSFileManager *manager = [NSFileManager defaultManager];
@@ -2285,6 +2331,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     for (MBTWindow *window in self.windows.allValues) [window tearDown];
     [self.windows removeAllObjects];
     [self.mainFileGrants removeAllObjects];
+    [self.mainDirectoryGrants removeAllObjects];
     done(@"success", @{@"closed": @YES});
     return;
   }
@@ -2580,6 +2627,23 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     }
     NSString *canonical = nil;
     if (![self grantMainPath:path mode:mode canonical:&canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
+      return;
+    }
+    done(@"success", @{@"granted": @YES, @"path": canonical, @"mode": mode});
+    return;
+  }
+  if ([operation isEqualToString:@"grant-main-directory"]) {
+    NSString *path = payload[@"path"];
+    NSString *mode = payload[@"mode"];
+    if (payload.count != 2 || ![path isKindOfClass:[NSString class]] ||
+        ![mode isKindOfClass:[NSString class]] || path.length == 0 ||
+        path.length > 4096) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *canonical = nil;
+    if (![self grantMainDirectoryPath:path mode:mode canonical:&canonical]) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
       return;
     }

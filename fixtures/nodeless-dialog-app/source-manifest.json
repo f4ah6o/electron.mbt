@@ -1,0 +1,22 @@
+{
+  "schema": 2,
+  "app": "nodeless-dialog",
+  "entry": "index.html",
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "93f053ebe05e85ca36ca0db5b8b446c5e82c97210b24d98d648cd49794ee8571",
+      "bytes": 144
+    },
+    {
+      "path": "package.json",
+      "sha256": "653e19c7392695b0f3210f8b61037c509db3a0849c9521cd182df0ea0c7886fd",
+      "bytes": 106
+    },
+    {
+      "path": "src/main.js",
+      "sha256": "81ae6e4819a4feabe93aab89575b75b479dcfc22308c4ba20f040046d2c9ce5c",
+      "bytes": 6208
+    }
+  ]
+}

@@ -121,6 +121,46 @@ test "node prelude dispatches sync and async handlers exactly once" {
 }
 
 ///|
+test "main dialog is bounded and fails closed without a host bridge" {
+  let engine = Engine::new()
+  let context = Context::new(engine)
+  let modules = [
+    ModuleSource::new(
+      "entry",
+      "sha256:entry",
+      "const { dialog } = require('electron');\n" +
+      "const shape = typeof dialog.showOpenDialog === 'function';\n" +
+      "let saveCode = 'none';\n" +
+      "try { dialog.showSaveDialog(); } catch (error) { saveCode = error.code; }\n" +
+      "globalThis.__dialogOptionCode = 'pending';\n" +
+      "dialog.showOpenDialog({ securityScopedBookmarks: true }).catch(function (error) { globalThis.__dialogOptionCode = error.code; });\n" +
+      "globalThis.__dialogHostCode = 'pending';\n" +
+      "dialog.showOpenDialog({}).catch(function (error) { globalThis.__dialogHostCode = error.code; });\n" +
+      "module.exports = { shape: shape, saveCode: saveCode };\n",
+      {},
+      false,
+    ),
+  ]
+  let result = context.eval_cjs_with_prelude(modules, "entry", node_prelude(), prelude_config())
+  assert_true(result.status is Value)
+  assert_true(result.exports.contains("\"shape\":true"))
+  assert_true(result.exports.contains("\"saveCode\":\"ELECTRON_MBT_UNSUPPORTED_API\""))
+  let mut jobs = 0
+  while engine.job_pending() && jobs < 16 {
+    let _ = engine.execute_one_job()
+    jobs = jobs + 1
+  }
+  let optionCode = context.get_global("__dialogOptionCode")
+  assert_true(optionCode.text().contains("ELECTRON_MBT_UNSUPPORTED_API"))
+  let hostCode = context.get_global("__dialogHostCode")
+  assert_true(hostCode.text().contains("ELECTRON_MBT_HOST_UNAVAILABLE"))
+  optionCode.release()
+  hostCode.release()
+  context.destroy()
+  engine.destroy()
+}
+
+///|
 test "undefined lease serializes without a free bug" {
   let engine = Engine::new()
   let context = Context::new(engine)

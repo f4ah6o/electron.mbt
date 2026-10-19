@@ -158,9 +158,14 @@ fail:
   return -1;
 }
 
-static int send_control_frame(const char *operation, const char *payload,
-                              int window, int generation,
-                              char *out, int32_t capacity) {
+// A user-driven open panel can legitimately stay on screen much longer than a
+// normal control request. The native host uses the same one-hour bound.
+static const int32_t kMainDialogWaitMs = 3600000;
+
+static int send_control_frame_timeout(const char *operation, const char *payload,
+                                      int window, int generation,
+                                      char *out, int32_t capacity,
+                                      int32_t timeout_ms) {
   if (control_fd < 0 || operation == NULL || payload == NULL) return -1;
   int id = request_id++;
   size_t needed = strlen(session_text) + strlen(operation) + strlen(payload) + 256;
@@ -177,7 +182,14 @@ static int send_control_frame(const char *operation, const char *payload,
   int result = write_frame(control_fd, frame, (int32_t)written);
   free(frame);
   if (result != 0) return -1;
-  return read_frame(control_fd, out, capacity, 15000);
+  return read_frame(control_fd, out, capacity, timeout_ms);
+}
+
+static int send_control_frame(const char *operation, const char *payload,
+                              int window, int generation,
+                              char *out, int32_t capacity) {
+  return send_control_frame_timeout(operation, payload, window, generation,
+                                    out, capacity, 15000);
 }
 
 static int send_control(const char *operation, const char *payload,
@@ -214,6 +226,13 @@ static int ebt_host_request(const char *operation, const char *payload,
                             char *out, int32_t capacity) {
   if (control_fd < 0 || operation == NULL || payload == NULL ||
       out == NULL || capacity <= 0) return -1;
+  if (strcmp(operation, "main-open-dialog") == 0) {
+    // The payload carries the parent window (0 means parentless); the header
+    // window is unused by this host operation. Keep the longer user-interaction
+    // timeout aligned with the native host's semaphore.
+    return send_control_frame_timeout(operation, payload, 0, 0, out, capacity,
+                                      kMainDialogWaitMs);
+  }
   if (strcmp(operation, "load-file") == 0) {
     char begin[4096];
     int begin_length = send_control_frame("begin-load", "{}", 1, 1, begin, (int32_t)sizeof(begin));
@@ -258,13 +277,13 @@ static int ebt_host_request(const char *operation, const char *payload,
   }
   if (strcmp(operation, "prepare-source") == 0 ||
       strcmp(operation, "install-adapted-adapter") == 0 ||
-      strcmp(operation, "create-window") == 0 ||
-      strcmp(operation, "get-window-title") == 0 ||
-      strcmp(operation, "set-window-title") == 0 ||
-      strcmp(operation, "destroy-window") == 0) {
+      strcmp(operation, "create-window") == 0) {
     return send_control_frame(operation, payload, 1, 0, out, capacity);
   }
-  if (strcmp(operation, "get-web-contents-title") == 0 ||
+  if (strcmp(operation, "get-window-title") == 0 ||
+      strcmp(operation, "set-window-title") == 0 ||
+      strcmp(operation, "destroy-window") == 0 ||
+      strcmp(operation, "get-web-contents-title") == 0 ||
       strcmp(operation, "get-web-contents-url") == 0 ||
       strcmp(operation, "get-bootstrap-status") == 0 ||
       strcmp(operation, "get-preload-status") == 0 ||
@@ -272,6 +291,8 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "get-ingress-status") == 0 ||
       strcmp(operation, "grant-file") == 0 ||
       strcmp(operation, "set-dialog-result") == 0 ||
+      strcmp(operation, "set-main-dialog-results") == 0 ||
+      strcmp(operation, "get-main-dialog-status") == 0 ||
       strcmp(operation, "release-adapted-ingress") == 0 ||
       strcmp(operation, "trigger-renderer-api") == 0 ||
       strcmp(operation, "probe-renderer") == 0 ||
@@ -314,6 +335,7 @@ static int js_host_operation_allowed(const char *operation) {
     "main-write-file",
     "main-read-dir",
     "main-mkdir",
+    "main-open-dialog",
     NULL
   };
   for (int i = 0; allowed[i] != NULL; i++) {
@@ -337,6 +359,20 @@ static int ebt_js_host_request(const char *operation, const char *payload,
   return ebt_host_request(operation, payload, out, capacity);
 }
 
+// A CI-only override lets the UI smoke select the auto-cancel host build.
+// Accept only a repository-relative dist/ path under an explicit test mode, so
+// an ordinary app launch cannot point the runtime at an arbitrary executable.
+static const char *host_binary_path(void) {
+  const char *test = getenv("ELECTRON_MBT_TEST_NATIVE_HOST");
+  const char *mode = getenv("ELECTRON_MBT_TEST_MODE");
+  if (test == NULL || mode == NULL || strcmp(mode, "1") != 0 ||
+      test[0] == 0 || strlen(test) > 256 ||
+      strncmp(test, "dist/", 5) != 0 || strstr(test, "..") != NULL) {
+    return "dist/electron-mbt-native-host";
+  }
+  return test;
+}
+
 int32_t moonbit_ebt_nodeless_host_open(moonbit_bytes_t root_bytes) {
   char *root = copy_bytes(root_bytes);
   if (root == NULL) return -1;
@@ -348,7 +384,7 @@ int32_t moonbit_ebt_nodeless_host_open(moonbit_bytes_t root_bytes) {
     session_text[i * 2 + 1] = hex[random[i] & 0xf];
   }
   session_text[32] = 0;
-  int fd = start_host("dist/electron-mbt-native-host", root, session_text);
+  int fd = start_host(host_binary_path(), root, session_text);
   free(root);
   if (fd < 0) return -1;
   char reply[65536];
@@ -405,7 +441,7 @@ int32_t moonbit_ebt_nodeless_host_pid(void) {
 int32_t moonbit_ebt_nodeless_host_shutdown(void) {
   char reply[65536];
   if (control_fd >= 0) {
-    int _ = send_control_frame("destroy-window", "{}", 1, 0, reply, (int32_t)sizeof(reply));
+    int _ = send_control_frame("destroy-window", "{}", 1, 1, reply, (int32_t)sizeof(reply));
     (void)_;
     int __ = send_control_frame("shutdown", "{}", 0, 0, reply, (int32_t)sizeof(reply));
     (void)__;

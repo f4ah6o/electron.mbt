@@ -17,10 +17,13 @@ const killRealWebKitProcess = process.argv.length === 3 &&
   process.argv[2] === '--kill-real-webkit-process';
 const simulateStaleNavigationCallback = process.argv.length === 3 &&
   process.argv[2] === '--simulate-stale-navigation-callback';
+const simulateMainDialogCancel = process.argv.length === 3 &&
+  process.argv[2] === '--simulate-main-dialog-cancel';
 if (process.argv.length > 3 ||
     (process.argv.length === 3 && !simulateTermination && !simulateNativeClose &&
-     !killRealWebKitProcess && !simulateStaleNavigationCallback)) {
-  console.error('ELECTRON_MBT_USAGE: build-macos-host.cjs [--simulate-webkit-termination|--simulate-native-close|--kill-real-webkit-process|--simulate-stale-navigation-callback]');
+     !killRealWebKitProcess && !simulateStaleNavigationCallback &&
+     !simulateMainDialogCancel)) {
+  console.error('ELECTRON_MBT_USAGE: build-macos-host.cjs [--simulate-webkit-termination|--simulate-native-close|--kill-real-webkit-process|--simulate-stale-navigation-callback|--simulate-main-dialog-cancel]');
   process.exit(1);
 }
 const output = path.join(root, 'dist',
@@ -28,6 +31,7 @@ const output = path.join(root, 'dist',
   simulateNativeClose ? 'electron-mbt-native-host-close-sim' :
   killRealWebKitProcess ? 'electron-mbt-native-host-webkit-kill-test' :
   simulateStaleNavigationCallback ? 'electron-mbt-native-host-stale-navigation-test' :
+  simulateMainDialogCancel ? 'electron-mbt-native-host-main-dialog-cancel-sim' :
   'electron-mbt-native-host');
 fs.mkdirSync(path.dirname(output), { recursive: true });
 const args = [
@@ -37,8 +41,9 @@ const args = [
   ...(simulateNativeClose ? ['-DELECTRON_MBT_TEST_NATIVE_CLOSE'] : []),
   ...(killRealWebKitProcess ? ['-DELECTRON_MBT_TEST_REAL_WEBKIT_KILL'] : []),
   ...(simulateStaleNavigationCallback ? ['-DELECTRON_MBT_TEST_STALE_NAVIGATION_CALLBACK'] : []),
+  ...(simulateMainDialogCancel ? ['-DELECTRON_MBT_TEST_MAIN_DIALOG_CANCEL'] : []),
   source, '-framework', 'AppKit',
-  '-framework', 'WebKit', '-o', output,
+  '-framework', 'WebKit', '-framework', 'UniformTypeIdentifiers', '-o', output,
 ];
 const result = spawnSync(process.env.CC || 'clang', args, {
   stdio: 'inherit', timeout: 120000,

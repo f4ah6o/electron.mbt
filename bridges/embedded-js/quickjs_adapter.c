@@ -194,6 +194,12 @@ typedef int32_t (*EmbHostRequestFn)(const char *operation, const char *payload,
                                     char *out, int32_t capacity);
 static EmbHostRequestFn emb_host_request_fn = NULL;
 
+// The host control frame is capped at 1 MiB. Main-side fs reads return base64
+// through this bridge, so a fixed 64 KiB stack buffer would silently truncate a
+// bounded 256 KiB read. Allocate per call and free before any JS exception can
+// escape.
+#define EMB_HOST_RESPONSE_MAX (1024 * 1024)
+
 MOONBIT_FFI_EXPORT
 void moonbit_emb_register_host_request(void *fn) {
   emb_host_request_fn = (EmbHostRequestFn)fn;
@@ -212,14 +218,22 @@ static JSValue emb_js_host_request(JSContext *ctx, JSValueConst this_val,
     JS_FreeCString(ctx, operation);
     return JS_EXCEPTION;
   }
-  char output[65536];
-  int32_t length = emb_host_request_fn(operation, payload, output, (int32_t)sizeof(output));
+  char *output = (char *)malloc(EMB_HOST_RESPONSE_MAX);
+  if (output == NULL) {
+    JS_FreeCString(ctx, operation);
+    JS_FreeCString(ctx, payload);
+    return JS_ThrowTypeError(ctx, "host request allocation failed");
+  }
+  int32_t length = emb_host_request_fn(operation, payload, output, EMB_HOST_RESPONSE_MAX);
   JS_FreeCString(ctx, operation);
   JS_FreeCString(ctx, payload);
-  if (length < 0 || length >= (int32_t)sizeof(output)) {
+  if (length < 0 || length >= EMB_HOST_RESPONSE_MAX) {
+    free(output);
     return JS_ThrowTypeError(ctx, "host request failed");
   }
-  return JS_NewStringLen(ctx, output, (size_t)length);
+  JSValue result = JS_NewStringLen(ctx, output, (size_t)length);
+  free(output);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT

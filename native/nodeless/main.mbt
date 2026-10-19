@@ -475,7 +475,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--selftest] [--json]")
+    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest]")
     nodeless_exit(2)
     return
   }
@@ -492,6 +492,11 @@ fn main {
   let app_dir = @utf8.decode_lossy(app_dir_buffer[:app_dir_length])
   let window_mode = args.contains("--window")
   let broker_selftest = args.contains("--broker-selftest")
+  let fs_selftest = args.contains("--fs-selftest")
+  if fs_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--fs-selftest requires --window")
+    return
+  }
   let mut module_entry = ""
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--entry" && i + 1 < args.length() {
@@ -654,6 +659,8 @@ fn main {
     let mut broker_triggered = false
     let mut broker_api_probe : Json = null
     let mut broker_error = ""
+    let mut fs_selftest_json : Json = null
+    let mut fs_selftest_ok = true
     if adapted_configured {
       for _attempt = 0; _attempt < 50; _attempt = _attempt + 1 {
         match cli_host_payload("get-adapted-status", "{}") {
@@ -750,6 +757,16 @@ fn main {
         }
       }
     }
+    if fs_selftest {
+      let (fs_results, fs_dispatch_ok) = cli_dispatch_results(runner, ["fs:selftest"])
+      let fs_dispatch_value = fs_results.get("fs:selftest").unwrap_or(null)
+      fs_selftest_json = if cli_field(fs_dispatch_value, "ok") is True {
+        cli_field(fs_dispatch_value, "result")
+      } else {
+        fs_dispatch_value
+      }
+      fs_selftest_ok = fs_dispatch_ok && (cli_field(fs_selftest_json, "ok") is True)
+    }
     ingress = cli_host_payload("get-ingress-status", "{}").unwrap_or(null)
     let title_buffer = Bytes::new(65536)
     let title_length = nodeless_host_query(
@@ -803,6 +820,7 @@ fn main {
     let not_verified : Array[Json] = [
       Json("preload"),
       Json("production-file-grants"),
+      Json("main-fs-user-grants"),
       Json("human-dialog-ui"),
       Json("print-accurate-export"),
       Json("updater-behavior"),
@@ -816,7 +834,7 @@ fn main {
       not_verified.push(Json("real-renderer"))
     }
     let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 &&
-      adapted_ok && broker_ok
+      adapted_ok && broker_ok && fs_selftest_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
@@ -861,6 +879,8 @@ fn main {
         "apiProbe": broker_api_probe,
         "error": Json(broker_error),
       }),
+      "fsSelftest": fs_selftest_json,
+      "fsSelftestOk": Json(fs_selftest_ok),
       "mainError": Json(main_error),
       "lastRejection": Json(rejection),
       "hostPid": Json(host_pid),

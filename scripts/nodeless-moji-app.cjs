@@ -166,10 +166,21 @@ try {
     apiProbe.pdfOk === true && apiProbe.pdfLandscapeOk === true &&
     apiProbe.docPngOk === true && apiProbe.updateCheckOk === true &&
     apiProbe.saveOk === true && apiProbe.readOk === true &&
-    apiProbe.sampleOk === true && apiProbe.settingsTheme === 'dark';
+    apiProbe.sampleOk === true && apiProbe.settingsTheme === 'dark' &&
+    apiProbe.settingsSetOk === true && apiProbe.settingsLanguage === 'ja';
+  const settingsFile = path.join(temp, '.appData/moji/settings.json');
+  let settingsData = null;
+  try {
+    if (fs.existsSync(settingsFile)) {
+      settingsData = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    }
+  } catch {
+    settingsData = null;
+  }
+  const settingsPersisted = settingsData !== null && settingsData.language === 'ja';
   const brokerOk = broker.configured === true && broker.triggered === true &&
     broker.grants === 1 && broker.dialogs === 6 && broker.error === '' &&
-    apiProbeOk && Object.values(brokerOutputs).every(Boolean);
+    apiProbeOk && settingsPersisted && Object.values(brokerOutputs).every(Boolean);
   const uiText = ['New', 'Open', 'Save', 'Preview', 'Editor', 'Export']
     .filter(label => pageText.includes(label));
   const ok = result.status === 0 && parsed && parsed.status === 'PASS' &&
@@ -215,6 +226,11 @@ try {
     broker,
     apiProbe,
     brokerOutputs,
+    settingsPersisted,
+    settingsFile: {
+      exists: settingsData !== null,
+      language: settingsData !== null ? settingsData.language : null,
+    },
     preloadExecuted: false,
     mainError: parsed ? parsed.mainError : null,
     lastRejection: parsed ? parsed.lastRejection : null,

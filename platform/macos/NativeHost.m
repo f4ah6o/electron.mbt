@@ -133,6 +133,12 @@ static NSSize exportPageDimensions(NSString *pageSize, NSString *orientation) {
 static const NSUInteger MaxSnapshotBytes = 16 * 1024 * 1024;
 static const NSUInteger MaxSourceManifestBytes = 4 * 1024 * 1024;
 static const unsigned long long MaxSnapshotTotalBytes = 64ULL * 1024ULL * 1024ULL;
+// Main-side fs is intentionally smaller than the page file broker. A 256 KiB
+// read becomes ~350 KiB of base64 inside the 1 MiB control frame. The runtime
+// data roots mirror runtime/app_runner/app_runner.mbt's app_config_json.
+static const NSUInteger MaxMainReadBytes = 256 * 1024;
+static const NSUInteger MaxMainWriteBytes = 256 * 1024;
+static const NSUInteger MaxMainBase64Bytes = 400 * 1024;
 
 static BOOL safeRelativePath(NSString *path) {
   if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 256 ||
@@ -2047,6 +2053,78 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 - (long long)publishCloseRequested:(NSNumber *)windowID generation:(long long)generation {
   return [self publishNativeEvent:@"native-close-request" windowID:windowID generation:generation];
 }
+// Main-side fs is host-level: the trusted QuickJS main may read app sources and
+// write only the runtime data roots, even before a BrowserWindow exists. The
+// renderer file broker keeps its own per-window grants and is not widened here.
+- (NSString *)canonicalMainPath:(NSString *)path {
+  if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096 ||
+      [path rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]].location != NSNotFound) {
+    return nil;
+  }
+  NSString *candidate = [path isAbsolutePath] ? path :
+    [self.root stringByAppendingPathComponent:path];
+  NSString *standardized = [candidate stringByStandardizingPath];
+  char resolvedBuffer[PATH_MAX];
+  if (realpath(standardized.fileSystemRepresentation, resolvedBuffer) != NULL) {
+    return [NSString stringWithUTF8String:resolvedBuffer];
+  }
+  // A dangling symlink has no resolvable target. Reject it instead of treating
+  // the link path itself as an ordinary missing file, which could otherwise let
+  // an atomic write replace or follow it.
+  struct stat linkInfo;
+  if (lstat(standardized.fileSystemRepresentation, &linkInfo) == 0 &&
+      S_ISLNK(linkInfo.st_mode)) {
+    return nil;
+  }
+  // Resolve the nearest existing ancestor, then append the missing components.
+  // Resolving only the immediate parent leaves /tmp unresolved (it is a symlink
+  // to /private/tmp) whenever two or more write-directory levels are new, which
+  // would reject a legitimate nested appData write. Existing symlinks in the
+  // prefix still resolve outside the root and fail the later allowed-root check.
+  NSMutableArray<NSString *> *missing = [NSMutableArray array];
+  NSString *cursor = standardized;
+  while (cursor.length > 1) {
+    if (realpath(cursor.fileSystemRepresentation, resolvedBuffer) != NULL) {
+      NSString *resolved = [NSString stringWithUTF8String:resolvedBuffer];
+      for (NSString *component in missing) {
+        resolved = [resolved stringByAppendingPathComponent:component];
+      }
+      return resolved;
+    }
+    NSString *component = cursor.lastPathComponent;
+    if (component.length == 0) return nil;
+    [missing insertObject:component atIndex:0];
+    cursor = cursor.stringByDeletingLastPathComponent;
+  }
+  return nil;
+}
+- (BOOL)path:(NSString *)canonical isUnderRoot:(NSString *)root {
+  if (canonical == nil || root == nil) return NO;
+  NSString *prefix = [root stringByAppendingString:@"/"];
+  return [canonical isEqualToString:root] || [canonical hasPrefix:prefix];
+}
+- (BOOL)path:(NSString *)canonical isStrictlyUnderRoot:(NSString *)root {
+  if (canonical == nil || root == nil) return NO;
+  return [canonical hasPrefix:[root stringByAppendingString:@"/"]];
+}
+- (BOOL)mainReadAllowed:(NSString *)canonical {
+  return [self path:canonical isUnderRoot:self.root];
+}
+- (BOOL)mainWriteAllowed:(NSString *)canonical {
+  NSString *appData = [self.root stringByAppendingPathComponent:@".appData"];
+  NSString *userData = [self.root stringByAppendingPathComponent:@".userData"];
+  return [self path:canonical isStrictlyUnderRoot:appData] ||
+         [self path:canonical isStrictlyUnderRoot:userData];
+}
+- (BOOL)ensureMainParentDirectory:(NSString *)canonical {
+  NSString *parent = [canonical stringByDeletingLastPathComponent];
+  NSFileManager *manager = [NSFileManager defaultManager];
+  BOOL isDirectory = NO;
+  if ([manager fileExistsAtPath:parent isDirectory:&isDirectory]) return isDirectory;
+  NSError *error = nil;
+  return [manager createDirectoryAtPath:parent withIntermediateDirectories:YES
+    attributes:@{NSFilePosixPermissions: @0700} error:&error];
+}
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done {
   if (![NSThread isMainThread]) { done(@"failure", @{@"code": @"ELECTRON_MBT_THREAD"}); return; }
   NSString *operation = request[@"operation"];
@@ -2067,6 +2145,119 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     for (MBTWindow *window in self.windows.allValues) [window tearDown];
     [self.windows removeAllObjects];
     done(@"success", @{@"closed": @YES});
+    return;
+  }
+  if ([operation isEqualToString:@"main-stat"]) {
+    NSString *path = payload[@"path"];
+    if (payload.count != 1 || ![path isKindOfClass:[NSString class]]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *canonical = [self canonicalMainPath:path];
+    if (canonical == nil || ![self mainReadAllowed:canonical]) {
+      done(@"success", @{@"exists": @NO, @"denied": @YES});
+      return;
+    }
+    BOOL isDirectory = NO;
+    BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:canonical
+      isDirectory:&isDirectory];
+    if (!exists) {
+      done(@"success", @{@"exists": @NO, @"denied": @NO});
+      return;
+    }
+    NSDictionary *attributes = [[NSFileManager defaultManager]
+      attributesOfItemAtPath:canonical error:nil];
+    unsigned long long size = attributes != nil ?
+      [attributes[NSFileSize] unsignedLongLongValue] : 0;
+    done(@"success", @{@"exists": @YES, @"isFile": @(!isDirectory),
+      @"isDirectory": @(isDirectory), @"size": @(size),
+      @"path": canonical, @"denied": @NO});
+    return;
+  }
+  if ([operation isEqualToString:@"main-read-file"]) {
+    NSString *path = payload[@"path"];
+    if (payload.count != 1 || ![path isKindOfClass:[NSString class]]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *canonical = [self canonicalMainPath:path];
+    if (canonical == nil || ![self mainReadAllowed:canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
+      return;
+    }
+    NSFileManager *manager = [NSFileManager defaultManager];
+    BOOL isDirectory = NO;
+    BOOL exists = [manager fileExistsAtPath:canonical isDirectory:&isDirectory];
+    if (!exists) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_NOT_FOUND"});
+      return;
+    }
+    struct stat info;
+    if (isDirectory || stat(canonical.fileSystemRepresentation, &info) != 0 ||
+        !S_ISREG(info.st_mode)) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_TYPE"});
+      return;
+    }
+    if (info.st_size < 0 || (unsigned long long)info.st_size > MaxMainReadBytes) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_LIMIT"});
+      return;
+    }
+    NSData *data = [NSData dataWithContentsOfFile:canonical
+      options:NSDataReadingMappedIfSafe error:nil];
+    if (data == nil || data.length > MaxMainReadBytes) {
+      done(@"failure", @{@"code": (data == nil ? @"ELECTRON_MBT_FILE_READ" :
+        @"ELECTRON_MBT_FILE_LIMIT")});
+      return;
+    }
+    done(@"success", @{@"path": canonical, @"base64":
+      [data base64EncodedStringWithOptions:0], @"bytes": @(data.length)});
+    return;
+  }
+  if ([operation isEqualToString:@"main-write-file"]) {
+    NSString *path = payload[@"path"];
+    NSString *base64 = payload[@"base64"];
+    if (payload.count != 2 || ![path isKindOfClass:[NSString class]] ||
+        ![base64 isKindOfClass:[NSString class]]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (base64.length > MaxMainBase64Bytes) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_LIMIT"});
+      return;
+    }
+    NSData *data = base64.length == 0 ? [NSData data] :
+      [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+    if (data == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (data.length > MaxMainWriteBytes) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_LIMIT"});
+      return;
+    }
+    NSString *canonical = [self canonicalMainPath:path];
+    if (canonical == nil || ![self mainWriteAllowed:canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DENIED"});
+      return;
+    }
+    BOOL isDirectory = NO;
+    if ([[NSFileManager defaultManager] fileExistsAtPath:canonical
+        isDirectory:&isDirectory] && isDirectory) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_TYPE"});
+      return;
+    }
+    if (![self ensureMainParentDirectory:canonical]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_WRITE"});
+      return;
+    }
+    // The adapted profile declares atomic-replace-v1. This is Cocoa's
+    // temp-file-and-rename write, not Node's open/truncate semantics, a CAS
+    // commit, or a metadata-preservation guarantee.
+    if (![data writeToFile:canonical atomically:YES]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_WRITE"});
+      return;
+    }
+    done(@"success", @{@"path": canonical, @"bytes": @(data.length)});
     return;
   }
   if ([operation isEqualToString:@"create-window"]) {
@@ -2877,6 +3068,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       "const saved=await window.api.save('renderer-save.md','# renderer save\\n'); "
       "const read=await window.api.readPath('renderer-save.md'); "
       "const sample=await window.api.readSample('markdown-guide.en.md'); "
+      "const settingsSet=await window.api.setSettings({language:'ja'}); "
       "const settings=await window.api.getSettings(); "
       "const updateCheck=await window.api.checkForUpdate(); "
       "window.__mojiApiProbe={state:'done',"
@@ -2891,6 +3083,8 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       "sampleOk:!!(sample&&sample.ok),"
       "sampleContent:sample&&sample.content?sample.content.slice(0,64):'',"
       "settingsTheme:settings&&settings.previewTheme,"
+      "settingsSetOk:!!(settingsSet&&settingsSet.language==='ja'),"
+      "settingsLanguage:settings&&settings.language,"
       "updateCheckOk:!!(updateCheck&&updateCheck.status==='unsupported')}; "
       "} catch(e){ window.__mojiApiProbe={state:'error',code:String(e&&e.code||e)}; } })(); true;";
     [window.web evaluateJavaScript:script inFrame:nil inContentWorld:[WKContentWorld pageWorld]

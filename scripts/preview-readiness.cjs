@@ -240,6 +240,8 @@ function buildReport() {
     nodelessApi.docPngOk === true && nodelessApi.saveOk === true &&
     nodelessApi.readOk === true && nodelessApi.sampleOk === true &&
     nodelessApi.updateCheckOk === true && nodelessApi.settingsTheme === 'dark' &&
+    nodelessApi.settingsSetOk === true && nodelessApi.settingsLanguage === 'ja' &&
+    nodelessApp.settingsPersisted === true &&
     Object.values(nodelessOutputs).length === 6 &&
     Object.values(nodelessOutputs).every(value => value === true);
   checks.push(check('nodeless-moji-broker',
@@ -247,7 +249,7 @@ function buildReport() {
       (nodelessBrokerOk ? 'PASS' : 'FAIL'),
     nodelessBroker === null
       ? 'Node-less Moji broker report is absent'
-      : `Node-less broker (test-injected): grants=${nodelessBroker.grants}, dialogs=${nodelessBroker.dialogs}, triggered=${nodelessBroker.triggered}, open=${nodelessApi.openOk}, saveAs=${nodelessApi.saveAsOk}, export=${nodelessApi.exportOk}, pdf=${nodelessApi.pdfOk}, png=${nodelessApi.pngOk}, read=${nodelessApi.readOk}, sample=${nodelessApi.sampleOk}, update=${nodelessApi.updateCheckOk}, files=${JSON.stringify(nodelessOutputs)}`));
+      : `Node-less broker (test-injected): grants=${nodelessBroker.grants}, dialogs=${nodelessBroker.dialogs}, triggered=${nodelessBroker.triggered}, open=${nodelessApi.openOk}, saveAs=${nodelessApi.saveAsOk}, export=${nodelessApi.exportOk}, pdf=${nodelessApi.pdfOk}, png=${nodelessApi.pngOk}, read=${nodelessApi.readOk}, sample=${nodelessApi.sampleOk}, update=${nodelessApi.updateCheckOk}, settings=${nodelessApi.settingsLanguage}, persisted=${nodelessApp.settingsPersisted}, files=${JSON.stringify(nodelessOutputs)}`));
   checks.push(check('node-less-moji-app-main', mojiRendererOk && nodelessAppOk ? 'PASS' : 'NOT_RUN',
     mojiRendererOk && nodelessAppOk
       ? 'Moji main boots and the adapted Moji renderer loads Node-lessly; original preload NOT_EXECUTED'

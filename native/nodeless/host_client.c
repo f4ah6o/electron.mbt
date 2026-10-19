@@ -275,7 +275,10 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "release-adapted-ingress") == 0 ||
       strcmp(operation, "trigger-renderer-api") == 0 ||
       strcmp(operation, "probe-renderer") == 0 ||
-      strcmp(operation, "app-reply") == 0) {
+      strcmp(operation, "app-reply") == 0 ||
+      strcmp(operation, "main-stat") == 0 ||
+      strcmp(operation, "main-read-file") == 0 ||
+      strcmp(operation, "main-write-file") == 0) {
     return send_control_frame(operation, payload, 1, 1, out, capacity);
   }
   if (strcmp(operation, "shutdown") == 0) {

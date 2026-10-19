@@ -119,7 +119,7 @@ test('Node-less runtime executes the fixture without Node and fails closed', () 
   assert.equal(main.secretEnv, null);
   assert.equal(resultOf('selftest:async').value, 9);
   assert.deepEqual(resultOf('selftest:order').order, ['tick', 'promise', 'timer']);
-  assert.equal(resultOf('selftest:unsupported').code, 'ENOENT');
+  assert.equal(resultOf('selftest:unsupported').code, 'ELECTRON_MBT_HOST_UNAVAILABLE');
 });
 
 test('the nodeless binary does not link or import Node/Node-API', () => {
@@ -160,6 +160,87 @@ test('a native window loads a page and reads its title without Node', {
   assert.equal(report.liveLeases, 0);
   assert.equal(report.nodeProcesses, 0);
   assert.equal(report.compatible, false);
+});
+
+test('main fs reads app files and atomically writes appData without Node', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-fs-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-fs-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    const { result, report } = run(binary, dir,
+      ['--window', '--fs-selftest', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.fsSelftestOk, true);
+    const fsReport = report.fsSelftest;
+    assert.ok(fsReport, 'missing fs selftest payload');
+    assert.equal(fsReport.ok, true);
+    assert.equal(fsReport.syncText, 'sample\n');
+    assert.equal(fsReport.asyncText, 'sample\n');
+    assert.equal(fsReport.syncBuffer, true);
+    assert.equal(fsReport.exists, true);
+    assert.equal(fsReport.existsMissing, false);
+    assert.equal(fsReport.existsOutside, false);
+    assert.equal(fsReport.largeRead, true);
+    assert.equal(fsReport.largeAsync, true);
+    assert.equal(fsReport.asyncWrite, true);
+    assert.equal(fsReport.nestedWrite, true);
+    assert.equal(fsReport.atomicRead, true);
+    assert.equal(fsReport.empty, true);
+    assert.equal(fsReport.base64RoundTrip, true);
+    assert.equal(fsReport.writeDenied, 'EACCES');
+    assert.equal(fsReport.traversalDenied, 'EACCES');
+    assert.equal(fsReport.readDenied, 'EACCES');
+    assert.equal(fsReport.missing, 'ENOENT');
+    assert.equal(fsReport.oversize, 'EFBIG');
+    assert.equal(fsReport.unknownFlag, 'ELECTRON_MBT_UNSUPPORTED_API');
+    assert.equal(fsReport.escapeCode, 'ENOENT');
+    assert.equal(report.pageTitle, 'nodeless-fs-ready');
+    assert.equal(report.hostShutdown, true);
+    assert.equal(report.liveLeases, 0);
+    assert.equal(report.nodeProcesses, 0);
+    assert.equal(report.compatible, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('main fs denies a symlink that escapes the app root', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-fs-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-fs-symlink-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-fs-outside-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'outside\n');
+    fs.mkdirSync(path.join(dir, '.appData'), { recursive: true });
+    fs.symlinkSync(outside, path.join(dir, '.appData', 'escape'));
+    const { result, report } = run(binary, dir,
+      ['--window', '--fs-selftest', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.fsSelftestOk, true);
+    assert.equal(report.fsSelftest.escapeCode, 'EACCES');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('fs selftest requires the native window host', () => {
+  const binary = buildBinary();
+  const { result, report } = run(binary, fixture, ['--fs-selftest']);
+  assert.notEqual(result.status, 0);
+  assert.ok(report);
+  assert.equal(report.status, 'FAIL');
+  assert.equal(report.code, 'ELECTRON_MBT_NODELESS_USAGE');
 });
 
 test('a Node-less adapted app serves modules and dispatches page API calls to QuickJS main', {

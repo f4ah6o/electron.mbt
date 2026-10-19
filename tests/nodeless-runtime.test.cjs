@@ -242,6 +242,22 @@ test('the pinned Moji renderer boots without Node under the adapted page API', {
   assert.equal(report.adapted.replyErrors, 0);
   assert.equal(report.ingress.admitted >= 2, true);
   assert.equal(report.ingress.denied, 0);
+  assert.equal(report.broker.configured, true);
+  assert.equal(report.broker.mode, 'test-injected');
+  assert.equal(report.broker.grants, 1);
+  assert.equal(report.broker.dialogs, 6);
+  assert.equal(report.broker.triggered, true);
+  assert.equal(report.broker.error, '');
+  assert.equal(report.apiProbe.state, 'done');
+  for (const name of ['openOk', 'saveAsOk', 'exportOk', 'pngOk', 'pdfOk',
+    'pdfLandscapeOk', 'docPngOk', 'saveOk', 'readOk', 'sampleOk', 'updateCheckOk']) {
+    assert.equal(report.apiProbe[name], true, `${name} must pass`);
+  }
+  assert.equal(report.apiProbe.settingsTheme, 'dark');
+  assert.equal(report.apiProbe.readContent, '# renderer save\n');
+  for (const [name, passed] of Object.entries(report.brokerOutputs)) {
+    assert.equal(passed, true, `${name} output must be present`);
+  }
   assert.equal(report.preloadExecuted, false);
   assert.equal(report.liveLeases, 0);
   assert.equal(report.compatible, false);
@@ -264,6 +280,45 @@ test('an invalid adapted profile fails closed before main evaluation', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  }
+});
+
+test('broker selftest stays disabled without the explicit flag', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-broker-gate-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'src/main.js'), [
+      "'use strict';",
+      "const { app, BrowserWindow } = require('electron');",
+      "app.whenReady().then(function () {",
+      "  const win = new BrowserWindow({ width: 320, height: 200, title: 'broker-gate', show: false });",
+      "  win.loadFile('index.html');",
+      "});",
+      '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(dir, 'index.html'),
+      '<!doctype html><title>broker-gate-ready</title><body>broker-gate</body>\n');
+    fs.writeFileSync(path.join(dir, 'package.json'),
+      '{"name":"broker-gate","version":"1.0.0","main":"src/main.js"}\n');
+    fs.writeFileSync(path.join(dir, 'nodeless-broker.json'), '{"schema":99}\n');
+    const manifest = buildSourceManifest(dir, 'index.html', 'broker-gate', [
+      'index.html', 'package.json', 'src/main.js', 'nodeless-broker.json',
+    ]);
+    writeSourceManifest(path.join(dir, 'source-manifest.json'), manifest);
+    const { result, report } = run(binary, dir, ['--window', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report);
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.broker.configured, false);
+    assert.equal(report.broker.grants, 0);
+    assert.equal(report.broker.dialogs, 0);
+    assert.equal(report.broker.triggered, false);
+    assert.equal(report.compatible, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 

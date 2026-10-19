@@ -79,6 +79,18 @@ if (build.status !== 0 || !fs.existsSync(binary)) {
 }
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-moji-nodeless-app-'));
 const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-moji-nodeless-path-'));
+const brokerProfile = {
+  schema: 1,
+  grants: [{ path: 'renderer-save.md', mode: 'readwrite' }],
+  dialogs: [
+    { kind: 'open', path: 'samples/markdown-guide.en.md' },
+    { kind: 'save', path: 'renderer-save-as.md' },
+    { kind: 'export-html', path: 'renderer-export.html' },
+    { kind: 'export-png', path: 'renderer-export.png' },
+    { kind: 'export-pdf', path: 'renderer-export.pdf' },
+    { kind: 'export-doc-png', path: 'renderer-export-doc.png' },
+  ],
+};
 try {
   fs.mkdirSync(path.join(temp, 'out/main'), { recursive: true });
   fs.mkdirSync(path.join(temp, 'out/preload'), { recursive: true });
@@ -93,11 +105,14 @@ try {
     `${JSON.stringify({ name: 'moji', version: '1.0.5', main: 'out/main/main.js' }, null, 2)}\n`);
   fs.writeFileSync(path.join(temp, 'nodeless-app.json'),
     `${JSON.stringify({ schema: 1, profile: 'electron-nodeless-adapted-v1', adapter: 'adapted/page-api.js' }, null, 2)}\n`);
+  fs.writeFileSync(path.join(temp, 'nodeless-broker.json'),
+    `${JSON.stringify(brokerProfile, null, 2)}\n`);
   const rendererFiles = walk(path.join(temp, 'out/renderer'), temp);
   const files = [
     ...rendererFiles,
     'adapted/page-api.js',
     'nodeless-app.json',
+    'nodeless-broker.json',
     'package.json',
     'out/main/main.js',
     'out/preload/preload.js',
@@ -108,7 +123,9 @@ try {
   const fakeNode = path.join(fakeBin, 'node');
   fs.writeFileSync(fakeNode, '#!/bin/sh\nexit 99\n');
   fs.chmodSync(fakeNode, 0o700);
-  const result = spawnSync(binary, ['run', temp, '--window', '--entry', 'out/main/main.js'], {
+  const result = spawnSync(binary, [
+    'run', temp, '--window', '--entry', 'out/main/main.js', '--broker-selftest',
+  ], {
     cwd: root,
     encoding: 'utf8',
     timeout: 120000,
@@ -122,6 +139,37 @@ try {
   const pageTitle = parsed ? String(parsed.pageTitle || '') : '';
   const adaptedReport = parsed && parsed.adapted ? parsed.adapted : {};
   const ingress = adaptedReport.ingress || {};
+  const broker = parsed && parsed.broker ? parsed.broker : {};
+  const apiProbe = broker.apiProbe && typeof broker.apiProbe === 'object' ? broker.apiProbe : {};
+  const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  function readOutput(name) {
+    const file = path.join(temp, name);
+    return fs.existsSync(file) ? fs.readFileSync(file) : null;
+  }
+  const saved = readOutput('renderer-save.md');
+  const savedAs = readOutput('renderer-save-as.md');
+  const exportedHtml = readOutput('renderer-export.html');
+  const exportedPdf = readOutput('renderer-export.pdf');
+  const exportedPng = readOutput('renderer-export.png');
+  const exportedDocPng = readOutput('renderer-export-doc.png');
+  const brokerOutputs = {
+    save: saved !== null && saved.toString('utf8') === '# renderer save\n',
+    saveAs: savedAs !== null && savedAs.toString('utf8') === '# save-as\n',
+    exportHtml: exportedHtml !== null && exportedHtml.toString('utf8').includes('<h1>renderer export</h1>'),
+    exportPdf: exportedPdf !== null && exportedPdf.length > 4 && exportedPdf.subarray(0, 4).toString('ascii') === '%PDF',
+    exportPng: exportedPng !== null && exportedPng.length >= 8 && exportedPng.subarray(0, 8).equals(pngMagic),
+    exportDocPng: exportedDocPng !== null && exportedDocPng.length >= 8 && exportedDocPng.subarray(0, 8).equals(pngMagic),
+  };
+  const apiProbeOk = apiProbe.state === 'done' &&
+    apiProbe.openOk === true && apiProbe.saveAsOk === true &&
+    apiProbe.exportOk === true && apiProbe.pngOk === true &&
+    apiProbe.pdfOk === true && apiProbe.pdfLandscapeOk === true &&
+    apiProbe.docPngOk === true && apiProbe.updateCheckOk === true &&
+    apiProbe.saveOk === true && apiProbe.readOk === true &&
+    apiProbe.sampleOk === true && apiProbe.settingsTheme === 'dark';
+  const brokerOk = broker.configured === true && broker.triggered === true &&
+    broker.grants === 1 && broker.dialogs === 6 && broker.error === '' &&
+    apiProbeOk && Object.values(brokerOutputs).every(Boolean);
   const uiText = ['New', 'Open', 'Save', 'Preview', 'Editor', 'Export']
     .filter(label => pageText.includes(label));
   const ok = result.status === 0 && parsed && parsed.status === 'PASS' &&
@@ -136,6 +184,7 @@ try {
     Number.isInteger(adaptedReport.requests) && adaptedReport.requests >= 2 &&
     adaptedReport.replyErrors === 0 &&
     ingress.admitted >= 2 && ingress.denied === 0 &&
+    brokerOk &&
     parsed.mainError === '' && parsed.lastRejection === '' &&
     parsed.hostShutdown === true && parsed.liveLeases === 0 &&
     parsed.nodeProcesses === 0 && parsed.compatible === false &&
@@ -163,6 +212,9 @@ try {
     uiText,
     adapted: adaptedReport,
     ingress,
+    broker,
+    apiProbe,
+    brokerOutputs,
     preloadExecuted: false,
     mainError: parsed ? parsed.mainError : null,
     lastRejection: parsed ? parsed.lastRejection : null,
@@ -173,7 +225,7 @@ try {
     nodeFreeChildPath: true,
     rendererProvenance: 'main/preload/adapter hashes match build-provenance; the renderer tree is pinned per file by the generated source manifest, and the provenance renderer tree hash was not independently re-derived.',
     compatible: false,
-    note: 'Pinned Moji main and real renderer run on the Node-less QuickJS runtime under the generated adapted page API. The original preload is NOT_EXECUTED; no Electron compatibility is claimed.',
+    note: 'Pinned Moji main and real renderer run on the Node-less QuickJS runtime under the generated adapted page API. The original preload is NOT_EXECUTED; file/dialog/export paths use test-injected grants and are not production consent. No Electron compatibility is claimed.',
   };
   writeReport(report);
   if (!ok) {

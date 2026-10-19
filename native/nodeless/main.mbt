@@ -163,20 +163,102 @@ fn cli_profile_adapter(
 }
 
 ///|
+fn cli_broker_kind(kind : String) -> Bool {
+  kind == "open" || kind == "save" || kind == "export-html" ||
+  kind == "export-png" || kind == "export-pdf" || kind == "export-doc-png"
+}
+
+///|
+fn cli_apply_broker_scenario(
+  sources : Map[String, String],
+) -> Result[(Int, Int), String] {
+  let raw = match sources.get("nodeless-broker.json") {
+    Some(value) => value
+    None => return Err("nodeless-broker.json is missing")
+  }
+  let parsed = @json.parse(raw) catch {
+    _ => return Err("invalid nodeless-broker.json")
+  }
+  let schema = match cli_field(parsed, "schema") {
+    Number(number, ..) => number.to_int()
+    _ => return Err("missing nodeless-broker.json schema")
+  }
+  if schema != 1 {
+    return Err("unsupported nodeless-broker.json schema")
+  }
+  let grants : Array[Json] = match cli_field(parsed, "grants") {
+    Array(values) => values
+    Null => []
+    _ => return Err("invalid nodeless-broker.json grants")
+  }
+  let dialogs : Array[Json] = match cli_field(parsed, "dialogs") {
+    Array(values) => values
+    Null => []
+    _ => return Err("invalid nodeless-broker.json dialogs")
+  }
+  if grants.length() > 16 || dialogs.length() > 16 {
+    return Err("nodeless-broker.json entry limit exceeded")
+  }
+  let mut grant_count = 0
+  for item in grants {
+    let path = match cli_text(item, "path") {
+      Some(value) if cli_valid_relative(value) => value
+      _ => return Err("invalid broker grant path")
+    }
+    let mode = match cli_text(item, "mode") {
+      Some(value) if value == "read" || value == "write" || value == "readwrite" => value
+      _ => return Err("invalid broker grant mode")
+    }
+    let payload = Json({ "path": Json(path), "mode": Json(mode) }).stringify()
+    let reply = match cli_host_payload("grant-file", payload) {
+      Some(value) => value
+      None => return Err("broker grant failed")
+    }
+    if !(cli_field(reply, "granted") is True) {
+      return Err("broker grant was not acknowledged")
+    }
+    grant_count += 1
+  }
+  let mut dialog_count = 0
+  for item in dialogs {
+    let kind = match cli_text(item, "kind") {
+      Some(value) if cli_broker_kind(value) => value
+      _ => return Err("invalid broker dialog kind")
+    }
+    let path = match cli_text(item, "path") {
+      Some(value) if cli_valid_relative(value) => value
+      _ => return Err("invalid broker dialog path")
+    }
+    let payload = Json({ "kind": Json(kind), "path": Json(path) }).stringify()
+    let reply = match cli_host_payload("set-dialog-result", payload) {
+      Some(value) => value
+      None => return Err("broker dialog setup failed")
+    }
+    if !(cli_field(reply, "set") is True) {
+      return Err("broker dialog was not acknowledged")
+    }
+    dialog_count += 1
+  }
+  Ok((grant_count, dialog_count))
+}
+
+///|
 fn cli_pump_events(
   runner : @app.AppRunner,
   session : String,
+  attempts? : Int = 80,
+  idle_limit? : Int = 10,
 ) -> (Int, Int) {
   let event_buffer = Bytes::new(65536)
   let reply_buffer = Bytes::new(65536)
   let mut handled = 0
   let mut errors = 0
   let mut idle = 0
-  for _attempt = 0; _attempt < 80; _attempt = _attempt + 1 {
+  for _attempt = 0; _attempt < attempts; _attempt = _attempt + 1 {
     let length = nodeless_host_next_event(event_buffer, event_buffer.length(), 50)
     if length <= 0 {
       idle += 1
-      if (handled > 0 && idle >= 10) || (handled == 0 && idle >= 40) {
+      if (handled > 0 && idle >= idle_limit) || (handled == 0 && idle >= attempts) {
         break
       }
       continue
@@ -409,6 +491,7 @@ fn main {
   }
   let app_dir = @utf8.decode_lossy(app_dir_buffer[:app_dir_length])
   let window_mode = args.contains("--window")
+  let broker_selftest = args.contains("--broker-selftest")
   let mut module_entry = ""
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--entry" && i + 1 < args.length() {
@@ -565,6 +648,12 @@ fn main {
     let mut adapted_requests = 0
     let mut adapted_errors = 0
     let mut ingress : Json = null
+    let mut broker_configured = false
+    let mut broker_grants = 0
+    let mut broker_dialogs = 0
+    let mut broker_triggered = false
+    let mut broker_api_probe : Json = null
+    let mut broker_error = ""
     if adapted_configured {
       for _attempt = 0; _attempt < 50; _attempt = _attempt + 1 {
         match cli_host_payload("get-adapted-status", "{}") {
@@ -609,6 +698,59 @@ fn main {
       }
       nodeless_sleep_ms(50)
     }
+    if broker_selftest {
+      broker_configured = true
+      if !adapted_configured {
+        broker_error = "broker selftest requires an adapted adapter"
+      } else {
+        match cli_apply_broker_scenario(sources) {
+          Ok((grants, dialogs)) => {
+            broker_grants = grants
+            broker_dialogs = dialogs
+          }
+          Err(message) => broker_error = message
+        }
+      }
+      if broker_error.length() == 0 {
+        match cli_host_payload("trigger-renderer-api", "{}") {
+          Some(value) => broker_triggered = cli_field(value, "started") is True
+          None => broker_error = "renderer API trigger failed"
+        }
+      }
+      if broker_triggered {
+        let mut finished = false
+        for _attempt = 0; _attempt < 200; _attempt = _attempt + 1 {
+          let _ = cli_pump_events(runner, session, attempts=2, idle_limit=1)
+          match cli_host_payload("probe-renderer", "{}") {
+            Some(value) => {
+              let api_text = cli_text(value, "apiProbe").unwrap_or("")
+              if api_text.length() > 0 {
+                broker_api_probe = @json.parse(api_text) catch {
+                  _ => Json(api_text)
+                }
+              }
+            }
+            None => ()
+          }
+          let state = cli_text(broker_api_probe, "state").unwrap_or("")
+          if state == "done" {
+            finished = true
+            break
+          }
+          if state == "error" {
+            broker_error =
+              cli_text(broker_api_probe, "code").unwrap_or("renderer API probe error")
+            finished = true
+            break
+          }
+          nodeless_sleep_ms(50)
+        }
+        if !finished {
+          broker_error = "renderer API probe timed out"
+        }
+      }
+    }
+    ingress = cli_host_payload("get-ingress-status", "{}").unwrap_or(null)
     let title_buffer = Bytes::new(65536)
     let title_length = nodeless_host_query(
       @utf8.encode("get-web-contents-title"),
@@ -646,6 +788,9 @@ fn main {
     let adapted_ok = !adapted_configured ||
       (adapted_observed && adapted_released && adapted_requests > 0 &&
        adapted_errors == 0 && renderer_loaded)
+    let broker_ok = !broker_configured ||
+      (broker_error.length() == 0 && broker_triggered &&
+       cli_text(broker_api_probe, "state") is Some("done"))
     let main_error = runner.global_text("__mbt_last_error")
     let rejection = runner.last_rejection()
     let host_pid = nodeless_host_pid()
@@ -657,9 +802,9 @@ fn main {
     }
     let not_verified : Array[Json] = [
       Json("preload"),
-      Json("fs-broker"),
-      Json("dialog"),
-      Json("export"),
+      Json("production-file-grants"),
+      Json("human-dialog-ui"),
+      Json("print-accurate-export"),
       Json("updater-behavior"),
       Json("zlib-stream"),
       Json("ipc-renderer"),
@@ -670,7 +815,8 @@ fn main {
     if !renderer_loaded {
       not_verified.push(Json("real-renderer"))
     }
-    let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 && adapted_ok
+    let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 &&
+      adapted_ok && broker_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
@@ -705,6 +851,15 @@ fn main {
         "requests": Json(adapted_requests),
         "replyErrors": Json(adapted_errors),
         "ingress": ingress,
+      }),
+      "broker": Json({
+        "configured": Json(broker_configured),
+        "mode": Json("test-injected"),
+        "grants": Json(broker_grants),
+        "dialogs": Json(broker_dialogs),
+        "triggered": Json(broker_triggered),
+        "apiProbe": broker_api_probe,
+        "error": Json(broker_error),
       }),
       "mainError": Json(main_error),
       "lastRejection": Json(rejection),

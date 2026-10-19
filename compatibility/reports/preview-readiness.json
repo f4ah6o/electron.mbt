@@ -74,7 +74,7 @@
     {
       "id": "nodeless-main-dialog-ui",
       "status": "PASS",
-      "detail": "Node-less main NSOpenPanel opened/canceled: opened=true, completed=true, canceled=true, selection=false; human selection/write consent remain NOT RUN"
+      "detail": "Node-less main NSOpenPanel/NSSavePanel opened/canceled: open=true/true, save=true/true, selection=false; test-injected write grants are separate evidence; human save selection and overwrite confirmation remain NOT RUN"
     },
     {
       "id": "adapted-export-html",

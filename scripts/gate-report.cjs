@@ -22,7 +22,7 @@ function buildMarkdown() {
     ['G1', 'QuickJS engine / CJS / native supervisor', readiness.gates.G1,
       '`runtime/runner`, CJS fixture graph, supervisor window/load/event', 'crash restart; general event queue; full app scenario'],
     ['G2', 'adapted Node-less runtime', readiness.gates.G2,
-      '`electron-nodeless-adapted-v1` contract, generated page adapter, snapshot-scoped custom scheme, real Moji renderer boot, session main user-file grants and test-injected directory grants, bounded directory/metadata fs, main open panel with test-injected read grants and native open/cancel smoke', 'Moji preload IPC; human selection, write consent, grant persistence/revocation, sheet-modal parenting; production dialog consent; updater/zlib behavior; strict profile'],
+      '`electron-nodeless-adapted-v1` contract, generated page adapter, snapshot-scoped custom scheme, real Moji renderer boot, session main user-file grants and test-injected directory grants, bounded directory/metadata fs, main open/save panels with test-injected read/write grants and native open/save cancel smoke', 'Moji preload IPC; human save selection and overwrite confirmation; grant persistence/revocation; sheet-modal parenting; production dialog consent; updater/zlib behavior; strict profile'],
     ['G3', 'real-app acceptance', readiness.gates.G3,
       'pinned app records and M1 boot blocker', 'full Moji/jmd app scenarios; IME/focus/AX; security/fault'],
     ['G4', 'signed preview / distribution', readiness.gates.G4,
@@ -59,11 +59,12 @@ ${markdownTable(['Check', 'Status', 'Detail'], checks)}
   app scenario remain open.
 - G2, G3 and G4 are not acceptance-complete. The adapted Node-less renderer
   boots, session main user-file grants and test-injected directory grants work,
-  bounded directory/metadata fs calls pass, and the main open panel opens/cancels
-  with test-injected read grants, but the original preload, human selection,
-  write consent, grant persistence/revocation, sheet-modal parenting,
-  production dialog/directory consent, updater/zlib behavior, real app scenarios,
-  signing/notarization, clean install and interactive checks are NOT RUN.
+  bounded directory/metadata fs calls pass, and the main open/save panels
+  open/cancel with test-injected read/write grants, but the original preload,
+  human save selection, overwrite confirmation, grant persistence/revocation,
+  sheet-modal parenting, production dialog/directory consent, updater/zlib
+  behavior, real app scenarios, signing/notarization, clean install and
+  interactive checks are NOT RUN.
 - No row is promoted to \`verified\`; \`compatible:false\` is intentional.
 
 ## Reproduce

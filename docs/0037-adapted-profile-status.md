@@ -13,9 +13,10 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | File broker read/save/image/sample | `fileBroker`/`fileRead`/`fileSave`/`fileDenied`, page probe | PASS (partial) |
 | File grants | test-only `grant-file`; session-scoped main grants from panel completion/test scenario; no production consent | PARTIAL |
 | Main-side user-file grants (session) | `nodeless-user-file-app`: granted outside-root read/write, ungranted `EACCES`, app-code self-grant denied | PASS (test-injected) |
-| Native open/save grant path | test-injected `set-dialog-result` | PASS |
-| Native open panel UI | `moji-dialog-ui` open/cancel | PASS (open/cancel only) |
-| Save panel UI / selection / consent | not exercised | NOT RUN |
+| Native open/save grant path | test-injected `set-dialog-result`; main open/save test queues | PASS |
+| Native open panel UI | `moji-dialog-ui` open/cancel; `nodeless-dialog-ui` open/cancel | PASS (open/cancel only) |
+| Main open dialog (Node-less) | `nodeless-dialog-app`: test-injected read grants, native open/cancel | PASS (partial) |
+| Main save dialog + write consent (Node-less) | `nodeless-dialog-app`: test-injected readwrite grants, new/existing targets, cancel, cap, denials; `nodeless-dialog-ui` save open/cancel | PASS (test-injected; human selection NOT RUN) |
 | HTML export | `exportHtml` | PASS |
 | PDF export | `pdfOk`, fixed A4/Letter/Legal page rect | PASS |
 | PNG document export | `docPngOk` via offscreen snapshot | PASS |
@@ -46,13 +47,13 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 
 ## Aggregate evidence
 
-- `verify-state`: 18/18 PASS, `NOT_READY`
-- readiness: 33 checks, 26 PASS, 2 FAIL (`moji-preload-runtime`,
+- `verify-state`: 19/19 PASS, `NOT_READY`
+- readiness: 34 checks, 27 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 472 pass
+- `npm test`: 481 pass
 - `moon test --target js`: 145 pass
-- `moon test --target native`: 177 pass
-- `node --test tests/nodeless-runtime.test.cjs`: 17 pass
+- `moon test --target native`: 178 pass
+- `node --test tests/nodeless-runtime.test.cjs`: 26 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
 
 ## Remaining scope
@@ -71,15 +72,19 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
    from a staged snapshot over `electron-mbt-app://`; the Node-backed supervisor
    still uses a test-only loopback server.
 3. **File/dialog depth**: session-scoped exact main user-file grants now work
-   for panel/test selections, and a main-realm `dialog.showOpenDialog` opens a
-   real NSOpenPanel with test-injected read grants; grant persistence/revocation,
-   production directory consent, real file-selection human consent, write consent
-   and save-panel acceptance remain open.
+   for panel/test selections; a main-realm `dialog.showOpenDialog` opens a real
+   NSOpenPanel with test-injected read grants, and `dialog.showSaveDialog`
+   opens a real NSSavePanel and grants test-injected exact-file readwrite
+   access (new and existing targets, cancel, cap and denials covered).
+   Grant persistence/revocation, production directory consent, real
+   file-selection human consent, human save selection/overwrite confirmation
+   and sheet-modal parenting remain open.
    App-local main fs is host-backed, including partial directory/metadata
    `stat`/`readdir`/`mkdir`
    ([docs/0046](0046-nodeless-main-fs.md),
    [docs/0047](0047-nodeless-user-file-grants.md),
    [docs/0050](0050-nodeless-main-dialog.md),
+   [docs/0051](0051-nodeless-main-save-dialog.md),
    [docs/0048](0048-nodeless-directory-fs.md)).
 4. **Async depth**: timers/native completion promises, cancellation, deadlines.
 5. **Export depth**: multi-page/print-accurate PDF/PNG, `assetBaseUrl`.

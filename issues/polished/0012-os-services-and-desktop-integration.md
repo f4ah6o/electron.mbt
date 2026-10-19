@@ -178,6 +178,8 @@ UI threadでMain callback待ちや長いI/Oを保持すると停止性が崩れ�
 
 - 2026-10-20: Node-less adapted profile に Main `dialog.showOpenDialog` の限定sliceを実装。real `NSOpenPanel`（app-modal）と test-injected selection で read grant を発行し、prelude は bounded options と unsupported dialog API を fail-closed にする。human selection、write consent、sheet-modal parent、save dialog、grant persistence/revocation は未実装で、compatibility は昇格していない。docs/0050。
 
+- 2026-10-20: Node-less adapted profile に Main `dialog.showSaveDialog` の限定sliceを実装。real `NSSavePanel`（app-modal）と test-injected result で exact-file readwrite grant を発行し、cancel・directory・dangling symlink・missing parent・64-file cap は partial grant なしで fail-closed。prelude は absolute/bare `defaultPath`、`showOverwriteConfirmation` のみの `properties`、unsupported API を検証する。human save selection、overwrite confirmation、extension append、sheet-modal parent、grant persistence/revocation は未実装で、compatibility は昇格していない。docs/0051。
+
 ## 注記
 
 - 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。

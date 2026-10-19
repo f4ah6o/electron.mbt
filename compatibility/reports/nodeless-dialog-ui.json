@@ -7,11 +7,16 @@
   "panelCanceled": true,
   "selection": false,
   "mainCanceled": true,
+  "savePanelOpened": true,
+  "savePanelCompleted": true,
+  "savePanelCanceled": true,
+  "saveSelection": false,
+  "saveMainCanceled": true,
   "compatible": false,
   "testHost": "dist/electron-mbt-native-host-main-dialog-cancel-sim",
-  "hostSHA256": "fdef906f8826d296a3e57e06017abc84fc55e9e80b110072517718ec284eb5dd",
-  "binarySHA256": "f7f0d2a87ba24763b07bce77b548b76abf58ad8a2c1ba5de3534fe663653ae23",
-  "mainSHA256": "81ae6e4819a4feabe93aab89575b75b479dcfc22308c4ba20f040046d2c9ce5c",
-  "manifestSHA256": "bd45cbdc2155e127c6af8489fb83b7996e54b33209e7e0576ea50be2f9de542f",
-  "note": "Native NSOpenPanel opened and programmatically canceled in a test-only build; no human selection, write consent or production consent was exercised."
+  "hostSHA256": "663000c45f75891b1a397b6ed1987ac8f231c1225334e49f15b3dfce564385c0",
+  "binarySHA256": "fe6bd2e43be414cf151440a0a2d8092101e8a7798ab888184c9cf3a4060f3387",
+  "mainSHA256": "493cd121fe3d3a91c5093b460bfd9deea697f12311f978ec0d186137d0ae7602",
+  "manifestSHA256": "204e8d4f897ceccd19f874b8a8160f8dc3f15041e5ac2db832be7d1b24623190",
+  "note": "Native NSOpenPanel and NSSavePanel were opened and programmatically canceled in a test-only build; no human selection, overwrite confirmation, write consent or production consent was exercised."
 }

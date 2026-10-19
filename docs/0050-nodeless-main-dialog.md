@@ -156,9 +156,10 @@ Environment: macOS 26.5.2 arm64, Node 24.22.0, pinned QuickJS 2026-06-04,
 - `filters` restrict the native panel but Electron filter names are not shown;
 - a dead client can leave the host in `runModal` until the panel closes or the
   one-hour bound expires;
-- selected files/directories receive read access only; save dialogs,
-  readwrite consent, grant persistence, revocation and policy migration are
-  not implemented;
+- selected files/directories receive read access only; the paired save dialog
+  and test-injected readwrite consent are recorded in
+  [docs/0051](0051-nodeless-main-save-dialog.md), while human save selection,
+  grant persistence, revocation and policy migration remain open;
 - canonicalization is checked when the selection is granted, so a
   trusted-main TOCTOU window remains between the grant and later `fs` use;
 - the original preload/contextBridge, renderer file/dialog production consent,

@@ -78,6 +78,9 @@ pub(all) struct AppConfig {
   arch : String
   cwd : String
   env : Map[String, String]
+  // Empty for a plain app. In the adapted profile this is the manifest-listed
+  // generated page adapter installed before the renderer document loads.
+  adapted_adapter : String
 }
 
 ///|
@@ -154,6 +157,7 @@ pub fn SourceSnapshot::from_manifest(
   sources : Map[String, String],
   hashes : Map[String, String],
   module_entry? : String = "",
+  binary_files? : Map[String, Bool] = Map([]),
 ) -> Result[SourceSnapshot, AppError] {
   let parsed = match app_parse_json(manifest_json) {
     Some(value) => value
@@ -209,16 +213,29 @@ pub fn SourceSnapshot::from_manifest(
       Some(value) => value
       None => return Err(Manifest("file byte count is not a number"))
     }
-    let source = match sources.get(path) {
-      Some(value) => value
-      None => return Err(Manifest("source file was not supplied: " + path))
+    let source = if binary_files.contains(path) {
+      if bytes <= 0 || bytes > 16777216 {
+        return Err(SourceLimit)
+      }
+      ""
+    } else {
+      let value = match sources.get(path) {
+        Some(value) => value
+        None => return Err(Manifest("source file was not supplied: " + path))
+      }
+      let encoded = app_source_utf8_len(value)
+      if encoded > 16777216 {
+        return Err(SourceLimit)
+      }
+      if encoded != bytes {
+        return Err(Manifest("source byte count mismatch: " + path))
+      }
+      value
     }
-    let encoded = app_source_utf8_len(source)
-    if encoded > 16777216 {
-      return Err(SourceLimit)
-    }
-    if encoded != bytes {
-      return Err(Manifest("source byte count mismatch: " + path))
+    let stored_bytes = if binary_files.contains(path) {
+      bytes
+    } else {
+      app_source_utf8_len(source)
     }
     match hashes.get(path) {
       Some(value) =>
@@ -227,11 +244,11 @@ pub fn SourceSnapshot::from_manifest(
         }
       None => return Err(SourceHash(path))
     }
-    total += encoded
+    total += stored_bytes
     if total > 67108864 {
       return Err(SourceLimit)
     }
-    files[path] = { path, source, sha256, bytes: encoded }
+    files[path] = { path, source, sha256, bytes: stored_bytes }
   }
   let source_entry = entry
   let module_entry = if module_entry.length() > 0 {
@@ -585,6 +602,7 @@ pub fn app_config_json(config : AppConfig) -> String {
     "name": Json(config.name),
     "version": Json(config.version),
     "appPath": Json(config.app_path),
+    "adaptedAdapter": Json(config.adapted_adapter),
     "paths": Json(paths),
   }
   let process : Map[String, Json] = {

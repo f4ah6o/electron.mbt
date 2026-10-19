@@ -1,0 +1,17 @@
+{
+  "schema": 3,
+  "name": "api",
+  "version": "nodeless-adapted-fixture",
+  "topics": [
+    { "topic": "doc:open", "method": "onOpenDocument" }
+  ],
+  "calls": [
+    { "name": "getSettings", "operation": "app:get-settings", "args": "none" },
+    { "name": "getUpdateState", "operation": "app:get-update-state", "args": "none" }
+  ],
+  "queue": {
+    "maxCalls": 4,
+    "maxBytes": 16384,
+    "readyTimeoutMs": 5000
+  }
+}

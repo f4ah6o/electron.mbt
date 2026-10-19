@@ -232,6 +232,20 @@ int64_t moonbit_ebt_nodeless_monotonic_ms(void) {
   return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000);
 }
 
+int32_t moonbit_ebt_nodeless_realpath(
+    moonbit_bytes_t path_bytes,
+    moonbit_bytes_t out,
+    int32_t capacity) {
+  char *path = copy_bytes(path_bytes);
+  if (path == NULL) return -1;
+  char *resolved = realpath(path, NULL);
+  free(path);
+  if (resolved == NULL) return -1;
+  int32_t result = copy_out(resolved, out, capacity);
+  free(resolved);
+  return result;
+}
+
 int32_t moonbit_ebt_nodeless_platform(moonbit_bytes_t out, int32_t capacity) {
   struct utsname info;
   if (uname(&info) != 0) return -1;

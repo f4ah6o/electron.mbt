@@ -1,0 +1,47 @@
+{
+  "schema": 2,
+  "app": "nodeless-adapted-fixture",
+  "entry": "renderer/index.html",
+  "files": [
+    {
+      "path": "renderer/index.html",
+      "sha256": "1454e3d20d07dc9f0a25ad5ed9aeb6de8757af77d9faa1e33e10067b833f1e95",
+      "bytes": 190
+    },
+    {
+      "path": "package.json",
+      "sha256": "91e7dbe7ebf3141830b2cfce3039b909ad20c04bd9f72f4b6e8b92a749d05894",
+      "bytes": 88
+    },
+    {
+      "path": "nodeless-app.json",
+      "sha256": "e7772d899bff08d069488af7fbaa8ca549d28f49ac2c0e2cfee415863925eda3",
+      "bytes": 99
+    },
+    {
+      "path": "src/main.js",
+      "sha256": "a1992dcecab546419c2039840056fd30fc40ab0536b42002232f2132170b56c2",
+      "bytes": 460
+    },
+    {
+      "path": "adapted/api.json",
+      "sha256": "cab9a4da8f20ec3af76bf6f87be9fa5263b7ae8060170059db62a7cce2618aaa",
+      "bytes": 422
+    },
+    {
+      "path": "adapted/page-api.js",
+      "sha256": "eb611600ee3f1b67e740a03a9183ffe5cc0893ccf1bfc7a3d8d3f5544aeaae48",
+      "bytes": 5623
+    },
+    {
+      "path": "renderer/app.js",
+      "sha256": "18aa8fb38189dd9335fe4a6a55da3f3538b4138bf1d87e4f9244948589984653",
+      "bytes": 1138
+    },
+    {
+      "path": "renderer/label.js",
+      "sha256": "015e8f825a7eddd9431dce11d258ab6ad948375d75c594b062425b3547fee552",
+      "bytes": 31
+    }
+  ]
+}

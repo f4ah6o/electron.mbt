@@ -250,7 +250,14 @@ static int ebt_host_request(const char *operation, const char *payload,
     free(resolved);
     return result;
   }
+  if (strcmp(operation, "load-app-file") == 0) {
+    char begin[4096];
+    int begin_length = send_control_frame("begin-load", "{}", 1, 1, begin, (int32_t)sizeof(begin));
+    if (begin_length < 0 || !contains_success(begin)) return -1;
+    return send_load(operation, payload, out, capacity);
+  }
   if (strcmp(operation, "prepare-source") == 0 ||
+      strcmp(operation, "install-adapted-adapter") == 0 ||
       strcmp(operation, "create-window") == 0 ||
       strcmp(operation, "get-window-title") == 0 ||
       strcmp(operation, "set-window-title") == 0 ||
@@ -260,7 +267,12 @@ static int ebt_host_request(const char *operation, const char *payload,
   if (strcmp(operation, "get-web-contents-title") == 0 ||
       strcmp(operation, "get-web-contents-url") == 0 ||
       strcmp(operation, "get-bootstrap-status") == 0 ||
-      strcmp(operation, "get-preload-status") == 0) {
+      strcmp(operation, "get-preload-status") == 0 ||
+      strcmp(operation, "get-adapted-status") == 0 ||
+      strcmp(operation, "get-ingress-status") == 0 ||
+      strcmp(operation, "release-adapted-ingress") == 0 ||
+      strcmp(operation, "probe-renderer") == 0 ||
+      strcmp(operation, "app-reply") == 0) {
     return send_control_frame(operation, payload, 1, 1, out, capacity);
   }
   if (strcmp(operation, "shutdown") == 0) {
@@ -314,6 +326,20 @@ int32_t moonbit_ebt_nodeless_host_session(moonbit_bytes_t out, int32_t capacity)
   if (out == NULL || capacity < 33 || Moonbit_array_length(out) < capacity) return -1;
   memcpy(out, session_text, 33);
   return 32;
+}
+
+int32_t moonbit_ebt_nodeless_host_next_event(
+    moonbit_bytes_t out,
+    int32_t capacity,
+    int32_t timeout_ms) {
+  if (out == NULL || capacity <= 0 || Moonbit_array_length(out) < capacity ||
+      timeout_ms < 0 || timeout_ms > 60000) return -1;
+  return read_frame(event_fd, (char *)out, capacity, timeout_ms);
+}
+
+void moonbit_ebt_nodeless_sleep_ms(int32_t duration_ms) {
+  if (duration_ms <= 0 || duration_ms > 1000) return;
+  usleep((useconds_t)duration_ms * 1000);
 }
 
 int32_t moonbit_ebt_nodeless_host_pid(void) {

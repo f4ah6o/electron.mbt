@@ -57,6 +57,7 @@ fn ar_config() -> AppConfig {
     arch: "arm64",
     cwd: "/app",
     env: {},
+    adapted_adapter: "",
   }
 }
 
@@ -78,6 +79,25 @@ test "source manifest admits hashes, entry and relative paths" {
   let snapshot = ar_snapshot(files)
   assert_eq(snapshot.entry, "src/main.js")
   assert_eq(snapshot.files.length(), 2)
+}
+
+///|
+test "binary assets are admitted without string sources" {
+  let files = [
+    ("src/main.js", "module.exports = 1;\n"),
+    ("assets/logo.bin", "abcd"),
+  ]
+  let manifest = ar_manifest("src/main.js", files)
+  let sources : Map[String, String] = { "src/main.js": "module.exports = 1;\n" }
+  let binary_files : Map[String, Bool] = { "assets/logo.bin": true }
+  match SourceSnapshot::from_manifest(manifest, sources, ar_hashes(files), binary_files~) {
+    Ok(snapshot) => {
+      assert_eq(snapshot.files.length(), 2)
+      assert_eq(snapshot.files["assets/logo.bin"].source, "")
+      assert_eq(snapshot.files["assets/logo.bin"].bytes, 4)
+    }
+    Err(error) => fail(error.message())
+  }
 }
 
 ///|

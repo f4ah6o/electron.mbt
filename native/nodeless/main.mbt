@@ -53,6 +53,25 @@ extern "C" fn nodeless_host_kill() = "moonbit_ebt_nodeless_host_kill"
 extern "C" fn nodeless_host_pid() -> Int = "moonbit_ebt_nodeless_host_pid"
 
 ///|
+#borrow(path, out)
+extern "C" fn nodeless_realpath(path : Bytes, out : Bytes, capacity : Int) -> Int = "moonbit_ebt_nodeless_realpath"
+
+///|
+#borrow(out)
+extern "C" fn nodeless_host_session(out : Bytes, capacity : Int) -> Int = "moonbit_ebt_nodeless_host_session"
+
+///|
+#borrow(out)
+extern "C" fn nodeless_host_next_event(
+  out : Bytes,
+  capacity : Int,
+  timeout_ms : Int,
+) -> Int = "moonbit_ebt_nodeless_host_next_event"
+
+///|
+extern "C" fn nodeless_sleep_ms(duration_ms : Int) = "moonbit_ebt_nodeless_sleep_ms"
+
+///|
 fn cli_field(value : Json, key : String) -> Json {
   match value {
     Object(fields) => fields.get(key).unwrap_or(null)
@@ -80,6 +99,178 @@ fn cli_payload_text(raw : String, field : String) -> String? {
     }
     _ => None
   }
+}
+
+///|
+fn cli_code_path(path : String) -> Bool {
+  path.has_suffix(".js") || path.has_suffix(".cjs") || path.has_suffix(".mjs") ||
+  path.has_suffix(".json")
+}
+
+///|
+fn cli_valid_relative(path : String) -> Bool {
+  if path.length() == 0 || path.length() > 256 || path.has_prefix("/") {
+    return false
+  }
+  for part in path.split("/") {
+    if part.length() == 0 || part == "." || part == ".." {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn cli_profile_adapter(
+  sources : Map[String, String],
+) -> Result[String, String] {
+  let raw = match sources.get("nodeless-app.json") {
+    Some(value) => value
+    None => return Ok("")
+  }
+  let parsed = @json.parse(raw) catch {
+    _ => return Err("invalid nodeless-app.json")
+  }
+  let schema = match cli_field(parsed, "schema") {
+    Number(number, ..) => number.to_int()
+    _ => return Err("missing nodeless-app.json schema")
+  }
+  if schema != 1 {
+    return Err("unsupported nodeless-app.json schema")
+  }
+  let profile = match cli_text(parsed, "profile") {
+    Some(value) => value
+    None => return Err("missing nodeless-app.json profile")
+  }
+  if profile != "electron-nodeless-adapted-v1" {
+    return Err("unsupported nodeless-app.json profile")
+  }
+  let adapter = match cli_text(parsed, "adapter") {
+    Some(value) => value
+    None => return Err("missing nodeless-app.json adapter")
+  }
+  if !cli_valid_relative(adapter) {
+    return Err("invalid adapted adapter path")
+  }
+  match sources.get(adapter) {
+    Some(source) =>
+      if @utf8.encode(source).length() > 65536 {
+        return Err("adapted adapter exceeds the 64 KiB host limit")
+      }
+    None => return Err("adapted adapter is not in the source manifest")
+  }
+  Ok(adapter)
+}
+
+///|
+fn cli_pump_events(
+  runner : @app.AppRunner,
+  session : String,
+) -> (Int, Int) {
+  let event_buffer = Bytes::new(65536)
+  let reply_buffer = Bytes::new(65536)
+  let mut handled = 0
+  let mut errors = 0
+  let mut idle = 0
+  for _attempt = 0; _attempt < 80; _attempt = _attempt + 1 {
+    let length = nodeless_host_next_event(event_buffer, event_buffer.length(), 50)
+    if length <= 0 {
+      idle += 1
+      if (handled > 0 && idle >= 10) || (handled == 0 && idle >= 40) {
+        break
+      }
+      continue
+    }
+    idle = 0
+    let text = try {
+      @utf8.decode(event_buffer[:length])
+    } catch {
+      _ => continue
+    }
+    let parsed = @json.parse(text) catch {
+      _ => continue
+    }
+    if !(cli_text(parsed, "session") is Some(value) && value == session) {
+      continue
+    }
+    if !(cli_text(parsed, "operation") is Some("app-request")) {
+      continue
+    }
+    let event_window = match cli_field(parsed, "window") {
+      Number(number, ..) => number.to_int()
+      _ => -1
+    }
+    let event_generation = match cli_field(parsed, "generation") {
+      Number(number, ..) => number.to_int()
+      _ => -1
+    }
+    if event_window != 1 || event_generation != 1 {
+      continue
+    }
+    let payload = match cli_field(parsed, "payload") {
+      Object(values) => values
+      _ => continue
+    }
+    let request = match payload.get("request") {
+      Some(String(value)) if value.length() > 0 && value.length() <= 64 => value
+      _ => continue
+    }
+    let operation = match payload.get("operation") {
+      Some(String(value)) => value
+      _ => continue
+    }
+    let args = match payload.get("payload") {
+      Some(value) => value.stringify()
+      None => "null"
+    }
+    let result = match runner.dispatch(operation, args) {
+      Ok(value) => value
+      Err(error) =>
+        Json({
+          "ok": Json(false),
+          "code": Json(error.code()),
+          "message": Json(error.message()),
+        }).stringify()
+    }
+    let reply = Json({ "request": Json(request), "json": Json(result) }).stringify()
+    let sent = nodeless_host_query(
+      @utf8.encode("app-reply"),
+      @utf8.encode(reply),
+      reply_buffer,
+      reply_buffer.length(),
+    )
+    if sent <= 0 {
+      errors += 1
+    }
+    handled += 1
+  }
+  (handled, errors)
+}
+
+///|
+fn cli_host_payload(operation : String, payload : String) -> Json? {
+  let buffer = Bytes::new(65536)
+  let length = nodeless_host_query(
+    @utf8.encode(operation),
+    @utf8.encode(payload),
+    buffer,
+    buffer.length(),
+  )
+  if length <= 0 {
+    return None
+  }
+  let text = try {
+    @utf8.decode(buffer[:length])
+  } catch {
+    _ => return None
+  }
+  let parsed = @json.parse(text) catch {
+    _ => return None
+  }
+  if !(cli_text(parsed, "terminal") is Some("success")) {
+    return None
+  }
+  Some(cli_field(parsed, "payload"))
 }
 
 ///|
@@ -206,7 +397,17 @@ fn main {
     nodeless_exit(2)
     return
   }
-  let app_dir = args[2]
+  let app_dir_buffer = Bytes::new(4096)
+  let app_dir_length = nodeless_realpath(
+    @utf8.encode(args[2]),
+    app_dir_buffer,
+    app_dir_buffer.length(),
+  )
+  if app_dir_length <= 0 {
+    cli_fail("ELECTRON_MBT_NODELESS_APP", "cannot resolve the app directory")
+    return
+  }
+  let app_dir = @utf8.decode_lossy(app_dir_buffer[:app_dir_length])
   let window_mode = args.contains("--window")
   let mut module_entry = ""
   for i = 0; i < args.length(); i = i + 1 {
@@ -236,6 +437,7 @@ fn main {
   }
   let sources : Map[String, String] = {}
   let hashes : Map[String, String] = {}
+  let binary_files : Map[String, Bool] = {}
   for item in file_items {
     let path = match cli_text(item, "path") {
       Some(value) => value
@@ -244,13 +446,7 @@ fn main {
         return
       }
     }
-    let source = match cli_read_text(app_dir, path) {
-      Some(value) => value
-      None => {
-        cli_fail("ELECTRON_MBT_NODELESS_SOURCE", "cannot read " + path)
-        return
-      }
-    }
+    let source = cli_read_text(app_dir, path)
     let hash = match cli_sha256(app_dir, path) {
       Some(value) => value
       None => {
@@ -258,10 +454,25 @@ fn main {
         return
       }
     }
-    sources[path] = source
+    match source {
+      Some(value) => sources[path] = value
+      None =>
+        if cli_code_path(path) {
+          cli_fail("ELECTRON_MBT_NODELESS_SOURCE", "code source is not valid UTF-8: " + path)
+          return
+        } else {
+          binary_files[path] = true
+        }
+    }
     hashes[path] = hash
   }
-  let snapshot = match @app.SourceSnapshot::from_manifest(manifest, sources, hashes, module_entry~) {
+  let snapshot = match @app.SourceSnapshot::from_manifest(
+    manifest,
+    sources,
+    hashes,
+    module_entry~,
+    binary_files~,
+  ) {
     Ok(value) => value
     Err(error) => {
       cli_fail(error.code(), error.message())
@@ -288,6 +499,13 @@ fn main {
     Some(value) => value
     None => "0.0.0"
   }
+  let adapted_adapter = match cli_profile_adapter(sources) {
+    Ok(value) => value
+    Err(message) => {
+      cli_fail("ELECTRON_MBT_NODELESS_PROFILE", message)
+      return
+    }
+  }
   let config : @app.AppConfig = {
     name,
     version,
@@ -299,6 +517,7 @@ fn main {
     arch: cli_arch(),
     cwd: app_dir,
     env: cli_fixture_env(),
+    adapted_adapter,
   }
   let runner = @app.AppRunner::new(snapshot, config)
   if !window_mode {
@@ -333,6 +552,63 @@ fn main {
         return
       }
     }
+    let session_buffer = Bytes::new(33)
+    let session_length = nodeless_host_session(session_buffer, session_buffer.length())
+    let session = if session_length > 0 {
+      @utf8.decode_lossy(session_buffer[:session_length])
+    } else {
+      ""
+    }
+    let adapted_configured = adapted_adapter.length() > 0
+    let mut adapted_observed = false
+    let mut adapted_released = false
+    let mut adapted_requests = 0
+    let mut adapted_errors = 0
+    let mut ingress : Json = null
+    if adapted_configured {
+      for _attempt = 0; _attempt < 50; _attempt = _attempt + 1 {
+        match cli_host_payload("get-adapted-status", "{}") {
+          Some(value) => adapted_observed = cli_field(value, "observed") is True
+          None => adapted_observed = false
+        }
+        if adapted_observed {
+          break
+        }
+        nodeless_sleep_ms(20)
+      }
+      if adapted_observed {
+        match cli_host_payload("release-adapted-ingress", "{}") {
+          Some(value) => adapted_released = cli_field(value, "released") is True
+          None => adapted_released = false
+        }
+      }
+      let (requests, errors) = cli_pump_events(runner, session)
+      adapted_requests = requests
+      adapted_errors = errors
+      ingress = cli_host_payload("get-ingress-status", "{}").unwrap_or(null)
+    }
+    let mut probe_title = ""
+    let mut root_children = 0
+    let mut api_present = false
+    let mut page_text = ""
+    for attempt = 0; attempt < 20; attempt = attempt + 1 {
+      match cli_host_payload("probe-renderer", "{}") {
+        Some(value) => {
+          probe_title = cli_text(value, "title").unwrap_or("")
+          root_children = match cli_field(value, "rootChildren") {
+            Number(number, ..) => number.to_int()
+            _ => 0
+          }
+          api_present = cli_field(value, "api") is True
+          page_text = cli_text(value, "text").unwrap_or("")
+        }
+        None => ()
+      }
+      if root_children > 0 || attempt == 19 {
+        break
+      }
+      nodeless_sleep_ms(50)
+    }
     let title_buffer = Bytes::new(65536)
     let title_length = nodeless_host_query(
       @utf8.encode("get-web-contents-title"),
@@ -345,10 +621,31 @@ fn main {
     } else {
       ""
     }
-    let page_title = match cli_payload_text(title_reply, "title") {
+    let fallback_title = match cli_payload_text(title_reply, "title") {
       Some(value) => value
       None => ""
     }
+    let page_title = if probe_title.length() > 0 { probe_title } else { fallback_title }
+    let url_buffer = Bytes::new(65536)
+    let url_length = nodeless_host_query(
+      @utf8.encode("get-web-contents-url"),
+      @utf8.encode("{}"),
+      url_buffer,
+      url_buffer.length(),
+    )
+    let url_reply = if url_length > 0 {
+      @utf8.decode_lossy(url_buffer[:url_length])
+    } else {
+      ""
+    }
+    let page_url = match cli_payload_text(url_reply, "url") {
+      Some(value) => value
+      None => ""
+    }
+    let renderer_loaded = (root_children > 0 || page_text.length() > 0) && api_present
+    let adapted_ok = !adapted_configured ||
+      (adapted_observed && adapted_released && adapted_requests > 0 &&
+       adapted_errors == 0 && renderer_loaded)
     let main_error = runner.global_text("__mbt_last_error")
     let rejection = runner.last_rejection()
     let host_pid = nodeless_host_pid()
@@ -358,10 +655,26 @@ fn main {
       Some(value) => value
       None => ""
     }
+    let not_verified : Array[Json] = [
+      Json("preload"),
+      Json("fs-broker"),
+      Json("dialog"),
+      Json("export"),
+      Json("updater-behavior"),
+      Json("zlib-stream"),
+      Json("ipc-renderer"),
+      Json("strict-contextBridge"),
+      Json("asan"),
+      Json("external-review"),
+    ]
+    if !renderer_loaded {
+      not_verified.push(Json("real-renderer"))
+    }
+    let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 && adapted_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
-      "status": Json(if page_title.length() > 0 && shutdown == 0 { "PASS" } else { "FAIL" }),
+      "status": Json(if status_ok { "PASS" } else { "FAIL" }),
       "engine": Json("quickjs-2026-06-04"),
       "profile": Json("electron-nodeless-adapted-v1"),
       "strict": Json("blocked"),
@@ -374,26 +687,37 @@ fn main {
       }),
       "windowLoaded": Json(page_title.length() > 0),
       "pageTitle": Json(page_title),
+      "pageURL": Json(page_url),
+      "rendererLoaded": Json(renderer_loaded),
+      "preloadExecuted": Json(false),
+      "renderer": Json({
+        "loaded": Json(renderer_loaded),
+        "title": Json(page_title),
+        "rootChildren": Json(root_children),
+        "apiPresent": Json(api_present),
+        "text": Json(page_text),
+      }),
+      "adapted": Json({
+        "configured": Json(adapted_configured),
+        "adapter": Json(adapted_adapter),
+        "observed": Json(adapted_observed),
+        "released": Json(adapted_released),
+        "requests": Json(adapted_requests),
+        "replyErrors": Json(adapted_errors),
+        "ingress": ingress,
+      }),
       "mainError": Json(main_error),
       "lastRejection": Json(rejection),
       "hostPid": Json(host_pid),
       "hostShutdown": Json(shutdown == 0),
       "liveLeases": Json(live),
       "nodeProcesses": Json(0),
-      "notVerified": Json([
-        Json("preload"),
-        Json("real-renderer"),
-        Json("fs-broker"),
-        Json("updater-behavior"),
-        Json("strict-contextBridge"),
-        Json("asan"),
-        Json("external-review"),
-      ]),
+      "notVerified": Json(not_verified),
       "compatible": Json(false),
     })
     runner.stop()
     println(report.stringify())
-    if page_title.length() == 0 || shutdown != 0 || live != 0 {
+    if !status_ok {
       nodeless_exit(1)
     }
     return

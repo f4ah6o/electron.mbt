@@ -143,6 +143,32 @@ static BOOL safeRelativePath(NSString *path) {
   return YES;
 }
 
+static NSString *appSchemeMimeType(NSString *relative) {
+  NSString *extension = relative.pathExtension.lowercaseString;
+  if ([extension isEqualToString:@"html"] || [extension isEqualToString:@"htm"]) {
+    return @"text/html; charset=utf-8";
+  }
+  if ([extension isEqualToString:@"js"] || [extension isEqualToString:@"mjs"]) {
+    return @"text/javascript; charset=utf-8";
+  }
+  if ([extension isEqualToString:@"css"]) return @"text/css; charset=utf-8";
+  if ([extension isEqualToString:@"json"] || [extension isEqualToString:@"map"]) {
+    return @"application/json; charset=utf-8";
+  }
+  if ([extension isEqualToString:@"svg"]) return @"image/svg+xml";
+  if ([extension isEqualToString:@"png"]) return @"image/png";
+  if ([extension isEqualToString:@"jpg"] || [extension isEqualToString:@"jpeg"]) return @"image/jpeg";
+  if ([extension isEqualToString:@"gif"]) return @"image/gif";
+  if ([extension isEqualToString:@"webp"]) return @"image/webp";
+  if ([extension isEqualToString:@"ico"]) return @"image/x-icon";
+  if ([extension isEqualToString:@"woff"]) return @"font/woff";
+  if ([extension isEqualToString:@"woff2"]) return @"font/woff2";
+  if ([extension isEqualToString:@"ttf"]) return @"font/ttf";
+  if ([extension isEqualToString:@"otf"]) return @"font/otf";
+  if ([extension isEqualToString:@"wasm"]) return @"application/wasm";
+  return @"application/octet-stream";
+}
+
 static BOOL validSHA256(NSString *value) {
   if (![value isKindOfClass:[NSString class]] || value.length != 64) return NO;
   for (NSUInteger index = 0; index < 64; index++) {
@@ -316,7 +342,21 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 }
 @end
 
-@interface MBTWindow : NSObject <WKNavigationDelegate, NSWindowDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply>
+// The app scheme is a snapshot-scoped asset loader. The handler asks the
+// owning window for bytes so path admission, the entry-directory boundary and
+// the staged-file map stay in one place.
+@protocol MBTAppSchemeSource <NSObject>
+- (NSData *)snapshotDataForRelativePath:(NSString *)relative
+                                   mime:(NSString **)mime
+                                   code:(NSString **)code;
+@end
+
+@interface MBTAppSchemeHandler : NSObject <WKURLSchemeHandler>
+@property(nonatomic, weak) id<MBTAppSchemeSource> source;
+@end
+
+@interface MBTWindow : NSObject <WKNavigationDelegate, NSWindowDelegate, WKUIDelegate,
+                                WKScriptMessageHandlerWithReply, MBTAppSchemeSource>
 @property(nonatomic, strong) NSWindow *native;
 @property(nonatomic, strong) WKWebView *web;
 @property(nonatomic, strong) WKContentWorld *bootstrapWorld;
@@ -376,6 +416,9 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic, copy) NSString *snapshotSHA256;
 @property(nonatomic) long long snapshotBytes;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *snapshotFiles;
+@property(nonatomic, copy) NSDictionary<NSString *, NSString *> *snapshotRouteFiles;
+@property(nonatomic, copy) NSString *snapshotAssetRoot;
+@property(nonatomic, strong) MBTAppSchemeHandler *appSchemeHandler;
 @property(nonatomic, copy) NSString *snapshotManifestSHA256;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id> *pendingAppReplies;
 @property(nonatomic) unsigned long long nextAppRequest;
@@ -437,6 +480,9 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     self.snapshotSHA256 = nil;
     self.snapshotBytes = 0;
     self.snapshotFiles = nil;
+    self.snapshotRouteFiles = nil;
+    self.snapshotAssetRoot = nil;
+    self.appSchemeHandler = nil;
     self.snapshotManifestSHA256 = nil;
     self.pendingAppReplies = [NSMutableDictionary dictionary];
     self.nextAppRequest = 0;
@@ -460,6 +506,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     config.userContentController = [[WKUserContentController alloc] init];
+    MBTAppSchemeHandler *appSchemeHandler = [[MBTAppSchemeHandler alloc] init];
+    appSchemeHandler.source = self;
+    self.appSchemeHandler = appSchemeHandler;
+    [config setURLSchemeHandler:appSchemeHandler forURLScheme:@"electron-mbt-app"];
     self.bootstrapWorld = [WKContentWorld worldWithName:@"electron.mbt.bootstrap"];
     [config.userContentController addScriptMessageHandlerWithReply:self
       contentWorld:self.bootstrapWorld name:@"electronMbtBootstrap"];
@@ -1027,6 +1077,44 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   }
   [self denyFile:@"ELECTRON_MBT_FILE_NOT_IMPLEMENTED" reply:reply];
 }
+- (NSData *)snapshotDataForRelativePath:(NSString *)relative
+                                   mime:(NSString **)mime
+                                   code:(NSString **)code {
+  if (code != NULL) *code = @"ELECTRON_MBT_SOURCE_DENIED";
+  if (mime != NULL) *mime = @"application/octet-stream";
+  if (!self.contentAlive || self.snapshotRoot == nil ||
+      self.snapshotRouteFiles == nil || ![relative isKindOfClass:[NSString class]]) {
+    return nil;
+  }
+  if (relative.length == 0 || relative.length > 4096 ||
+      [relative hasPrefix:@"/"] || [relative containsString:@"\\"] ||
+      [relative containsString:@"//"] || [relative containsString:@".."]) {
+    return nil;
+  }
+  NSString *assetRoot = self.snapshotAssetRoot;
+  if (assetRoot.length > 0) {
+    NSString *prefix = [assetRoot stringByAppendingString:@"/"];
+    if (![relative hasPrefix:prefix]) return nil;
+  }
+  NSString *staged = self.snapshotRouteFiles[relative];
+  if (staged == nil) {
+    if (code != NULL) *code = @"ELECTRON_MBT_SOURCE_NOT_FOUND";
+    return nil;
+  }
+  NSString *rootPrefix = [self.snapshotRoot stringByAppendingString:@"/"];
+  if (![staged hasPrefix:rootPrefix]) return nil;
+  struct stat info;
+  if (stat(staged.fileSystemRepresentation, &info) != 0 || !S_ISREG(info.st_mode) ||
+      info.st_size <= 0 || info.st_size > (off_t)MaxSnapshotBytes) {
+    return nil;
+  }
+  NSData *data = [NSData dataWithContentsOfFile:staged options:NSDataReadingMappedIfSafe error:nil];
+  if (data == nil || data.length == 0 || data.length > MaxSnapshotBytes) return nil;
+  if (mime != NULL) *mime = appSchemeMimeType(relative);
+  if (code != NULL) *code = nil;
+  return data;
+}
+
 - (void)clearSnapshot {
   if (self.snapshotRoot != nil) {
     [[NSFileManager defaultManager] removeItemAtPath:self.snapshotRoot error:nil];
@@ -1037,6 +1125,8 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   self.snapshotSHA256 = nil;
   self.snapshotBytes = 0;
   self.snapshotFiles = nil;
+  self.snapshotRouteFiles = nil;
+  self.snapshotAssetRoot = nil;
   self.snapshotManifestSHA256 = nil;
 }
 - (void)installBootstrapScript {
@@ -1826,6 +1916,82 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 }
 @end
 
+@implementation MBTAppSchemeHandler
+- (void)failTask:(id<WKURLSchemeTask>)task status:(NSInteger)status code:(NSString *)code {
+  (void)status;
+  NSInteger errorCode = NSURLErrorBadURL;
+  if ([code isEqualToString:@"ELECTRON_MBT_SOURCE_NOT_FOUND"]) {
+    errorCode = NSURLErrorFileDoesNotExist;
+  } else if ([code isEqualToString:@"ELECTRON_MBT_REQUEST_METHOD"]) {
+    errorCode = NSURLErrorUnsupportedURL;
+  } else if ([code isEqualToString:@"ELECTRON_MBT_SOURCE_DENIED"]) {
+    errorCode = NSURLErrorNoPermissionsToReadFile;
+  }
+  NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:errorCode userInfo:nil];
+  [task didFailWithError:error];
+}
+- (void)webView:(WKWebView *)webView startURLSchemeTask:(id<WKURLSchemeTask>)task {
+  (void)webView;
+  if (![NSThread isMainThread]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self webView:webView startURLSchemeTask:task];
+    });
+    return;
+  }
+  NSURL *url = task.request.URL;
+  NSString *method = task.request.HTTPMethod.length > 0 ? task.request.HTTPMethod : @"GET";
+  if (![method isEqualToString:@"GET"] && ![method isEqualToString:@"HEAD"]) {
+    [self failTask:task status:405 code:@"ELECTRON_MBT_REQUEST_METHOD"];
+    return;
+  }
+  id<MBTAppSchemeSource> source = self.source;
+  if (source == nil || url == nil ||
+      ![url.scheme isEqualToString:@"electron-mbt-app"] ||
+      ![url.host isEqualToString:@"app"] || url.port != nil ||
+      url.user != nil || url.password != nil ||
+      url.query.length > 0 || url.fragment.length > 0) {
+    [self failTask:task status:400 code:@"ELECTRON_MBT_SOURCE_DENIED"];
+    return;
+  }
+  NSString *path = url.path;
+  if (path.length < 2 || ![path hasPrefix:@"/"] ||
+      [path rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]].location != NSNotFound) {
+    [self failTask:task status:400 code:@"ELECTRON_MBT_SOURCE_DENIED"];
+    return;
+  }
+  NSString *relative = [path substringFromIndex:1];
+  NSString *mime = nil;
+  NSString *code = nil;
+  NSData *data = [source snapshotDataForRelativePath:relative mime:&mime code:&code];
+  if (data == nil) {
+    [self failTask:task status:([code isEqualToString:@"ELECTRON_MBT_SOURCE_NOT_FOUND"] ? 404 : 403)
+      code:code];
+    return;
+  }
+  NSDictionary *headers = @{
+    @"Content-Type": mime != nil ? mime : @"application/octet-stream",
+    @"Content-Length": [NSString stringWithFormat:@"%lu", (unsigned long)data.length],
+    @"Cache-Control": @"no-store",
+    @"Access-Control-Allow-Origin": @"*",
+    @"Access-Control-Allow-Methods": @"GET, HEAD",
+    @"X-Content-Type-Options": @"nosniff",
+  };
+  NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:url
+    statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:headers];
+  if (response == nil) {
+    [self failTask:task status:500 code:@"ELECTRON_MBT_NATIVE_FAILURE"];
+    return;
+  }
+  [task didReceiveResponse:response];
+  if (![method isEqualToString:@"HEAD"]) [task didReceiveData:data];
+  [task didFinish];
+}
+- (void)webView:(WKWebView *)webView stopURLSchemeTask:(id<WKURLSchemeTask>)urlSchemeTask {
+  (void)webView;
+  (void)urlSchemeTask;
+}
+@end
+
 @interface MBTHost : NSObject
 @property(nonatomic, copy) NSString *root;
 @property(nonatomic, copy) NSString *session;
@@ -2081,6 +2247,56 @@ static BOOL bridgeApiKeyValid(NSString *key) {
         generation.longLongValue <= window.loadedGeneration ||
         window.loadDone != nil || !window.contentAlive) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_LOAD_URL_DENIED"});
+      return;
+    }
+    window.loadedGeneration = generation.longLongValue;
+    window.loadedFile = url.absoluteString;
+    [window installBootstrapScript];
+    window.allowNextNavigation = YES;
+    window.loadDone = ^(BOOL ok, NSString *reason) {
+      if (ok) done(@"success", @{@"didFinishLoad": @YES, @"url": url.absoluteString});
+      else done(@"failure", @{@"code": reason});
+    };
+    window.loadingNavigationGeneration = generation.longLongValue;
+    window.loadingNavigation = [window.web loadRequest:[NSURLRequest requestWithURL:url]];
+    if (!window.loadingNavigation) {
+      window.allowNextNavigation = NO;
+      window.loadDone = nil;
+      done(@"failure", @{@"code": @"ELECTRON_MBT_LOAD_URL_FAILED"});
+    }
+    return;
+  }
+  if ([operation isEqualToString:@"load-app-file"]) {
+    NSString *file = payload[@"file"];
+    if (![file isKindOfClass:[NSString class]] || file.length == 0 || file.length > 4096 ||
+        generation.longLongValue != window.generation ||
+        generation.longLongValue <= window.loadedGeneration ||
+        window.loadDone != nil || !window.contentAlive ||
+        window.snapshotSourceFile == nil || window.snapshotRouteFiles == nil ||
+        window.snapshotRoot == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_OR_GENERATION_DENIED"});
+      return;
+    }
+    NSString *canonical = [file isAbsolutePath] ? canonicalPath(file) :
+      canonicalPath([self.root stringByAppendingPathComponent:file]);
+    if (canonical == nil || ![canonical isEqualToString:window.snapshotSourceFile]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_DENIED"});
+      return;
+    }
+    NSString *relative = [canonical substringFromIndex:self.root.length + 1];
+    if (relative.length == 0 || [relative containsString:@".."] ||
+        [relative containsString:@"\\"] || [relative hasPrefix:@"/"]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_SOURCE_DENIED"});
+      return;
+    }
+    NSString *encoded = [relative stringByAddingPercentEncodingWithAllowedCharacters:
+      [NSCharacterSet URLPathAllowedCharacterSet]];
+    NSString *text = encoded != nil ?
+      [@"electron-mbt-app://app/" stringByAppendingString:encoded] : nil;
+    NSURL *url = text != nil ? [NSURL URLWithString:text] : nil;
+    if (url == nil || ![url.scheme isEqualToString:@"electron-mbt-app"] ||
+        ![url.host isEqualToString:@"app"] || url.user != nil || url.password != nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_LOAD_URL_FAILED"});
       return;
     }
     window.loadedGeneration = generation.longLongValue;
@@ -2489,6 +2705,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       return;
     }
     NSMutableDictionary<NSString *, NSString *> *stagedBySource = [NSMutableDictionary dictionary];
+    NSMutableDictionary<NSString *, NSString *> *routes = [NSMutableDictionary dictionary];
     BOOL writeOK = YES;
     for (NSString *source in sourceData) {
       NSString *relative = [source substringFromIndex:self.root.length + 1];
@@ -2503,6 +2720,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @0600}
         ofItemAtPath:staged error:nil];
       stagedBySource[source] = staged;
+      routes[relative] = staged;
     }
     if (!writeOK) {
       [[NSFileManager defaultManager] removeItemAtPath:canonicalSnapshotRoot error:nil];
@@ -2524,6 +2742,9 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     window.snapshotSHA256 = preloadDigest(entryData);
     window.snapshotBytes = (long long)entryData.length;
     window.snapshotFiles = [stagedBySource copy];
+    window.snapshotRouteFiles = [routes copy];
+    NSString *assetRoot = [entry stringByDeletingLastPathComponent];
+    window.snapshotAssetRoot = [assetRoot isEqualToString:@"."] ? @"" : assetRoot;
     window.snapshotManifestSHA256 = preloadDigest(manifestData);
     done(@"success", @{@"prepared": @YES, @"sha256": window.snapshotSHA256,
       @"bytes": @(entryData.length), @"files": @(files.count),
@@ -2537,7 +2758,9 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       return;
     }
     NSURL *url = window.web.URL;
-    NSString *current = url.isFileURL ? canonicalPath(url.path) : nil;
+    NSString *current = url.isFileURL ? canonicalPath(url.path) :
+      (([url.scheme isEqualToString:@"electron-mbt-app"] && [url.host isEqualToString:@"app"]) ?
+        url.absoluteString : nil);
     BOOL observed = window.contentAlive && window.generation > 0 &&
       window.loadedGeneration == window.generation && window.loadedFile != nil &&
       window.loadDone == nil && window.loadingNavigation == nil &&
@@ -2547,7 +2770,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       return;
     }
     BOOL snapshot = window.snapshotFile != nil &&
-      [window.loadedFile isEqualToString:window.snapshotFile];
+      (window.loadedFile != nil && window.snapshotSourceFile != nil);
     done(@"success", @{@"generation": @(window.generation),
       @"source": snapshot ? @"snapshot" : @"app",
       @"sha256": snapshot ? (window.snapshotSHA256 ?: @"") : @"",
@@ -3060,7 +3283,8 @@ int main(int argc, const char *argv[]) {
           // session-mismatched frames terminate it without a dispatch attempt.
           if (error || !canonicalControlFrame(frame) ||
               !checkRequest(request, session)) break;
-          BOOL isLoad = [request[@"operation"] isEqualToString:@"load-file"];
+          BOOL isLoad = [request[@"operation"] isEqualToString:@"load-file"] ||
+            [request[@"operation"] isEqualToString:@"load-app-file"];
           if ((fd == kLoadChannel) != isLoad) break;
           dispatch_semaphore_t finished = dispatch_semaphore_create(0);
           __block NSDictionary *reply = nil;

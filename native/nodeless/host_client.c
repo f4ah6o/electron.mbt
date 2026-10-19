@@ -226,10 +226,11 @@ static int ebt_host_request(const char *operation, const char *payload,
                             char *out, int32_t capacity) {
   if (control_fd < 0 || operation == NULL || payload == NULL ||
       out == NULL || capacity <= 0) return -1;
-  if (strcmp(operation, "main-open-dialog") == 0) {
+  if (strcmp(operation, "main-open-dialog") == 0 ||
+      strcmp(operation, "main-save-dialog") == 0) {
     // The payload carries the parent window (0 means parentless); the header
-    // window is unused by this host operation. Keep the longer user-interaction
-    // timeout aligned with the native host's semaphore.
+    // window is unused by these host operations. Keep the longer
+    // user-interaction timeout aligned with the native host's semaphore.
     return send_control_frame_timeout(operation, payload, 0, 0, out, capacity,
                                       kMainDialogWaitMs);
   }
@@ -293,6 +294,8 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "set-dialog-result") == 0 ||
       strcmp(operation, "set-main-dialog-results") == 0 ||
       strcmp(operation, "get-main-dialog-status") == 0 ||
+      strcmp(operation, "set-main-save-dialog-results") == 0 ||
+      strcmp(operation, "get-main-save-dialog-status") == 0 ||
       strcmp(operation, "release-adapted-ingress") == 0 ||
       strcmp(operation, "trigger-renderer-api") == 0 ||
       strcmp(operation, "probe-renderer") == 0 ||
@@ -336,6 +339,7 @@ static int js_host_operation_allowed(const char *operation) {
     "main-read-dir",
     "main-mkdir",
     "main-open-dialog",
+    "main-save-dialog",
     NULL
   };
   for (int i = 0; allowed[i] != NULL; i++) {

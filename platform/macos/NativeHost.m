@@ -2067,9 +2067,15 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic) BOOL mainDialogUICompleted;
 @property(nonatomic) BOOL mainDialogUICanceled;
 @property(nonatomic) BOOL mainDialogUISelection;
-// Non-nil means the CLI installed a bounded test result queue. The queue is
-// consumed one result per main-open-dialog call and is never exposed to app JS.
+@property(nonatomic, strong) NSSavePanel *activeMainSavePanel;
+@property(nonatomic) BOOL mainSaveDialogUIOpened;
+@property(nonatomic) BOOL mainSaveDialogUICompleted;
+@property(nonatomic) BOOL mainSaveDialogUICanceled;
+@property(nonatomic) BOOL mainSaveDialogUISelection;
+// Non-nil means the CLI installed a bounded test result queue. Each queue is
+// consumed only by its own dialog operation and is never exposed to app JS.
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *testMainDialogResults;
+@property(nonatomic, strong) NSMutableArray<NSDictionary *> *testMainSaveDialogResults;
 @property(nonatomic, strong) dispatch_queue_t notificationQueue;
 @property(nonatomic) long long nextEvent;
 - (void)publishContentGone:(NSNumber *)windowID generation:(long long)generation;
@@ -2081,14 +2087,22 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 - (BOOL)mainDialogModes:(id)properties wantFiles:(BOOL *)wantFiles
        wantDirectories:(BOOL *)wantDirectories wantMultiple:(BOOL *)wantMultiple
                     code:(NSString **)code;
+- (BOOL)configureMainDialogFilters:(NSArray *)filters panel:(NSSavePanel *)panel
+                              code:(NSString **)code;
 - (BOOL)configureMainOpenPanel:(NSOpenPanel *)panel payload:(NSDictionary *)payload
+                          code:(NSString **)code;
+- (BOOL)configureMainSavePanel:(NSSavePanel *)panel payload:(NSDictionary *)payload
                           code:(NSString **)code;
 - (BOOL)applyMainDialogPaths:(NSArray *)paths wantFiles:(BOOL)wantFiles
              wantDirectories:(BOOL)wantDirectories wantMultiple:(BOOL)wantMultiple
                    filePaths:(NSArray<NSString *> **)filePaths code:(NSString **)code;
+- (BOOL)applyMainSavePath:(NSString *)path filePath:(NSString **)filePath
+                     code:(NSString **)code;
 - (void)handleMainOpenDialog:(NSDictionary *)payload
                       done:(void (^)(NSString *, NSDictionary *))done;
-- (void)cancelMainOpenPanel:(NSTimer *)timer;
+- (void)handleMainSaveDialog:(NSDictionary *)payload
+                      done:(void (^)(NSString *, NSDictionary *))done;
+- (void)cancelActiveMainPanels:(NSTimer *)timer;
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done;
 @end
 
@@ -2380,40 +2394,11 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   return YES;
 }
 
-- (BOOL)configureMainOpenPanel:(NSOpenPanel *)panel payload:(NSDictionary *)payload
-                          code:(NSString **)code {
-  BOOL wantFiles = NO;
-  BOOL wantDirectories = NO;
-  BOOL wantMultiple = NO;
-  if (![self mainDialogModes:payload[@"properties"] wantFiles:&wantFiles
-            wantDirectories:&wantDirectories wantMultiple:&wantMultiple code:code]) {
-    return NO;
-  }
-  NSArray *properties = payload[@"properties"];
-  NSArray *filters = payload[@"filters"];
-  NSString *defaultPath = payload[@"defaultPath"];
-  NSString *title = payload[@"title"];
-  NSString *buttonLabel = payload[@"buttonLabel"];
-  if (properties.count > 3 || ![filters isKindOfClass:[NSArray class]] ||
-      filters.count > 16 || ![defaultPath isKindOfClass:[NSString class]] ||
-      defaultPath.length > 4096 || ![title isKindOfClass:[NSString class]] ||
-      title.length > 256 || ![buttonLabel isKindOfClass:[NSString class]] ||
-      buttonLabel.length > 256 ||
-      [defaultPath rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
-        .location != NSNotFound ||
-      [title rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
-        .location != NSNotFound ||
-      [buttonLabel rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
-        .location != NSNotFound) {
-    if (code != NULL) *code = @"ELECTRON_MBT_INVALID_ENVELOPE";
-    return NO;
-  }
-  panel.canChooseFiles = wantFiles;
-  panel.canChooseDirectories = wantDirectories;
-  panel.allowsMultipleSelection = wantMultiple;
-  panel.canCreateDirectories = NO;
-  panel.showsHiddenFiles = NO;
-  panel.resolvesAliases = YES;
+// Validate and translate Electron-style filters once for both main dialogs.
+// NSOpenPanel inherits NSSavePanel, so one allowedContentTypes assignment works
+// for both; an empty filter list leaves the panel unrestricted.
+- (BOOL)configureMainDialogFilters:(NSArray *)filters panel:(NSSavePanel *)panel
+                              code:(NSString **)code {
   NSMutableArray<UTType *> *types = [NSMutableArray array];
   BOOL unrestricted = NO;
   for (id item in filters) {
@@ -2456,6 +2441,44 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     }
   }
   if (!unrestricted && types.count > 0) panel.allowedContentTypes = types;
+  return YES;
+}
+
+- (BOOL)configureMainOpenPanel:(NSOpenPanel *)panel payload:(NSDictionary *)payload
+                          code:(NSString **)code {
+  BOOL wantFiles = NO;
+  BOOL wantDirectories = NO;
+  BOOL wantMultiple = NO;
+  if (![self mainDialogModes:payload[@"properties"] wantFiles:&wantFiles
+            wantDirectories:&wantDirectories wantMultiple:&wantMultiple code:code]) {
+    return NO;
+  }
+  NSArray *properties = payload[@"properties"];
+  NSArray *filters = payload[@"filters"];
+  NSString *defaultPath = payload[@"defaultPath"];
+  NSString *title = payload[@"title"];
+  NSString *buttonLabel = payload[@"buttonLabel"];
+  if (properties.count > 3 || ![filters isKindOfClass:[NSArray class]] ||
+      filters.count > 16 || ![defaultPath isKindOfClass:[NSString class]] ||
+      defaultPath.length > 4096 || ![title isKindOfClass:[NSString class]] ||
+      title.length > 256 || ![buttonLabel isKindOfClass:[NSString class]] ||
+      buttonLabel.length > 256 ||
+      [defaultPath rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
+        .location != NSNotFound ||
+      [title rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
+        .location != NSNotFound ||
+      [buttonLabel rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
+        .location != NSNotFound) {
+    if (code != NULL) *code = @"ELECTRON_MBT_INVALID_ENVELOPE";
+    return NO;
+  }
+  panel.canChooseFiles = wantFiles;
+  panel.canChooseDirectories = wantDirectories;
+  panel.allowsMultipleSelection = wantMultiple;
+  panel.canCreateDirectories = NO;
+  panel.showsHiddenFiles = NO;
+  panel.resolvesAliases = YES;
+  if (![self configureMainDialogFilters:filters panel:panel code:code]) return NO;
   if (defaultPath.length > 0) {
     if (!defaultPath.isAbsolutePath) {
       if (code != NULL) *code = @"ELECTRON_MBT_INVALID_ENVELOPE";
@@ -2571,9 +2594,132 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   return YES;
 }
 
-- (void)cancelMainOpenPanel:(NSTimer *)timer {
+// Save selections grant read+write on exactly one file. Existing targets must
+// be regular files; a new target needs an existing parent directory. The grant
+// is issued only after the whole selection passes, so a failure cannot leave a
+// partial write capability behind.
+- (BOOL)applyMainSavePath:(NSString *)path filePath:(NSString **)filePath
+                     code:(NSString **)code {
+  if (![path isKindOfClass:[NSString class]] || path.length == 0 || path.length > 4096 ||
+      ![path isAbsolutePath] || [path isEqualToString:@"/"] ||
+      [path rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
+        .location != NSNotFound) {
+    if (code != NULL) *code = @"ELECTRON_MBT_DIALOG_SELECTION";
+    return NO;
+  }
+  NSString *canonical = [self canonicalMainPath:path];
+  if (canonical == nil) {
+    if (code != NULL) *code = @"ELECTRON_MBT_DIALOG_SELECTION";
+    return NO;
+  }
+  NSFileManager *manager = [NSFileManager defaultManager];
+  BOOL isDirectory = NO;
+  BOOL exists = [manager fileExistsAtPath:canonical isDirectory:&isDirectory];
+  if (exists) {
+    struct stat info;
+    if (isDirectory || stat(canonical.fileSystemRepresentation, &info) != 0 ||
+        !S_ISREG(info.st_mode)) {
+      if (code != NULL) *code = @"ELECTRON_MBT_FILE_TYPE";
+      return NO;
+    }
+  } else {
+    NSString *parent = canonical.stringByDeletingLastPathComponent;
+    BOOL parentIsDirectory = NO;
+    if (![manager fileExistsAtPath:parent isDirectory:&parentIsDirectory] ||
+        !parentIsDirectory) {
+      if (code != NULL) *code = @"ELECTRON_MBT_DIALOG_SELECTION";
+      return NO;
+    }
+  }
+  NSNumber *existing = self.mainFileGrants[canonical];
+  if (existing == nil && self.mainFileGrants.count >= MaxMainFileGrants) {
+    if (code != NULL) *code = @"ELECTRON_MBT_FILE_LIMIT";
+    return NO;
+  }
+  // 1 = read, 2 = write; a save selection authorizes both. It does not grant
+  // the parent directory, so listing and mkdir next to the file stay denied.
+  self.mainFileGrants[canonical] =
+    @((existing != nil ? existing.integerValue : 0) | 3);
+  if (filePath != NULL) *filePath = canonical;
+  if (code != NULL) *code = @"";
+  return YES;
+}
+
+// Electron's save-dialog properties are an array. Only overwrite confirmation
+// is represented: NSSavePanel always asks before replacing, so accepting the
+// property is honest. Every other property fails closed instead of pretending
+// to be honored.
+- (BOOL)configureMainSavePanel:(NSSavePanel *)panel payload:(NSDictionary *)payload
+                          code:(NSString **)code {
+  NSArray *properties = payload[@"properties"];
+  NSArray *filters = payload[@"filters"];
+  NSString *defaultPath = payload[@"defaultPath"];
+  NSString *title = payload[@"title"];
+  NSString *buttonLabel = payload[@"buttonLabel"];
+  if (![properties isKindOfClass:[NSArray class]] || properties.count > 5 ||
+      ![filters isKindOfClass:[NSArray class]] || filters.count > 16 ||
+      ![defaultPath isKindOfClass:[NSString class]] || defaultPath.length > 4096 ||
+      ![title isKindOfClass:[NSString class]] || title.length > 256 ||
+      ![buttonLabel isKindOfClass:[NSString class]] || buttonLabel.length > 256 ||
+      [defaultPath rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
+        .location != NSNotFound ||
+      [title rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
+        .location != NSNotFound ||
+      [buttonLabel rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
+        .location != NSNotFound) {
+    if (code != NULL) *code = @"ELECTRON_MBT_INVALID_ENVELOPE";
+    return NO;
+  }
+  for (id item in properties) {
+    if (![item isKindOfClass:[NSString class]] ||
+        ![item isEqualToString:@"showOverwriteConfirmation"]) {
+      if (code != NULL) *code = @"ELECTRON_MBT_UNSUPPORTED_API";
+      return NO;
+    }
+  }
+  panel.canCreateDirectories = YES;
+  panel.showsHiddenFiles = NO;
+  panel.extensionHidden = NO;
+  if (![self configureMainDialogFilters:filters panel:panel code:code]) return NO;
+  if (title.length > 0) panel.title = title;
+  if (buttonLabel.length > 0) panel.prompt = buttonLabel;
+  if (defaultPath.length > 0) {
+    if (defaultPath.isAbsolutePath) {
+      NSString *canonical = [self canonicalMainPath:defaultPath];
+      NSFileManager *manager = [NSFileManager defaultManager];
+      BOOL isDirectory = NO;
+      BOOL exists = canonical != nil &&
+        [manager fileExistsAtPath:canonical isDirectory:&isDirectory];
+      if (exists && isDirectory) {
+        panel.directoryURL = [NSURL fileURLWithPath:canonical isDirectory:YES];
+      } else if (canonical != nil) {
+        NSString *parent = canonical.stringByDeletingLastPathComponent;
+        BOOL parentIsDirectory = NO;
+        if ([manager fileExistsAtPath:parent isDirectory:&parentIsDirectory] &&
+            parentIsDirectory) {
+          panel.directoryURL = [NSURL fileURLWithPath:parent isDirectory:YES];
+          if (canonical.lastPathComponent.length > 0) {
+            panel.nameFieldStringValue = canonical.lastPathComponent;
+          }
+        }
+      }
+    } else {
+      // A bare name is a display hint only; it grants nothing.
+      if (defaultPath.length > 255 || [defaultPath containsString:@"/"] ||
+          [defaultPath isEqualToString:@"."] || [defaultPath isEqualToString:@".."]) {
+        if (code != NULL) *code = @"ELECTRON_MBT_INVALID_ENVELOPE";
+        return NO;
+      }
+      panel.nameFieldStringValue = defaultPath;
+    }
+  }
+  return YES;
+}
+
+- (void)cancelActiveMainPanels:(NSTimer *)timer {
   (void)timer;
   if (self.activeMainOpenPanel != nil) [self.activeMainOpenPanel cancel:nil];
+  if (self.activeMainSavePanel != nil) [self.activeMainSavePanel cancel:nil];
 }
 
 - (void)handleMainOpenDialog:(NSDictionary *)payload
@@ -2666,7 +2812,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   // A test-only build cancels the real panel from within its modal run loop.
   // Do not use dispatch_after here: the panel runs NSModalPanelRunLoopMode.
   NSTimer *timer = [NSTimer timerWithTimeInterval:0.35 target:self
-    selector:@selector(cancelMainOpenPanel:) userInfo:nil repeats:NO];
+    selector:@selector(cancelActiveMainPanels:) userInfo:nil repeats:NO];
   [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSModalPanelRunLoopMode];
 #endif
   NSModalResponse response = [panel runModal];
@@ -2695,6 +2841,115 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   }
   self.mainDialogUISelection = YES;
   done(@"success", @{@"canceled": @NO, @"filePaths": filePaths});
+}
+
+// The save dialog mirrors the open dialog's parent contract but grants one
+// readwrite path instead of a selection list. Test-injected results are
+// contract evidence only; they never represent human consent.
+- (void)handleMainSaveDialog:(NSDictionary *)payload
+                        done:(void (^)(NSString *, NSDictionary *))done {
+  if (payload.count != 6) {
+    done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+    return;
+  }
+  NSNumber *parentValue = payload[@"window"];
+  if (![parentValue isKindOfClass:[NSNumber class]] ||
+      CFGetTypeID((__bridge CFTypeRef)parentValue) == CFBooleanGetTypeID()) {
+    done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+    return;
+  }
+  NSInteger parentID = parentValue.integerValue;
+  if (parentID < 0 || parentID > 64 ||
+      parentValue.doubleValue != (double)parentID) {
+    done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+    return;
+  }
+  MBTWindow *parent = nil;
+  if (parentID > 0) {
+    parent = self.windows[@(parentID)];
+    if (parent == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_DESTROYED"});
+      return;
+    }
+  }
+  NSArray *properties = payload[@"properties"];
+  if (![properties isKindOfClass:[NSArray class]] || properties.count > 5) {
+    done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+    return;
+  }
+  for (id item in properties) {
+    if (![item isKindOfClass:[NSString class]] ||
+        ![item isEqualToString:@"showOverwriteConfirmation"]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_UNSUPPORTED_API"});
+      return;
+    }
+  }
+  NSString *code = nil;
+  if (self.testMainSaveDialogResults != nil) {
+    if (self.testMainSaveDialogResults.count == 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_FILE_DIALOG_UNAVAILABLE"});
+      return;
+    }
+    NSDictionary *result = self.testMainSaveDialogResults.firstObject;
+    [self.testMainSaveDialogResults removeObjectAtIndex:0];
+    NSNumber *canceled = result[@"canceled"];
+    NSString *path = result[@"path"];
+    if (result.count != 2 || ![canceled isKindOfClass:[NSNumber class]] ||
+        CFGetTypeID((__bridge CFTypeRef)canceled) != CFBooleanGetTypeID() ||
+        ![path isKindOfClass:[NSString class]]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (canceled.boolValue) {
+      if (path.length != 0) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_DIALOG_SELECTION"});
+        return;
+      }
+      done(@"success", @{@"canceled": @YES});
+      return;
+    }
+    NSString *filePath = nil;
+    if (![self applyMainSavePath:path filePath:&filePath code:&code]) {
+      done(@"failure", @{@"code": code ?: @"ELECTRON_MBT_DIALOG_SELECTION"});
+      return;
+    }
+    done(@"success", @{@"canceled": @NO, @"filePath": filePath});
+    return;
+  }
+  NSSavePanel *panel = [NSSavePanel savePanel];
+  if (![self configureMainSavePanel:panel payload:payload code:&code]) {
+    done(@"failure", @{@"code": code ?: @"ELECTRON_MBT_INVALID_ENVELOPE"});
+    return;
+  }
+  [NSApp activateIgnoringOtherApps:YES];
+  if (parent != nil) [parent.native makeKeyAndOrderFront:nil];
+  self.activeMainSavePanel = panel;
+  self.mainSaveDialogUIOpened = YES;
+  self.mainSaveDialogUICompleted = NO;
+  self.mainSaveDialogUICanceled = NO;
+  self.mainSaveDialogUISelection = NO;
+#if defined(ELECTRON_MBT_TEST_MAIN_DIALOG_CANCEL)
+  // The save panel also runs NSModalPanelRunLoopMode, so schedule the test
+  // cancel on that mode instead of dispatch_after.
+  NSTimer *timer = [NSTimer timerWithTimeInterval:0.35 target:self
+    selector:@selector(cancelActiveMainPanels:) userInfo:nil repeats:NO];
+  [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSModalPanelRunLoopMode];
+#endif
+  NSModalResponse response = [panel runModal];
+  self.mainSaveDialogUICompleted = YES;
+  self.activeMainSavePanel = nil;
+  if (response != NSModalResponseOK || panel.URL == nil) {
+    self.mainSaveDialogUICanceled = YES;
+    done(@"success", @{@"canceled": @YES});
+    return;
+  }
+  NSString *filePath = nil;
+  if (![self applyMainSavePath:panel.URL.path filePath:&filePath code:&code]) {
+    done(@"failure", @{@"code": code ?: @"ELECTRON_MBT_DIALOG_SELECTION"});
+    return;
+  }
+  self.mainSaveDialogUISelection = YES;
+  done(@"success", @{@"canceled": @NO, @"filePath": filePath});
 }
 
 - (void)handle:(NSDictionary *)request done:(void (^)(NSString *, NSDictionary *))done {
@@ -3128,6 +3383,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   // and the payload carries an optional parent window instead of the header.
   if ([operation isEqualToString:@"main-open-dialog"]) {
     [self handleMainOpenDialog:payload done:done];
+    return;
+  }
+  if ([operation isEqualToString:@"main-save-dialog"]) {
+    [self handleMainSaveDialog:payload done:done];
     return;
   }
   MBTWindow *window = self.windows[windowID];
@@ -3972,6 +4231,60 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       @"completed": @(self.mainDialogUICompleted),
       @"canceled": @(self.mainDialogUICanceled),
       @"selection": @(self.mainDialogUISelection)});
+    return;
+  }
+  if ([operation isEqualToString:@"set-main-save-dialog-results"]) {
+    if (payload.count != 1) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSArray *results = payload[@"results"];
+    if (![results isKindOfClass:[NSArray class]] || results.count == 0 ||
+        results.count > MaxMainDialogSelections) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSMutableArray<NSDictionary *> *validated = [NSMutableArray array];
+    for (id item in results) {
+      if (![item isKindOfClass:[NSDictionary class]]) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+        return;
+      }
+      NSDictionary *result = item;
+      NSNumber *canceled = result[@"canceled"];
+      NSString *path = result[@"path"];
+      if (result.count != 2 || ![canceled isKindOfClass:[NSNumber class]] ||
+          CFGetTypeID((__bridge CFTypeRef)canceled) != CFBooleanGetTypeID() ||
+          ![path isKindOfClass:[NSString class]]) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+        return;
+      }
+      if (canceled.boolValue) {
+        if (path.length != 0) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_DIALOG_SELECTION"});
+          return;
+        }
+      } else if (path.length == 0 || path.length > 4096 || !path.isAbsolutePath ||
+                 [path rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]]
+                   .location != NSNotFound) {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+        return;
+      }
+      [validated addObject:@{@"canceled": @(canceled.boolValue), @"path": path}];
+    }
+    self.testMainSaveDialogResults = validated;
+    done(@"success", @{@"set": @YES, @"count": @(validated.count)});
+    return;
+  }
+  if ([operation isEqualToString:@"get-main-save-dialog-status"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    done(@"success", @{@"opened": @(self.mainSaveDialogUIOpened),
+      @"completed": @(self.mainSaveDialogUICompleted),
+      @"canceled": @(self.mainSaveDialogUICanceled),
+      @"selection": @(self.mainSaveDialogUISelection)});
     return;
   }
   if ([operation isEqualToString:@"set-dialog-result"]) {

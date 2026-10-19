@@ -130,13 +130,24 @@ test "main dialog is bounded and fails closed without a host bridge" {
       "sha256:entry",
       "const { dialog } = require('electron');\n" +
       "const shape = typeof dialog.showOpenDialog === 'function';\n" +
-      "let saveCode = 'none';\n" +
-      "try { dialog.showSaveDialog(); } catch (error) { saveCode = error.code; }\n" +
+      "const saveShape = typeof dialog.showSaveDialog === 'function';\n" +
+      "let saveSyncCode = 'none';\n" +
+      "try { dialog.showSaveDialogSync(); } catch (error) { saveSyncCode = error.code; }\n" +
       "globalThis.__dialogOptionCode = 'pending';\n" +
       "dialog.showOpenDialog({ securityScopedBookmarks: true }).catch(function (error) { globalThis.__dialogOptionCode = error.code; });\n" +
       "globalThis.__dialogHostCode = 'pending';\n" +
       "dialog.showOpenDialog({}).catch(function (error) { globalThis.__dialogHostCode = error.code; });\n" +
-      "module.exports = { shape: shape, saveCode: saveCode };\n",
+      "globalThis.__saveHostCode = 'pending';\n" +
+      "dialog.showSaveDialog({}).catch(function (error) { globalThis.__saveHostCode = error.code; });\n" +
+      "globalThis.__saveOptionCode = 'pending';\n" +
+      "dialog.showSaveDialog({ nameFieldLabel: 'x' }).catch(function (error) { globalThis.__saveOptionCode = error.code; });\n" +
+      "globalThis.__savePropertyCode = 'pending';\n" +
+      "dialog.showSaveDialog({ properties: ['createDirectory'] }).catch(function (error) { globalThis.__savePropertyCode = error.code; });\n" +
+      "globalThis.__savePathCode = 'pending';\n" +
+      "dialog.showSaveDialog({ defaultPath: 'dir/file.md' }).catch(function (error) { globalThis.__savePathCode = error.code; });\n" +
+      "globalThis.__saveBareCode = 'pending';\n" +
+      "dialog.showSaveDialog({ defaultPath: 'note.md' }).catch(function (error) { globalThis.__saveBareCode = error.code; });\n" +
+      "module.exports = { shape: shape, saveShape: saveShape, saveSyncCode: saveSyncCode };\n",
       {},
       false,
     ),
@@ -144,7 +155,8 @@ test "main dialog is bounded and fails closed without a host bridge" {
   let result = context.eval_cjs_with_prelude(modules, "entry", node_prelude(), prelude_config())
   assert_true(result.status is Value)
   assert_true(result.exports.contains("\"shape\":true"))
-  assert_true(result.exports.contains("\"saveCode\":\"ELECTRON_MBT_UNSUPPORTED_API\""))
+  assert_true(result.exports.contains("\"saveShape\":true"))
+  assert_true(result.exports.contains("\"saveSyncCode\":\"ELECTRON_MBT_UNSUPPORTED_API\""))
   let mut jobs = 0
   while engine.job_pending() && jobs < 16 {
     let _ = engine.execute_one_job()
@@ -154,8 +166,23 @@ test "main dialog is bounded and fails closed without a host bridge" {
   assert_true(optionCode.text().contains("ELECTRON_MBT_UNSUPPORTED_API"))
   let hostCode = context.get_global("__dialogHostCode")
   assert_true(hostCode.text().contains("ELECTRON_MBT_HOST_UNAVAILABLE"))
+  let saveHostCode = context.get_global("__saveHostCode")
+  assert_true(saveHostCode.text().contains("ELECTRON_MBT_HOST_UNAVAILABLE"))
+  let saveOptionCode = context.get_global("__saveOptionCode")
+  assert_true(saveOptionCode.text().contains("ELECTRON_MBT_UNSUPPORTED_API"))
+  let savePropertyCode = context.get_global("__savePropertyCode")
+  assert_true(savePropertyCode.text().contains("ELECTRON_MBT_UNSUPPORTED_API"))
+  let savePathCode = context.get_global("__savePathCode")
+  assert_true(savePathCode.text().contains("EINVAL"))
+  let saveBareCode = context.get_global("__saveBareCode")
+  assert_true(saveBareCode.text().contains("ELECTRON_MBT_HOST_UNAVAILABLE"))
   optionCode.release()
   hostCode.release()
+  saveHostCode.release()
+  saveOptionCode.release()
+  savePropertyCode.release()
+  savePathCode.release()
+  saveBareCode.release()
   context.destroy()
   engine.destroy()
 }

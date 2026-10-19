@@ -77,11 +77,20 @@ const dialogUI = parsed && parsed.dialogUI && typeof parsed.dialogUI === 'object
   ? parsed.dialogUI : {};
 const dialogMain = parsed && parsed.dialogSelftest && typeof parsed.dialogSelftest === 'object'
   ? parsed.dialogSelftest : {};
+const saveDialogUI = parsed && parsed.saveDialogUI && typeof parsed.saveDialogUI === 'object'
+  ? parsed.saveDialogUI : {};
+const saveDialogMain = parsed && parsed.saveDialogSelftest &&
+  typeof parsed.saveDialogSelftest === 'object' ? parsed.saveDialogSelftest : {};
+const savePanelOk = saveDialogUI.opened === true &&
+  saveDialogUI.completed === true && saveDialogUI.canceled === true &&
+  saveDialogUI.selection === false;
 const ok = run.status === 0 && parsed !== null && parsed.status === 'PASS' &&
   parsed.dialogUIOk === true && dialogUI.opened === true &&
   dialogUI.completed === true && dialogUI.canceled === true &&
   dialogUI.selection === false && dialogMain.ok === true &&
-  dialogMain.canceled === true && parsed.compatible === false;
+  dialogMain.canceled === true && parsed.saveDialogUIOk === true &&
+  savePanelOk && saveDialogMain.ok === true && saveDialogMain.canceled === true &&
+  parsed.compatible === false;
 const manifestPath = path.join(fixture, 'source-manifest.json');
 const mainPath = path.join(fixture, 'src/main.js');
 const report = {
@@ -93,13 +102,18 @@ const report = {
   panelCanceled: dialogUI.canceled === true,
   selection: dialogUI.selection === true,
   mainCanceled: dialogMain.canceled === true,
+  savePanelOpened: saveDialogUI.opened === true,
+  savePanelCompleted: saveDialogUI.completed === true,
+  savePanelCanceled: saveDialogUI.canceled === true,
+  saveSelection: saveDialogUI.selection === true,
+  saveMainCanceled: saveDialogMain.canceled === true,
   compatible: false,
   testHost: path.relative(root, hostBinary).split(path.sep).join('/'),
   hostSHA256: fs.existsSync(hostBinary) ? hashFile(hostBinary) : '',
   binarySHA256: fs.existsSync(binary) ? hashFile(binary) : '',
   mainSHA256: fs.existsSync(mainPath) ? hashFile(mainPath) : '',
   manifestSHA256: fs.existsSync(manifestPath) ? hashFile(manifestPath) : '',
-  note: 'Native NSOpenPanel opened and programmatically canceled in a test-only build; no human selection, write consent or production consent was exercised.',
+  note: 'Native NSOpenPanel and NSSavePanel were opened and programmatically canceled in a test-only build; no human selection, overwrite confirmation, write consent or production consent was exercised.',
 };
 writeReport(report);
 if (!ok) process.exitCode = 1;

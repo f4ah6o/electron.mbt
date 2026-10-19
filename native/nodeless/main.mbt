@@ -421,6 +421,109 @@ fn cli_apply_main_dialog_results(
 }
 
 ///|
+fn cli_save_dialog_scenario(
+  sources : Map[String, String],
+) -> Result[(Array[(String, String)], Array[Json]), String] {
+  let raw = match sources.get("nodeless-save-dialog.json") {
+    Some(value) => value
+    None => return Err("nodeless-save-dialog.json is missing")
+  }
+  let parsed = @json.parse(raw) catch {
+    _ => return Err("invalid nodeless-save-dialog.json")
+  }
+  let schema = match cli_field(parsed, "schema") {
+    Number(number, ..) => number.to_int()
+    _ => return Err("missing nodeless-save-dialog.json schema")
+  }
+  if schema != 1 {
+    return Err("unsupported nodeless-save-dialog.json schema")
+  }
+  let grant_items : Array[Json] = match cli_field(parsed, "grants") {
+    Array(values) => values
+    Null => []
+    _ => return Err("invalid nodeless-save-dialog.json grants")
+  }
+  if grant_items.length() > 64 {
+    return Err("nodeless-save-dialog.json grant limit exceeded")
+  }
+  let grants : Array[(String, String)] = []
+  for item in grant_items {
+    let path = match cli_text(item, "path") {
+      Some(value) if cli_user_file_path(value) => value
+      _ => return Err("invalid nodeless-save-dialog grant path")
+    }
+    let mode = match cli_text(item, "mode") {
+      Some(value) if value == "read" || value == "write" || value == "readwrite" => value
+      _ => return Err("invalid nodeless-save-dialog grant mode")
+    }
+    grants.push((path, mode))
+  }
+  let result_items : Array[Json] = match cli_field(parsed, "results") {
+    Array(values) => values
+    _ => return Err("invalid nodeless-save-dialog.json results")
+  }
+  if result_items.length() == 0 || result_items.length() > 16 {
+    return Err("nodeless-save-dialog.json result limit exceeded")
+  }
+  let results : Array[Json] = []
+  for item in result_items {
+    let canceled = match cli_field(item, "canceled") {
+      True => true
+      False => false
+      _ => return Err("invalid nodeless-save-dialog result canceled")
+    }
+    let path = match cli_field(item, "path") {
+      String(text) if cli_user_file_path(text) => text
+      Null => ""
+      _ => return Err("invalid nodeless-save-dialog result path")
+    }
+    if canceled && path.length() > 0 {
+      return Err("canceled save dialog result must not contain a path")
+    }
+    if !canceled && path.length() == 0 {
+      return Err("non-canceled save dialog result requires a path")
+    }
+    results.push(Json({ "canceled": Json(canceled), "path": Json(path) }))
+  }
+  Ok((grants, results))
+}
+
+///|
+fn cli_apply_save_dialog_scenario(
+  grants : Array[(String, String)],
+  results : Array[Json],
+) -> Result[Int, String] {
+  for request in grants {
+    let (path, mode) = request
+    let payload = Json({ "path": Json(path), "mode": Json(mode) }).stringify()
+    let reply = match cli_host_payload("grant-main-file", payload) {
+      Some(value) => value
+      None => return Err("save dialog grant setup failed")
+    }
+    if !(cli_field(reply, "granted") is True) {
+      return Err("save dialog grant setup was not acknowledged")
+    }
+  }
+  let payload = Json({ "results": Json(results) }).stringify()
+  // The private control request copies its payload into a fixed 8 KiB buffer;
+  // reject a scenario that cannot fit instead of truncating it.
+  if @utf8.encode(payload).length() > 8000 {
+    return Err("save dialog scenario exceeds the control payload bound")
+  }
+  let reply = match cli_host_payload("set-main-save-dialog-results", payload) {
+    Some(value) => value
+    None => return Err("save dialog result setup failed")
+  }
+  if !(cli_field(reply, "set") is True) {
+    return Err("save dialog result setup was not acknowledged")
+  }
+  match cli_field(reply, "count") {
+    Number(number, ..) => Ok(number.to_int())
+    _ => Err("save dialog result count is missing")
+  }
+}
+
+///|
 fn cli_apply_user_file_grants(
   scenario : (String, String),
 ) -> Result[Bool, String] {
@@ -676,7 +779,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--dialog-ui-selftest]")
+    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest]")
     nodeless_exit(2)
     return
   }
@@ -697,6 +800,7 @@ fn main {
   let user_file_selftest = args.contains("--user-file-selftest")
   let directory_selftest = args.contains("--directory-selftest")
   let dialog_selftest = args.contains("--dialog-selftest")
+  let save_dialog_selftest = args.contains("--save-dialog-selftest")
   let dialog_ui_selftest = args.contains("--dialog-ui-selftest")
   if fs_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--fs-selftest requires --window")
@@ -714,6 +818,10 @@ fn main {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--dialog-selftest requires --window")
     return
   }
+  if save_dialog_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--save-dialog-selftest requires --window")
+    return
+  }
   if dialog_ui_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--dialog-ui-selftest requires --window")
     return
@@ -721,6 +829,11 @@ fn main {
   if dialog_selftest && dialog_ui_selftest {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE",
       "--dialog-selftest and --dialog-ui-selftest are mutually exclusive")
+    return
+  }
+  if save_dialog_selftest && (dialog_selftest || dialog_ui_selftest) {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE",
+      "--save-dialog-selftest is mutually exclusive with --dialog-selftest and --dialog-ui-selftest")
     return
   }
   let mut module_entry = ""
@@ -854,6 +967,20 @@ fn main {
       }
     }
   }
+  let mut save_dialog_grants : Array[(String, String)] = []
+  let mut save_dialog_results : Array[Json] = []
+  if save_dialog_selftest {
+    match cli_save_dialog_scenario(sources) {
+      Ok((grants, results)) => {
+        save_dialog_grants = grants
+        save_dialog_results = results
+      }
+      Err(message) => {
+        cli_fail("ELECTRON_MBT_NODELESS_SAVE_DIALOG", message)
+        return
+      }
+    }
+  }
   let config : @app.AppConfig = {
     name,
     version,
@@ -929,6 +1056,10 @@ fn main {
     let mut dialog_selftest_ok = true
     let mut dialog_ui_json : Json = null
     let mut dialog_ui_ok = true
+    let mut save_dialog_selftest_json : Json = null
+    let mut save_dialog_selftest_ok = true
+    let mut save_dialog_ui_json : Json = null
+    let mut save_dialog_ui_ok = true
     if user_file_selftest {
       match cli_apply_user_file_grants((user_file_read_path, user_file_write_path)) {
         Ok(_) => ()
@@ -958,6 +1089,17 @@ fn main {
           let _ = nodeless_host_shutdown()
           runner.stop()
           cli_fail("ELECTRON_MBT_NODELESS_DIALOG", message)
+          return
+        }
+      }
+    }
+    if save_dialog_selftest {
+      match cli_apply_save_dialog_scenario(save_dialog_grants, save_dialog_results) {
+        Ok(_) => ()
+        Err(message) => {
+          let _ = nodeless_host_shutdown()
+          runner.stop()
+          cli_fail("ELECTRON_MBT_NODELESS_SAVE_DIALOG", message)
           return
         }
       }
@@ -1103,6 +1245,18 @@ fn main {
       dialog_selftest_ok =
         dialog_dispatch_ok && (cli_field(dialog_selftest_json, "ok") is True)
     }
+    if save_dialog_selftest {
+      let (save_results, save_dispatch_ok) =
+        cli_dispatch_results(runner, ["dialog:save-selftest"])
+      let save_dispatch_value = save_results.get("dialog:save-selftest").unwrap_or(null)
+      save_dialog_selftest_json = if cli_field(save_dispatch_value, "ok") is True {
+        cli_field(save_dispatch_value, "result")
+      } else {
+        save_dispatch_value
+      }
+      save_dialog_selftest_ok = save_dispatch_ok &&
+        (cli_field(save_dialog_selftest_json, "ok") is True)
+    }
     if dialog_ui_selftest {
       let (ui_results, ui_dispatch_ok) = cli_dispatch_results(runner, ["dialog:ui-selftest"])
       let ui_dispatch_value = ui_results.get("dialog:ui-selftest").unwrap_or(null)
@@ -1111,15 +1265,33 @@ fn main {
       } else {
         ui_dispatch_value
       }
+      let (save_ui_results, save_ui_dispatch_ok) =
+        cli_dispatch_results(runner, ["dialog:save-ui-selftest"])
+      let save_ui_dispatch_value = save_ui_results.get("dialog:save-ui-selftest").unwrap_or(null)
+      save_dialog_selftest_json = if cli_field(save_ui_dispatch_value, "ok") is True {
+        cli_field(save_ui_dispatch_value, "result")
+      } else {
+        save_ui_dispatch_value
+      }
       dialog_ui_json = cli_host_payload("get-main-dialog-status", "{}").unwrap_or(null)
+      save_dialog_ui_json = cli_host_payload("get-main-save-dialog-status", "{}").unwrap_or(null)
       dialog_selftest_ok = ui_dispatch_ok &&
         (cli_field(dialog_selftest_json, "ok") is True) &&
         (cli_field(dialog_selftest_json, "canceled") is True)
+      save_dialog_selftest_ok = save_ui_dispatch_ok &&
+        (cli_field(save_dialog_selftest_json, "ok") is True) &&
+        (cli_field(save_dialog_selftest_json, "canceled") is True)
       dialog_ui_ok = dialog_selftest_ok &&
         (cli_field(dialog_ui_json, "opened") is True) &&
         (cli_field(dialog_ui_json, "completed") is True) &&
         (cli_field(dialog_ui_json, "canceled") is True) &&
-        (cli_field(dialog_ui_json, "selection") is False)
+        (cli_field(dialog_ui_json, "selection") is False) &&
+        save_dialog_selftest_ok &&
+        (cli_field(save_dialog_ui_json, "opened") is True) &&
+        (cli_field(save_dialog_ui_json, "completed") is True) &&
+        (cli_field(save_dialog_ui_json, "canceled") is True) &&
+        (cli_field(save_dialog_ui_json, "selection") is False)
+      save_dialog_ui_ok = dialog_ui_ok
     }
     ingress = cli_host_payload("get-ingress-status", "{}").unwrap_or(null)
     let title_buffer = Bytes::new(65536)
@@ -1178,7 +1350,8 @@ fn main {
       Json("human-dialog-ui"),
       Json("production-directory-consent"),
       Json("human-main-dialog-selection"),
-      Json("main-dialog-write-consent"),
+      Json("human-main-save-selection"),
+      Json("main-save-overwrite-confirmation"),
       Json("main-dialog-sheet-parenting"),
       Json("print-accurate-export"),
       Json("updater-behavior"),
@@ -1193,7 +1366,8 @@ fn main {
     }
     let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 &&
       adapted_ok && broker_ok && fs_selftest_ok && user_file_selftest_ok &&
-      directory_selftest_ok && dialog_selftest_ok && dialog_ui_ok
+      directory_selftest_ok && dialog_selftest_ok && dialog_ui_ok &&
+      save_dialog_selftest_ok && save_dialog_ui_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
@@ -1248,6 +1422,10 @@ fn main {
       "dialogSelftestOk": Json(dialog_selftest_ok),
       "dialogUI": dialog_ui_json,
       "dialogUIOk": Json(dialog_ui_ok),
+      "saveDialogSelftest": save_dialog_selftest_json,
+      "saveDialogSelftestOk": Json(save_dialog_selftest_ok),
+      "saveDialogUI": save_dialog_ui_json,
+      "saveDialogUIOk": Json(save_dialog_ui_ok),
       "mainError": Json(main_error),
       "lastRejection": Json(rejection),
       "hostPid": Json(host_pid),

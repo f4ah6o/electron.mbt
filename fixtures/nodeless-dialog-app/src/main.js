@@ -1,6 +1,7 @@
 'use strict';
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const fs = require('node:fs');
+const path = require('node:path');
 
 function codeOf(callback) {
   try {
@@ -161,6 +162,138 @@ app.whenReady().then(function () {
     try {
       const opened = await dialog.showOpenDialog({ properties: ['openFile'] });
       return { ok: true, canceled: opened.canceled, filePaths: opened.filePaths };
+    } catch (error) {
+      return { ok: false, code: error && error.code ? error.code : 'no-code' };
+    }
+  });
+  ipcMain.handle('dialog:save-selftest', async function () {
+    const result = { ok: true };
+    try {
+      result.stage = 'shape';
+      result.shape = typeof dialog.showSaveDialog === 'function';
+      result.syncCode = codeOf(function () { dialog.showSaveDialogSync(); });
+
+      result.stage = 'new-file';
+      // 1. A new file: the save selection grants exact-file read+write.
+      const created = await dialog.showSaveDialog({
+        defaultPath: 'note.md',
+        filters: [{ name: 'text', extensions: ['txt', 'md'] }],
+        title: 'nodeless-save',
+        buttonLabel: 'Save',
+      });
+      const newPath = created.filePath;
+      const newDir = path.dirname(newPath);
+      fs.writeFileSync(newPath, 'save-new');
+      const firstRead = fs.readFileSync(newPath, 'utf8');
+      fs.writeFileSync(newPath, 'save-new-again');
+      result.newFile = {
+        canceled: created.canceled,
+        filePath: newPath,
+        firstRead: firstRead,
+        read: fs.readFileSync(newPath, 'utf8'),
+        bytes: fs.statSync(newPath).size,
+        siblingWrite: codeOf(function () { fs.writeFileSync(newPath + '.sibling', 'denied'); }),
+      };
+
+      result.stage = 'existing';
+      // 2. An existing file is overwritten in place; the grant stays exact.
+      const existing = await dialog.showSaveDialog({ defaultPath: newPath });
+      const existingPath = existing.filePath;
+      fs.writeFileSync(existingPath, 'save-existing');
+      result.existing = {
+        canceled: existing.canceled,
+        filePath: existingPath,
+        read: fs.readFileSync(existingPath, 'utf8'),
+        siblingRead: codeOf(function () { fs.readFileSync(existingPath + '.sibling', 'utf8'); }),
+        siblingWrite: codeOf(function () { fs.writeFileSync(existingPath + '.sibling', 'denied'); }),
+        readdir: codeOf(function () { fs.readdirSync(path.dirname(existingPath)); }),
+        mkdir: codeOf(function () { fs.mkdirSync(path.dirname(existingPath) + '/denied-dir'); }),
+      };
+
+      result.stage = 'cancel';
+      // 3. Cancel returns undefined filePath and grants nothing. The test
+      // pre-creates the sibling so this is a grant denial, not an ENOENT.
+      const canceled = await dialog.showSaveDialog({});
+      result.cancel = {
+        canceled: canceled.canceled,
+        hasFilePath: Object.prototype.hasOwnProperty.call(canceled, 'filePath'),
+        undefinedFilePath: canceled.filePath === undefined,
+        targetWrite: codeOf(function () { fs.writeFileSync(newPath + '.cancel', 'denied'); }),
+      };
+
+      result.stage = 'defaults';
+      // 4. defaultPath shapes are display hints only: an existing directory,
+      // a bare file name, and an absolute file all stay ungranted until the
+      // panel confirms. Invalid and unsupported options never reach the host.
+      const dirDefault = await dialog.showSaveDialog({ defaultPath: newDir });
+      const bareDefault = await dialog.showSaveDialog({ defaultPath: 'note.md' });
+      const fileDefault = await dialog.showSaveDialog({ defaultPath: existingPath });
+      const overwriteProperty = await dialog.showSaveDialog({
+        properties: ['showOverwriteConfirmation'],
+      });
+      result.defaults = {
+        directoryCanceled: dirDefault.canceled,
+        bareCanceled: bareDefault.canceled,
+        fileCanceled: fileDefault.canceled,
+        overwriteCanceled: overwriteProperty.canceled,
+        relativeCode: await promiseCode(dialog.showSaveDialog({ defaultPath: 'dir/file.md' })),
+        unknownCode: await promiseCode(dialog.showSaveDialog({ nameFieldLabel: 'x' })),
+        propertyCode: await promiseCode(dialog.showSaveDialog({ properties: ['createDirectory'] })),
+      };
+
+      result.stage = 'rejections';
+      // 5. Typed host rejections for a directory, a missing parent, a dangling
+      // symlink and the filesystem root. A duplicate target merges its bits.
+      const directory = await promiseCode(dialog.showSaveDialog({}));
+      const missingParent = await promiseCode(dialog.showSaveDialog({}));
+      const dangling = await promiseCode(dialog.showSaveDialog({}));
+      const duplicate = await dialog.showSaveDialog({});
+      const root = await promiseCode(dialog.showSaveDialog({}));
+      result.rejections = {
+        directory: directory,
+        missingParent: missingParent,
+        dangling: dangling,
+        duplicateRead: (function () {
+          try {
+            return fs.readFileSync(duplicate.filePath, 'utf8');
+          } catch (error) {
+            return error && error.code ? error.code : 'no-code';
+          }
+        })(),
+        root: root,
+      };
+
+      result.stage = 'parent';
+      // 6. The parent overload mirrors the open dialog: live parent accepted,
+      // destroyed parent rejected before the host.
+      const liveParent = await dialog.showSaveDialog(window, { defaultPath: 'note.md' });
+      window.destroy();
+      result.stage = 'destroyed';
+      const destroyed = await promiseCode(dialog.showSaveDialog(window, {}));
+      result.parent = { liveCanceled: liveParent.canceled, destroyed: destroyed };
+      result.stage = 'recreate';
+      await loadWindow();
+      result.stage = 'recreated';
+
+      result.stage = 'cap';
+      // 7. A save selection that would exceed the 64-file grant registry fails
+      // without issuing a partial grant. The normal scenario cancels here.
+      result.cap = await promiseCode(dialog.showSaveDialog({}));
+
+      result.stage = 'controls';
+      // 8. Test-only controls stay outside the app allowlist.
+      result.selfSetResults = hostRequestCode('set-main-save-dialog-results', { results: [] });
+      result.selfStatus = hostRequestCode('get-main-save-dialog-status', {});
+    } catch (error) {
+      result.ok = false;
+      result.code = error && error.code ? error.code : String(error);
+    }
+    return result;
+  });
+  ipcMain.handle('dialog:save-ui-selftest', async function () {
+    try {
+      const saved = await dialog.showSaveDialog({ defaultPath: 'nodeless-save-ui.md' });
+      return { ok: true, canceled: saved.canceled, filePath: saved.filePath };
     } catch (error) {
       return { ok: false, code: error && error.code ? error.code : 'no-code' };
     }

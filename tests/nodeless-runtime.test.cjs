@@ -900,7 +900,9 @@ test('main dialog grants read-only selections and fails closed', {
     assert.ok(report.notVerified.includes('production-directory-consent'));
     assert.ok(report.notVerified.includes('human-dialog-ui'));
     assert.ok(report.notVerified.includes('human-main-dialog-selection'));
-    assert.ok(report.notVerified.includes('main-dialog-write-consent'));
+    assert.ok(report.notVerified.includes('human-main-save-selection'));
+    assert.ok(report.notVerified.includes('main-save-overwrite-confirmation'));
+    assert.ok(!report.notVerified.includes('main-dialog-write-consent'));
     assert.ok(report.notVerified.includes('main-dialog-sheet-parenting'));
 
     const dialog = report.dialogSelftest;
@@ -1009,4 +1011,267 @@ test('main dialog selftests require a window and reject conflicting modes', () =
   assert.ok(conflicting.report);
   assert.equal(conflicting.report.status, 'FAIL');
   assert.equal(conflicting.report.code, 'ELECTRON_MBT_NODELESS_USAGE');
+
+  const saveWithoutWindow = run(binary, fixture,
+    ['--save-dialog-selftest', '--entry', 'src/main.js']);
+  assert.notEqual(saveWithoutWindow.result.status, 0);
+  assert.ok(saveWithoutWindow.report);
+  assert.equal(saveWithoutWindow.report.code, 'ELECTRON_MBT_NODELESS_USAGE');
+
+  const saveConflicting = run(binary, fixture,
+    ['--window', '--save-dialog-selftest', '--dialog-selftest', '--entry', 'src/main.js']);
+  assert.notEqual(saveConflicting.result.status, 0);
+  assert.ok(saveConflicting.report);
+  assert.equal(saveConflicting.report.code, 'ELECTRON_MBT_NODELESS_USAGE');
+
+  const saveUIConflicting = run(binary, fixture,
+    ['--window', '--save-dialog-selftest', '--dialog-ui-selftest', '--entry', 'src/main.js']);
+  assert.notEqual(saveUIConflicting.result.status, 0);
+  assert.ok(saveUIConflicting.report);
+  assert.equal(saveUIConflicting.report.code, 'ELECTRON_MBT_NODELESS_USAGE');
+});
+
+test('main save dialog grants write consent and fails closed', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-dialog-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-save-dialog-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-save-dialog-outside-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    const targetDir = path.join(outside, 'targets');
+    fs.mkdirSync(targetDir, { recursive: true });
+    const newFile = path.join(targetDir, 'new file-日本語.md');
+    const existing = path.join(targetDir, 'existing.md');
+    const newSibling = `${newFile}.sibling`;
+    const existingSibling = `${existing}.sibling`;
+    const cancelTarget = `${newFile}.cancel`;
+    const dangling = `${newFile}.dangling`;
+    const missingParent = path.join(newFile, 'missing', 'parent.md');
+    fs.writeFileSync(existing, 'existing-before\n');
+    fs.writeFileSync(newSibling, 'sibling\n');
+    fs.writeFileSync(existingSibling, 'sibling\n');
+    fs.writeFileSync(cancelTarget, 'cancel-target\n');
+    fs.symlinkSync(path.join(outside, 'missing-target'), dangling);
+    const canonical = file => fs.realpathSync(file);
+    const results = [
+      { canceled: false, path: newFile },
+      { canceled: false, path: existing },
+      { canceled: true },
+      { canceled: true },
+      { canceled: true },
+      { canceled: true },
+      { canceled: true },
+      { canceled: false, path: targetDir },
+      { canceled: false, path: missingParent },
+      { canceled: false, path: dangling },
+      { canceled: false, path: existing },
+      { canceled: false, path: '/' },
+      { canceled: true },
+      { canceled: true },
+    ];
+    fs.writeFileSync(path.join(dir, 'nodeless-save-dialog.json'),
+      `${JSON.stringify({ schema: 1, results }, null, 2)}\n`);
+    const files = ['index.html', 'package.json', 'src/main.js', 'nodeless-save-dialog.json'];
+    writeSourceManifest(path.join(dir, 'source-manifest.json'),
+      buildSourceManifest(dir, 'index.html', 'nodeless-dialog', files));
+
+    const { result, report } = run(binary, dir,
+      ['--window', '--save-dialog-selftest', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.pageTitle, 'nodeless-dialog-ready');
+    assert.equal(report.saveDialogSelftestOk, true);
+    assert.equal(report.hostShutdown, true);
+    assert.equal(report.liveLeases, 0);
+    assert.equal(report.nodeProcesses, 0);
+    assert.equal(report.compatible, false);
+    assert.ok(report.notVerified.includes('human-main-save-selection'));
+    assert.ok(report.notVerified.includes('main-save-overwrite-confirmation'));
+    assert.ok(report.notVerified.includes('human-main-dialog-selection'));
+    assert.ok(report.notVerified.includes('main-dialog-sheet-parenting'));
+    assert.ok(!report.notVerified.includes('main-dialog-write-consent'));
+
+    const dialog = report.saveDialogSelftest;
+    assert.ok(dialog, 'missing save dialog selftest payload');
+    assert.equal(dialog.ok, true);
+    assert.equal(dialog.stage, 'controls');
+    assert.equal(dialog.shape, true);
+    assert.equal(dialog.syncCode, 'ELECTRON_MBT_UNSUPPORTED_API');
+
+    assert.equal(dialog.newFile.canceled, false);
+    assert.equal(dialog.newFile.filePath, canonical(newFile));
+    assert.equal(dialog.newFile.firstRead, 'save-new');
+    assert.equal(dialog.newFile.read, 'save-new-again');
+    assert.equal(dialog.newFile.bytes, Buffer.byteLength('save-new-again'));
+    assert.equal(dialog.newFile.siblingWrite, 'EACCES');
+
+    assert.equal(dialog.existing.canceled, false);
+    assert.equal(dialog.existing.filePath, canonical(existing));
+    assert.equal(dialog.existing.read, 'save-existing');
+    assert.equal(dialog.existing.siblingRead, 'EACCES');
+    assert.equal(dialog.existing.siblingWrite, 'EACCES');
+    assert.equal(dialog.existing.readdir, 'EACCES');
+    assert.equal(dialog.existing.mkdir, 'EACCES');
+
+    assert.equal(dialog.cancel.canceled, true);
+    assert.equal(dialog.cancel.hasFilePath, true);
+    assert.equal(dialog.cancel.undefinedFilePath, true);
+    assert.equal(dialog.cancel.targetWrite, 'EACCES');
+
+    assert.equal(dialog.defaults.directoryCanceled, true);
+    assert.equal(dialog.defaults.bareCanceled, true);
+    assert.equal(dialog.defaults.fileCanceled, true);
+    assert.equal(dialog.defaults.overwriteCanceled, true);
+    assert.equal(dialog.defaults.relativeCode, 'EINVAL');
+    assert.equal(dialog.defaults.unknownCode, 'ELECTRON_MBT_UNSUPPORTED_API');
+    assert.equal(dialog.defaults.propertyCode, 'ELECTRON_MBT_UNSUPPORTED_API');
+
+    assert.equal(dialog.rejections.directory, 'EISDIR');
+    assert.equal(dialog.rejections.missingParent, 'ELECTRON_MBT_DIALOG_SELECTION');
+    assert.equal(dialog.rejections.dangling, 'ELECTRON_MBT_DIALOG_SELECTION');
+    assert.equal(dialog.rejections.duplicateRead, 'save-existing');
+    assert.equal(dialog.rejections.root, 'ELECTRON_MBT_DIALOG_SELECTION');
+
+    assert.equal(dialog.parent.liveCanceled, true);
+    assert.equal(dialog.parent.destroyed, 'ELECTRON_MBT_WINDOW_DESTROYED');
+    assert.equal(dialog.cap, 'no-error');
+    assert.equal(dialog.selfSetResults, 'ELECTRON_MBT_HOST_REQUEST_DENIED');
+    assert.equal(dialog.selfStatus, 'ELECTRON_MBT_HOST_REQUEST_DENIED');
+
+    assert.equal(fs.readFileSync(newFile, 'utf8'), 'save-new-again');
+    assert.equal(fs.readFileSync(existing, 'utf8'), 'save-existing');
+    assert.equal(fs.readFileSync(cancelTarget, 'utf8'), 'cancel-target\n');
+    assert.equal(fs.readFileSync(newSibling, 'utf8'), 'sibling\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('main save dialog fails closed at the grant cap', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-dialog-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-save-cap-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-save-cap-outside-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    const targetDir = path.join(outside, 'targets');
+    fs.mkdirSync(targetDir, { recursive: true });
+    const newFile = path.join(targetDir, 'new file-日本語.md');
+    const existing = path.join(targetDir, 'existing.md');
+    fs.writeFileSync(existing, 'existing-before\n');
+    fs.writeFileSync(`${newFile}.sibling`, 'sibling\n');
+    fs.writeFileSync(`${existing}.sibling`, 'sibling\n');
+    fs.writeFileSync(`${newFile}.cancel`, 'cancel-target\n');
+    fs.symlinkSync(path.join(outside, 'missing-target'), `${newFile}.dangling`);
+    const grants = [
+      { path: newFile, mode: 'readwrite' },
+      { path: existing, mode: 'readwrite' },
+    ];
+    for (let i = 0; i < 62; i++) {
+      const file = path.join(targetDir, `cap-fill-${i}.md`);
+      fs.writeFileSync(file, 'fill\n');
+      grants.push({ path: file, mode: 'readwrite' });
+    }
+    const capTarget = path.join(targetDir, 'cap-65.md');
+    const results = [
+      { canceled: false, path: newFile },
+      { canceled: false, path: existing },
+      { canceled: true },
+      { canceled: true },
+      { canceled: true },
+      { canceled: true },
+      { canceled: true },
+      { canceled: false, path: targetDir },
+      { canceled: false, path: path.join(newFile, 'missing', 'parent.md') },
+      { canceled: false, path: `${newFile}.dangling` },
+      { canceled: false, path: existing },
+      { canceled: false, path: '/' },
+      { canceled: true },
+      { canceled: false, path: capTarget },
+    ];
+    fs.writeFileSync(path.join(dir, 'nodeless-save-dialog.json'),
+      `${JSON.stringify({ schema: 1, grants, results }, null, 2)}\n`);
+    const files = ['index.html', 'package.json', 'src/main.js', 'nodeless-save-dialog.json'];
+    writeSourceManifest(path.join(dir, 'source-manifest.json'),
+      buildSourceManifest(dir, 'index.html', 'nodeless-dialog', files));
+
+    const { result, report } = run(binary, dir,
+      ['--window', '--save-dialog-selftest', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.saveDialogSelftestOk, true);
+    assert.equal(report.saveDialogSelftest.ok, true);
+    assert.equal(report.saveDialogSelftest.cap, 'EFBIG');
+    assert.equal(report.saveDialogSelftest.newFile.canceled, false);
+    assert.equal(fs.existsSync(capTarget), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('invalid main save dialog scenarios fail closed before app dispatch', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-dialog-app');
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-save-invalid-'));
+  const validPath = path.join(outside, 'valid.md');
+  fs.writeFileSync(validPath, 'valid\n');
+  const tooManyResults = Array.from({ length: 17 }, () => ({ canceled: true }));
+  const tooManyGrants = Array.from({ length: 65 }, () => ({ path: validPath, mode: 'read' }));
+  const overBound = Array.from({ length: 16 },
+    () => ({ canceled: false, path: `/${'x'.repeat(600)}` }));
+  const cases = [
+    ['missing scenario', null],
+    ['schema 2', { schema: 2, results: [{ canceled: true }] }],
+    ['results missing', { schema: 1 }],
+    ['empty results', { schema: 1, results: [] }],
+    ['too many results', { schema: 1, results: tooManyResults }],
+    ['canceled with path', { schema: 1, results: [{ canceled: true, path: validPath }] }],
+    ['non-canceled without path', { schema: 1, results: [{ canceled: false }] }],
+    ['relative path', { schema: 1, results: [{ canceled: false, path: 'relative.md' }] }],
+    ['non-string path', { schema: 1, results: [{ canceled: false, path: 7 }] }],
+    ['overlong path', { schema: 1, results: [{ canceled: false, path: `/${'x'.repeat(4100)}` }] }],
+    ['invalid grant mode', {
+      schema: 1,
+      grants: [{ path: validPath, mode: 'execute' }],
+      results: [{ canceled: true }],
+    }],
+    ['too many grants', { schema: 1, grants: tooManyGrants, results: [{ canceled: true }] }],
+    ['payload over bound', { schema: 1, results: overBound }],
+  ];
+  try {
+    for (const [label, scenario] of cases) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-save-case-'));
+      try {
+        fs.cpSync(source, dir, { recursive: true });
+        let manifestFiles = ['index.html', 'package.json', 'src/main.js'];
+        if (scenario !== null) {
+          fs.writeFileSync(path.join(dir, 'nodeless-save-dialog.json'),
+            `${JSON.stringify(scenario)}\n`);
+          manifestFiles = manifestFiles.concat('nodeless-save-dialog.json');
+          writeSourceManifest(path.join(dir, 'source-manifest.json'),
+            buildSourceManifest(dir, 'index.html', 'nodeless-dialog', manifestFiles));
+        }
+        const { result, report } = run(binary, dir,
+          ['--window', '--save-dialog-selftest', '--entry', 'src/main.js']);
+        assert.notEqual(result.status, 0, `${label}: ${result.stdout}\n${result.stderr}`);
+        assert.ok(report, `${label}: missing JSON report`);
+        assert.equal(report.status, 'FAIL', label);
+        assert.equal(report.code, 'ELECTRON_MBT_NODELESS_SAVE_DIALOG', label);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
 });

@@ -71,12 +71,15 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
    from a staged snapshot over `electron-mbt-app://`; the Node-backed supervisor
    still uses a test-only loopback server.
 3. **File/dialog depth**: session-scoped exact main user-file grants now work
-   for panel/test selections; grant persistence/revocation, production directory consent,
-   real file-selection human consent and save-panel acceptance remain open.
+   for panel/test selections, and a main-realm `dialog.showOpenDialog` opens a
+   real NSOpenPanel with test-injected read grants; grant persistence/revocation,
+   production directory consent, real file-selection human consent, write consent
+   and save-panel acceptance remain open.
    App-local main fs is host-backed, including partial directory/metadata
    `stat`/`readdir`/`mkdir`
    ([docs/0046](0046-nodeless-main-fs.md),
    [docs/0047](0047-nodeless-user-file-grants.md),
+   [docs/0050](0050-nodeless-main-dialog.md),
    [docs/0048](0048-nodeless-directory-fs.md)).
 4. **Async depth**: timers/native completion promises, cancellation, deadlines.
 5. **Export depth**: multi-page/print-accurate PDF/PNG, `assetBaseUrl`.

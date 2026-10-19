@@ -10,8 +10,8 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 33,
-    "pass": 26,
+    "checks": 34,
+    "pass": 27,
     "fail": 2,
     "notRun": 5
   },
@@ -70,6 +70,11 @@
       "id": "adapted-dialog-ui",
       "status": "PASS",
       "detail": "Native NSOpenPanel opened/canceled: opened=true, completed=true, canceled=true, selection=false"
+    },
+    {
+      "id": "nodeless-main-dialog-ui",
+      "status": "PASS",
+      "detail": "Node-less main NSOpenPanel opened/canceled: opened=true, completed=true, canceled=true, selection=false; human selection/write consent remain NOT RUN"
     },
     {
       "id": "adapted-export-html",

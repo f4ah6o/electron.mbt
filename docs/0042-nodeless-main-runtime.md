@@ -73,9 +73,10 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
   the app root, atomically write `.appData`/`.userData`, can use exact session
   grants for user-selected paths outside the app root, and expose bounded
   `statSync`/`readdirSync`/`mkdirSync` plus Promise wrappers. Grant persistence,
-  revocation, production directory consent, streams/lstat/rm and true async I/O remain open;
+  revocation, production directory consent, human selection/write consent for
+  the main open dialog, streams/lstat/rm and true async I/O remain open;
   `zlib` remains import-only with a typed `createDeflate` failure (0008 R2b/R3,
-  docs/0046, docs/0047, docs/0048).
+  docs/0046, docs/0047, docs/0048, docs/0050).
 - `electron-updater` is an explicit import-only `autoUpdater` stub; it performs
   no package resolution, network or update. The adapted behavior is recorded in
   `docs/0043` and is not Node/Electron parity.

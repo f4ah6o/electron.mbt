@@ -4,7 +4,9 @@ Status: **partial user-file increment**. The trusted QuickJS main can read and
 write exact user files outside the app root when a native open/save/export panel
 or the explicit `--user-file-selftest` scenario grants them. Grants are
 session-scoped and exact-path only; persistence, revocation, production
-directory consent and human panel interaction remain open. `compatible:false`, adapted **partial**,
+directory consent and human panel interaction remain open. The main open dialog
+adds read grants for test-injected selections ([docs/0050](0050-nodeless-main-dialog.md));
+its human selection and write consent remain open. `compatible:false`, adapted **partial**,
 strict **blocked** and the original preload **NOT_EXECUTED** are unchanged.
 
 ## What works
@@ -143,7 +145,10 @@ attempts to call `grant-main-file` and `grant-file`.
   I/O, `zlib`, updater, the original preload/contextBridge and strict profile
   remain open
   (bounded directory/metadata calls exist only for the app/data roots; see
-  [docs/0048](0048-nodeless-directory-fs.md)).
+  [docs/0048](0048-nodeless-directory-fs.md));
+- the main open dialog's read grants are session-scoped and test-injected;
+  human selection, write consent, sheet-modal parenting and persistence remain
+  open ([docs/0050](0050-nodeless-main-dialog.md)).
 
 This is a session user-file increment, not an Electron-compatible runtime
 release.

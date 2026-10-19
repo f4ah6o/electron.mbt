@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "status": "PASS",
+  "probe": "nodeless-dialog-ui",
+  "panelOpened": true,
+  "panelCompleted": true,
+  "panelCanceled": true,
+  "selection": false,
+  "mainCanceled": true,
+  "compatible": false,
+  "testHost": "dist/electron-mbt-native-host-main-dialog-cancel-sim",
+  "hostSHA256": "fdef906f8826d296a3e57e06017abc84fc55e9e80b110072517718ec284eb5dd",
+  "binarySHA256": "f7f0d2a87ba24763b07bce77b548b76abf58ad8a2c1ba5de3534fe663653ae23",
+  "mainSHA256": "81ae6e4819a4feabe93aab89575b75b479dcfc22308c4ba20f040046d2c9ce5c",
+  "manifestSHA256": "bd45cbdc2155e127c6af8489fb83b7996e54b33209e7e0576ea50be2f9de542f",
+  "note": "Native NSOpenPanel opened and programmatically canceled in a test-only build; no human selection, write consent or production consent was exercised."
+}

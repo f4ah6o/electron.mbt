@@ -4,8 +4,9 @@ Status: **partial main-runtime increment**. The trusted QuickJS main now reads
 app-local files and atomically writes the runtime data roots through the native
 host, and can read/write exact user files granted by a native panel or the
 explicit test scenario. This closes the import-only `fs`/`fs.promises` stubs,
-but it is not Node's file system: grant persistence, production directory
-consent, stream APIs, metadata preservation and true thread-pool I/O remain open. `compatible:false`,
+but it is not Node's file system: grant persistence, human selection/write
+consent for the main open dialog, production directory consent, stream APIs,
+metadata preservation and true thread-pool I/O remain open. `compatible:false`,
 adapted **partial**, strict **blocked** and original preload **NOT_EXECUTED**
 are unchanged.
 
@@ -53,7 +54,9 @@ explicit native panel/test grant; grants are session-scoped and exact-file only
 ([docs/0047](0047-nodeless-user-file-grants.md)). Grant persistence and
 production directory consent remain open. Directory grants are a separate
 session model ([docs/0049](0049-nodeless-directory-grants.md)); this file's
-exact-file grants do not make a parent directory usable. The bounded
+exact-file grants do not make a parent directory usable. A main-realm
+`dialog.showOpenDialog` can issue read grants for test-injected selections
+([docs/0050](0050-nodeless-main-dialog.md)). The bounded
 directory/metadata surface in [docs/0048](0048-nodeless-directory-fs.md) exists.
 
 ## User-file grants
@@ -133,6 +136,9 @@ write is a test-scenario operation, not production consent.
 - main user-file grants are session-scoped and exact-file only; persistence,
   revocation, production directory consent and human panel interaction are open
   ([docs/0047](0047-nodeless-user-file-grants.md));
+- the main open dialog grants read access only; human selection, write consent,
+  sheet-modal parenting and persistence are open
+  ([docs/0050](0050-nodeless-main-dialog.md));
 - directory APIs beyond the partial `statSync`/`readdirSync`/`mkdirSync` surface
   (`lstat`, recursive `readdir`, `rm`/`unlink`), streams, append flags,
   descriptors and callback-style `readFile` are unsupported; see

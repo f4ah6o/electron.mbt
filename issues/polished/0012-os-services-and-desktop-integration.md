@@ -176,6 +176,8 @@ UI threadでMain callback待ちや長いI/Oを保持すると停止性が崩れ�
 
 - 2026-10-17: polish-issue に沿ってservice scope/terminalと非同期open dialogの最初のslice、native依存、既存facade/probe testsとcommands、Mainからの再呼出しにdocumentを後付けしない条件を追加した。旧 §1〜§9 とclipboard/外部URL/保存commit境界を保持した。 runtime/API の実装変更や互換状態の昇格は行っていない。
 
+- 2026-10-20: Node-less adapted profile に Main `dialog.showOpenDialog` の限定sliceを実装。real `NSOpenPanel`（app-modal）と test-injected selection で read grant を発行し、prelude は bounded options と unsupported dialog API を fail-closed にする。human selection、write consent、sheet-modal parent、save dialog、grant persistence/revocation は未実装で、compatibility は昇格していない。docs/0050。
+
 ## 注記
 
 - 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。

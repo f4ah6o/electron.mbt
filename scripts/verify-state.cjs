@@ -21,6 +21,7 @@ const checks = [
   { id: 'adapted-api', command: 'node', args: ['scripts/adapted-api-check.cjs'], expect: 0 },
   { id: 'moji-adapted', command: 'node', args: ['scripts/moji-adapted-check.cjs'], expect: 0 },
   { id: 'nodeless-runtime', command: 'node', args: ['--test', 'tests/nodeless-runtime.test.cjs'], expect: 0 },
+  { id: 'nodeless-dialog-ui', command: 'node', args: ['scripts/nodeless-dialog-ui.cjs'], expect: 0 },
   { id: 'readiness', command: 'node', args: ['scripts/preview-readiness.cjs'], expect: 2 },
   { id: 'gate-report', command: 'node', args: ['scripts/gate-report.cjs'], expect: 0 },
 ];

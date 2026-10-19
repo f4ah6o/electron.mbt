@@ -104,6 +104,16 @@ function buildReport() {
     dialogUI === null
       ? 'Native NSOpenPanel/NSSavePanel UI is compiled but not exercised'
       : `Native NSOpenPanel opened/canceled: opened=${dialogUI.panelOpened}, completed=${dialogUI.panelCompleted}, canceled=${dialogUI.panelCanceled}, selection=${dialogUI.selection}`));
+  let nodelessDialogUI = null;
+  try { nodelessDialogUI = readJson('compatibility/reports/nodeless-dialog-ui.json'); } catch {}
+  const nodelessDialogUIOk = nodelessDialogUI !== null && nodelessDialogUI.status === 'PASS' &&
+    nodelessDialogUI.panelOpened === true && nodelessDialogUI.panelCompleted === true &&
+    nodelessDialogUI.panelCanceled === true && nodelessDialogUI.selection === false;
+  checks.push(check('nodeless-main-dialog-ui',
+    nodelessDialogUI === null ? 'NOT_RUN' : (nodelessDialogUIOk ? 'PASS' : 'FAIL'),
+    nodelessDialogUI === null
+      ? 'Node-less main open-panel smoke report is absent'
+      : `Node-less main NSOpenPanel opened/canceled: opened=${nodelessDialogUI.panelOpened}, completed=${nodelessDialogUI.panelCompleted}, canceled=${nodelessDialogUI.panelCanceled}, selection=${nodelessDialogUI.selection}; human selection/write consent remain NOT RUN`));
   const exportMark = fileBroker.export || '';
   checks.push(check('adapted-export-html', /test-injected HTML/.test(exportMark) ? 'PASS' : 'FAIL',
     `Export HTML: ${exportMark || 'none'}`));

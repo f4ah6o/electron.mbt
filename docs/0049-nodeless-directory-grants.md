@@ -4,8 +4,11 @@ Status: **partial directory-grant increment**. A trusted QuickJS main can use a
 session-scoped directory grant to `stat`, list, read, write and `mkdir` inside
 that canonical subtree. Grants are test-injected through the private CLI
 control; a real native directory picker, persistence and revocation remain
-open. `compatible:false`, adapted **partial**, strict **blocked** and the
-original preload **NOT_EXECUTED** are unchanged.
+open. A separate main-realm `dialog.showOpenDialog` increment now provides a
+real NSOpenPanel and read grants for selected files/directories
+([docs/0050](0050-nodeless-main-dialog.md)); human selection, write consent and
+sheet-modal parenting remain open. `compatible:false`, adapted **partial**,
+strict **blocked** and the original preload **NOT_EXECUTED** are unchanged.
 
 ## What works
 
@@ -34,7 +37,8 @@ listed and `mkdir` beside it remains denied.
 | --- | --- | --- |
 | `nodeless-directory.json` + `--directory-selftest` | read / write / readwrite | Test-only scenario; explicit flag required. |
 | Private `grant-main-directory` control | read / write / readwrite | CLI only; not in the QuickJS host-operation allowlist. |
-| Native directory picker | none | **NOT IMPLEMENTED**; no production consent path is claimed. |
+| Main `dialog.showOpenDialog` | read only | Real NSOpenPanel; test-injected selection; human selection/write consent **NOT RUN**. See [docs/0050](0050-nodeless-main-dialog.md). |
+| Native directory picker with write consent | none | **NOT IMPLEMENTED**; no production write-consent path is claimed. |
 
 Grants are app-session state. They survive a renderer reload and are cleared by
 host shutdown. They are never persisted across application restarts and there is
@@ -140,7 +144,8 @@ Environment: macOS 26.5.2 arm64, Node 24.22.0, pinned QuickJS 2026-06-04,
 
 ## Limits
 
-- no native directory picker or human consent for directory grants;
+- the main open dialog can grant a user-selected directory read access, but
+  human selection, write consent, persistence and revocation remain open;
 - no grant persistence, revocation, policy migration or user-facing manager;
 - grants cover the whole subtree; there is no per-operation or per-child
   refinement, quota or deny rule;

@@ -35,9 +35,11 @@ Node builtins or start a native window.
 
 - nextTick/microtask/timer partial-order fixtures and shutdown deadlines
 - timer callback reentrancy, cancellation while running and host-loss interaction
-- host event queue, I/O completion and process supervision
+- host event queue, I/O completion and process supervision; the Node-less pump
+  currently services adapted page calls after main load
 - unhandled rejection policy, request-local exception mapping and root ledger
-- a native window/host, `BrowserWindow`/`webContents` and renderer
+- full `BrowserWindow`/`webContents` event routing, child frames and navigation
 - real `fs`/`fs/promises` broker, zlib stream and updater behavior
-- Moji/jmd real app boot and source-preserving asset loading
+- the original Moji preload/contextBridge and the full Moji/jmd app scenario;
+  the real Moji renderer boots under the generated adapted page API
 - fault injection for host loss and runner kill

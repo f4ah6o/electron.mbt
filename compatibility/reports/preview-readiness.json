@@ -10,8 +10,8 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 31,
-    "pass": 24,
+    "checks": 32,
+    "pass": 25,
     "fail": 2,
     "notRun": 5
   },
@@ -94,7 +94,7 @@
     {
       "id": "adapted-moji-runtime",
       "status": "NOT_RUN",
-      "detail": "Adapted API -> Moji handlers passes natively for settings/update; original preload and real renderer are still not connected"
+      "detail": "Node-less Moji renderer boot passes; real file/dialog/export/update behavior and the original preload remain NOT_RUN"
     },
     {
       "id": "production-closure:moji-v1.0.5",
@@ -152,9 +152,14 @@
       "detail": "Moji renderer: title=Moji v1.0.5, rootChildren=1, api=true, open=true, saveAs=true, export=true, png=true, pdf=true, landscape=true, docPng=true, updateCheck=true, save=true, read=true, sample=true, preloadExecuted=false"
     },
     {
+      "id": "nodeless-moji-app",
+      "status": "PASS",
+      "detail": "Node-less Moji: status=PASS, title=Moji v1.0.5, url=electron-mbt-app://app/out/renderer/index.html, rootChildren=1, api=true, requests=2, preloadExecuted=false"
+    },
+    {
       "id": "node-less-moji-app-main",
       "status": "PASS",
-      "detail": "Moji main boots and the adapted Moji renderer loads; original preload NOT_EXECUTED"
+      "detail": "Moji main boots and the adapted Moji renderer loads Node-lessly; original preload NOT_EXECUTED"
     },
     {
       "id": "preview-signing",

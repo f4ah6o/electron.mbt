@@ -2,9 +2,10 @@
 
 Status: **partial**. A real AppKit/WKWebView window is created and loaded by the
 Node-less main runtime through the native host, and the pinned Moji bundled main
-boots on that runtime against a probe page. The original preload and real Moji
-renderer are **NOT EXECUTED**, file/update semantics are **import-only
-adaptations**, and `compatible:false` / strict **blocked** remain.
+boots on that runtime against a probe page. The original preload remains
+**NOT EXECUTED**, file/update semantics are **import-only adaptations**, and
+`compatible:false` / strict **blocked** remain. The real Moji renderer is now
+booted separately; see [the adapted renderer boot](0044-nodeless-adapted-app-renderer.md).
 
 ## G-2: window path
 
@@ -90,10 +91,12 @@ does not make the adapted behavior equivalent to Electron/Node.
 3. `fs`/`fs/promises` broker with app/userData roots, grants, readback,
    atomic-replace metadata and failure/commit semantics.
 4. `zlib` stream behavior and the PNG/PDF export paths.
-5. Real Moji renderer asset loading and adapted page adapter; the original
-   preload/contextBridge remains the strict-profile gate.
-6. Updater behavior and the source-preserving asset loader; no loopback test
-   server in production.
+5. Real Moji renderer asset loading and the adapted page adapter are covered by
+   [the adapted renderer boot](0044-nodeless-adapted-app-renderer.md); the
+   original preload/contextBridge remains the strict-profile gate.
+6. Updater behavior; the Node-less renderer now uses a snapshot-scoped custom
+   scheme (docs/0044), while the Node-backed probe still uses a test-only
+   loopback server.
 7. App scenario, process/resource ledger, signed release and Node-free audit of
    the packaged artifact.
 

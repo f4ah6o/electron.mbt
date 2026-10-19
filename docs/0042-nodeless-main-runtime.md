@@ -3,9 +3,12 @@
 Status: **partial main-runtime increment**. A native CLI executes a bounded CJS
 app main on the pinned QuickJS engine without a Node process, and the fixture
 passes. The separate [window and Moji-main probe](0043-nodeless-window-and-moji-main-boot.md)
-adds a real host window and a pinned Moji main boot against a probe page. This is
-not preload, real-renderer, Moji-UI or Electron acceptance; `compatible:false`,
-strict **blocked** and adapted **partial** remain.
+adds a real host window and a pinned Moji main boot against a probe page.
+[The adapted renderer boot](0044-nodeless-adapted-app-renderer.md) extends the
+same runtime to the real Moji Vite renderer through a snapshot-scoped custom
+scheme and the generated page API. This is still not preload, strict
+contextBridge, real file/dialog/export/update behavior or Electron acceptance;
+`compatible:false`, strict **blocked** and adapted **partial** remain.
 
 ## What works
 

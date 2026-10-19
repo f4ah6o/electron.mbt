@@ -2,9 +2,10 @@
 
 Status: **partial**. The core module registry, a real QuickJS CJS execution
 leaf, a bounded Node/Electron prelude and a Node-free fixture graph are
-implemented and tested. `fs`/zlib/updater, dynamic require, ESM and a native
-window/host app loader are not connected. This is not an app or Electron
-compatibility claim.
+implemented and tested. The pinned Moji main graph now runs in the native
+window host, and the real renderer boots under the generated adapted page API;
+the original preload, `fs`/zlib/updater behavior, dynamic require and ESM remain
+open. This is not an app or Electron compatibility claim.
 
 ## Ownership
 
@@ -83,4 +84,5 @@ tests for duplicate/unknown/limit/state transitions and cycle edges.
 - real `fs`/`fs/promises`, zlib stream, updater behavior and the native file broker
 - dynamic/computed require, ESM and Node-API
 - a pinned Node oracle differential for the broader MOD matrix
-- loading the actual Moji/jmd emitted graphs and a native window/host
+- the original preload/contextBridge and the full Moji/jmd app scenario; the
+  Node-less renderer currently uses the generated adapted page API

@@ -17,6 +17,7 @@ test('preview readiness stays NOT_READY and never promotes unverified work', () 
   assert.equal(checks.get('adapted-adapter-fixture').status, 'PASS');
   assert.equal(checks.get('adapted-moji-runtime').status, 'NOT_RUN');
   assert.equal(checks.get('node-less-moji-app-main').status, 'PASS');
+  assert.equal(checks.get('nodeless-moji-app').status, 'PASS');
   assert.equal(checks.get('moji-renderer').status, 'PASS');
   assert.equal(checks.get('preview-signing').status, 'NOT_RUN');
   assert.ok(report.counts.fail > 0);

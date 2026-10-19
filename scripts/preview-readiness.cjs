@@ -114,7 +114,7 @@ function buildReport() {
   checks.push(check('adapted-moji-api', mojiApiOk ? 'PASS' : 'FAIL',
     `Moji ${mojiAdapted.appId}: calls=${mojiAdapted.api.calls}, topics=${mojiAdapted.api.topics}, unsupported=${(mojiAdapted.api.unsupported || []).join(',')}, handlers=${mojiAdapted.semantics.applicationHandlers || 'none'}, runtime=${mojiAdapted.semantics.runtime}, originalPreload=${mojiAdapted.originalPreload}`));
   checks.push(check('adapted-moji-runtime', 'NOT_RUN',
-    'Adapted API -> Moji handlers passes natively for settings/update; original preload and real renderer are still not connected'));
+    'Node-less Moji renderer boot passes; real file/dialog/export/update behavior and the original preload remain NOT_RUN'));
 
   for (const [id, closure] of closures) {
     const closureOk = closure.status === 'PASS' && closure.nativeAddons.length === 0;
@@ -200,10 +200,36 @@ function buildReport() {
     mojiRenderer === null
       ? 'Moji renderer report is absent'
       : `Moji renderer: title=${mojiRenderer.pageTitle}, rootChildren=${mojiRenderer.rootChildren}, api=${mojiRenderer.apiPresent}, open=${mojiRendererApi.openOk}, saveAs=${mojiRendererApi.saveAsOk}, export=${mojiRendererApi.exportOk}, png=${mojiRendererApi.pngOk}, pdf=${mojiRendererApi.pdfOk}, landscape=${mojiRendererApi.pdfLandscapeOk}, docPng=${mojiRendererApi.docPngOk}, updateCheck=${mojiRendererApi.updateCheckOk}, save=${mojiRendererApi.saveOk}, read=${mojiRendererApi.readOk}, sample=${mojiRendererApi.sampleOk}, preloadExecuted=${mojiRenderer.preloadExecuted}`));
-  checks.push(check('node-less-moji-app-main', mojiRendererOk ? 'PASS' : 'NOT_RUN',
-    mojiRendererOk
-      ? 'Moji main boots and the adapted Moji renderer loads; original preload NOT_EXECUTED'
-      : 'Moji main boots in a virtual QuickJS harness; no real app window/renderer or preload execution'));
+  let nodelessApp = null;
+  try { nodelessApp = readJson('compatibility/reports/moji-nodeless-app.json'); } catch {}
+  const nodelessAppOk = nodelessApp !== null && nodelessApp.status === 'PASS' &&
+    nodelessApp.rendererLoaded === true && nodelessApp.preloadExecuted === false &&
+    nodelessApp.pageURL === 'electron-mbt-app://app/out/renderer/index.html' &&
+    typeof nodelessApp.pageTitle === 'string' && nodelessApp.pageTitle.includes('Moji') &&
+    Number.isInteger(nodelessApp.rootChildren) && nodelessApp.rootChildren > 0 &&
+    nodelessApp.apiPresent === true &&
+    nodelessApp.adapted && nodelessApp.adapted.observed === true &&
+    nodelessApp.adapted.released === true &&
+    Number.isInteger(nodelessApp.adapted.requests) && nodelessApp.adapted.requests >= 2 &&
+    nodelessApp.adapted.replyErrors === 0 &&
+    nodelessApp.ingress && nodelessApp.ingress.admitted >= 2 &&
+    nodelessApp.ingress.denied === 0 &&
+    nodelessApp.mainSHA256 === mojiProvenance.hashes.main &&
+    nodelessApp.preloadSHA256 === mojiProvenance.hashes.preload &&
+    nodelessApp.adapterSHA256 === mojiNativeAdapterHash &&
+    nodelessApp.mainError === '' && nodelessApp.lastRejection === '' &&
+    nodelessApp.hostShutdown === true && nodelessApp.liveLeases === 0 &&
+    nodelessApp.compatible === false;
+  checks.push(check('nodeless-moji-app',
+    nodelessApp === null || nodelessApp.status === 'NOT_RUN' ? 'NOT_RUN' :
+      (nodelessAppOk ? 'PASS' : 'FAIL'),
+    nodelessApp === null
+      ? 'Node-less Moji renderer report is absent'
+      : `Node-less Moji: status=${nodelessApp.status}, title=${nodelessApp.pageTitle}, url=${nodelessApp.pageURL}, rootChildren=${nodelessApp.rootChildren}, api=${nodelessApp.apiPresent}, requests=${nodelessApp.adapted && nodelessApp.adapted.requests}, preloadExecuted=${nodelessApp.preloadExecuted}`));
+  checks.push(check('node-less-moji-app-main', mojiRendererOk && nodelessAppOk ? 'PASS' : 'NOT_RUN',
+    mojiRendererOk && nodelessAppOk
+      ? 'Moji main boots and the adapted Moji renderer loads Node-lessly; original preload NOT_EXECUTED'
+      : 'Moji main boot or the real renderer is not recorded under the Node-less runtime'));
   checks.push(check('preview-signing', 'NOT_RUN', 'No Developer ID signing, notarization or clean-install evidence'));
   checks.push(check('clean-install', 'NOT_RUN', 'No clean machine install has been executed'));
   checks.push(check('interactive-ime-ax', 'NOT_RUN', 'No IME, focus or accessibility acceptance run'));

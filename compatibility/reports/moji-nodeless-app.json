@@ -1,0 +1,61 @@
+{
+  "status": "PASS",
+  "probe": "moji-nodeless-app",
+  "sourceRoot": "/tmp/electron-mbt-apps/moji",
+  "engine": "quickjs-2026-06-04",
+  "profile": "electron-nodeless-adapted-v1",
+  "strict": "blocked",
+  "mainSHA256": "41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e",
+  "preloadSHA256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
+  "adapterSHA256": "bdfe8bddb4bc07389060e805464a554ff1b0a24d998a88512564c8a91dcc7501",
+  "rendererIndexSHA256": "fafe339fee4ccecc164748984e77c03f9089c624a24cac62cf3b18ffe4e9e301",
+  "manifestSHA256": "f9b932d227096ab68254294ced410f55e8c43c2521447f01b48acdebe9840a54",
+  "bootGraphFiles": 113,
+  "pageURL": "electron-mbt-app://app/out/renderer/index.html",
+  "pageTitle": "Moji v1.0.5",
+  "rendererLoaded": true,
+  "rootChildren": 1,
+  "apiPresent": true,
+  "pageText": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\nMoji v1.0.5\nA LIGHTWEIGHT, SIMPLE MARKDOWN READER\n\nOpen File\nNew File\nor drop a .md file anywhere in this window\n\nM",
+  "uiText": [
+    "New",
+    "Open",
+    "Save",
+    "Preview",
+    "Editor",
+    "Export"
+  ],
+  "adapted": {
+    "configured": true,
+    "adapter": "adapted/page-api.js",
+    "observed": true,
+    "released": true,
+    "requests": 2,
+    "replyErrors": 0,
+    "ingress": {
+      "unhandled": 0,
+      "denied": 0,
+      "generation": 1,
+      "admitted": 2,
+      "lastCode": ""
+    }
+  },
+  "ingress": {
+    "unhandled": 0,
+    "denied": 0,
+    "generation": 1,
+    "admitted": 2,
+    "lastCode": ""
+  },
+  "preloadExecuted": false,
+  "mainError": "",
+  "lastRejection": "",
+  "hostShutdown": true,
+  "liveLeases": 0,
+  "nodeProcesses": 0,
+  "assetScheme": "electron-mbt-app://app",
+  "nodeFreeChildPath": true,
+  "rendererProvenance": "main/preload/adapter hashes match build-provenance; the renderer tree is pinned per file by the generated source manifest, and the provenance renderer tree hash was not independently re-derived.",
+  "compatible": false,
+  "note": "Pinned Moji main and real renderer run on the Node-less QuickJS runtime under the generated adapted page API. The original preload is NOT_EXECUTED; no Electron compatibility is claimed."
+}

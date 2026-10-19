@@ -2,8 +2,9 @@
 
 Status: **implementation milestone**, not compatibility. The adapted profile
 boots the real Moji renderer with page-world file/dialog/export services and the
-pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
-**blocked** remain.
+pinned Moji main handlers. A separate Node-less lane now boots the same real
+renderer through a snapshot-scoped custom scheme and the generated page API.
+`compatible:false`, adapted **partial** and strict **blocked** remain.
 
 ## Stage status
 
@@ -23,6 +24,7 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 | Moji main boot | `moji-main-boot`: whenReady, 1 window, 14 handlers | PASS (virtual) |
 | Moji handler invocation | settings/update/readSample/confirmClose | PASS (virtual) |
 | Real Moji renderer | `moji-renderer`: real UI text, `rootChildren:1` | PASS (loopback HTTP) |
+| Node-less real renderer | `nodeless-moji-app`: real UI text, custom app scheme, 2 main requests | PASS (adapted; custom scheme) |
 | Adapted page API → Main | `moji-adapted-native`: dark/unsupported | PASS |
 | Adapted API → native broker | real renderer open/save/export/sample | PASS |
 | Async Main microtasks | `updateCheckOk` via `checkForUpdate` | PASS |
@@ -35,17 +37,17 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
 | B6-D semantic matrix (experimental) | Value/error/callback/Promise/bounds/fault matrix; three transport defects fixed | PASS (experimental; limits open) |
 | B6-E evidence packet | Baseline differential hook, CI evidence step, threat model/review checklist; project-owner acceptance for B7 design work | PREPARED + ACCEPTED (2026-10-18) for B7; strict admission gates open; baseline NOT RUN locally; external audit NOT RUN |
 | B7 strict-profile admission | Plan, preload key/descriptor preview, pre-registered exposure before load, host expected-descriptor verification, actual-mismatch fail-closed test, main-frame-only frame policy, page self-DoS test; strict-runtime gates | STARTED; experimental M1 preview admission + post-hoc host verification + frame/self-DoS evidence; actual-before-page/Electron child frames/full fault matrix open; strict blocked |
-| Production asset loading | loopback server is test-only | NOT IMPLEMENTED |
+| Production asset loading | Node-less snapshot-scoped `electron-mbt-app://` scheme; Node-backed supervisor still uses a loopback test server | PARTIAL (Node-less custom scheme; loopback test-only) |
 | Timers/native promises/cancel | not supported by async bridge | NOT IMPLEMENTED |
 
 ## Aggregate evidence
 
 - `verify-state`: 17/17 PASS, `NOT_READY`
-- readiness: 31 checks, 24 PASS, 2 FAIL (`moji-preload-runtime`,
+- readiness: 32 checks, 25 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 455 pass
-- `moon test --target js`: 143 pass
-- `moon test --target native`: 162 pass
+- `npm test`: 465 pass
+- `moon test --target js`: 145 pass
+- `moon test --target native`: 177 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
 
 ## Remaining scope
@@ -60,8 +62,9 @@ pinned Moji main handlers. `compatible:false`, adapted **partial** and strict
    and B6-E the evidence/review packet accepted by the project owner for B7
    design work. The strict profile remains blocked pending the B7 runtime and
    security gates; M0 stays OPEN and the original preload stays NOT_EXECUTED.
-2. **Production asset loading**: replace the test-only loopback server with a
-   native/custom-scheme or packaged asset path.
+2. **Production asset loading**: the Node-less runtime now serves the renderer
+   from a staged snapshot over `electron-mbt-app://`; the Node-backed supervisor
+   still uses a test-only loopback server.
 3. **Dialog depth**: real file selection, save panel, user consent and grant
    persistence.
 4. **Async depth**: timers/native completion promises, cancellation, deadlines.

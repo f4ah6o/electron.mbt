@@ -18,13 +18,13 @@ function buildMarkdown() {
   const manifest = readJson('compatibility/manifest.json');
   const gates = [
     ['G0', 'profile / authority / inventory / governance', readiness.gates.G0,
-      '`runtime-profiles-v1.json`, app closures, SBOM', 'functional preload bridge; Node-less boot'],
+      '`runtime-profiles-v1.json`, app closures, SBOM', 'functional preload bridge; full app scenario'],
     ['G1', 'QuickJS engine / CJS / native supervisor', readiness.gates.G1,
-      '`runtime/runner`, CJS fixture graph, supervisor window/load/event', '`runtime/runner` in supervisor; crash restart; general event queue; Moji main'],
+      '`runtime/runner`, CJS fixture graph, supervisor window/load/event', 'crash restart; general event queue; full app scenario'],
     ['G2', 'adapted Node-less runtime', readiness.gates.G2,
-      '`electron-nodeless-adapted-v1` contract, generated page adapter, document-start injection fixture', 'Moji preload IPC; renderer ingress; main/renderer IPC; app boot'],
+      '`electron-nodeless-adapted-v1` contract, generated page adapter, snapshot-scoped custom scheme, real Moji renderer boot', 'Moji preload IPC; file/dialog/export/update behavior; strict profile'],
     ['G3', 'real-app acceptance', readiness.gates.G3,
-      'pinned app records and M1 boot blocker', 'Moji/jmd app scenarios; IME/focus/AX; security/fault'],
+      'pinned app records and M1 boot blocker', 'full Moji/jmd app scenarios; IME/focus/AX; security/fault'],
     ['G4', 'signed preview / distribution', readiness.gates.G4,
       'production closures and CycloneDX SBOM', 'signing, notarization, clean install, license policy'],
   ];
@@ -53,11 +53,12 @@ ${markdownTable(['Check', 'Status', 'Detail'], checks)}
 ## Interpretation
 
 - G0 is partial: the profile, app inventory, production closure and governance
-  records exist, but there is no functional preload bridge or Node-less app boot.
+  records exist, but there is no functional preload bridge or full app scenario.
 - G1 is partial: the QuickJS engine, fixture CJS loader and MoonBit-native
-  supervisor work; the actual app main, \`runtime/runner\` ownership, general
-  event queue and crash-after-ready restart remain open.
-- G2, G3 and G4 are not acceptance-complete. The adapted profile, real app
+  supervisor work; the general event queue, crash-after-ready restart and full
+  app scenario remain open.
+- G2, G3 and G4 are not acceptance-complete. The adapted Node-less renderer
+  boots, but the original preload, file/dialog/export/update behavior, real app
   scenarios, signing/notarization, clean install and interactive checks are
   NOT RUN.
 - No row is promoted to \`verified\`; \`compatible:false\` is intentional.

@@ -22,7 +22,7 @@ function buildMarkdown() {
     ['G1', 'QuickJS engine / CJS / native supervisor', readiness.gates.G1,
       '`runtime/runner`, CJS fixture graph, supervisor window/load/event', 'crash restart; general event queue; full app scenario'],
     ['G2', 'adapted Node-less runtime', readiness.gates.G2,
-      '`electron-nodeless-adapted-v1` contract, generated page adapter, snapshot-scoped custom scheme, real Moji renderer boot', 'Moji preload IPC; main user-file grants; updater/zlib behavior; strict profile'],
+      '`electron-nodeless-adapted-v1` contract, generated page adapter, snapshot-scoped custom scheme, real Moji renderer boot, session main user-file grants', 'Moji preload IPC; grant persistence and human dialog consent; updater/zlib behavior; strict profile'],
     ['G3', 'real-app acceptance', readiness.gates.G3,
       'pinned app records and M1 boot blocker', 'full Moji/jmd app scenarios; IME/focus/AX; security/fault'],
     ['G4', 'signed preview / distribution', readiness.gates.G4,
@@ -58,9 +58,9 @@ ${markdownTable(['Check', 'Status', 'Detail'], checks)}
   supervisor work; the general event queue, crash-after-ready restart and full
   app scenario remain open.
 - G2, G3 and G4 are not acceptance-complete. The adapted Node-less renderer
-  boots, but the original preload, main user-file grants, updater/zlib behavior, real app
-  scenarios, signing/notarization, clean install and interactive checks are
-  NOT RUN.
+  boots and session main user-file grants work, but the original preload, grant
+  persistence, human dialog consent, updater/zlib behavior, real app scenarios,
+  signing/notarization, clean install and interactive checks are NOT RUN.
 - No row is promoted to \`verified\`; \`compatible:false\` is intentional.
 
 ## Reproduce

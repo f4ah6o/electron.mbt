@@ -94,9 +94,11 @@ The harness also verifies the written outputs before deleting the temp app:
   ignored without it. A negative test runs a window app with a broker file but
   no flag and observes `broker.configured:false`.
 - Grants and dialog paths are resolved by the host through `canonicalAppPath`
-  and remain confined to the app root. Main-side fs writes are confined to
-  `.appData`/`.userData`; main reads are confined to the app root. User-file
-  main grants outside the app root remain unimplemented.
+  and remain confined to the app root for this broker scenario. Main-side fs
+  writes are confined to `.appData`/`.userData` plus exact write grants; main
+  reads are confined to the app root plus session-scoped exact user-file grants.
+  Grant persistence and human panel consent remain unimplemented
+  ([user-file grants](0047-nodeless-user-file-grants.md)).
 - `grant-file` / `set-dialog-result` are test controls, not a production consent
   API. No human selection, save-panel consent, grant persistence or real
   `NSOpenPanel`/`NSSavePanel` interaction is exercised by this report.
@@ -110,8 +112,8 @@ The harness also verifies the written outputs before deleting the temp app:
   separate adapted dialog smoke covers open/cancel only)
 - PDF/PNG exports are not print-accurate or multi-page, and `assetBaseUrl` is
   ignored
-- main-side user-file grants outside the app root, directory/stream APIs and
-  true async fs remain unimplemented
+- main-side user grants are session-scoped and exact-file only; persistence,
+  human consent, directory/stream APIs and true async fs remain unimplemented
 - updater behavior is the import-only `unsupported` stub
 - original preload/contextBridge, strict profile, ASAN, ownership review and
   external audit remain open
@@ -122,9 +124,9 @@ The harness also verifies the written outputs before deleting the temp app:
 | command | result |
 | --- | --- |
 | `node scripts/nodeless-moji-app.cjs` | PASS (broker test-injected) |
-| `node --test tests/nodeless-runtime.test.cjs` | 14 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 16 PASS |
 | `node scripts/preview-readiness.cjs` | NOT_READY (33 checks; expected exit 2) |
-| `npm test` | 469 PASS |
+| `npm test` | 471 PASS |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
 | ASAN / ownership review / external audit | NOT RUN |

@@ -23,7 +23,7 @@ builds the CJS graph in MoonBit, and evaluates it through
 | module graph | literal `require` scan, relative paths, extension/index, JSON, nested/scoped `node_modules`, package `main` and require-selected `exports`, cache identity, cycles |
 | CJS realm | `module.exports`, `exports` alias, `module.loaded`, `__filename`, `__dirname`, JSON modules, `require.resolve` fail-closed |
 | Node subset | `path`, `url` file helpers, `process` (platform/arch/argv/env allowlist/versions/nextTick), `events.EventEmitter`, `Buffer` (utf8/base64/ascii, alloc/concat/subarray/equals), `setTimeout`/`clearTimeout`/Timeout ref/unref |
-| adapted imports | host-required `fs`/`fs.promises` (app-root reads and `.appData`/`.userData` atomic writes when `--window`; user grants/streams open); `zlib` import-only with a typed `createDeflate` failure; `electron-updater` is an explicit import-only stub; computed require fails before evaluation |
+| adapted imports | host-required `fs`/`fs.promises` (app-root reads, `.appData`/`.userData` atomic writes and session-scoped exact user-file grants when `--window`; persistence/streams open); `zlib` import-only with a typed `createDeflate` failure; `electron-updater` is an explicit import-only stub; computed require fails before evaluation |
 | Electron facade | `app`, `ipcMain`, a bounded `BrowserWindow`/`webContents` and a local `Menu`/`screen`/`shell` model; dialog/contextBridge/ipcRenderer remain unsupported |
 | scheduling | MoonBit scheduler owns deadlines; nextTick/Promise jobs are drained and the fixture observes tick → promise → timer; async handler settle uses a bounded 1000-step loop |
 | teardown | live lease count is 0 and no pending job before context/runtime destruction |
@@ -70,10 +70,11 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
   local facade, `webContents` events are bounded, and there is no dialog,
   renderer asset graph or production asset loader.
 - `fs`/`fs.promises` are host-backed only in `--window` mode: they read under
-  the app root and atomically write `.appData`/`.userData`. Main user-file
-  grants outside the app root, directory/stream APIs and true async I/O are
-  open; `zlib` remains import-only with a typed `createDeflate` failure
-  (0008 R2b/R3, docs/0046).
+  the app root, atomically write `.appData`/`.userData`, and can use exact
+  session grants for user-selected paths outside the app root. Grant
+  persistence, revocation, directory/stream APIs and true async I/O are open;
+  `zlib` remains import-only with a typed `createDeflate` failure (0008
+  R2b/R3, docs/0046, docs/0047).
 - `electron-updater` is an explicit import-only `autoUpdater` stub; it performs
   no package resolution, network or update. The adapted behavior is recorded in
   `docs/0043` and is not Node/Electron parity.
@@ -105,10 +106,10 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
 | --- | --- |
 | `moon build --target native native/nodeless` | PASS |
 | `native/nodeless run fixtures/nodeless-app` | PASS |
-| `node --test tests/nodeless-runtime.test.cjs` | 14 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 16 PASS |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 469 PASS |
+| `npm test` | 471 PASS |
 | sanitizer / ownership review / external audit | NOT RUN |
 
 The reported `nodeProcesses:0` is self-reported by the runtime; the process and

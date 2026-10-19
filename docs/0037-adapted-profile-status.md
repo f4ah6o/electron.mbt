@@ -11,7 +11,8 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | Stage | Evidence | Status |
 | --- | --- | --- |
 | File broker read/save/image/sample | `fileBroker`/`fileRead`/`fileSave`/`fileDenied`, page probe | PASS (partial) |
-| File grants | test-only `grant-file`; no production consent | PARTIAL |
+| File grants | test-only `grant-file`; session-scoped main grants from panel completion/test scenario; no production consent | PARTIAL |
+| Main-side user-file grants (session) | `nodeless-user-file-app`: granted outside-root read/write, ungranted `EACCES`, app-code self-grant denied | PASS (test-injected) |
 | Native open/save grant path | test-injected `set-dialog-result` | PASS |
 | Native open panel UI | `moji-dialog-ui` open/cancel | PASS (open/cancel only) |
 | Save panel UI / selection / consent | not exercised | NOT RUN |
@@ -44,12 +45,13 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 
 ## Aggregate evidence
 
-- `verify-state`: 17/17 PASS, `NOT_READY`
+- `verify-state`: 18/18 PASS, `NOT_READY`
 - readiness: 33 checks, 26 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 469 pass
+- `npm test`: 471 pass
 - `moon test --target js`: 145 pass
 - `moon test --target native`: 177 pass
+- `node --test tests/nodeless-runtime.test.cjs`: 16 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
 
 ## Remaining scope
@@ -67,9 +69,12 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 2. **Production asset loading**: the Node-less runtime now serves the renderer
    from a staged snapshot over `electron-mbt-app://`; the Node-backed supervisor
    still uses a test-only loopback server.
-3. **File/dialog depth**: main user-file grants, real file selection, save panel,
-   user consent and grant persistence. App-local main fs is host-backed
-   ([docs/0046](0046-nodeless-main-fs.md)).
+3. **File/dialog depth**: session-scoped exact main user-file grants now work
+   for panel/test selections; grant persistence/revocation, directory grants,
+   real file-selection human consent and save-panel acceptance remain open.
+   App-local main fs is host-backed
+   ([docs/0046](0046-nodeless-main-fs.md),
+   [docs/0047](0047-nodeless-user-file-grants.md)).
 4. **Async depth**: timers/native completion promises, cancellation, deadlines.
 5. **Export depth**: multi-page/print-accurate PDF/PNG, `assetBaseUrl`.
 6. **Compatibility**: no verified rows; strict profile remains blocked.

@@ -219,6 +219,13 @@
       }
     },
     {
+      "id": "nodeless-runtime",
+      "status": "PASS",
+      "exit": 0,
+      "expectedExit": 0,
+      "detail": "ℹ duration_ms 12232.776208"
+    },
+    {
       "id": "readiness",
       "status": "NOT_READY",
       "exit": 2,

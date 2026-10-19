@@ -96,7 +96,7 @@ try {
     preloadExecuted: false,
     rendererLoaded: false,
     adaptedImports: ['electron-updater', 'node:fs', 'node:fs/promises', 'node:zlib'],
-    fsMode: 'host-backed app-root read and appData/userData atomic write; user-file grants and streams remain open',
+    fsMode: 'host-backed app-root read and appData/userData atomic write; session user-file grants via dialog/test control; grant persistence and streams remain open',
     zlibMode: 'import-only; createDeflate throws ELECTRON_MBT_UNSUPPORTED_API',
     updaterMode: 'explicit import-only autoUpdater adaptation',
     lastRejection: parsed ? parsed.lastRejection : null,

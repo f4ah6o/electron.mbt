@@ -2,10 +2,12 @@
 
 Status: **partial main-runtime increment**. The trusted QuickJS main now reads
 app-local files and atomically writes the runtime data roots through the native
-host. This closes the import-only `fs`/`fs.promises` stubs, but it is not Node's
-file system: user-file grants, directory/stream APIs, metadata preservation and
-true thread-pool I/O remain open. `compatible:false`, adapted **partial**, strict
-**blocked** and original preload **NOT_EXECUTED** are unchanged.
+host, and can read/write exact user files granted by a native panel or the
+explicit test scenario. This closes the import-only `fs`/`fs.promises` stubs,
+but it is not Node's file system: grant persistence, directory/stream APIs,
+metadata preservation and true thread-pool I/O remain open. `compatible:false`,
+adapted **partial**, strict **blocked** and original preload **NOT_EXECUTED**
+are unchanged.
 
 ## What works
 
@@ -45,8 +47,21 @@ explicit adaptation and is not Node's `writeFile` behavior.
 
 The main process is trusted app code. The renderer cannot call these host
 operations directly, and the page file broker keeps its own per-window grants.
-Main reads of user-selected files outside the app root, grant persistence and
+Main reads of user-selected files outside the app root are supported after an
+explicit native panel/test grant; grants are session-scoped and exact-file only
+([docs/0047](0047-nodeless-user-file-grants.md)). Grant persistence and
 directory/stream APIs are **NOT IMPLEMENTED**.
+
+## User-file grants
+
+A completed native open panel grants main read access to the selected canonical
+file; save/export panels grant readwrite. `nodeless-user-file.json` with
+`--user-file-selftest` grants the two listed absolute paths for the deterministic
+fixture. `grant-main-file` is a private control operation; the QuickJS bridge
+allowlist rejects it, so app code cannot self-grant. Ungranted outside-root paths
+remain `EACCES`/`false`. See
+[docs/0047](0047-nodeless-user-file-grants.md) for the policy, bounds and
+privilege separation.
 
 ## Error mapping
 
@@ -100,18 +115,20 @@ write is a test-scenario operation, not production consent.
 | --- | --- |
 | `moon build --target native native/nodeless` | PASS |
 | `node scripts/build-macos-host.cjs` | PASS |
-| `node --test tests/nodeless-runtime.test.cjs` | 14 PASS |
+| `node --test tests/nodeless-runtime.test.cjs` | 16 PASS |
 | `node scripts/nodeless-moji-boot.cjs` | PASS |
 | `node scripts/nodeless-moji-app.cjs` | PASS (settings persisted) |
 | `moon test --target native` | 177 PASS |
 | `moon test --target js` | 145 PASS |
-| `npm test` | 469 PASS |
+| `npm test` | 471 PASS |
 | `node scripts/preview-readiness.cjs` | NOT_READY (33 checks; expected exit 2) |
 | ASAN / ownership review / external audit | NOT RUN |
 
 ## Limits
 
-- main user-file grants outside the app root and grant persistence are open;
+- main user-file grants are session-scoped and exact-file only; persistence,
+  revocation, directory grants and human panel interaction are open
+  ([docs/0047](0047-nodeless-user-file-grants.md));
 - directory APIs (`readdir`, `statSync`, `mkdirSync`), streams, append flags,
   descriptors and callback-style `readFile` are unsupported;
 - async fs is Promise-wrapped synchronous host I/O, not Node thread-pool I/O;

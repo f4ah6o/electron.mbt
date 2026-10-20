@@ -710,6 +710,56 @@ test('grant persistence loads across runs and revocation denies access', {
   }
 });
 
+test('a persisted readwrite grant reopens and saves the same file after restart', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-user-file-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-normal-save-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-normal-save-out-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    const documentPath = path.join(outside, 'document.md');
+    fs.writeFileSync(documentPath, '# user read\n');
+    fs.writeFileSync(path.join(dir, 'nodeless-user-file.json'), `${JSON.stringify({
+      schema: 1,
+      readPath: documentPath,
+      writePath: documentPath,
+      deniedPath: path.join(outside, 'denied.md'),
+      deniedWritePath: path.join(outside, 'denied-write.md'),
+    })}\n`);
+    const files = ['index.html', 'package.json', 'src/main.js', 'nodeless-user-file.json'];
+    writeSourceManifest(path.join(dir, 'source-manifest.json'),
+      buildSourceManifest(dir, 'index.html', 'nodeless-user-file', files));
+
+    const first = run(binary, dir, ['--window', '--user-file-selftest', '--entry', 'src/main.js']);
+    assert.equal(first.result.status, 0, `${first.result.stdout}\n${first.result.stderr}`);
+    assert.equal(first.report.status, 'PASS');
+    assert.equal(first.report.grantStore.files.length, 1);
+    assert.equal(first.report.grantStore.files[0].mode, 'readwrite');
+    assert.equal(fs.readFileSync(documentPath, 'utf8'), 'user-write');
+
+    // Simulate a restart with the same on-disk document; the new process must
+    // load the persisted readwrite grant and save the same path without a dialog.
+    fs.writeFileSync(documentPath, '# user read\n');
+    const second = run(binary, dir, ['--window', '--grant-persist-selftest', '--entry', 'src/main.js']);
+    assert.equal(second.result.status, 0, `${second.result.stdout}\n${second.result.stderr}`);
+    assert.equal(second.report.status, 'PASS');
+    assert.equal(second.report.grantPersistSelftest.ok, true);
+    assert.equal(second.report.grantPersistSelftest.readGranted, true);
+    assert.equal(second.report.grantPersistSelftest.writeGranted, true);
+    assert.equal(second.report.userFileSelftestOk, true);
+    assert.equal(second.report.grantStore.files.length, 1);
+    assert.equal(second.report.grantStore.files[0].mode, 'readwrite');
+    assert.equal(fs.readFileSync(documentPath, 'utf8'), 'user-write',
+      'the persisted readwrite grant must allow an in-place normal save');
+    assert.equal(second.report.compatible, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('a corrupt or non-canonical grant store fails closed', {
   skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
 }, () => {

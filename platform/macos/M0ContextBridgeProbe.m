@@ -182,6 +182,64 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
   return YES;
 }
 
+// The frame/origin observation is complete only when both children reported.
+// A missing report is a harness failure, not a negative security result. The
+// same-origin access value itself is an observation: true and false are both
+// valid findings, but a denied access must carry its typed error.
+static BOOL validFrameState(NSDictionary *state, NSString **reason) {
+  if (![state isKindOfClass:[NSDictionary class]]) {
+    if (reason) *reason = @"frame/origin evidence is missing";
+    return NO;
+  }
+  if (!dictBool(state, @"complete") ||
+      !dictBool(state, @"sameOriginChildMessageObserved") ||
+      !dictBool(state, @"sandboxedChildMessageObserved")) {
+    if (reason) *reason = @"frame/origin children did not both report";
+    return NO;
+  }
+  if (!dictBool(state, @"sameOriginChildOriginMatches") ||
+      !dictBool(state, @"sameOriginChildNotRelayed")) {
+    if (reason) *reason = @"same-origin child report was not attributable to its frame";
+    return NO;
+  }
+  if (![dictString(state, @"sameOriginChildOwnApiType") isEqual:@"undefined"]) {
+    if (reason) *reason = @"same-origin child unexpectedly received its own page-world shim";
+    return NO;
+  }
+  if (![dictString(state, @"sameOriginChildParentApiType") isEqual:@"object"]) {
+    if (reason) *reason = @"same-origin child could not observe the parent page-world API";
+    return NO;
+  }
+  if (!dictBool(state, @"sameOriginChildHandlerHidden")) {
+    if (reason) *reason = @"same-origin child could see a native bridge handler";
+    return NO;
+  }
+  if (dictBool(state, @"sameOriginChildAccess")) {
+    if (![state[@"sameOriginChildSyncValue"] isEqual:@42] ||
+        ![dictString(state, @"sameOriginChildSyncValueType") isEqual:@"number"]) {
+      if (reason) *reason = @"same-origin child did not receive the synchronous number 42";
+      return NO;
+    }
+    if (!dictBool(state, @"sameOriginChildSyncThrow") ||
+        ![dictString(state, @"sameOriginChildThrowName") isEqual:@"Error"] ||
+        dictString(state, @"sameOriginChildThrowMessage").length == 0) {
+      if (reason) *reason = @"same-origin child did not observe the synchronous Error";
+      return NO;
+    }
+  } else if (dictString(state, @"sameOriginChildAccessError").length == 0) {
+    if (reason) *reason = @"same-origin child access was denied without a typed error";
+    return NO;
+  }
+  if (!dictBool(state, @"sandboxedChildOpaqueOrigin") ||
+      !dictBool(state, @"sandboxedChildAccessDenied") ||
+      !dictBool(state, @"sandboxedChildHandlerHidden") ||
+      !dictBool(state, @"sandboxedChildNotRelayed")) {
+    if (reason) *reason = @"sandboxed child frame boundary was not observed";
+    return NO;
+  }
+  return YES;
+}
+
 @interface M0ContextBridgeProbe : NSObject <WKNavigationDelegate, WKScriptMessageHandlerWithReply, WKScriptMessageHandler>
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) NSWindow *window;
@@ -190,6 +248,7 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
 @property(nonatomic, strong) NSURL *oracleURL;
 @property(nonatomic, strong) NSURL *negativeURL;
 @property(nonatomic, strong) NSURL *childURL;
+@property(nonatomic, strong) NSURL *frameURL;
 @property(nonatomic, copy) NSString *preloadSource;
 @property(nonatomic, copy) NSString *pageShimSource;
 @property(nonatomic, copy) NSString *isolatedSource;
@@ -206,6 +265,7 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
 @property(nonatomic, strong) NSDictionary *oracleFirst;
 @property(nonatomic, strong) NSDictionary *oracleReload;
 @property(nonatomic, strong) NSDictionary *negativeState;
+@property(nonatomic, strong) NSDictionary *frameState;
 @property(nonatomic) BOOL checkpointStateCaptured;
 @property(nonatomic) BOOL checkpointScanCaptured;
 @property(nonatomic) BOOL checkpointReportSeen;
@@ -216,6 +276,7 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
 @property(nonatomic) BOOL stageTwoAdvanceHandled;
 @property(nonatomic) BOOL stageThreeAdvanceHandled;
 @property(nonatomic) BOOL negativeAdvanceHandled;
+@property(nonatomic) BOOL frameAdvanceHandled;
 @property(nonatomic) BOOL finished;
 @property(nonatomic) BOOL secretLeakDetected;
 @property(nonatomic) NSUInteger reportsAccepted;
@@ -230,13 +291,17 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
 - (void)loadOracle;
 - (void)reloadOracle;
 - (void)loadNegative;
+- (void)loadFrames;
+- (BOOL)isFrameChildURL:(NSURL *)url;
 - (NSURL *)expectedURLForStage:(NSUInteger)stage;
 - (void)captureCheckpointAttempt:(NSUInteger)attempt;
 - (void)captureNegativeAttempt:(NSUInteger)attempt;
+- (void)captureFrameAttempt:(NSUInteger)attempt;
 - (void)runSecretScanForStage:(NSUInteger)stage attempt:(NSUInteger)attempt;
 - (void)runStaleGrantTest;
 - (void)maybeAdvance;
 - (NSDictionary *)checkpointOneResultDictionary;
+- (NSDictionary *)framePolicyDictionary;
 - (void)finalizeWithDecision:(NSString *)decision reason:(NSString *)reason;
 - (void)fail:(NSString *)code;
 @end
@@ -337,10 +402,32 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
      allowingReadAccessToURL:self.negativeURL.URLByDeletingLastPathComponent];
 }
 
+- (void)loadFrames {
+  self.pendingStage = 5;
+  [self.webView loadRequest:[NSURLRequest requestWithURL:self.frameURL]];
+}
+
+// The frame stage is served from one loopback origin so the same-origin child
+// is genuinely same-origin. Only the two named child fixtures are allowed.
+- (BOOL)isFrameChildURL:(NSURL *)url {
+  if (self.frameURL == nil) return NO;
+  if (![url.scheme isEqual:self.frameURL.scheme] ||
+      ![url.host isEqual:self.frameURL.host]) {
+    return NO;
+  }
+  if (url.port == nil || self.frameURL.port == nil ||
+      ![url.port isEqual:self.frameURL.port]) {
+    return NO;
+  }
+  return [url.path isEqual:@"/m0-cb-same-origin-child.html"] ||
+    [url.path isEqual:@"/m0-cb-child.html"];
+}
+
 - (NSURL *)expectedURLForStage:(NSUInteger)stage {
   if (stage == 1) return self.checkpointURL;
   if (stage == 2 || stage == 3) return self.oracleURL;
   if (stage == 4) return self.negativeURL;
+  if (stage == 5) return self.frameURL;
   return nil;
 }
 
@@ -355,14 +442,17 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
   BOOL oracle = [url isEqual:self.oracleURL];
   BOOL negative = [url isEqual:self.negativeURL];
   BOOL child = [url isEqual:self.childURL];
-  BOOL allowed = (mainFrame && (checkpoint || oracle || negative)) ||
-    (childFrame && child);
-  if (mainFrame && (checkpoint || oracle || negative)) {
+  BOOL frames = [url isEqual:self.frameURL];
+  BOOL frameChild = [self isFrameChildURL:url];
+  BOOL allowed = (mainFrame && (checkpoint || oracle || negative || frames)) ||
+    (childFrame && (child || frameChild));
+  if (mainFrame && (checkpoint || oracle || negative || frames)) {
     self.previousGrant = self.currentGrant;
     self.currentGrant = [NSUUID UUID].UUIDString;
     self.grantsIssued += 1;
     if (checkpoint) self.pendingStage = 1;
     else if (negative) self.pendingStage = 4;
+    else if (frames) self.pendingStage = 5;
     else self.pendingStage = self.oracleFirst == nil ? 2 : 3;
   }
   decisionHandler(allowed ? WKNavigationActionPolicyAllow : WKNavigationActionPolicyCancel);
@@ -410,6 +500,15 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
     });
   } else if (self.stage == 4) {
     [self captureNegativeAttempt:0];
+  } else if (self.stage == 5) {
+    [self captureFrameAttempt:0];
+    __weak M0ContextBridgeProbe *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC),
+                   dispatch_get_main_queue(), ^{
+      M0ContextBridgeProbe *probe = weakSelf;
+      if (!probe || probe.finished || probe.frameState != nil) return;
+      [probe fail:@"ELECTRON_MBT_M0_CB_FRAME_OBSERVATION"];
+    });
   }
   [self maybeAdvance];
 }
@@ -597,6 +696,30 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
     }];
 }
 
+- (void)captureFrameAttempt:(NSUInteger)attempt {
+  __weak M0ContextBridgeProbe *weakSelf = self;
+  [self.webView evaluateJavaScript:@"JSON.stringify(globalThis.m0ContextBridgeFrames)"
+    inFrame:nil inContentWorld:[WKContentWorld pageWorld]
+    completionHandler:^(id result, NSError *error) {
+      M0ContextBridgeProbe *probe = weakSelf;
+      if (!probe || probe.finished) return;
+      NSDictionary *state = error ? nil : decodeObject(result);
+      if (!state || !dictBool(state, @"complete")) {
+        if (attempt < 50) {
+          dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC),
+                         dispatch_get_main_queue(), ^{
+            [probe captureFrameAttempt:attempt + 1];
+          });
+        } else {
+          [probe fail:@"ELECTRON_MBT_M0_CB_FRAME_OBSERVATION"];
+        }
+        return;
+      }
+      probe.frameState = state;
+      [probe maybeAdvance];
+    }];
+}
+
 - (void)runStaleGrantTest {
   if (self.previousGrant == nil) return;
   NSString *script = [NSString stringWithFormat:
@@ -679,6 +802,16 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
       [self finalizeWithDecision:@"no-go" reason:@"navigation revocation evidence is incomplete"];
       return;
     }
+    [self loadFrames];
+    return;
+  }
+  if (self.stage == 5 && self.frameState != nil && !self.frameAdvanceHandled) {
+    self.frameAdvanceHandled = YES;
+    NSString *reason = nil;
+    if (!validFrameState(self.frameState, &reason)) {
+      [self finalizeWithDecision:@"no-go" reason:reason ?: @"frame/origin checks failed"];
+      return;
+    }
     [self finalizeWithDecision:@"go" reason:nil];
   }
 }
@@ -701,6 +834,48 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
   };
 }
 
+- (NSDictionary *)framePolicyDictionary {
+  NSDictionary *state = self.frameState ?: @{};
+  BOOL sameAccess = dictBool(state, @"sameOriginChildAccess");
+  BOOL sandboxDenied = dictBool(state, @"sandboxedChildAccessDenied");
+  BOOL complete = dictBool(state, @"complete") &&
+    dictBool(state, @"sameOriginChildMessageObserved") &&
+    dictBool(state, @"sandboxedChildMessageObserved");
+  return @{
+    @"version": @1,
+    @"observationComplete": boolValue(complete),
+    @"hypothesis": @"same-origin child inherits the parent page-world API; "
+                    "opaque/sandboxed child is denied",
+    @"hypothesisSupported": boolValue(complete && sameAccess && sandboxDenied),
+    @"sameOriginChild": @{
+      @"messageObserved": boolValue(dictBool(state, @"sameOriginChildMessageObserved")),
+      @"ownApiType": dictString(state, @"sameOriginChildOwnApiType") ?: @"unknown",
+      @"parentApiType": dictString(state, @"sameOriginChildParentApiType") ?: @"unknown",
+      @"access": boolValue(sameAccess),
+      @"accessError": state[@"sameOriginChildAccessError"] ?: [NSNull null],
+      @"originMatches": boolValue(dictBool(state, @"sameOriginChildOriginMatches")),
+      @"notRelayed": boolValue(dictBool(state, @"sameOriginChildNotRelayed")),
+      @"syncValue": state[@"sameOriginChildSyncValue"] ?: [NSNull null],
+      @"syncValueType": dictString(state, @"sameOriginChildSyncValueType") ?: @"unknown",
+      @"syncValueError": state[@"sameOriginChildSyncValueError"] ?: [NSNull null],
+      @"syncThrow": boolValue(dictBool(state, @"sameOriginChildSyncThrow")),
+      @"throwName": state[@"sameOriginChildThrowName"] ?: [NSNull null],
+      @"throwMessage": state[@"sameOriginChildThrowMessage"] ?: [NSNull null],
+      @"childRealmError": state[@"sameOriginChildChildRealmError"] ?: [NSNull null],
+      @"parentRealmError": state[@"sameOriginChildParentRealmError"] ?: [NSNull null],
+      @"handlerHidden": boolValue(dictBool(state, @"sameOriginChildHandlerHidden")),
+    },
+    @"sandboxedChild": @{
+      @"messageObserved": boolValue(dictBool(state, @"sandboxedChildMessageObserved")),
+      @"opaqueOrigin": boolValue(dictBool(state, @"sandboxedChildOpaqueOrigin")),
+      @"accessDenied": boolValue(dictBool(state, @"sandboxedChildAccessDenied")),
+      @"handlerHidden": boolValue(dictBool(state, @"sandboxedChildHandlerHidden")),
+      @"notRelayed": boolValue(dictBool(state, @"sandboxedChildNotRelayed")),
+    },
+    @"nativeChildReportsRejected": @(self.childReportsRejected),
+  };
+}
+
 - (void)finalizeWithDecision:(NSString *)decision reason:(NSString *)reason {
   if (self.finished) return;
   self.finished = YES;
@@ -710,6 +885,7 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
   BOOL oracleFirstValid = validOracleObservation(self.oracleFirst, NULL);
   BOOL oracleReloadValid = validOracleObservation(self.oracleReload, NULL);
   BOOL negativeValid = validNegativeState(self.negativeState, NULL);
+  BOOL frameValid = validFrameState(self.frameState, NULL);
   BOOL navigationValid = self.oracleReloadSeen && self.staleGrantRejected > 0 &&
     oracleReloadValid;
   if (!checkpointPass || [decision isEqualToString:@"blocked"]) {
@@ -741,6 +917,7 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
       @"negative": self.negativeState ?: [NSNull null],
       @"oracleReload": self.oracleReload ?: [NSNull null],
     },
+    @"framePolicy": [self framePolicyDictionary],
     @"native": @{
       @"reportsAccepted": @(self.reportsAccepted),
       @"reportsRejected": @(self.reportsRejected),
@@ -763,11 +940,12 @@ static BOOL validNegativeState(NSDictionary *state, NSString **reason) {
       @"test-only CommonJS wrapper is not Electron's sandboxed preload environment",
       @"the report lane is a fixture transport and performs no privileged operation",
       @"no native sender authority beyond the test document grant",
+      @"frame/origin observation is test-only; the production host remains main-frame-only",
     ],
   }];
   if (reason != nil) result[@"blockedReason"] = reason;
   if (go && !(checkpointPass && oracleFirstValid && oracleReloadValid &&
-              negativeValid && navigationValid)) {
+              negativeValid && navigationValid && frameValid)) {
     result[@"decision"] = @"no-go";
     result[@"blockedReason"] = @"go requested without all required observations";
   }
@@ -816,7 +994,7 @@ static NSString *readSource(NSString *path, NSString *code) {
 
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
-    if (argc != 9) {
+    if (argc != 10) {
       finish(@{@"probe": @"m0-context-bridge-spike", @"status": @"FAIL",
         @"code": @"ELECTRON_MBT_M0_CB_USAGE", @"compatible": @NO,
         @"compatibilityGate": @"OPEN",
@@ -840,6 +1018,16 @@ int main(int argc, const char *argv[]) {
         @"compatibilityGate": @"OPEN",
         @"productionContextBridge": @"NOT_IMPLEMENTED"}, 1);
     }
+    NSURL *frameURL = [NSURL URLWithString:[NSString stringWithUTF8String:argv[9]]];
+    if (![[frameURL scheme] isEqual:@"http"] ||
+        ![[frameURL host] isEqual:@"127.0.0.1"] ||
+        frameURL.port == nil ||
+        ![frameURL.path isEqual:@"/m0-cb-frames.html"]) {
+      finish(@{@"probe": @"m0-context-bridge-spike", @"status": @"FAIL",
+        @"code": @"ELECTRON_MBT_M0_CB_FRAME_URL", @"compatible": @NO,
+        @"compatibilityGate": @"OPEN",
+        @"productionContextBridge": @"NOT_IMPLEMENTED"}, 1);
+    }
     NSMutableData *secretData = [NSMutableData dataWithLength:32];
     arc4random_buf(secretData.mutableBytes, secretData.length);
     NSMutableString *secret = [NSMutableString string];
@@ -858,6 +1046,7 @@ int main(int argc, const char *argv[]) {
       [[NSString stringWithUTF8String:argv[3]] stringByResolvingSymlinksInPath]];
     probe.childURL = [NSURL fileURLWithPath:
       [[NSString stringWithUTF8String:argv[4]] stringByResolvingSymlinksInPath]];
+    probe.frameURL = frameURL;
     probe.preloadSource = preload;
     probe.codecSource = codec;
     probe.pageShimSource = pageShim;

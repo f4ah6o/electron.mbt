@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>M0 B5 same-origin child</title>
+<script>
+'use strict';
+(() => {
+  const state = {
+    probe: 'm0-cb-same-origin-child',
+    ownApiType: 'undefined',
+    parentApiType: 'undefined',
+    access: false,
+    accessError: null,
+    syncValue: null,
+    syncValueType: 'undefined',
+    syncValueError: null,
+    syncThrow: false,
+    throwName: null,
+    throwMessage: null,
+    childRealmError: null,
+    parentRealmError: null,
+    handlerHidden: false,
+  };
+  const describe = error => error && typeof error.name === 'string'
+    ? error.name + ': ' + String(error.message)
+    : String(error);
+  // The shim is injected into the main frame only. A same-origin child must
+  // not get its own API; it reaches the parent's page-world API through the
+  // ordinary WindowProxy hierarchy. This is the frame/origin scope under test.
+  try { state.ownApiType = typeof window.fixture; } catch (error) {
+    state.ownApiType = 'throws';
+  }
+  try {
+    const api = parent.fixture;
+    state.parentApiType = typeof api;
+    state.access = api !== null && typeof api === 'object';
+    if (state.access) {
+      try {
+        state.syncValue = api.syncValue();
+        state.syncValueType = typeof state.syncValue;
+      } catch (error) {
+        state.syncValueError = describe(error);
+      }
+      try {
+        api.syncThrow();
+      } catch (error) {
+        state.syncThrow = true;
+        state.throwName = error && typeof error.name === 'string' ? error.name : null;
+        state.throwMessage = error && typeof error.message === 'string' ? error.message : null;
+        // The page shim runs in the parent realm. A same-origin child has a
+        // distinct global realm, so record both instanceof results instead of
+        // assuming Electron's caller-realm error behavior.
+        try { state.childRealmError = error instanceof Error; } catch (_) {}
+        try { state.parentRealmError = error instanceof parent.Error; } catch (_) {}
+      }
+    }
+  } catch (error) {
+    state.accessError = describe(error);
+  }
+  const handlers = window.webkit && window.webkit.messageHandlers;
+  state.handlerHidden = !handlers || (!handlers.electronMbtM0CbReport &&
+    !handlers.electronMbtM0CbDocument);
+  try {
+    parent.postMessage(state, '*');
+  } catch (_) { /* the parent observation fails closed if no message arrives */ }
+})();
+</script>
+</head>
+<body><p>M0 B5 same-origin child fixture.</p></body>
+</html>

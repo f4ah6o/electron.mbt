@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; frame-src 'self'; style-src 'unsafe-inline'">
+<title>electron.mbt M0 B5 frame scope</title>
+<script>
+'use strict';
+(() => {
+  const state = {
+    complete: false,
+    parentApiType: 'undefined',
+    parentApiError: null,
+    sameOriginChildMessageObserved: false,
+    sameOriginChildOriginMatches: false,
+    sameOriginChildNotRelayed: true,
+    sameOriginChildAccess: false,
+    sameOriginChildAccessError: null,
+    sameOriginChildOwnApiType: 'undefined',
+    sameOriginChildParentApiType: 'undefined',
+    sameOriginChildSyncValue: null,
+    sameOriginChildSyncValueType: 'undefined',
+    sameOriginChildSyncValueError: null,
+    sameOriginChildSyncThrow: false,
+    sameOriginChildThrowName: null,
+    sameOriginChildThrowMessage: null,
+    sameOriginChildChildRealmError: null,
+    sameOriginChildParentRealmError: null,
+    sameOriginChildHandlerHidden: false,
+    sandboxedChildMessageObserved: false,
+    sandboxedChildOpaqueOrigin: false,
+    sandboxedChildAccessDenied: false,
+    sandboxedChildHandlerHidden: false,
+    sandboxedChildNotRelayed: true,
+    errors: [],
+  };
+  const note = (label, error) => {
+    state.errors.push(label + ': ' + String(error && error.message ? error.message : error));
+  };
+  // Materialize the parent page-world API before the children load. The shim
+  // is main-frame-only; the child observations below distinguish "own API"
+  // from "parent API reached through the same-origin WindowProxy".
+  try {
+    state.parentApiType = typeof window.fixture;
+  } catch (error) {
+    state.parentApiError = String(error && error.message ? error.message : error);
+    note('parentApi', error);
+  }
+
+  let sameOriginDone = false;
+  let sandboxedDone = false;
+  let finished = false;
+  function finish() {
+    if (finished) return;
+    finished = true;
+    state.complete = true;
+    globalThis.m0ContextBridgeFrames = Object.freeze(state);
+  }
+
+  window.addEventListener('message', event => {
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.probe === 'm0-cb-same-origin-child') {
+      const frame = document.querySelector('iframe[title="M0 B5 same-origin child"]');
+      state.sameOriginChildMessageObserved = true;
+      state.sameOriginChildOriginMatches = event.origin === location.origin;
+      state.sameOriginChildNotRelayed = frame != null && event.source === frame.contentWindow;
+      state.sameOriginChildAccess = data.access === true;
+      state.sameOriginChildAccessError = typeof data.accessError === 'string' ? data.accessError : null;
+      state.sameOriginChildOwnApiType = typeof data.ownApiType === 'string' ? data.ownApiType : 'unknown';
+      state.sameOriginChildParentApiType = typeof data.parentApiType === 'string' ? data.parentApiType : 'unknown';
+      state.sameOriginChildSyncValue = typeof data.syncValue === 'number' ? data.syncValue : null;
+      state.sameOriginChildSyncValueType = typeof data.syncValueType === 'string' ? data.syncValueType : 'unknown';
+      state.sameOriginChildSyncValueError = typeof data.syncValueError === 'string' ? data.syncValueError : null;
+      state.sameOriginChildSyncThrow = data.syncThrow === true;
+      state.sameOriginChildThrowName = typeof data.throwName === 'string' ? data.throwName : null;
+      state.sameOriginChildThrowMessage = typeof data.throwMessage === 'string' ? data.throwMessage : null;
+      state.sameOriginChildChildRealmError = typeof data.childRealmError === 'boolean' ? data.childRealmError : null;
+      state.sameOriginChildParentRealmError = typeof data.parentRealmError === 'boolean' ? data.parentRealmError : null;
+      state.sameOriginChildHandlerHidden = data.handlerHidden === true;
+      sameOriginDone = true;
+    } else if (data.probe === 'm0-cb-child') {
+      const frame = document.querySelector('iframe[title="M0 B5 sandboxed child"]');
+      state.sandboxedChildMessageObserved = true;
+      state.sandboxedChildOpaqueOrigin = event.origin === 'null';
+      state.sandboxedChildNotRelayed = frame != null && event.source === frame.contentWindow;
+      state.sandboxedChildAccessDenied = data.accessDenied === true;
+      state.sandboxedChildHandlerHidden = data.handlerHidden === true;
+      sandboxedDone = true;
+    } else {
+      return;
+    }
+    if (sameOriginDone && sandboxedDone) finish();
+  });
+
+  function startChildren() {
+    const sameOrigin = document.createElement('iframe');
+    sameOrigin.setAttribute('title', 'M0 B5 same-origin child');
+    sameOrigin.setAttribute('src', 'm0-cb-same-origin-child.html');
+    sameOrigin.style.display = 'none';
+    document.body.appendChild(sameOrigin);
+
+    const sandboxed = document.createElement('iframe');
+    sandboxed.setAttribute('sandbox', 'allow-scripts');
+    sandboxed.setAttribute('title', 'M0 B5 sandboxed child');
+    sandboxed.setAttribute('src', 'm0-cb-child.html');
+    sandboxed.style.display = 'none';
+    document.body.appendChild(sandboxed);
+
+    // Bounded fallback: a missing child message is recorded as such; the
+    // native probe treats it as incomplete evidence, never as a denial.
+    setTimeout(finish, 5000);
+  }
+  if (document.body) startChildren();
+  else document.addEventListener('DOMContentLoaded', startChildren, { once: true });
+})();
+</script>
+</head>
+<body><p>M0 B5 frame/origin scope only.</p></body>
+</html>

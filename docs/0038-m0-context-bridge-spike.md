@@ -215,6 +215,26 @@ build.
   full value/error/callback/Promise semantics, unchanged-app differential and
   independent security review.
 
+## 2026-10-20 frame/origin extension
+
+A bounded extension re-ran the same test-only B5 probe with a loopback-HTTP frame stage.
+The main frame still receives the page shim at document start with `forMainFrameOnly:YES`.
+A same-origin child (no sandbox) and a sandboxed opaque-origin child both try `parent.fixture`.
+The frame page and both children are served from one `127.0.0.1` origin so same-origin is not inferred from a `file://` origin.
+
+Observed on macOS 26.5.2 (Build 25F84) / WebKit `21624.2.5.11.8` / SDK 26.5:
+
+- the same-origin child has `ownApiType:"undefined"`, sees `parentApiType:"object"`, calls `syncValue()` synchronously and receives `42`, and catches `syncThrow()` as `Error` with message `fixture-sync-error`;
+- the same-origin child reports `childRealmError:false` and `parentRealmError:true`: the Error is a parent-realm object, not a child-realm `instanceof Error`;
+- the sandboxed child has an opaque origin, is denied access to `parent.fixture`, and cannot see the native handlers;
+- the native probe sees no child report-lane traffic; its report handler still requires the actual main frame;
+- the frame observation is complete and `hypothesisSupported:true`; the B5 checkpoint 1/2 result and `decision:go` are unchanged.
+
+This is a test-only page-shim scope observation, not production child-frame support.
+The production host still cancels subframe navigation, so Electron-compatible child frames remain open.
+The parent-realm Error result is a strict-contract gap for same-origin child callers; the Electron oracle differential for that case is NOT RUN.
+The design, command and limits are recorded in [the public WKWebView design](0056-sync-contextbridge-public-wkwebview.md).
+
 ## Remaining after a `go`
 
 A separate B6 plan must implement the production preload/bridge leaf, native

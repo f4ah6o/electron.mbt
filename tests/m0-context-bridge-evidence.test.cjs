@@ -99,6 +99,66 @@ function checkpointTwo(overrides) {
   }, overrides || {});
 }
 
+function framePolicy(overrides) {
+  return Object.assign({
+    version: 1,
+    observationComplete: true,
+    hypothesis: 'same-origin child inherits the parent page-world API; '
+      + 'opaque/sandboxed child is denied',
+    hypothesisSupported: true,
+    sameOriginChild: {
+      messageObserved: true,
+      ownApiType: 'undefined',
+      parentApiType: 'object',
+      access: true,
+      accessError: null,
+      originMatches: true,
+      notRelayed: true,
+      syncValue: 42,
+      syncValueType: 'number',
+      syncValueError: null,
+      syncThrow: true,
+      throwName: 'Error',
+      throwMessage: 'pinned',
+      childRealmError: false,
+      parentRealmError: true,
+      handlerHidden: true,
+    },
+    sandboxedChild: {
+      messageObserved: true,
+      opaqueOrigin: true,
+      accessDenied: true,
+      handlerHidden: true,
+      notRelayed: true,
+    },
+    nativeChildReportsRejected: 0,
+  }, overrides || {});
+}
+
+function deniedFramePolicy() {
+  return framePolicy({
+    hypothesisSupported: false,
+    sameOriginChild: {
+      messageObserved: true,
+      ownApiType: 'undefined',
+      parentApiType: 'object',
+      access: false,
+      accessError: 'SecurityError: cross-origin access denied',
+      originMatches: true,
+      notRelayed: true,
+      syncValue: null,
+      syncValueType: 'undefined',
+      syncValueError: null,
+      syncThrow: false,
+      throwName: null,
+      throwMessage: null,
+      childRealmError: null,
+      parentRealmError: null,
+      handlerHidden: true,
+    },
+  });
+}
+
 function sample(overrides) {
   const report = {
     schema: 1,
@@ -113,6 +173,7 @@ function sample(overrides) {
     oracleFixture: { path: 'fixtures/oracle', hash: HASH_B, baselineHash: HASH_B, match: true },
     checkpoint1: checkpointOne(),
     checkpoint2: checkpointTwo(),
+    framePolicy: framePolicy(),
     observations: {
       checkpoint1: checkpointState(),
       oracleFirst: oracleObservation(),
@@ -137,6 +198,7 @@ function sample(overrides) {
     hashes: {
       codec: HASH_A, pageShim: HASH_A, isolatedBridge: HASH_A,
       checkpointPage: HASH_A, negativePage: HASH_A, child: HASH_A,
+      framesPage: HASH_A, sameOriginChild: HASH_A,
     },
     limitations: ['test-only shared-DOM/HMAC candidate; not Electron contextBridge'],
     sourceHashPreserved: true,
@@ -274,4 +336,41 @@ test('What: a no-go cannot claim all checkpoints passed and a failed checkpoint 
   });
   assert.throws(() => validateM0ContextBridgeEvidence(falseCheckpointWithTwo),
     /failed checkpoint 1/);
+});
+
+test('What: a same-origin child denial is a valid main-frame-only frame observation', () => {
+  const report = sample({ framePolicy: deniedFramePolicy() });
+  assert.equal(validateM0ContextBridgeEvidence(report), report);
+  assert.equal(report.framePolicy.hypothesisSupported, false);
+});
+
+test('What: incomplete or inconsistent frame/origin evidence is rejected', () => {
+  const incomplete = sample({ framePolicy: framePolicy({ observationComplete: false }) });
+  assert.throws(() => validateM0ContextBridgeEvidence(incomplete),
+    /observationComplete/);
+
+  const missingReport = sample();
+  missingReport.framePolicy.sameOriginChild.messageObserved = false;
+  assert.throws(() => validateM0ContextBridgeEvidence(missingReport), /report/);
+
+  const sandboxDenied = sample();
+  sandboxDenied.framePolicy.sandboxedChild.accessDenied = false;
+  assert.throws(() => validateM0ContextBridgeEvidence(sandboxDenied), /sandboxedChild/);
+
+  const handlerVisible = sample();
+  handlerVisible.framePolicy.sameOriginChild.handlerHidden = false;
+  assert.throws(() => validateM0ContextBridgeEvidence(handlerVisible), /handler/);
+
+  const originMismatch = sample();
+  originMismatch.framePolicy.sameOriginChild.originMatches = false;
+  assert.throws(() => validateM0ContextBridgeEvidence(originMismatch), /origin/);
+
+  const derivedMismatch = sample();
+  derivedMismatch.framePolicy.hypothesisSupported = false;
+  assert.throws(() => validateM0ContextBridgeEvidence(derivedMismatch),
+    /hypothesisSupported/);
+
+  const missingPolicy = sample();
+  delete missingPolicy.framePolicy;
+  assert.throws(() => validateM0ContextBridgeEvidence(missingPolicy), /framePolicy/);
 });

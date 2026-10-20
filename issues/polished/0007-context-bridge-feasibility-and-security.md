@@ -423,6 +423,8 @@ B1 oracle、B2 統合、local listener/codec の contract 実装、拒否専用�
 
 ## 変更履歴
 
+- 2026-10-20: public WKWebView の同期 contextBridge 設計と frame/origin bounded PoC を [docs/0056](../../docs/0056-sync-contextbridge-public-wkwebview.md) に記録。B5 probe を loopback HTTP の frame stage で拡張し、same-origin child は `parent` 経由で親の page-world API を同期呼び出しでき（`syncValue` 42、`syncThrow` Error）、sandboxed/opaque child は拒否された。same-origin child の Error は parent realm の object で child realm の `instanceof Error` は false、native が見るのは parent document であり child 単位の sender attestation ではない。production host は main-frame-only のまま。strict は blocked、`compatible:false`、M0 OPEN、original preload NOT_EXECUTED を維持し、child-realm Error と Electron child-frame parity は未達。
+
 - 2026-10-18: B5 repaired-primitive spike の test-only 実測を追記。checkpoint 1/2 PASS・decision go（tested macOS/WebKit）だが、M0 は OPEN、strict は blocked、B6 と独立 review は未達。
 
 - 2026-10-18: B6-A exposure authority、B6-B preload environment、B6-C transport E2E、B6-D semantics matrix、B6-E evidence packet を実装/準備。B6-C/B6-D transport は project owner が B7 design work 用に accept。B7 plan と arbitrary-key 実験結果を docs/0041 に記録（MoonBit exposure registry、quotas/duplicate/lifetime、private `expose`/`release-exposure` dispatch、JS/native/Node tests）。transport・preload loader・page shim・native host integration・独立 review は未達のため strict は blocked、original preload は NOT_EXECUTED。設計は `docs/0039`。

@@ -206,7 +206,11 @@ Known B6-C limits (strict remains blocked):
   preload source remain unsupported;
 - arbitrary page API keys, same-origin iframe policy, page self-DoS, the full
   fault-injection matrix and B7 evidence remain open; B6-D/E cover the broad
-  semantics matrix and the review packet.
+  semantics matrix and the review packet;
+- the B5 public-API frame/origin PoC (2026-10-20) measured same-origin child
+  inheritance and opaque sandboxed denial, but the experimental host remains
+  main-frame-only; this does not close the child-frame gate
+  ([docs/0056](0056-sync-contextbridge-public-wkwebview.md)).
 
 - Per-document isolated bootstrap/attestation and sender/frame/document
   binding.

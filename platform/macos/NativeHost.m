@@ -406,6 +406,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic) long long adaptedAdapterObservedGeneration;
 @property(nonatomic) BOOL adaptedAdapterBeforeLoad;
 @property(nonatomic) BOOL adaptedHandlersInstalled;
+@property(nonatomic) long long adaptedIngressReleasedGeneration;
 @property(nonatomic, copy) NSString *preloadStatus;
 @property(nonatomic, copy) NSString *preloadDetail;
 @property(nonatomic, copy) NSString *preloadLastStatus;
@@ -513,6 +514,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     self.adaptedAdapterObservedGeneration = 0;
     self.adaptedAdapterBeforeLoad = NO;
     self.adaptedHandlersInstalled = NO;
+    self.adaptedIngressReleasedGeneration = 0;
     self.snapshotSourceFile = nil;
     self.snapshotRoot = nil;
     self.snapshotFile = nil;
@@ -1718,6 +1720,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     // or permission for any later page message.
     self.adaptedAdapterObservedGeneration = self.generation;
     self.adaptedAdapterBeforeLoad = self.loadDone != nil;
+    [self releaseAdaptedIngressIfReady];
     replyHandler(@{@"ok": @YES}, nil);
     return;
   }
@@ -1825,7 +1828,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     self.preloadStatus = nil;
   }
   self.preloadFinishedGeneration = 0;
-  if (ok) [self publishVerifiedBootstrapIfReady];
+  if (ok) {
+    [self publishVerifiedBootstrapIfReady];
+    [self releaseAdaptedIngressIfReady];
+  }
   if (done) done(ok, reason);
 }
 - (BOOL)isCurrentLoadNavigation:(WKNavigation *)navigation {
@@ -1834,6 +1840,28 @@ static BOOL bridgeApiKeyValid(NSString *key) {
          self.loadingNavigationGeneration == self.generation &&
          self.loadedGeneration == self.generation &&
          self.contentAlive && self.loadDone != nil;
+}
+- (void)releaseAdaptedIngressIfReady {
+  if (!self.contentAlive || self.generation <= 0 || self.loadedFile == nil ||
+      self.adaptedAdapterSource == nil ||
+      self.adaptedAdapterObservedGeneration != self.generation ||
+      self.loadDone != nil || self.loadingNavigation != nil ||
+      self.adaptedIngressReleasedGeneration == self.generation) return;
+  long long eventGeneration = self.generation;
+  NSString *script = @"if (typeof window.__electronMbtIngressReady === 'function') { "
+    "window.__electronMbtIngressReady(); } else { "
+    "throw new Error('ELECTRON_MBT_INGRESS_READY_MISSING'); } true;";
+  __weak MBTWindow *weakSelf = self;
+  [self.web evaluateJavaScript:script inFrame:nil
+    inContentWorld:[WKContentWorld pageWorld]
+    completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+      (void)result;
+      MBTWindow *window = weakSelf;
+      if (window != nil && error == nil && window.contentAlive &&
+          window.generation == eventGeneration) {
+        window.adaptedIngressReleasedGeneration = eventGeneration;
+      }
+    }];
 }
 - (void)completeLoad:(BOOL)ok reason:(NSString *)reason
       forNavigation:(WKNavigation *)navigation {
@@ -1962,6 +1990,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
   self.adaptedHandlersInstalled = NO;
+  self.adaptedIngressReleasedGeneration = 0;
   [self failPendingAppReplies:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   [self clearSnapshot];
   [self.web.configuration.userContentController removeAllUserScripts];
@@ -3477,6 +3506,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     window.adaptedEventNonce = nil;
     window.adaptedAdapterObservedGeneration = 0;
     window.adaptedAdapterBeforeLoad = NO;
+    window.adaptedIngressReleasedGeneration = 0;
     window.ingressAdmitted = 0;
     window.ingressDenied = 0;
     window.ingressUnhandled = 0;
@@ -3844,7 +3874,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     BOOL observed = window.contentAlive && window.generation > 0 &&
       window.adaptedAdapterObservedGeneration == window.generation &&
       window.adaptedAdapterNonce != nil && window.adaptedAdapterBeforeLoad;
+    BOOL released = observed &&
+      window.adaptedIngressReleasedGeneration == window.generation;
     done(@"success", @{@"observed": @(observed),
+      @"released": @(released),
       @"generation": @(window.generation),
       @"documentStartBeforeLoad": @(window.adaptedAdapterBeforeLoad),
       @"ingress": @"absent"});
@@ -4417,6 +4450,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
           done(@"failure", @{@"code": @"ELECTRON_MBT_INGRESS_READY_FAILED"});
           return;
         }
+        candidate.adaptedIngressReleasedGeneration = eventGeneration;
         done(@"success", @{@"released": @YES});
       }];
     return;

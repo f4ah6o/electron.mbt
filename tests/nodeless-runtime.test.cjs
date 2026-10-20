@@ -296,7 +296,8 @@ test('an adapted Node-less window reloads with a new generation and a fresh ingr
     assert.equal(report.adapted.released, true);
     assert.ok(report.adapted.requests >= 1);
     assert.equal(report.adapted.replyErrors, 0);
-    assert.equal(report.adapted.rejected, 0);
+    assert.ok(report.adapted.rejected >= 1,
+      'the previous document request becomes stale at reload and must be rejected');
     assert.equal(report.adapted.ingress.admitted >= 1, true);
     assert.equal(report.adapted.ingress.denied, 0);
     assert.equal(report.compatible, false);
@@ -813,6 +814,7 @@ test('a Node-less adapted app serves modules and dispatches page API calls to Qu
   assert.equal(report.adapted.released, true);
   assert.equal(report.adapted.requests, 2);
   assert.equal(report.adapted.replyErrors, 0);
+  assert.equal(report.adapted.rejected, 0);
   assert.equal(report.adapted.ingress.admitted, 2);
   assert.equal(report.adapted.ingress.denied, 0);
   assert.equal(report.hostShutdown, true);

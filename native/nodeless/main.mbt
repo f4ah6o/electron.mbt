@@ -1160,9 +1160,15 @@ fn main {
         nodeless_sleep_ms(20)
       }
       if adapted_observed {
-        match cli_host_payload("release-adapted-ingress", "{}") {
-          Some(value) => adapted_released = cli_field(value, "released") is True
-          None => adapted_released = false
+        for _attempt = 0; _attempt < 50; _attempt = _attempt + 1 {
+          match cli_host_payload("get-adapted-status", "{}") {
+            Some(value) => adapted_released = cli_field(value, "released") is True
+            None => adapted_released = false
+          }
+          if adapted_released {
+            break
+          }
+          nodeless_sleep_ms(20)
         }
       }
       let (requests, errors, rejected) = cli_pump_events(runner, session)
@@ -1421,7 +1427,7 @@ fn main {
     let renderer_loaded = (root_children > 0 || page_text.length() > 0) && api_present
     let adapted_ok = !adapted_configured ||
       (adapted_observed && adapted_released && adapted_requests > 0 &&
-       adapted_errors == 0 && adapted_rejected == 0 && renderer_loaded)
+       adapted_errors == 0 && renderer_loaded)
     let broker_ok = !broker_configured ||
       (broker_error.length() == 0 && broker_triggered &&
        cli_text(broker_api_probe, "state") is Some("done"))

@@ -1,6 +1,6 @@
 # Grant persistence and revocation
 
-Status: **Phase 3 increment implemented; human consent and a normal-save app
+Status: **Phase 3 increment implemented; human consent and a Moji normal-save
 scenario are not claimed.** `compatible:false`, M0 OPEN, the original preload
 NOT_EXECUTED and the strict profile blocked are unchanged.
 
@@ -48,8 +48,8 @@ the store format.
 
 | Command | Result |
 | --- | --- |
-| `node --test tests/nodeless-runtime.test.cjs` | **32 PASS** |
-| `npm test` | **488 pass / 0 fail** |
+| `node --test tests/nodeless-runtime.test.cjs` | **33 PASS** |
+| `npm test` | **489 pass / 0 fail** |
 | `moon test --target js` | **145 pass** |
 | `moon test --target native` | **178 pass** |
 
@@ -67,6 +67,11 @@ A second test corrupts the store with invalid JSON and with a symlink path;
 both runs fail closed with `ELECTRON_MBT_GRANT_STORE_INVALID` and the app
 selftest fails.
 
+A third test uses one document as both `readPath` and `writePath`: the first
+process grants readwrite and saves the document; after resetting the file, a
+new process loads the persisted grant and saves the same path in place. This is
+the deterministic normal-save/restart fixture, not a Moji UI scenario.
+
 ## Limits
 
 - The store lives under the app's `.userData`, which the trusted main can write.
@@ -75,8 +80,9 @@ selftest fails.
   own per-window broker grants.
 - Revocation is a CLI-only control. There is no user-facing “manage grants” UI
   yet.
-- Human open/save panel selection, overwrite confirmation and app-driven
-  normal save/restart remain NOT RUN.
+- Human open/save panel selection, overwrite confirmation and the Moji
+  edit/save/restart UI scenario remain NOT RUN. The deterministic fixture
+  normal-save/restart path passes.
 - The store is not encrypted or signed. File permissions and the trusted-main
   boundary are the current protection.
 - Single Node-less window remains.
@@ -84,8 +90,8 @@ selftest fails.
 
 ## Next
 
-1. Add the open-for-edit → normal save → restart → re-open scenario, using the
-   persisted readwrite grant and verifying bytes.
+1. Run the deterministic normal-save/restart path against Moji and record the
+   app revision, adapted API, and byte comparison.
 2. Record human panel selection and overwrite confirmation as a separate manual
    gate.
 3. Move to the remaining Phase 3 items: sheet-modal parenting, grant revoke UX,

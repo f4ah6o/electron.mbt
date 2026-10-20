@@ -29,7 +29,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | Real Moji renderer | `moji-renderer`: real UI text, `rootChildren:1` | PASS (loopback HTTP) |
 | Node-less real renderer | `nodeless-moji-app`: real UI text, custom app scheme, 2 main requests | PASS (adapted; custom scheme) |
 | Node-less broker E2E | `nodeless-moji-app` broker: 1 grant/6 dialogs, open/save/sample/saveAs/HTML/PDF/PNG, 6 output files | PASS (test-injected) |
-| Moji open-for-edit edit/save/restart | `moji-nodeless-edit-save`: real renderer Open/Editor/Save, 0 injected grants, exact 47→74→103 bytes, restart re-open and re-save | PASS (test-injected dialog; synthetic DOM edit; human input NOT RUN) |
+| Moji open-for-edit edit/save/restart | `moji-nodeless-edit-save`: real renderer Open/Editor/Save, 0 injected grants, exact 47→74→103 bytes, restart re-open and re-save, 0640+xattr preserved, hardlink denied | PASS (test-injected dialog; synthetic DOM edit; human input NOT RUN) |
 | Node-less document identity / reload | `nodeless-runtime`: plain and adapted reload to generation 2; stale-generation event rejected before Main; forged page claims ignored; malformed page message denied; adapter ingress auto-released at load; `--ingress-selftest` test-only | PASS (test-only; single window; dedicated subframe-handler proof still open) |
 | Main-side fs (app root / data roots) | `nodeless-fs-app`: sync/async read, 200 KiB round-trip, atomic `.appData` write, symlink-escape denial; Moji `settingsPersisted:true` | PASS (partial; host-required) |
 | Directory/metadata fs | `nodeless-fs-app`: partial stat, bounded readdir/Dirent, bounded mkdir; generated escape and 4,097-entry/65-component bound tests | PASS (partial; host-required) |
@@ -53,7 +53,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 - `verify-state`: 19/19 PASS, `NOT_READY`
 - readiness: 35 checks, 28 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 490 pass
+- `npm test`: 492 pass
 - `moon test --target js`: 145 pass
 - `moon test --target native`: 178 pass
 - `node --test tests/nodeless-runtime.test.cjs`: 34 pass
@@ -85,7 +85,10 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
    ([docs/0054](0054-grant-persistence-and-revocation.md)); the adapted
    renderer open now grants exact-file read+replace for the session and the
    pinned Moji edit/save/restart path passes with test-injected dialogs and a
-   synthetic DOM edit ([docs/0055](0055-moji-edit-save-restart.md)).
+   synthetic DOM edit ([docs/0055](0055-moji-edit-save-restart.md)). Its
+   atomic save preserves mode and xattrs and rejects hardlinked targets;
+   owner/ACL assertions, fsync/rename fault injection and a hostile-writer CAS
+   remain open.
    Production directory consent, real file-selection human consent, human save
    selection/overwrite confirmation, IME/real input and sheet-modal parenting
    remain open.

@@ -778,6 +778,13 @@
       "write": "atomic-replace-v1",
       "restart": "reauthorize"
     },
+    "atomicReplace": {
+      "mode": "atomic-replace-v1",
+      "metadata": "mode/owner/ACL/xattr copied with fcopyfile; mode and user xattr asserted",
+      "singleLinkOnly": true,
+      "conflict": "dev/ino rechecked before rename; check-then-rename window remains",
+      "faultInjection": "NOT_RUN"
+    },
     "export": "test-injected HTML + diagram PNG; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED",
     "dialogGrants": true,
     "exportGrants": true
@@ -878,9 +885,11 @@
     "openForEdit": true,
     "phase1Mechanism": "execCommand-insertText",
     "phase2Mechanism": "execCommand-insertText",
+    "metadataPreserved": true,
+    "hardlink": "ELECTRON_MBT_FILE_LINK",
     "preloadExecuted": false,
     "compatible": false,
-    "note": "Pinned Moji renderer drives its own Open/Editor/Save controls under the adapted page API. The open dialog is test-injected and the edit is synthetic; human input/IME and a real picker are NOT RUN."
+    "note": "Pinned Moji renderer drives its own Open/Editor/Save controls under the adapted page API. The open dialog is test-injected and the edit is synthetic; mode and xattr survive the atomic save, hardlinks are rejected. Human input/IME, owner/ACL assertions, fault injection and a real picker are NOT RUN."
   },
   "mojiDialogUI": {
     "status": "PASS",

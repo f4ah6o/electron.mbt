@@ -41,7 +41,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | B6-C synchronous transport (experimental) | Opt-in transport sources + document grant; unchanged oracle preload/page observation, reload/revocation, source hashes | PASS (experimental; strict blocked) |
 | B6-D semantic matrix (experimental) | Value/error/callback/Promise/bounds/fault matrix; three transport defects fixed | PASS (experimental; limits open) |
 | B6-E evidence packet | Baseline differential hook, CI evidence step, threat model/review checklist; project-owner acceptance for B7 design work | PREPARED + ACCEPTED (2026-10-18) for B7; strict admission gates open; baseline NOT RUN locally; external audit NOT RUN |
-| B7 strict-profile admission | Plan, preload key/descriptor preview, pre-registered exposure before load, host expected-descriptor verification, actual-mismatch fail-closed test, main-frame-only frame policy, page self-DoS test; strict-runtime gates | STARTED; experimental M1 preview admission + post-hoc host verification + frame/self-DoS evidence; actual-before-page/Electron child frames/full fault matrix open; strict blocked |
+| B7 strict-profile admission | Plan, preload key/descriptor preview, pre-registered exposure before load, host expected-descriptor verification, admitted-descriptor page binding (bytes/function count/SHA-256 checked before materialize), actual-mismatch fail-closed tests, main-frame-only frame policy, page self-DoS test; strict-runtime gates | STARTED; experimental M1 admitted-descriptor binding closes same-key page materialization for deterministic preloads; dynamic/non-deterministic preloads fail closed; async host reply, Electron child frames, full fault matrix, strict nodeless port and independent review remain open; strict blocked |
 | Production asset loading | Node-less snapshot-scoped `electron-mbt-app://` scheme; Node-backed supervisor still uses a loopback test server | PARTIAL (Node-less custom scheme; loopback test-only) |
 | Timers/native promises/cancel | not supported by async bridge | NOT IMPLEMENTED |
 
@@ -50,7 +50,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 - `verify-state`: 19/19 PASS, `NOT_READY`
 - readiness: 34 checks, 27 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 481 pass
+- `npm test`: 482 pass
 - `moon test --target js`: 145 pass
 - `moon test --target native`: 178 pass
 - `node --test tests/nodeless-runtime.test.cjs`: 26 pass
@@ -61,9 +61,11 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 1. **M0 contextBridge gate**: the test-only B5 repaired-primitive spike
    recorded `go` on one macOS/WebKit build (checkpoint 1/2 PASS; Electron
    baseline differential CI-only). This is not production contextBridge:
-   B6's page-admission ordering, arbitrary API keys, full preload
-   globals/ipcRenderer/webUtils, frame policy and page self-DoS remain open.
-   B6-A provides the exposure authority contract, B6-B the opt-in preload
+   B6's page-admission ordering is closed for deterministic descriptors in the
+   experimental M1 transport by the admitted-descriptor binding (2026-10-20),
+   while non-deterministic preloads fail closed; arbitrary API keys, full
+   preload globals/ipcRenderer/webUtils, frame policy and page self-DoS remain
+   open. B6-A provides the exposure authority contract, B6-B the opt-in preload
    environment, B6-C an experimental transport E2E, B6-D the semantics matrix
    and B6-E the evidence/review packet accepted by the project owner for B7
    design work. The strict profile remains blocked pending the B7 runtime and

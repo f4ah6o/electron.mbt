@@ -17,7 +17,7 @@ compatibility row is promoted. `compatible:false`, strict **blocked**, M0
   arbitrary API keys, full preload globals/ipcRenderer/webUtils, frame
   policy, page self-DoS and strict runtime/B7 evidence.
 
-## Gate 1 — page-admission ordering (closed in the experimental M1 transport; strict runtime actual-before-page open)
+## Gate 1 — page-admission ordering (same-key descriptor binding closed in the experimental M1 transport; strict runtime port open)
 
 The experimental M1 transport now previews the unchanged preload before
 navigation. The preview encodes the same production descriptor in the VM, and
@@ -48,17 +48,42 @@ the reply is asynchronous, and both B6-C and B6-D timed out because the first
 page script lost the API before the reply settled. The host verification is
 therefore **post-hoc**, not an actual-before-page gate.
 
+### Admitted-descriptor binding (2026-10-20)
+
+The page shim now receives the preview descriptor metadata (bytes, function
+count, SHA-256) lexically, and the isolated bridge includes the actual
+descriptor metadata in the signed hello reply. `hello()` compares all three
+before it decodes or materializes anything; a mismatch throws
+`ELECTRON_MBT_BRIDGE_ADMISSION_MISMATCH`. The native host's
+expected-descriptor check and the Node pre-registration comparison remain as
+defence in depth.
+
+Evidence:
+
+- `node --test tests/context-bridge-admission-binding-native.test.cjs` PASS;
+- the fixture keeps the same `fixture` key but exposes one function in the VM
+  preview and two in WebKit; the page title records
+  `admission:blocked:ELECTRON_MBT_BRIDGE_ADMISSION_MISMATCH`, the page does not
+  materialize the API, and MoonBit holds only the preview exposure;
+- the existing B6-C/B6-D/B7 suite still passes (the unchanged oracle descriptor
+  matches the preview exactly).
+
+This closes the same-key descriptor page-materialization gap for deterministic
+descriptors. A non-deterministic preload whose actual descriptor differs from
+the preview now fails closed; it is not admitted. The hidden-preflight /
+double-execution design was not needed for this property and remains unbuilt.
+Strict is still blocked: the page gate rests on the preview being an exact
+descriptor, the host reply remains asynchronous, and the full preload, frame,
+fault, strict-runtime and independent-review gates remain.
+
 Limits that remain for B7:
 
-- the preview is not the actual WKWebView descriptor; the page's first script
-  can run before the Node receives the actual descriptor event. A same-key
-  descriptor-only mismatch is detected after the page;
-- the strict runtime must gate the **actual** descriptor before page calls
-  with a synchronous pre-page admission (the async reply is insufficient) or
-  the strict nodeless runtime; the host-side expected verification alone does
-  not close this;
-- the page-admission ordering is closed for the experimental M1 preview path
-  only, not for the strict profile.
+- the preview must be an exact descriptor match; dynamic/non-deterministic
+  preloads fail closed rather than being admitted (2026-10-20 binding);
+- the strict runtime must carry the same admitted-descriptor binding; the
+  experimental M1 host is not the strict nodeless runtime;
+- the page-admission ordering is closed for this deterministic experimental M1
+  path only, not for the strict profile.
 
 ## Gate 2 — arbitrary API keys (closed in the experimental M1 transport; strict runtime port open)
 
@@ -182,8 +207,9 @@ gate is not changed by the B6 acceptance or this plan.
    request the B7 gate decision.
 
 The B7 goal remains active; the strict profile stays blocked until the gates
-above are closed with runtime evidence. The next concrete work is a
-synchronous actual-before-page admission (the host reply is asynchronous),
-Electron-compatible child frames, a broader self-DoS/CPU/memory fault matrix,
-then porting the preview/admission path to the strict nodeless runtime and the
-full preload.
+above are closed with runtime evidence. The 2026-10-20 admitted-descriptor
+binding closes the same-key page-materialization gap for deterministic
+descriptors. Next is a decision on non-deterministic preloads (preflight or an
+explicit strict-subset restriction), porting the binding to the strict nodeless
+runtime, Electron-compatible child frames, a broader self-DoS/CPU/memory fault
+matrix, and the full preload surface.

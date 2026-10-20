@@ -170,6 +170,7 @@
         "scripts/m0-bridge-probe.cjs",
         "scripts/macos-probe.cjs",
         "scripts/oracle.cjs",
+        "tests/context-bridge-admission-binding-native.test.cjs",
         "tests/context-bridge-bootstrap-native.test.cjs",
         "tests/context-bridge-native.test.cjs",
         "tests/context-bridge-preload-native.test.cjs",
@@ -179,10 +180,11 @@
         "tests/m0-electron-oracle-evidence.test.cjs"
       ],
       "evidence": [
+        "evidence/b7-admission-binding.json",
         "evidence/wkcontentworld.json",
         "evidence/wksyncbridge.json"
       ],
-      "gap": "Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute. Separately pinned sandboxed Electron 44.7.0 preload baseline now validates first-script sync/Promise/frozen-data and documents callback identity vs disposer behavior; this is oracle evidence only. Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, test-only native document-grant issue/rotation/replay denial, direct child-frame native rejection with isolated Promise confirmation (not original page-initiator authentication), native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open. The contextBridge handle/registry/bootstrap prerequisite stack is integrated: bounded native-backed JS handles, document-start isolated bootstrap, one-shot native attestation, failed-preload denial and same-URL reload/window-destroy revocation are tested. The public contextBridge API and any synchronous cross-world proxy remain NOT_IMPLEMENTED."
+      "gap": "Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute. Separately pinned sandboxed Electron 44.7.0 preload baseline now validates first-script sync/Promise/frozen-data and documents callback identity vs disposer behavior; this is oracle evidence only. Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, test-only native document-grant issue/rotation/replay denial, direct child-frame native rejection with isolated Promise confirmation (not original page-initiator authentication), native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open. The contextBridge handle/registry/bootstrap prerequisite stack is integrated: bounded native-backed JS handles, document-start isolated bootstrap, one-shot native attestation, failed-preload denial and same-URL reload/window-destroy revocation are tested. The experimental B6-C page shim now binds the actual descriptor to the pre-registered preview metadata (bytes/function count/SHA-256) before materializing; a same-key mismatch fails closed, while dynamic/non-deterministic preloads are not admitted. This is not a strict-profile admission. The public contextBridge API and any synchronous cross-world proxy remain NOT_IMPLEMENTED."
     },
     {
       "id": "D",

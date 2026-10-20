@@ -460,6 +460,8 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic) long long ingressAdmitted;
 @property(nonatomic) long long ingressDenied;
 @property(nonatomic) long long ingressUnhandled;
+@property(nonatomic) long long fileSaveAdmitted;
+@property(nonatomic) long long fileSaveDenied;
 @property(nonatomic, copy) NSString *ingressLastCode;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *fileGrants;
 // Mirrors a completed user selection into the host-level main grant registry.
@@ -531,6 +533,8 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     self.ingressAdmitted = 0;
     self.ingressDenied = 0;
     self.ingressUnhandled = 0;
+    self.fileSaveAdmitted = 0;
+    self.fileSaveDenied = 0;
     self.ingressLastCode = nil;
     self.fileGrants = [NSMutableDictionary dictionary];
     self.testOpenDialogPath = nil;
@@ -691,18 +695,43 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   self.ingressLastCode = code;
   reply(nil, code);
 }
+- (void)denyFileSave:(NSString *)code reply:(void (^)(id, NSString *))reply {
+  self.fileSaveDenied++;
+  [self denyFile:code reply:reply];
+}
 - (BOOL)grantMainSelection:(NSString *)canonical mode:(NSString *)mode {
   return self.grantMainFile != nil && self.grantMainFile(canonical, mode);
 }
+// Adapted open is open-for-edit: one selected regular file gets a session
+// read+replace grant for the renderer broker, while main keeps its narrower
+// read grant. The read is validated before any grant is issued, and a failed
+// main grant restores the broker's previous bits so no partial write authority
+// survives the failed dialog.
+- (BOOL)grantOpenForEdit:(NSString *)canonical reply:(void (^)(id, NSString *))reply {
+  NSNumber *previous = self.fileGrants[canonical];
+  NSString *granted = nil;
+  if (![self grantCanonicalFile:canonical mode:@"readwrite" canonical:&granted]) {
+    [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+    return NO;
+  }
+  if (![self grantMainSelection:granted mode:@"read"]) {
+    if (previous != nil) self.fileGrants[granted] = previous;
+    else [self.fileGrants removeObjectForKey:granted];
+    [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+    return NO;
+  }
+  return YES;
+}
 - (void)openDialogWithReply:(void (^)(id, NSString *))reply {
   if (self.testOpenDialogPath != nil) {
-    NSString *granted = nil;
-    if (![self grantCanonicalFile:self.testOpenDialogPath mode:@"read" canonical:&granted]) {
+    NSString *granted = [self canonicalBrokerPath:self.testOpenDialogPath];
+    if (granted == nil) {
       [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
-    if (![self grantMainSelection:granted mode:@"read"]) {
-      [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+    struct stat info;
+    if (stat(granted.fileSystemRepresentation, &info) != 0 || !S_ISREG(info.st_mode)) {
+      [self denyFile:@"ELECTRON_MBT_FILE_READ" reply:reply];
       return;
     }
     NSData *data = [NSData dataWithContentsOfFile:granted options:NSDataReadingMappedIfSafe error:nil];
@@ -719,6 +748,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [self denyFile:@"ELECTRON_MBT_FILE_ENCODING" reply:reply];
       return;
     }
+    if (![self grantOpenForEdit:granted reply:reply]) return;
     self.ingressAdmitted++;
     reply(@{@"ok": @YES, @"canceled": @NO, @"path": granted, @"paths": @[granted],
       @"documents": @[@{@"path": granted, @"content": content}],
@@ -750,13 +780,10 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [window denyFile:@"ELECTRON_MBT_FILE_CANCELED" reply:reply];
       return;
     }
-    NSString *resolved = [window canonicalBrokerPath:panel.URL.path];
-    NSString *granted = nil;
-    if (resolved == nil || ![window grantCanonicalFile:resolved mode:@"read" canonical:&granted]) {
-      [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
-      return;
-    }
-    if (![window grantMainSelection:granted mode:@"read"]) {
+    NSString *granted = [window canonicalBrokerPath:panel.URL.path];
+    struct stat info;
+    if (granted == nil || stat(granted.fileSystemRepresentation, &info) != 0 ||
+        !S_ISREG(info.st_mode)) {
       [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
@@ -770,6 +797,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [window denyFile:@"ELECTRON_MBT_FILE_ENCODING" reply:reply];
       return;
     }
+    if (![window grantOpenForEdit:granted reply:reply]) return;
     window.ingressAdmitted++;
     reply(@{@"ok": @YES, @"canceled": @NO, @"path": granted, @"paths": @[granted],
       @"documents": @[@{@"path": granted, @"content": content}],
@@ -1067,23 +1095,24 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if ([operation isEqualToString:@"file:save"]) {
     if (args.count != 2 || ![args[0] isKindOfClass:[NSString class]] ||
         ![args[1] isKindOfClass:[NSString class]]) {
-      [self denyFile:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
+      [self denyFileSave:@"ELECTRON_MBT_FILE_MALFORMED" reply:reply];
       return;
     }
     NSString *canonical = [self canonicalBrokerPath:args[0]];
     if (canonical == nil || ![self hasFileGrant:canonical write:YES]) {
-      [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
+      [self denyFileSave:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
     NSData *content = [args[1] dataUsingEncoding:NSUTF8StringEncoding];
     if (content.length > 65536) {
-      [self denyFile:@"ELECTRON_MBT_FILE_LIMIT" reply:reply];
+      [self denyFileSave:@"ELECTRON_MBT_FILE_LIMIT" reply:reply];
       return;
     }
     if (![content writeToFile:canonical atomically:YES]) {
-      [self denyFile:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
+      [self denyFileSave:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
       return;
     }
+    self.fileSaveAdmitted++;
     self.ingressAdmitted++;
     reply(@{@"ok": @YES, @"path": canonical, @"bytes": @(content.length)}, nil);
     return;
@@ -3742,6 +3771,8 @@ static NSString *grantModeForBits(NSInteger bits) {
     window.ingressAdmitted = 0;
     window.ingressDenied = 0;
     window.ingressUnhandled = 0;
+    window.fileSaveAdmitted = 0;
+    window.fileSaveDenied = 0;
     window.ingressLastCode = nil;
     [window failPendingAppReplies:@"ELECTRON_MBT_STALE_DOCUMENT"];
     [window.web.configuration.userContentController removeAllUserScripts];
@@ -4426,6 +4457,114 @@ static NSString *grantModeForBits(NSInteger bits) {
       }];
     return;
   }
+  if ([operation isEqualToString:@"trigger-renderer-edit-save"]) {
+    NSString *testMode = NSProcessInfo.processInfo.environment[@"ELECTRON_MBT_TEST_MODE"];
+    NSString *phase = payload[@"phase"];
+    if (![testMode isEqualToString:@"1"]) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_TEST_MODE_REQUIRED"});
+      return;
+    }
+    if (payload.count != 1 || ![phase isKindOfClass:[NSString class]] ||
+        !([phase isEqualToString:@"edit-save"] || [phase isEqualToString:@"reopen-save"])) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    if (!window.contentAlive || window.generation <= 0 || window.loadedFile == nil) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
+      return;
+    }
+    if (window.adaptedAdapterSource == nil || !window.adaptedHandlersInstalled) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_ADAPTED_UNAVAILABLE"});
+      return;
+    }
+    // This drives the pinned Moji renderer's own Open / Editor / Save controls.
+    // It is a test control, not an application API: the fixed script cannot be
+    // supplied by page or app code, and the operation is CLI-only.
+    NSString *template = @"window.__mojiEditSaveProbe={state:'pending',phase:'__PHASE__'};"
+      "(function(){var PHASE='__PHASE__';"
+      "var nl=String.fromCharCode(10);"
+      "var marker=PHASE==='edit-save'?nl+'<!-- electron-mbt-edit -->'+nl:nl+'<!-- electron-mbt-reopen -->'+nl;"
+      "var markerId=PHASE==='edit-save'?'electron-mbt-edit':'electron-mbt-reopen';"
+      "var docPath='documents/note.md';var siblingPath='documents/sibling.md';"
+      "var probe=window.__mojiEditSaveProbe;"
+      "var delay=function(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});};"
+      "var waitFor=async function(fn,timeout){var deadline=Date.now()+(timeout||10000);"
+      "while(Date.now()<deadline){var value=null;try{value=fn();}catch(_){}if(value)return value;await delay(50);}"
+      "throw new Error('timeout');};"
+      "var textOf=function(el){return (el&&el.textContent||'').trim();};"
+      "var findButton=function(selector,needle,fallback){"
+      "var all=Array.prototype.slice.call(document.querySelectorAll(selector));"
+      "for(var i=0;i<all.length;i++){if(textOf(all[i]).indexOf(needle)>=0)return all[i];}"
+      "return all[fallback]||null;};"
+      "var isDirty=function(){return (document.title||'').charCodeAt(0)===0x2022;};"
+      "var editor=function(){return document.querySelector('.cm-content');};"
+      "var noticeText=function(){var notice=document.querySelector('.notice');return notice?textOf(notice):'';};"
+      "var fail=function(code,error){probe.state='error';probe.code=code;"
+      "probe.message=String(error&&error.message||error||'');probe.notice=noticeText();return false;};"
+      "var setValue=function(input,value){"
+      "var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;"
+      "setter.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};"
+      "(async function(){try{probe.started=true;"
+      "if(PHASE==='edit-save'){try{await window.api.save(docPath,'before');probe.beforeOpenSave='allowed';}"
+      "catch(error){probe.beforeOpenSave=String(error&&error.code||error);}}"
+      "var openButton=findButton('.filegroup__btn','Open',1);"
+      "if(!openButton)return fail('ELECTRON_MBT_MOJI_OPEN_BUTTON');"
+      "probe.openClicked=true;openButton.click();"
+      "await waitFor(function(){var tabs=document.querySelectorAll('.document-tab__title');"
+      "for(var i=0;i<tabs.length;i++){if(textOf(tabs[i]).indexOf('note.md')>=0)return true;}"
+      "return (document.title||'').indexOf('note.md')>=0;},12000);"
+      "probe.open=true;probe.documentTitle=document.title;"
+      "var editorButton=findButton('.segment__btn','Editor',1);"
+      "if(!editorButton)return fail('ELECTRON_MBT_MOJI_EDITOR_BUTTON');"
+      "editorButton.click();"
+      "await waitFor(function(){var e=editor();return e&&e.textContent.length>0;},8000);"
+      "probe.editor=true;"
+      "if(PHASE==='reopen-save'){probe.reopenMarkerPresent=(editor().textContent||'').indexOf('electron-mbt-edit')>=0;"
+      "if(!probe.reopenMarkerPresent)return fail('ELECTRON_MBT_MOJI_REOPEN_MARKER');}"
+      "if(PHASE==='edit-save'){try{await window.api.save(siblingPath,'x');probe.siblingSave='allowed';}"
+      "catch(error){probe.siblingSave=String(error&&error.code||error);}}"
+      "var mechanism='execCommand-insertText';var inserted=false;"
+      "try{var content=editor();content.focus();var selection=window.getSelection();"
+      "var range=document.createRange();range.selectNodeContents(content);range.collapse(false);"
+      "selection.removeAllRanges();selection.addRange(range);"
+      "inserted=document.execCommand('insertText',false,marker);probe.execCommand=inserted===true;}"
+      "catch(error){probe.execCommand=false;probe.execCommandError=String(error&&error.code||error);}"
+      "await delay(120);var hasMarker=(editor().textContent||'').indexOf(markerId)>=0;"
+      "if(!hasMarker){if(inserted)return fail('ELECTRON_MBT_MOJI_INSERT_MISMATCH');"
+      "mechanism='replace';var search=document.querySelector('.topbar__search');"
+      "var toggle=document.querySelector('.topbar__replace-toggle');"
+      "if(!search||!toggle)return fail('ELECTRON_MBT_MOJI_REPLACE_UNAVAILABLE');"
+      "toggle.click();"
+      "var replaceInput=await waitFor(function(){return document.querySelector('.topbar__replace-input');},3000);"
+      "setValue(search,'ORIGINAL_TOKEN');setValue(replaceInput,'ORIGINAL_TOKEN'+marker);await delay(100);"
+      "var submit=document.querySelector('.topbar__replace-actions--mutation button[type=submit]');"
+      "if(!submit)return fail('ELECTRON_MBT_MOJI_REPLACE_SUBMIT');submit.click();await delay(250);"
+      "if((editor().textContent||'').indexOf(markerId)<0)return fail('ELECTRON_MBT_MOJI_REPLACE_MISS');}"
+      "probe.editMechanism=mechanism;"
+      "await waitFor(function(){return isDirty();},6000);"
+      "probe.inserted=true;probe.dirty=true;probe.titleAfterEdit=document.title;"
+      "var saveButton=findButton('.filegroup__btn','Save',2);"
+      "if(!saveButton)return fail('ELECTRON_MBT_MOJI_SAVE_BUTTON');"
+      "saveButton.click();await waitFor(function(){return !isDirty();},12000);"
+      "probe.saved=true;probe.titleAfterSave=document.title;probe.notice=noticeText();"
+      "probe.saveError=(probe.notice.indexOf('failed')>=0||probe.notice.indexOf('失敗')>=0)?probe.notice:'';"
+      "probe.state='done';"
+      "}catch(error){probe.state='error';probe.code=String(error&&error.code||'ELECTRON_MBT_MOJI_EDIT_SAVE');"
+      "probe.message=String(error&&error.message||error||'');probe.title=document.title;"
+      "probe.notice=noticeText();}})();return true;})();";
+    NSString *script = [template stringByReplacingOccurrencesOfString:@"__PHASE__"
+      withString:phase];
+    [window.web evaluateJavaScript:script inFrame:nil inContentWorld:[WKContentWorld pageWorld]
+      completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        (void)result;
+        if (error != nil) {
+          done(@"failure", @{@"code": @"ELECTRON_MBT_RENDERER_EDIT_SAVE"});
+          return;
+        }
+        done(@"success", @{@"started": @YES});
+      }];
+    return;
+  }
   if ([operation isEqualToString:@"probe-renderer"]) {
     if (payload.count != 0) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
@@ -4439,7 +4578,8 @@ static NSString *grantModeForBits(NSInteger bits) {
       "return {api: !!(window.api && typeof window.api.getSettings === 'function'), "
       "rootChildren: root ? root.childElementCount : 0, title: document.title, "
       "text: (document.body && document.body.innerText || '').slice(0, 160), "
-      "apiProbe: window.__mojiApiProbe ? JSON.stringify(window.__mojiApiProbe) : ''}; })()";
+      "apiProbe: window.__mojiApiProbe ? JSON.stringify(window.__mojiApiProbe) : '', "
+      "editSave: window.__mojiEditSaveProbe ? JSON.stringify(window.__mojiEditSaveProbe) : ''}; })()";
     [window.web evaluateJavaScript:script inFrame:nil inContentWorld:[WKContentWorld pageWorld]
       completionHandler:^(id _Nullable result, NSError * _Nullable error) {
         if (error != nil || ![result isKindOfClass:[NSDictionary class]]) {
@@ -4627,6 +4767,8 @@ static NSString *grantModeForBits(NSInteger bits) {
     done(@"success", @{@"admitted": @(window.ingressAdmitted),
       @"denied": @(window.ingressDenied),
       @"unhandled": @(window.ingressUnhandled),
+      @"fileSaveAdmitted": @(window.fileSaveAdmitted),
+      @"fileSaveDenied": @(window.fileSaveDenied),
       @"lastCode": window.ingressLastCode ?: @"",
       @"generation": @(window.generation)});
     return;

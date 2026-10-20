@@ -849,7 +849,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest]")
+    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest] [--moji-edit-save-selftest] [--moji-reopen-selftest]")
     nodeless_exit(2)
     return
   }
@@ -875,6 +875,8 @@ fn main {
   let ingress_selftest = args.contains("--ingress-selftest")
   let grant_persist_selftest = args.contains("--grant-persist-selftest")
   let grant_revoke_selftest = args.contains("--grant-revoke-selftest")
+  let moji_edit_save_selftest = args.contains("--moji-edit-save-selftest")
+  let moji_reopen_selftest = args.contains("--moji-reopen-selftest")
   if fs_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--fs-selftest requires --window")
     return
@@ -919,6 +921,27 @@ fn main {
   if grant_persist_selftest && grant_revoke_selftest {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE",
       "--grant-persist-selftest and --grant-revoke-selftest are mutually exclusive")
+    return
+  }
+  if moji_edit_save_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--moji-edit-save-selftest requires --window")
+    return
+  }
+  if moji_reopen_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--moji-reopen-selftest requires --window")
+    return
+  }
+  if moji_edit_save_selftest && moji_reopen_selftest {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE",
+      "--moji-edit-save-selftest and --moji-reopen-selftest are mutually exclusive")
+    return
+  }
+  if (moji_edit_save_selftest || moji_reopen_selftest) &&
+    (broker_selftest || fs_selftest || user_file_selftest || directory_selftest ||
+     dialog_selftest || save_dialog_selftest || dialog_ui_selftest ||
+     ingress_selftest || grant_persist_selftest || grant_revoke_selftest) {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE",
+      "Moji edit/save selftests are mutually exclusive with other selftests")
     return
   }
   if dialog_selftest && dialog_ui_selftest {
@@ -1163,6 +1186,11 @@ fn main {
     let mut grant_persist_ok = true
     let mut grant_revoke_json : Json = null
     let mut grant_revoke_ok = true
+    let mut moji_scenario : Json = null
+    let mut moji_edit_save_json : Json = null
+    let mut moji_edit_save_ok = true
+    let mut moji_reopen_json : Json = null
+    let mut moji_reopen_ok = true
     if user_file_selftest {
       match cli_apply_user_file_grants((user_file_read_path, user_file_write_path)) {
         Ok(_) => ()
@@ -1306,6 +1334,113 @@ fn main {
         break
       }
       nodeless_sleep_ms(50)
+    }
+    if moji_edit_save_selftest || moji_reopen_selftest {
+      let phase = if moji_edit_save_selftest { "edit-save" } else { "reopen-save" }
+      let mut scenario_error = ""
+      let mut triggered = false
+      let mut probe : Json = null
+      let mut moji_requests = 0
+      let mut moji_errors = 0
+      let mut moji_rejected = 0
+      if !adapted_configured {
+        scenario_error = "Moji edit/save selftest requires an adapted adapter"
+      } else {
+        match cli_apply_broker_scenario(sources) {
+          Ok((grants, dialogs)) => {
+            broker_grants = grants
+            broker_dialogs = dialogs
+          }
+          Err(message) => scenario_error = message
+        }
+      }
+      if scenario_error.length() == 0 && (broker_grants != 0 || broker_dialogs != 1) {
+        scenario_error = "open-for-edit scenario must use 0 grants and 1 open dialog"
+      }
+      if scenario_error.length() == 0 {
+        let payload = Json({ "phase": Json(phase) }).stringify()
+        match cli_host_payload("trigger-renderer-edit-save", payload) {
+          Some(value) => triggered = cli_field(value, "started") is True
+          None => scenario_error = "renderer edit/save trigger failed"
+        }
+      }
+      if triggered {
+        let mut finished = false
+        for _attempt = 0; _attempt < 400; _attempt = _attempt + 1 {
+          let (handled, errors, rejected) = cli_pump_events(runner, session,
+            attempts=2, idle_limit=1)
+          moji_requests = moji_requests + handled
+          moji_errors = moji_errors + errors
+          moji_rejected = moji_rejected + rejected
+          match cli_host_payload("probe-renderer", "{}") {
+            Some(value) => {
+              let title = cli_text(value, "title").unwrap_or("")
+              if title.length() > 0 {
+                probe_title = title
+              }
+              let text = cli_text(value, "editSave").unwrap_or("")
+              if text.length() > 0 {
+                probe = @json.parse(text) catch {
+                  _ => Json(text)
+                }
+              }
+            }
+            None => ()
+          }
+          let state = cli_text(probe, "state").unwrap_or("")
+          if state == "done" || state == "error" {
+            finished = true
+            break
+          }
+          nodeless_sleep_ms(50)
+        }
+        if !finished {
+          scenario_error = "renderer edit/save probe timed out"
+        }
+      }
+      let state = cli_text(probe, "state").unwrap_or("")
+      if state == "error" && scenario_error.length() == 0 {
+        scenario_error = cli_text(probe, "code").unwrap_or("renderer edit/save error")
+      }
+      adapted_requests = adapted_requests + moji_requests
+      adapted_errors = adapted_errors + moji_errors
+      adapted_rejected = adapted_rejected + moji_rejected
+      let save_error = cli_text(probe, "saveError").unwrap_or("")
+      let before_open = cli_text(probe, "beforeOpenSave").unwrap_or("")
+      let sibling = cli_text(probe, "siblingSave").unwrap_or("")
+      let common_ok = scenario_error.length() == 0 && state == "done" &&
+        (cli_field(probe, "open") is True) &&
+        (cli_field(probe, "editor") is True) &&
+        (cli_field(probe, "inserted") is True) &&
+        (cli_field(probe, "dirty") is True) &&
+        (cli_field(probe, "saved") is True) && save_error.length() == 0
+      if moji_edit_save_selftest {
+        moji_edit_save_ok = common_ok &&
+          before_open == "ELECTRON_MBT_FILE_DENIED" &&
+          sibling == "ELECTRON_MBT_FILE_DENIED"
+        moji_edit_save_json = Json({
+          "ok": Json(moji_edit_save_ok),
+          "phase": Json(phase),
+          "probe": probe,
+          "error": Json(scenario_error),
+        })
+      } else {
+        moji_reopen_ok = common_ok && (cli_field(probe, "reopenMarkerPresent") is True)
+        moji_reopen_json = Json({
+          "ok": Json(moji_reopen_ok),
+          "phase": Json(phase),
+          "probe": probe,
+          "error": Json(scenario_error),
+        })
+      }
+      moji_scenario = Json({
+        "configured": Json(true),
+        "mode": Json("test-injected-open-for-edit"),
+        "grants": Json(broker_grants),
+        "dialogs": Json(broker_dialogs),
+        "triggered": Json(triggered),
+        "error": Json(scenario_error),
+      })
     }
     if broker_selftest {
       broker_configured = true
@@ -1580,6 +1715,7 @@ fn main {
       Json("preload"),
       Json("production-file-grants"),
       Json("human-dialog-ui"),
+      Json("human-edit-input"),
       Json("production-directory-consent"),
       Json("human-main-dialog-selection"),
       Json("human-main-save-selection"),
@@ -1603,7 +1739,7 @@ fn main {
       adapted_ok && broker_ok && fs_selftest_ok && user_file_selftest_ok &&
       directory_selftest_ok && dialog_selftest_ok && dialog_ui_ok &&
       save_dialog_selftest_ok && save_dialog_ui_ok && ingress_selftest_ok &&
-      grant_persist_ok && grant_revoke_ok
+      grant_persist_ok && grant_revoke_ok && moji_edit_save_ok && moji_reopen_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
@@ -1645,6 +1781,11 @@ fn main {
       "grantStore": grant_store,
       "grantPersistSelftest": grant_persist_json,
       "grantRevokeSelftest": grant_revoke_json,
+      "mojiScenario": moji_scenario,
+      "mojiEditSave": moji_edit_save_json,
+      "mojiEditSaveOk": Json(moji_edit_save_ok),
+      "mojiReopen": moji_reopen_json,
+      "mojiReopenOk": Json(moji_reopen_ok),
       "broker": Json({
         "configured": Json(broker_configured),
         "mode": Json("test-injected"),

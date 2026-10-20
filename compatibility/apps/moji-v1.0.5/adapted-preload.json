@@ -30,6 +30,15 @@
     "maxBytes": 65536,
     "readyTimeoutMs": 2000
   },
+  "filePolicy": {
+    "open": "open-for-edit",
+    "rights": [
+      "read",
+      "replace-selected"
+    ],
+    "write": "atomic-replace-v1",
+    "restart": "reauthorize"
+  },
   "semantics": {
     "contextBridge": false,
     "ipcRenderer": false,

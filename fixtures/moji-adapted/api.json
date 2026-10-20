@@ -105,6 +105,15 @@
       "reason": "webUtils.getPathForFile is not implemented in the adapted profile"
     }
   ],
+  "filePolicy": {
+    "open": "open-for-edit",
+    "rights": [
+      "read",
+      "replace-selected"
+    ],
+    "write": "atomic-replace-v1",
+    "restart": "reauthorize"
+  },
   "queue": {
     "maxCalls": 8,
     "maxBytes": 65536,

@@ -3,7 +3,7 @@
 Date: 2026-10-20 JST
 Status: **設計・診断PoC。strict実装はBLOCKED、compatible:falseを維持**
 Branch: research/sync-contextbridge-contract-20261020
-Base: main `394b33a3ca819d4a76392b95785a2ba7f0980dcd`
+Base: impl/runtime-goal `6ac1e3b5962b8098669592534059d0c2df22e943` (merge-base with main `394b33a3ca819d4a76392b95785a2ba7f0980dcd`)
 
 本文は設計・診断の記録であり、production `contextBridge` の実装・互換性の主張ではない。
 `contextBridge` は `NOT_IMPLEMENTED`、M0 は OPEN、strict profile は BLOCKED、元 preload は `NOT_EXECUTED`、`compatible:false` を維持する。

@@ -1325,9 +1325,22 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       encoding:NSUTF8StringEncoding] : nil;
     if (keyError || keyArray.length < 2) return;
     NSString *keyJSON = [keyArray substringWithRange:NSMakeRange(1, keyArray.length - 2)];
+    NSDictionary<NSString *, id> *expectedAdmission = self.bridgeExpectedExposure;
+    NSNumber *expectedBytes = expectedAdmission[@"descriptorBytes"];
+    NSNumber *expectedCount = expectedAdmission[@"functionCount"];
+    NSString *expectedSHA256 = expectedAdmission[@"descriptorSHA256"];
+    if (![expectedBytes isKindOfClass:[NSNumber class]] ||
+        ![expectedCount isKindOfClass:[NSNumber class]] ||
+        ![expectedSHA256 isKindOfClass:[NSString class]] || expectedSHA256.length != 64) {
+      // Without the admitted descriptor the page shim must not be installed;
+      // installing it with a default/empty expectation would fail open.
+      return;
+    }
+    NSString *expectedSHAJSON = [NSString stringWithFormat:@"\"%@\"", expectedSHA256];
     NSString *pageSource = [NSString stringWithFormat:
-      @"(function(__m0Secret, __m0ExposedApiKey){\n%@\n%@\n})(\"%@\", %@);",
-      self.bridgeCodecSource, self.bridgePageShimSource, self.bridgeSecret, keyJSON];
+      @"(function(__m0Secret, __m0ExposedApiKey, __m0ExpectedDescriptorBytes, __m0ExpectedFunctionCount, __m0ExpectedDescriptorSHA256){\n%@\n%@\n})(\"%@\", %@, %@, %@, %@);",
+      self.bridgeCodecSource, self.bridgePageShimSource, self.bridgeSecret, keyJSON,
+      expectedBytes, expectedCount, expectedSHAJSON];
     WKUserScript *pageShim = [[WKUserScript alloc] initWithSource:pageSource
       injectionTime:WKUserScriptInjectionTimeAtDocumentStart
       forMainFrameOnly:YES inContentWorld:[WKContentWorld pageWorld]];

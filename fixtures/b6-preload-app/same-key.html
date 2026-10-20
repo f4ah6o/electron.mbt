@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'">
+<title>same-key admission probe</title>
+<script>
+'use strict';
+(() => {
+  let outcome = 'none';
+  try {
+    const api = window.fixture;
+    outcome = api && typeof api.ping === 'function'
+      ? 'materialized:' + (typeof api.extra)
+      : 'unexpected:' + typeof api;
+  } catch (error) {
+    outcome = 'blocked:' + ((error && (error.code || error.name)) || 'error');
+  }
+  document.title = 'admission:' + outcome;
+})();
+</script>
+</head>
+<body>same-key descriptor admission probe</body>
+</html>

@@ -18,6 +18,15 @@ const codec = codecFactory.createCodec({
 });
 
 const API_KEY = __m0ExposedApiKey;
+// Admission expectation: the descriptor discovered before load and registered
+// with the MoonBit authority. The page may only materialize an API whose actual
+// descriptor is exactly the admitted one. This is checked synchronously in
+// hello(), before any page-visible value is created. Why not trust the key
+// alone: a same-key preload can expose a different descriptor in the real
+// WebView, and the page would otherwise use an API MoonBit never admitted.
+const EXPECTED_DESCRIPTOR_BYTES = __m0ExpectedDescriptorBytes;
+const EXPECTED_FUNCTION_COUNT = __m0ExpectedFunctionCount;
+const EXPECTED_DESCRIPTOR_SHA256 = __m0ExpectedDescriptorSHA256;
 const META_NAME = 'electron-mbt-m0-bridge';
 const REQUEST_EVENT = 'electron-mbt-m0-bridge-request';
 const RESPONSE_EVENT = 'electron-mbt-m0-bridge-response';
@@ -42,6 +51,8 @@ const ErrorCtor = Error;
 const PromiseCtor = Promise;
 const Uint8ArrayCtor = Uint8Array;
 const numberToString = Number.prototype.toString;
+const numberIsSafeInteger = Number.isSafeInteger;
+const stringCharCodeAt = String.prototype.charCodeAt;
 const mathRandom = Math.random;
 const cryptoObject = globalThis.crypto;
 const randomValues = cryptoObject && typeof cryptoObject.getRandomValues === 'function'
@@ -107,6 +118,28 @@ function randomHex(bytes) {
 
 function token(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= MAX_HANDLE;
+}
+
+function hex64(value) {
+  if (typeof value !== 'string' || value.length !== 64) return false;
+  for (let index = 0; index < 64; index += 1) {
+    const code = stringCharCodeAt.call(value, index);
+    const digit = code >= 48 && code <= 57;
+    const lower = code >= 97 && code <= 102;
+    if (!digit && !lower) return false;
+  }
+  return true;
+}
+
+function expectedAdmissionValid() {
+  // The native host injects the admitted descriptor metadata lexically before
+  // any page script. A missing or malformed expectation must never turn into
+  // an empty/default admission.
+  return numberIsSafeInteger(EXPECTED_DESCRIPTOR_BYTES) &&
+    EXPECTED_DESCRIPTOR_BYTES >= 1 && EXPECTED_DESCRIPTOR_BYTES <= 65536 &&
+    numberIsSafeInteger(EXPECTED_FUNCTION_COUNT) &&
+    EXPECTED_FUNCTION_COUNT >= 0 && EXPECTED_FUNCTION_COUNT <= 256 &&
+    hex64(EXPECTED_DESCRIPTOR_SHA256);
 }
 
 function getTransport() {
@@ -429,6 +462,26 @@ function hello() {
     }
     if (typeof verified.exposure !== 'string') {
       throw bridgeError('ELECTRON_MBT_BRIDGE_EXPOSURE', 'missing exposure descriptor');
+    }
+    if (!expectedAdmissionValid()) {
+      throw bridgeError('ELECTRON_MBT_BRIDGE_ADMISSION',
+        'admission expectation is missing or invalid');
+    }
+    if (!numberIsSafeInteger(verified.functionCount) || verified.functionCount < 0 ||
+        verified.functionCount > 256) {
+      throw bridgeError('ELECTRON_MBT_BRIDGE_EXPOSURE', 'invalid descriptor function count');
+    }
+    const actualBytes = codec.utf8(verified.exposure).length;
+    const actualSha = codec.sha256Hex(verified.exposure);
+    if (actualBytes !== EXPECTED_DESCRIPTOR_BYTES ||
+        verified.functionCount !== EXPECTED_FUNCTION_COUNT ||
+        actualSha !== EXPECTED_DESCRIPTOR_SHA256) {
+      // A same-key preload can expose a different descriptor in the real
+      // WebView. Do not materialize it: MoonBit admitted the preview descriptor
+      // only. Why check all three: bytes/count catch shape changes, the digest
+      // catches same-shape value changes.
+      throw bridgeError('ELECTRON_MBT_BRIDGE_ADMISSION_MISMATCH',
+        'actual descriptor was not admitted');
     }
     sessionId = verified.sessionId;
     const api = codec.decode(verified.exposure, {

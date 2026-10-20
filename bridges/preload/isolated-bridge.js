@@ -351,6 +351,9 @@ function handleHello(element, envelope) {
     ['apiKey', exposeKey],
     ['sessionId', sessionId],
     ['challenge', verified.challenge],
+    ['descriptorBytes', codec.utf8(exposeTree).length],
+    ['functionCount', exposedFunctionCount],
+    ['descriptorSHA256', codec.sha256Hex(exposeTree)],
     ['exposure', exposeTree],
   ]);
   appendMessage(target, makeEnvelope('i2p', HANDSHAKE_SESSION, 'descriptor', envelope.id, payload));

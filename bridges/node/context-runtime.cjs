@@ -45,6 +45,7 @@ class ExperimentalRuntime extends session.ExperimentalRuntime {
   #preRegistered = new Map();
   constructor(appInfo, options = {}) {
     super(appInfo, options);
+    this.admissionMismatch = null;
     try {
       this.core = bindContextBridgeCore(this.core);
       this.contextHandles = this.core.context_registry(this.runtime);
@@ -84,6 +85,22 @@ class ExperimentalRuntime extends session.ExperimentalRuntime {
           payload.descriptorSHA256 !== preRegistered.descriptorSha256) {
         // The real WKWebView descriptor must match the preview that was
         // admitted before the page. A mismatch is a document failure.
+        // ELECTRON_MBT_B6_ADMISSION_OBSERVE is a test-only observation mode so
+        // the native E2E can read the page-side fail-closed result before the
+        // runtime tears the host down. It never changes the default path.
+        if (process.env.ELECTRON_MBT_B6_ADMISSION_OBSERVE === '1') {
+          this.admissionMismatch = Object.freeze({
+            preview: Object.freeze({ ...preRegistered }),
+            actual: Object.freeze({
+              apiKey: payload.apiKey,
+              descriptorBytes: payload.descriptorBytes,
+              functionCount: payload.functionCount,
+              descriptorSha256: payload.descriptorSHA256,
+            }),
+          });
+          this.#preRegistered.delete(`${details.window}:${details.generation}`);
+          return;
+        }
         this.abort();
         return;
       }

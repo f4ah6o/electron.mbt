@@ -405,6 +405,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic, copy) NSString *adaptedEventNonce;
 @property(nonatomic) long long adaptedAdapterObservedGeneration;
 @property(nonatomic) BOOL adaptedAdapterBeforeLoad;
+@property(nonatomic) BOOL adaptedHandlersInstalled;
 @property(nonatomic, copy) NSString *preloadStatus;
 @property(nonatomic, copy) NSString *preloadDetail;
 @property(nonatomic, copy) NSString *preloadLastStatus;
@@ -511,6 +512,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
     self.adaptedEventNonce = nil;
     self.adaptedAdapterObservedGeneration = 0;
     self.adaptedAdapterBeforeLoad = NO;
+    self.adaptedHandlersInstalled = NO;
     self.snapshotSourceFile = nil;
     self.snapshotRoot = nil;
     self.snapshotFile = nil;
@@ -1959,6 +1961,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   self.adaptedEventNonce = nil;
   self.adaptedAdapterObservedGeneration = 0;
   self.adaptedAdapterBeforeLoad = NO;
+  self.adaptedHandlersInstalled = NO;
   [self failPendingAppReplies:@"ELECTRON_MBT_WINDOW_DESTROYED"];
   [self clearSnapshot];
   [self.web.configuration.userContentController removeAllUserScripts];
@@ -3407,8 +3410,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if ([operation isEqualToString:@"install-adapted-adapter"]) {
     NSString *file = payload[@"file"];
     if (payload.count != 1 || ![file isKindOfClass:[NSString class]] ||
-        window.generation != 0 || !window.contentAlive ||
-        window.adaptedAdapterSource != nil) {
+        !window.contentAlive || window.loadingNavigation != nil) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_WINDOW_OPTIONS"});
       return;
     }
@@ -3440,14 +3442,17 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       return;
     }
     window.adaptedAdapterSource = source;
-    // The installation receipt has its own page-world handler. It accepts only
-    // the per-document nonce and never routes application operations.
-    [window.web.configuration.userContentController addScriptMessageHandlerWithReply:window
-      contentWorld:[WKContentWorld pageWorld] name:@"electronMbtAdapterInstalled"];
-    // The application handler is page-callable. It derives the sender from the
-    // actual WKScriptMessage frame/document, never from request payload fields.
-    [window.web.configuration.userContentController addScriptMessageHandlerWithReply:window
-      contentWorld:[WKContentWorld pageWorld] name:@"electronMbtApp"];
+    if (!window.adaptedHandlersInstalled) {
+      // The installation receipt has its own page-world handler. It accepts only
+      // the per-document nonce and never routes application operations.
+      [window.web.configuration.userContentController addScriptMessageHandlerWithReply:window
+        contentWorld:[WKContentWorld pageWorld] name:@"electronMbtAdapterInstalled"];
+      // The application handler is page-callable. It derives the sender from the
+      // actual WKScriptMessage frame/document, never from request payload fields.
+      [window.web.configuration.userContentController addScriptMessageHandlerWithReply:window
+        contentWorld:[WKContentWorld pageWorld] name:@"electronMbtApp"];
+      window.adaptedHandlersInstalled = YES;
+    }
     done(@"success", @{@"installed": @YES});
     return;
   }
@@ -3855,7 +3860,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
       return;
     }
-    if (!window.contentAlive || window.loadDone != nil || window.loadingNavigation != nil) {
+    if (!window.contentAlive || window.loadingNavigation != nil) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_STALE_DOCUMENT"});
       return;
     }
@@ -4359,6 +4364,32 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       @"unhandled": @(window.ingressUnhandled),
       @"lastCode": window.ingressLastCode ?: @"",
       @"generation": @(window.generation)});
+    return;
+  }
+  if ([operation isEqualToString:@"inject-app-request"]) {
+    // Test-only ingress fault injection: the Node-less CLI uses it to prove the
+    // MoonBit identity check rejects stale events before Main dispatch. It is
+    // unavailable unless the host was started in explicit test mode.
+    NSString *testMode = NSProcessInfo.processInfo.environment[@"ELECTRON_MBT_TEST_MODE"];
+    NSNumber *injectGeneration = payload[@"generation"];
+    NSDictionary *appRequest = payload[@"request"];
+    BOOL requestValid = [appRequest isKindOfClass:[NSDictionary class]] &&
+      appRequest.count == 3 &&
+      [appRequest[@"request"] isKindOfClass:[NSString class]] &&
+      [appRequest[@"request"] length] > 0 && [appRequest[@"request"] length] <= 64 &&
+      [appRequest[@"operation"] isKindOfClass:[NSString class]] &&
+      [appRequest[@"operation"] length] > 0 && [appRequest[@"operation"] length] <= 128 &&
+      [appRequest[@"payload"] isKindOfClass:[NSDictionary class]];
+    if (![testMode isEqualToString:@"1"] || payload.count != 2 ||
+        ![injectGeneration isKindOfClass:[NSNumber class]] ||
+        CFGetTypeID((__bridge CFTypeRef)injectGeneration) == CFBooleanGetTypeID() ||
+        injectGeneration.longLongValue < 0 || !requestValid) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INGRESS_INJECTION_DENIED"});
+      return;
+    }
+    [self publishNativeEvent:@"app-request" windowID:windowID
+      generation:injectGeneration.longLongValue payload:appRequest];
+    done(@"success", @{@"injected": @YES});
     return;
   }
   if ([operation isEqualToString:@"release-adapted-ingress"]) {

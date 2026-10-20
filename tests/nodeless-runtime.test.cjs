@@ -165,6 +165,146 @@ test('a native window loads a page and reads its title without Node', {
   assert.equal(report.compatible, false);
 });
 
+test('a plain Node-less window reload advances the document generation', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const dir = temporaryApp([
+    "'use strict';",
+    "const { app, BrowserWindow } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'reload', show: false });",
+    "  win.loadFile('index.html');",
+    "  win.loadFile('index.html');",
+    "});",
+    '',
+  ].join('\n'), {
+    'index.html': '<!doctype html><title>reload-ok</title><body>reload</body>\n',
+  });
+  manifestFor(dir, 'index.html', ['package.json', 'src/main.js', 'index.html']);
+  try {
+    const { result, report } = run(binary, dir, ['--window', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.pageTitle, 'reload-ok');
+    assert.equal(report.documentGeneration, 2,
+      'the second load must advance the native document generation');
+    assert.equal(report.windowLoaded, true);
+    assert.equal(report.compatible, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the Node-less ingress rejects a stale generation before Main dispatch', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const dir = temporaryApp([
+    "'use strict';",
+    "const { app, BrowserWindow } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'ingress', show: false });",
+    "  win.loadFile('index.html');",
+    "});",
+    '',
+  ].join('\n'), {
+    'index.html': '<!doctype html><title>ingress-ok</title><body>ingress</body>\n',
+  });
+  manifestFor(dir, 'index.html', ['package.json', 'src/main.js', 'index.html']);
+  try {
+    const { result, report } = run(binary, dir,
+      ['--window', '--entry', 'src/main.js', '--ingress-selftest'],
+      { ELECTRON_MBT_TEST_MODE: '1' });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.ok(report.ingressSelftest, 'missing ingress selftest payload');
+    assert.equal(report.ingressSelftest.ok, true);
+    assert.equal(report.ingressSelftest.staleInjected, true);
+    assert.equal(report.ingressSelftest.liveInjected, true);
+    assert.equal(report.ingressSelftest.rejected, 1,
+      'the stale generation event must be rejected');
+    assert.equal(report.ingressSelftest.handled, 1,
+      'the current generation event must reach Main');
+    assert.equal(report.ingressSelftest.errors, 0);
+    assert.equal(report.ingressSelftest.window, 1);
+    assert.equal(report.ingressSelftest.generation, 1);
+    assert.equal(report.ingressSelftest.staleGeneration, 0);
+    assert.equal(report.compatible, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an adapted Node-less window reloads with a new generation and a fresh ingress', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const api = {
+    schema: 3,
+    name: 'api',
+    version: 'reload-adapted',
+    topics: [{ topic: 'doc:open', method: 'onOpenDocument' }],
+    calls: [{ name: 'getSettings', operation: 'app:hello', args: 'none' }],
+    queue: { maxCalls: 4, maxBytes: 16384, readyTimeoutMs: 5000 },
+  };
+  const adapter = buildAdapter(api).source;
+  const dir = temporaryApp([
+    "'use strict';",
+    "const { app, BrowserWindow, ipcMain } = require('electron');",
+    "let loads = 0;",
+    "app.whenReady().then(function () {",
+    "  ipcMain.handle('app:hello', function () { loads += 1; return { loads: loads }; });",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'reload-adapted', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "  win.loadFile('renderer/index.html');",
+    "});",
+    '',
+  ].join('\n'), {
+    'nodeless-app.json': `${JSON.stringify({
+      schema: 1, profile: 'electron-nodeless-adapted-v1', adapter: 'adapted/page-api.js',
+    })}\n`,
+    'adapted/api.json': `${JSON.stringify(api)}\n`,
+    'adapted/page-api.js': adapter,
+    'renderer/index.html': '<!doctype html><title>reload-adapted-wait</title><body><div id="root"></div><script type="module" src="./app.js"></script></body>\n',
+    'renderer/app.js': [
+      "'use strict';",
+      "window.api.getSettings().then(function (result) {",
+      "  document.title = 'reload-adapted-' + result.loads;",
+      "  document.getElementById('root').textContent = 'reload-adapted';",
+      "}).catch(function (error) {",
+      "  document.title = 'reload-adapted-error-' + String(error && (error.code || error.message) || error);",
+      "});",
+      '',
+    ].join('\n'),
+  });
+  manifestFor(dir, 'renderer/index.html', [
+    'package.json', 'src/main.js', 'nodeless-app.json', 'adapted/api.json',
+    'adapted/page-api.js', 'renderer/index.html', 'renderer/app.js',
+  ]);
+  try {
+    const { result, report } = run(binary, dir, ['--window', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.documentGeneration, 2,
+      'the adapted reload must advance the native document generation');
+    assert.equal(report.pageTitle, 'reload-adapted-1');
+    assert.equal(report.adapted.observed, true);
+    assert.equal(report.adapted.released, true);
+    assert.ok(report.adapted.requests >= 1);
+    assert.equal(report.adapted.replyErrors, 0);
+    assert.equal(report.adapted.rejected, 0);
+    assert.equal(report.adapted.ingress.admitted >= 1, true);
+    assert.equal(report.adapted.ingress.denied, 0);
+    assert.equal(report.compatible, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('main fs reads app files and atomically writes appData without Node', {
   skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
 }, () => {

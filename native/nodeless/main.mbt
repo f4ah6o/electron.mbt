@@ -62,6 +62,10 @@ extern "C" fn nodeless_host_session(out : Bytes, capacity : Int) -> Int = "moonb
 
 ///|
 #borrow(out)
+extern "C" fn nodeless_host_identity(out : Bytes, capacity : Int) -> Int = "moonbit_ebt_nodeless_host_identity"
+
+///|
+#borrow(out)
 extern "C" fn nodeless_host_next_event(
   out : Bytes,
   capacity : Int,
@@ -547,16 +551,44 @@ fn cli_apply_user_file_grants(
 }
 
 ///|
+fn cli_host_identity() -> (Int, Int) {
+  let buffer = Bytes::new(128)
+  let length = nodeless_host_identity(buffer, buffer.length())
+  if length <= 0 {
+    return (0, 0)
+  }
+  let text = try {
+    @utf8.decode(buffer[:length])
+  } catch {
+    _ => return (0, 0)
+  }
+  let parsed = @json.parse(text) catch {
+    _ => return (0, 0)
+  }
+  let window = match cli_field(parsed, "window") {
+    Number(number, ..) => number.to_int()
+    _ => 0
+  }
+  let generation = match cli_field(parsed, "generation") {
+    Number(number, ..) => number.to_int()
+    _ => 0
+  }
+  (window, generation)
+}
+
+///|
 fn cli_pump_events(
   runner : @app.AppRunner,
   session : String,
   attempts? : Int = 80,
   idle_limit? : Int = 10,
-) -> (Int, Int) {
+) -> (Int, Int, Int) {
   let event_buffer = Bytes::new(65536)
   let reply_buffer = Bytes::new(65536)
+  let (identity_window, identity_generation) = cli_host_identity()
   let mut handled = 0
   let mut errors = 0
+  let mut rejected = 0
   let mut idle = 0
   for _attempt = 0; _attempt < attempts; _attempt = _attempt + 1 {
     let length = nodeless_host_next_event(event_buffer, event_buffer.length(), 50)
@@ -590,7 +622,11 @@ fn cli_pump_events(
       Number(number, ..) => number.to_int()
       _ => -1
     }
-    if event_window != 1 || event_generation != 1 {
+    if event_window != identity_window || event_generation != identity_generation {
+      // The native host stamps the actual window/generation. A page-supplied
+      // claim is never an authority source, and a stale document event must
+      // not reach Main after a reload.
+      rejected += 1
       continue
     }
     let payload = match cli_field(parsed, "payload") {
@@ -630,7 +666,7 @@ fn cli_pump_events(
     }
     handled += 1
   }
-  (handled, errors)
+  (handled, errors, rejected)
 }
 
 ///|
@@ -779,7 +815,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest]")
+    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest]")
     nodeless_exit(2)
     return
   }
@@ -802,6 +838,7 @@ fn main {
   let dialog_selftest = args.contains("--dialog-selftest")
   let save_dialog_selftest = args.contains("--save-dialog-selftest")
   let dialog_ui_selftest = args.contains("--dialog-ui-selftest")
+  let ingress_selftest = args.contains("--ingress-selftest")
   if fs_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--fs-selftest requires --window")
     return
@@ -824,6 +861,10 @@ fn main {
   }
   if dialog_ui_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--dialog-ui-selftest requires --window")
+    return
+  }
+  if ingress_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--ingress-selftest requires --window")
     return
   }
   if dialog_selftest && dialog_ui_selftest {
@@ -1039,6 +1080,7 @@ fn main {
     let mut adapted_released = false
     let mut adapted_requests = 0
     let mut adapted_errors = 0
+    let mut adapted_rejected = 0
     let mut ingress : Json = null
     let mut broker_configured = false
     let mut broker_grants = 0
@@ -1060,6 +1102,8 @@ fn main {
     let mut save_dialog_selftest_ok = true
     let mut save_dialog_ui_json : Json = null
     let mut save_dialog_ui_ok = true
+    let mut ingress_selftest_json : Json = null
+    let mut ingress_selftest_ok = true
     if user_file_selftest {
       match cli_apply_user_file_grants((user_file_read_path, user_file_write_path)) {
         Ok(_) => ()
@@ -1121,10 +1165,52 @@ fn main {
           None => adapted_released = false
         }
       }
-      let (requests, errors) = cli_pump_events(runner, session)
+      let (requests, errors, rejected) = cli_pump_events(runner, session)
       adapted_requests = requests
       adapted_errors = errors
+      adapted_rejected = rejected
       ingress = cli_host_payload("get-ingress-status", "{}").unwrap_or(null)
+    }
+    if ingress_selftest {
+      let (identity_window, identity_generation) = cli_host_identity()
+      let stale_generation = if identity_generation > 0 {
+        identity_generation - 1
+      } else {
+        0
+      }
+      let stale_payload = Json({
+        "generation": Json(stale_generation),
+        "request": Json({
+          "request": Json("ingress-stale"),
+          "operation": Json("app:ingress-stale"),
+          "payload": Json::empty_object(),
+        }),
+      }).stringify()
+      let live_payload = Json({
+        "generation": Json(identity_generation),
+        "request": Json({
+          "request": Json("ingress-live"),
+          "operation": Json("app:ingress-live"),
+          "payload": Json::empty_object(),
+        }),
+      }).stringify()
+      let stale_injected = cli_host_payload("inject-app-request", stale_payload) != None
+      let live_injected = cli_host_payload("inject-app-request", live_payload) != None
+      let (handled, errors, rejected) =
+        cli_pump_events(runner, session, attempts=10, idle_limit=2)
+      ingress_selftest_ok = stale_injected && live_injected &&
+        rejected >= 1 && handled >= 1 && errors == 0
+      ingress_selftest_json = Json({
+        "ok": Json(ingress_selftest_ok),
+        "staleInjected": Json(stale_injected),
+        "liveInjected": Json(live_injected),
+        "handled": Json(handled),
+        "errors": Json(errors),
+        "rejected": Json(rejected),
+        "window": Json(identity_window),
+        "generation": Json(identity_generation),
+        "staleGeneration": Json(stale_generation),
+      })
     }
     let mut probe_title = ""
     let mut root_children = 0
@@ -1327,10 +1413,15 @@ fn main {
       Some(value) => value
       None => ""
     }
+    let document_identity = cli_host_payload("get-document-identity", "{}").unwrap_or(null)
+    let document_generation = match cli_field(document_identity, "generation") {
+      Number(number, ..) => number.to_int()
+      _ => 0
+    }
     let renderer_loaded = (root_children > 0 || page_text.length() > 0) && api_present
     let adapted_ok = !adapted_configured ||
       (adapted_observed && adapted_released && adapted_requests > 0 &&
-       adapted_errors == 0 && renderer_loaded)
+       adapted_errors == 0 && adapted_rejected == 0 && renderer_loaded)
     let broker_ok = !broker_configured ||
       (broker_error.length() == 0 && broker_triggered &&
        cli_text(broker_api_probe, "state") is Some("done"))
@@ -1367,7 +1458,7 @@ fn main {
     let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 &&
       adapted_ok && broker_ok && fs_selftest_ok && user_file_selftest_ok &&
       directory_selftest_ok && dialog_selftest_ok && dialog_ui_ok &&
-      save_dialog_selftest_ok && save_dialog_ui_ok
+      save_dialog_selftest_ok && save_dialog_ui_ok && ingress_selftest_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
@@ -1385,6 +1476,7 @@ fn main {
       "windowLoaded": Json(page_title.length() > 0),
       "pageTitle": Json(page_title),
       "pageURL": Json(page_url),
+      "documentGeneration": Json(document_generation),
       "rendererLoaded": Json(renderer_loaded),
       "preloadExecuted": Json(false),
       "renderer": Json({
@@ -1401,8 +1493,10 @@ fn main {
         "released": Json(adapted_released),
         "requests": Json(adapted_requests),
         "replyErrors": Json(adapted_errors),
+        "rejected": Json(adapted_rejected),
         "ingress": ingress,
       }),
+      "ingressSelftest": ingress_selftest_json,
       "broker": Json({
         "configured": Json(broker_configured),
         "mode": Json("test-injected"),

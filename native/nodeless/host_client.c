@@ -26,6 +26,13 @@ static int event_fd = -1;
 static char session_text[33];
 static char *app_root = NULL;
 static int request_id = 1;
+// The Node-less runtime currently exposes one main window. Keep the identity
+// here so every control frame and the MoonBit event pump use the same
+// generation. A fixed generation of 1 made reloads invisible and let stale
+// events look current.
+static int active_window = 0;
+static long long active_generation = 0;
+static int active_window_created = 0;
 
 static char *copy_bytes(moonbit_bytes_t bytes) {
   if (bytes == NULL) return NULL;
@@ -163,7 +170,7 @@ fail:
 static const int32_t kMainDialogWaitMs = 3600000;
 
 static int send_control_frame_timeout(const char *operation, const char *payload,
-                                      int window, int generation,
+                                      int window, long long generation,
                                       char *out, int32_t capacity,
                                       int32_t timeout_ms) {
   if (control_fd < 0 || operation == NULL || payload == NULL) return -1;
@@ -172,7 +179,7 @@ static int send_control_frame_timeout(const char *operation, const char *payload
   char *frame = (char *)malloc(needed);
   if (frame == NULL) return -1;
   int written = snprintf(frame, needed,
-    "{\"version\":1,\"session\":\"%s\",\"request\":%d,\"window\":%d,\"generation\":%d,"
+    "{\"version\":1,\"session\":\"%s\",\"request\":%d,\"window\":%d,\"generation\":%lld,"
     "\"operation\":\"%s\",\"payload\":%s}",
     session_text, id, window, generation, operation, payload);
   if (written <= 0 || (size_t)written >= needed) {
@@ -186,7 +193,7 @@ static int send_control_frame_timeout(const char *operation, const char *payload
 }
 
 static int send_control_frame(const char *operation, const char *payload,
-                              int window, int generation,
+                              int window, long long generation,
                               char *out, int32_t capacity) {
   return send_control_frame_timeout(operation, payload, window, generation,
                                     out, capacity, 15000);
@@ -194,7 +201,8 @@ static int send_control_frame(const char *operation, const char *payload,
 
 static int send_control(const char *operation, const char *payload,
                         char *out, int32_t capacity) {
-  return send_control_frame(operation, payload, 1, 1, out, capacity);
+  return send_control_frame(operation, payload, active_window, active_generation,
+                            out, capacity);
 }
 
 static int send_load(const char *operation, const char *payload,
@@ -205,9 +213,9 @@ static int send_load(const char *operation, const char *payload,
   char *frame = (char *)malloc(needed);
   if (frame == NULL) return -1;
   int written = snprintf(frame, needed,
-    "{\"version\":1,\"session\":\"%s\",\"request\":%d,\"window\":1,\"generation\":1,"
+    "{\"version\":1,\"session\":\"%s\",\"request\":%d,\"window\":%d,\"generation\":%lld,"
     "\"operation\":\"%s\",\"payload\":%s}",
-    session_text, id, operation, payload);
+    session_text, id, active_window, active_generation, operation, payload);
   if (written <= 0 || (size_t)written >= needed) {
     free(frame);
     return -1;
@@ -220,6 +228,18 @@ static int send_load(const char *operation, const char *payload,
 
 static int contains_success(const char *text) {
   return text != NULL && strstr(text, "\"terminal\":\"success\"") != NULL;
+}
+
+static int begin_navigation(void) {
+  if (!active_window_created || active_window <= 0) return -1;
+  if (active_generation < 0 || active_generation >= 9007199254740991LL) return -1;
+  long long next = active_generation + 1;
+  char reply[4096];
+  int length = send_control_frame("begin-load", "{}", active_window, next,
+                                  reply, (int32_t)sizeof(reply));
+  if (length < 0 || !contains_success(reply)) return -1;
+  active_generation = next;
+  return 0;
 }
 
 static int ebt_host_request(const char *operation, const char *payload,
@@ -235,9 +255,7 @@ static int ebt_host_request(const char *operation, const char *payload,
                                       kMainDialogWaitMs);
   }
   if (strcmp(operation, "load-file") == 0) {
-    char begin[4096];
-    int begin_length = send_control_frame("begin-load", "{}", 1, 1, begin, (int32_t)sizeof(begin));
-    if (begin_length < 0 || !contains_success(begin)) return -1;
+    if (begin_navigation() != 0) return -1;
     // The prelude passes an app-relative or absolute file. The host accepts a
     // canonical source path, so resolve a relative file against the app root.
     const char *key = "\"file\":\"";
@@ -271,25 +289,46 @@ static int ebt_host_request(const char *operation, const char *payload,
     return result;
   }
   if (strcmp(operation, "load-app-file") == 0) {
-    char begin[4096];
-    int begin_length = send_control_frame("begin-load", "{}", 1, 1, begin, (int32_t)sizeof(begin));
-    if (begin_length < 0 || !contains_success(begin)) return -1;
+    if (begin_navigation() != 0) return -1;
     return send_load(operation, payload, out, capacity);
   }
+  if (strcmp(operation, "create-window") == 0) {
+    // The Node-less runtime currently supports one main window. A second
+    // create must not silently reuse window 1 with a stale generation.
+    if (active_window_created) return -1;
+    int result = send_control_frame(operation, payload, 1, 0, out, capacity);
+    if (result > 0 && contains_success(out)) {
+      active_window = 1;
+      active_generation = 0;
+      active_window_created = 1;
+    }
+    return result;
+  }
   if (strcmp(operation, "prepare-source") == 0 ||
-      strcmp(operation, "install-adapted-adapter") == 0 ||
-      strcmp(operation, "create-window") == 0) {
-    return send_control_frame(operation, payload, 1, 0, out, capacity);
+      strcmp(operation, "install-adapted-adapter") == 0) {
+    return send_control_frame(operation, payload, active_window, active_generation,
+                              out, capacity);
+  }
+  if (strcmp(operation, "destroy-window") == 0) {
+    int result = send_control_frame(operation, payload, active_window, active_generation,
+                                    out, capacity);
+    if (result > 0 && contains_success(out)) {
+      active_window_created = 0;
+      active_window = 0;
+      active_generation = 0;
+    }
+    return result;
   }
   if (strcmp(operation, "get-window-title") == 0 ||
       strcmp(operation, "set-window-title") == 0 ||
-      strcmp(operation, "destroy-window") == 0 ||
       strcmp(operation, "get-web-contents-title") == 0 ||
       strcmp(operation, "get-web-contents-url") == 0 ||
       strcmp(operation, "get-bootstrap-status") == 0 ||
       strcmp(operation, "get-preload-status") == 0 ||
       strcmp(operation, "get-adapted-status") == 0 ||
+      strcmp(operation, "get-document-identity") == 0 ||
       strcmp(operation, "get-ingress-status") == 0 ||
+      strcmp(operation, "inject-app-request") == 0 ||
       strcmp(operation, "grant-file") == 0 ||
       strcmp(operation, "set-dialog-result") == 0 ||
       strcmp(operation, "set-main-dialog-results") == 0 ||
@@ -305,7 +344,8 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "main-write-file") == 0 ||
       strcmp(operation, "main-read-dir") == 0 ||
       strcmp(operation, "main-mkdir") == 0) {
-    return send_control_frame(operation, payload, 1, 1, out, capacity);
+    return send_control_frame(operation, payload, active_window, active_generation,
+                              out, capacity);
   }
   if (strcmp(operation, "grant-main-file") == 0 ||
       strcmp(operation, "grant-main-directory") == 0) {
@@ -380,6 +420,9 @@ static const char *host_binary_path(void) {
 int32_t moonbit_ebt_nodeless_host_open(moonbit_bytes_t root_bytes) {
   char *root = copy_bytes(root_bytes);
   if (root == NULL) return -1;
+  active_window = 0;
+  active_generation = 0;
+  active_window_created = 0;
   static const char hex[] = "0123456789abcdef";
   unsigned char random[16];
   arc4random_buf(random, sizeof(random));
@@ -442,11 +485,25 @@ int32_t moonbit_ebt_nodeless_host_pid(void) {
   return (int32_t)child_pid;
 }
 
+int32_t moonbit_ebt_nodeless_host_identity(moonbit_bytes_t out, int32_t capacity) {
+  if (out == NULL || capacity <= 0 || Moonbit_array_length(out) < capacity) return -1;
+  int written = snprintf((char *)out, (size_t)capacity,
+    "{\"window\":%d,\"generation\":%lld}", active_window, active_generation);
+  if (written <= 0 || written >= capacity) return -1;
+  return (int32_t)written;
+}
+
 int32_t moonbit_ebt_nodeless_host_shutdown(void) {
   char reply[65536];
   if (control_fd >= 0) {
-    int _ = send_control_frame("destroy-window", "{}", 1, 1, reply, (int32_t)sizeof(reply));
-    (void)_;
+    if (active_window_created) {
+      int _ = send_control_frame("destroy-window", "{}", active_window,
+                                 active_generation, reply, (int32_t)sizeof(reply));
+      (void)_;
+      active_window_created = 0;
+      active_window = 0;
+      active_generation = 0;
+    }
     int __ = send_control_frame("shutdown", "{}", 0, 0, reply, (int32_t)sizeof(reply));
     (void)__;
   }
@@ -476,4 +533,7 @@ void moonbit_ebt_nodeless_host_kill(void) {
   if (control_fd >= 0) { close(control_fd); control_fd = -1; }
   if (load_fd >= 0) { close(load_fd); load_fd = -1; }
   if (event_fd >= 0) { close(event_fd); event_fd = -1; }
+  active_window = 0;
+  active_generation = 0;
+  active_window_created = 0;
 }

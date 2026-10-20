@@ -291,6 +291,14 @@ function buildReport() {
     editSavePhaseOk(mojiEditSave.phase1, 2) &&
     editSavePhaseOk(mojiEditSave.phase2, 0) &&
     mojiEditSave.phase2.block.probe.reopenMarkerPresent === true &&
+    mojiEditSave.phase3 && mojiEditSave.phase3.status === 'PASS' &&
+    mojiEditSave.phase3.block && mojiEditSave.phase3.block.ok === true &&
+    mojiEditSave.phase3.block.probe.open === true &&
+    mojiEditSave.phase3.block.probe.saveFailure === 'ELECTRON_MBT_FILE_LINK' &&
+    mojiEditSave.phase3.ingress &&
+    mojiEditSave.phase3.ingress.fileSaveAdmitted === 0 &&
+    mojiEditSave.phase3.ingress.fileSaveDenied >= 1 &&
+    mojiEditSave.phase3.ingress.lastCode === 'ELECTRON_MBT_FILE_LINK' &&
     mojiEditSave.document && mojiEditSave.document.initialSHA256 !== mojiEditSave.document.finalSHA256 &&
     mojiEditSave.document.finalBytes > mojiEditSave.document.initialBytes;
   checks.push(check('nodeless-moji-edit-save',
@@ -298,7 +306,7 @@ function buildReport() {
       (editSaveOk ? 'PASS' : 'FAIL'),
     mojiEditSave === null
       ? 'Moji edit/save/restart report is absent'
-      : `Moji open-for-edit (test-injected, synthetic edit): status=${mojiEditSave.status}, grants=${mojiEditSave.openForEdit && mojiEditSave.openForEdit.grants}, dialogs=${mojiEditSave.openForEdit && mojiEditSave.openForEdit.dialogs}, phase1=${mojiEditSave.phase1 && mojiEditSave.phase1.block && mojiEditSave.phase1.block.probe && mojiEditSave.phase1.block.probe.editMechanism}, phase2=${mojiEditSave.phase2 && mojiEditSave.phase2.block && mojiEditSave.phase2.block.probe && mojiEditSave.phase2.block.probe.reopenMarkerPresent}, save1=${mojiEditSave.phase1 && mojiEditSave.phase1.ingress && mojiEditSave.phase1.ingress.fileSaveAdmitted}, save2=${mojiEditSave.phase2 && mojiEditSave.phase2.ingress && mojiEditSave.phase2.ingress.fileSaveAdmitted}, bytes=${mojiEditSave.document && mojiEditSave.document.finalBytes}, humanInput=${mojiEditSave.humanInput}`));
+      : `Moji open-for-edit (test-injected, synthetic edit): status=${mojiEditSave.status}, grants=${mojiEditSave.openForEdit && mojiEditSave.openForEdit.grants}, dialogs=${mojiEditSave.openForEdit && mojiEditSave.openForEdit.dialogs}, phase1=${mojiEditSave.phase1 && mojiEditSave.phase1.block && mojiEditSave.phase1.block.probe && mojiEditSave.phase1.block.probe.editMechanism}, phase2=${mojiEditSave.phase2 && mojiEditSave.phase2.block && mojiEditSave.phase2.block.probe && mojiEditSave.phase2.block.probe.reopenMarkerPresent}, hardlink=${mojiEditSave.phase3 && mojiEditSave.phase3.block && mojiEditSave.phase3.block.probe && mojiEditSave.phase3.block.probe.saveFailure}, save1=${mojiEditSave.phase1 && mojiEditSave.phase1.ingress && mojiEditSave.phase1.ingress.fileSaveAdmitted}, save2=${mojiEditSave.phase2 && mojiEditSave.phase2.ingress && mojiEditSave.phase2.ingress.fileSaveAdmitted}, bytes=${mojiEditSave.document && mojiEditSave.document.finalBytes}, humanInput=${mojiEditSave.humanInput}`));
   checks.push(check('node-less-moji-app-main', mojiRendererOk && nodelessAppOk ? 'PASS' : 'NOT_RUN',
     mojiRendererOk && nodelessAppOk
       ? 'Moji main boots and the adapted Moji renderer loads Node-lessly; original preload NOT_EXECUTED'

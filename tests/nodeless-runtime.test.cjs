@@ -1221,6 +1221,31 @@ test('the pinned Moji edits, saves and reopens after restart under the adapted A
   assert.equal(phase2.liveLeases, 0);
   assert.equal(phase2.nodeProcesses, 0);
 
+  assert.equal(report.document.metadata.modeBefore, '640');
+  for (const phase of ['phase1', 'phase2']) {
+    assert.equal(report.document.metadata[phase].mode, '640');
+    assert.equal(report.document.metadata[phase].xattr, 'metadata-preserved');
+    assert.equal(report.document.metadata[phase].nlink, 1);
+  }
+
+  const phase3 = report.phase3;
+  assert.ok(phase3, 'missing hardlink phase');
+  assert.equal(phase3.status, 'PASS');
+  assert.equal(phase3.block.ok, true);
+  assert.equal(phase3.block.probe.state, 'done');
+  assert.equal(phase3.block.probe.open, true);
+  assert.equal(phase3.block.probe.saveFailure, 'ELECTRON_MBT_FILE_LINK');
+  assert.equal(phase3.ingress.fileSaveAdmitted, 0);
+  assert.ok(phase3.ingress.fileSaveDenied >= 1);
+  assert.equal(phase3.ingress.lastCode, 'ELECTRON_MBT_FILE_LINK');
+  assert.equal(phase3.hostShutdown, true);
+  assert.equal(phase3.liveLeases, 0);
+  assert.equal(phase3.nodeProcesses, 0);
+  assert.equal(report.document.hardlink.nlink, 2);
+  assert.equal(report.document.hardlink.unchanged, true);
+  assert.equal(report.document.hardlink.noteBytes, report.document.finalBytes);
+  assert.equal(report.document.hardlink.linkBytes, report.document.finalBytes);
+
   assert.equal(report.document.phase1Mechanism, phase1.block.probe.editMechanism);
   assert.equal(report.document.phase2Mechanism, phase2.block.probe.editMechanism);
   assert.ok(report.document.finalBytes > report.document.initialBytes);

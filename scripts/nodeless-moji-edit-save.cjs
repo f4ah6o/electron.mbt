@@ -109,6 +109,7 @@ function summarize(report, phaseKey) {
         saveError: probe.saveError || '',
         editMechanism: probe.editMechanism || '',
         reopenMarkerPresent: probe.reopenMarkerPresent === true,
+        saveFailure: probe.saveFailure || '',
         beforeOpenSave: probe.beforeOpenSave || '',
         siblingSave: probe.siblingSave || '',
         documentTitle: probe.documentTitle || '',
@@ -285,8 +286,30 @@ try {
     .update(fs.readFileSync(path.join(temp, 'source-manifest.json'))).digest('hex');
 
   fs.writeFileSync(path.join(temp, documentRelative), initialDocument);
+  const documentPath = path.join(temp, documentRelative);
+  fs.chmodSync(documentPath, 0o640);
+  const xattrName = 'user.electron-mbt';
+  const xattrValue = 'metadata-preserved';
+  const xattrSetup = spawnSync('xattr', ['-w', xattrName, xattrValue, documentPath], {
+    encoding: 'utf8',
+  });
+  requireValue(xattrSetup.status === 0, 'could not set the test xattr');
   report.document.initialBytes = Buffer.byteLength(initialDocument);
   report.document.initialSHA256 = hashBytes(Buffer.from(initialDocument));
+  report.document.metadata = {
+    modeBefore: '640',
+    xattrName,
+    xattrBefore: xattrValue,
+  };
+  const documentMetadata = () => {
+    const stat = fs.statSync(documentPath);
+    const xattr = spawnSync('xattr', ['-p', xattrName, documentPath], { encoding: 'utf8' });
+    return {
+      mode: (stat.mode & 0o777).toString(8),
+      xattr: xattr.status === 0 ? xattr.stdout.trim() : null,
+      nlink: stat.nlink,
+    };
+  };
 
   const fakeNode = path.join(fakeBin, 'node');
   fs.writeFileSync(fakeNode, '#!/bin/sh\nexit 99\n');
@@ -327,6 +350,13 @@ try {
     'phase 1 saved byte length is wrong');
   report.document.phase1Mechanism = phase1Mechanism;
   report.document.phase1SHA256 = hashBytes(phase1Bytes);
+  const metadata1 = documentMetadata();
+  requireValue(metadata1.mode === '640',
+    `phase 1 changed the document mode to ${metadata1.mode}`);
+  requireValue(metadata1.xattr === xattrValue,
+    `phase 1 lost the document xattr: ${metadata1.xattr}`);
+  requireValue(metadata1.nlink === 1, 'phase 1 changed the link count');
+  report.document.metadata.phase1 = metadata1;
   report.openForEdit = {
     grants: first.report.mojiScenario.grants,
     dialogs: first.report.mojiScenario.dialogs,
@@ -349,7 +379,63 @@ try {
     'phase 2 saved byte length is wrong');
   requireValue(phase2Text.includes('electron-mbt-edit'),
     'the first marker is missing after restart');
+  const metadata2 = documentMetadata();
+  requireValue(metadata2.mode === '640',
+    `phase 2 changed the document mode to ${metadata2.mode}`);
+  requireValue(metadata2.xattr === xattrValue,
+    `phase 2 lost the document xattr: ${metadata2.xattr}`);
+  requireValue(metadata2.nlink === 1, 'phase 2 changed the link count');
+  report.document.metadata.phase2 = metadata2;
   report.document.phase2Mechanism = phase2Mechanism;
+
+  // A hardlinked document must not be replaced: the other link would keep the
+  // old bytes. The direct save call exercises the broker rejection without
+  // relying on the app's failure UI.
+  const hardlinkRelative = 'documents/note-link.md';
+  const hardlinkPath = path.join(temp, hardlinkRelative);
+  fs.linkSync(documentPath, hardlinkPath);
+  const linkedStat = fs.statSync(documentPath);
+  requireValue(linkedStat.nlink === 2, 'hardlink setup did not produce two links');
+  const third = runPhase('--moji-save-failure-selftest');
+  report.phase3 = summarize(third.report, 'mojiSaveFailure');
+  requireValue(third.report, 'hardlink phase: missing JSON report');
+  requireValue(third.report.status === 'PASS',
+    `hardlink phase: runtime status ${third.report.status}`);
+  const failure = third.report.mojiSaveFailure;
+  requireValue(failure && failure.ok === true, 'hardlink phase: save failure check is false');
+  requireValue(failure.probe && failure.probe.state === 'done',
+    'hardlink phase: probe state is not done');
+  requireValue(failure.probe.open === true, 'hardlink phase: document did not open');
+  requireValue(failure.probe.saveFailure === 'ELECTRON_MBT_FILE_LINK',
+    `hardlink phase: unexpected save result ${failure.probe.saveFailure}`);
+  requireValue(failure.ingress && failure.ingress.fileSaveAdmitted === 0,
+    'hardlink phase: a file:save was admitted');
+  requireValue(failure.ingress.fileSaveDenied >= 1,
+    'hardlink phase: file:save denial was not observed');
+  requireValue(failure.ingress.lastCode === 'ELECTRON_MBT_FILE_LINK',
+    `hardlink phase: last ingress code ${failure.ingress.lastCode}`);
+  requireValue(third.report.hostShutdown === true, 'hardlink phase: host did not shut down');
+  requireValue(third.report.liveLeases === 0, 'hardlink phase: live leases remain');
+  requireValue(third.report.nodeProcesses === 0, 'hardlink phase: Node process observed');
+  const noteAfterLink = fs.readFileSync(documentPath);
+  const linkAfterLink = fs.readFileSync(hardlinkPath);
+  requireValue(noteAfterLink.equals(phase2Bytes), 'hardlink phase changed the note bytes');
+  requireValue(linkAfterLink.equals(phase2Bytes), 'hardlink phase changed the link bytes');
+  const finalStat = fs.statSync(documentPath);
+  const finalXattr = spawnSync('xattr', ['-p', xattrName, documentPath], { encoding: 'utf8' });
+  requireValue(finalStat.nlink === 2, 'hardlink phase changed the link count');
+  requireValue((finalStat.mode & 0o777) === 0o640, 'hardlink phase changed the document mode');
+  requireValue(finalXattr.status === 0 && finalXattr.stdout.trim() === xattrValue,
+    'hardlink phase lost the document xattr');
+  report.document.hardlink = {
+    path: hardlinkRelative,
+    nlink: finalStat.nlink,
+    saveFailure: failure.probe.saveFailure,
+    noteBytes: noteAfterLink.length,
+    linkBytes: linkAfterLink.length,
+    unchanged: true,
+  };
+
   report.document.finalBytes = phase2Bytes.length;
   report.document.finalSHA256 = hashBytes(phase2Bytes);
 

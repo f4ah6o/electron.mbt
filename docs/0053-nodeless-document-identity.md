@@ -1,8 +1,8 @@
 # Node-less document identity and reload authority
 
-Status: **Phase 2 increment implemented; strict compatibility and a production
-ingress are not claimed.** `compatible:false`, M0 OPEN, the original preload
-NOT_EXECUTED and the strict profile blocked are unchanged.
+Status: **Phase 2 increment implemented; strict compatibility and a full
+production ingress are not claimed.** `compatible:false`, M0 OPEN, the original
+preload NOT_EXECUTED and the strict profile blocked are unchanged.
 
 ## Problem
 
@@ -31,7 +31,11 @@ existing adapter source), so reload was not a usable path.
    - `install-adapted-adapter` may refresh the adapter source on reload and
      installs its page-world handlers only once;
    - `begin-load` still invalidates the old document before the new load.
-4. A test-only `inject-app-request` native operation and
+4. The native host releases the adapted adapter queue automatically when the
+   document load completes, and `get-adapted-status` reports `released`. The CLI
+   waits for that flag instead of calling the explicit
+   `release-adapted-ingress` test control.
+5. A test-only `inject-app-request` native operation and
    `--ingress-selftest` CLI mode (both gated by
    `ELECTRON_MBT_TEST_MODE=1`) inject one stale-generation and one
    current-generation event. The CLI reports whether the stale event was
@@ -55,8 +59,9 @@ Observed ingress selftest:
 ```
 
 Observed reloads: a plain app and an adapted app both ended at
-`documentGeneration: 2`; the adapted app dispatched one current-generation
-request and reported `rejected: 0`.
+`documentGeneration: 2`. The adapted reload dispatched its current-generation
+request and rejected the previous document's late request (`rejected: 1`);
+the non-reload adapted scenario reports `rejected: 0`.
 
 Environment: macOS 26.5.2 / arm64, local Node 24.22.0 (not the pinned 24.21.0
 oracle), MoonBit 0.1.20261012. This is local test evidence, not a pinned CI or
@@ -66,10 +71,10 @@ Electron differential result.
 
 - The Node-less host still exposes one main window. A second `create-window`
   is refused rather than reusing window 1 with stale state.
-- The adapted ingress release remains a test control
-  (`release-adapted-ingress`). A production DocumentIngressReady flush has not
-  been implemented; the adapted reload test releases the new document
-  explicitly.
+- The explicit `release-adapted-ingress` control remains a test control. The
+  production path releases the adapter queue automatically when the document
+  load completes; the CLI now waits for `get-adapted-status.released` instead of
+  calling the control.
 - Child-frame adapted ingress, page-supplied forged sender fields and a full
   fault matrix are not covered by this increment. The native host already
   rejects non-main-frame `electronMbtApp` messages, but there is no dedicated
@@ -80,7 +85,5 @@ Electron differential result.
 
 ## Next
 
-1. Add a production DocumentIngressReady flush so an app does not need the
-   test-only release control after each reload.
-2. Add Node-less child-frame, forged-payload-sender and reload-race negatives.
-3. Then start Phase 3: grant persistence/revocation and normal save/restart.
+1. Add Node-less child-frame, forged-payload-sender and reload-race negatives.
+2. Then start Phase 3: grant persistence/revocation and normal save/restart.

@@ -168,6 +168,17 @@ remain open. See
 [docs/0039](0039-b6-strict-context-bridge.md). This is not an M0 or
 strict-compatibility result.
 
+A 2026-10-20 bounded extension measured the page shim's frame/origin scope over
+one loopback-HTTP origin. A same-origin child reached the parent's page-world
+API through `parent`, called `syncValue()` synchronously and received `42`, and
+caught the synchronous `Error`; the Error was a parent-realm object, so the
+child realm's `instanceof Error` was false. An opaque sandboxed child was denied
+access and could not see the native handlers. The native probe still only sees
+the parent document and requires the actual main frame. This is test-only
+page-shim evidence: the production host remains main-frame-only, Electron child
+frames are not accepted, and the child-realm Error contract remains open. See
+[the public WKWebView design](0056-sync-contextbridge-public-wkwebview.md).
+
 ## Architecture verdict and next acceptance gate
 
 1. The current public `WKContentWorld` APIs create isolated JavaScript namespaces while sharing the document DOM; they do not automatically create a cross-realm function proxy.

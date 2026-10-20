@@ -169,7 +169,7 @@
     {
       "id": "nodeless-moji-edit-save",
       "status": "PASS",
-      "detail": "Moji open-for-edit (test-injected, synthetic edit): status=PASS, grants=0, dialogs=1, phase1=execCommand-insertText, phase2=true, save1=1, save2=1, bytes=103, humanInput=false"
+      "detail": "Moji open-for-edit (test-injected, synthetic edit): status=PASS, grants=0, dialogs=1, phase1=execCommand-insertText, phase2=true, hardlink=ELECTRON_MBT_FILE_LINK, save1=1, save2=1, bytes=103, humanInput=false"
     },
     {
       "id": "node-less-moji-app-main",

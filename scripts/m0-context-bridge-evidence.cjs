@@ -92,6 +92,80 @@ function validateNegativeObservation(observed) {
   assert.equal(observed.secretVisible, false, 'negative.secretVisible');
 }
 
+// The frame/origin section is additive to the B5 checkpoints. A complete
+// observation is required for a go; a denied same-origin access is a valid
+// finding (main-frame-only under the tested WebKit), not a forced pass.
+function validateFramePolicy(report) {
+  const policy = report.framePolicy;
+  assert.ok(policy && typeof policy === 'object' && !Array.isArray(policy),
+    'framePolicy missing');
+  assert.equal(policy.version, 1, 'framePolicy.version');
+  assert.equal(policy.observationComplete, true, 'framePolicy.observationComplete');
+  assert.equal(typeof policy.hypothesis, 'string', 'framePolicy.hypothesis');
+  assert.ok(policy.hypothesis.length > 0, 'framePolicy.hypothesis');
+  assert.equal(typeof policy.hypothesisSupported, 'boolean', 'framePolicy.hypothesisSupported');
+
+  const same = policy.sameOriginChild;
+  const sandbox = policy.sandboxedChild;
+  assert.ok(same && typeof same === 'object' && !Array.isArray(same),
+    'framePolicy.sameOriginChild missing');
+  assert.ok(sandbox && typeof sandbox === 'object' && !Array.isArray(sandbox),
+    'framePolicy.sandboxedChild missing');
+  for (const key of ['messageObserved', 'access', 'originMatches', 'notRelayed',
+    'syncThrow', 'handlerHidden']) {
+    assert.equal(typeof same[key], 'boolean', `framePolicy.sameOriginChild.${key}`);
+  }
+  for (const key of ['ownApiType', 'parentApiType', 'syncValueType']) {
+    assert.equal(typeof same[key], 'string', `framePolicy.sameOriginChild.${key}`);
+  }
+  assert.ok(same.accessError === null || typeof same.accessError === 'string',
+    'framePolicy.sameOriginChild.accessError');
+  assert.ok(same.syncValue === null || typeof same.syncValue === 'number',
+    'framePolicy.sameOriginChild.syncValue');
+  assert.ok(same.syncValueError === null || typeof same.syncValueError === 'string',
+    'framePolicy.sameOriginChild.syncValueError');
+  assert.ok(same.throwName === null || typeof same.throwName === 'string',
+    'framePolicy.sameOriginChild.throwName');
+  assert.ok(same.throwMessage === null || typeof same.throwMessage === 'string',
+    'framePolicy.sameOriginChild.throwMessage');
+  assert.ok(same.childRealmError === null || typeof same.childRealmError === 'boolean',
+    'framePolicy.sameOriginChild.childRealmError');
+  assert.ok(same.parentRealmError === null || typeof same.parentRealmError === 'boolean',
+    'framePolicy.sameOriginChild.parentRealmError');
+  assert.equal(same.messageObserved, true, 'same-origin child must report');
+  assert.equal(same.originMatches, true, 'same-origin child origin must match');
+  assert.equal(same.notRelayed, true, 'same-origin child message source must match');
+  assert.equal(same.ownApiType, 'undefined', 'same-origin child must not have its own shim');
+  assert.equal(same.parentApiType, 'object', 'same-origin child must see the parent API');
+  assert.equal(same.handlerHidden, true, 'same-origin child must not see native handlers');
+  if (same.access) {
+    assert.equal(same.syncValue, 42, 'same-origin syncValue');
+    assert.equal(same.syncValueType, 'number', 'same-origin syncValueType');
+    assert.equal(same.syncValueError, null, 'same-origin syncValueError');
+    assert.equal(same.syncThrow, true, 'same-origin syncThrow');
+    assert.equal(same.throwName, 'Error', 'same-origin throwName');
+    assert.equal(typeof same.throwMessage, 'string', 'same-origin throwMessage');
+    assert.ok(same.throwMessage.length > 0, 'same-origin throwMessage');
+  } else {
+    assert.equal(same.syncValue, null, 'denied same-origin access has no value');
+    assert.equal(same.syncThrow, false, 'denied same-origin access has no throw');
+    assert.equal(typeof same.accessError, 'string', 'denied same-origin access needs an error');
+    assert.ok(same.accessError.length > 0, 'denied same-origin access needs an error');
+  }
+
+  for (const key of ['messageObserved', 'opaqueOrigin', 'accessDenied',
+    'handlerHidden', 'notRelayed']) {
+    assert.equal(typeof sandbox[key], 'boolean', `framePolicy.sandboxedChild.${key}`);
+    assert.equal(sandbox[key], true, `framePolicy.sandboxedChild.${key}`);
+  }
+  assert.ok(Number.isSafeInteger(policy.nativeChildReportsRejected) &&
+    policy.nativeChildReportsRejected >= 0, 'framePolicy.nativeChildReportsRejected');
+  const derived = same.access === true && sandbox.accessDenied === true;
+  assert.equal(policy.hypothesisSupported, derived,
+    'framePolicy.hypothesisSupported derived');
+  return policy;
+}
+
 function validateCheckpointTwo(report, checkpointOne) {
   const checkpoint = report.checkpoint2;
   if (checkpoint === 'NOT_RUN') {
@@ -160,6 +234,9 @@ function validateM0ContextBridgeEvidence(report) {
     assert.equal(checkpointTwo, 'NOT_RUN',
       'failed checkpoint 1 must not be followed by checkpoint 2 feature evidence');
   }
+  if (report.decision === 'go' || report.framePolicy !== undefined) {
+    validateFramePolicy(report);
+  }
 
   assert.ok(report.native && typeof report.native === 'object' && !Array.isArray(report.native));
   for (const key of ['reportsAccepted', 'reportsRejected', 'duplicateReportsRejected',
@@ -213,7 +290,7 @@ function validateM0ContextBridgeEvidence(report) {
 
   assert.ok(report.hashes && typeof report.hashes === 'object');
   for (const key of ['codec', 'pageShim', 'isolatedBridge',
-    'checkpointPage', 'negativePage', 'child']) {
+    'checkpointPage', 'negativePage', 'child', 'framesPage', 'sameOriginChild']) {
     assert.ok(isHex64(report.hashes[key]), `hashes.${key}`);
   }
 

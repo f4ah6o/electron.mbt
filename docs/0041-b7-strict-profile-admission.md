@@ -170,6 +170,21 @@ This is **stricter than Electron**, which can host child frames; it is not an
 Electron-compatible frame policy. The child-frame compatibility decision and
 same-origin/cross-origin/sandboxed behavior remain open.
 
+### Public page-shim frame scope (2026-10-20)
+
+The B5 probe's 2026-10-20 extension measured the public page shim independently
+of the experimental M1 host. It served a main frame and two children from one
+loopback-HTTP origin: a same-origin child reached the parent's page-world API
+through `parent` and called it synchronously, while an opaque sandboxed child
+was denied and could not see the native handlers. The same-origin child saw a
+parent-realm `Error`, not a child-realm `instanceof Error`. The native report
+lane still sees only the parent document.
+
+This informs the frame decision but does not change the experimental host's
+main-frame-only policy or establish Electron child-frame compatibility.
+The child-frame gate remains open. Details are in
+[the public WKWebView design](0056-sync-contextbridge-public-wkwebview.md).
+
 ### Page self-DoS (2026-10-18)
 
 `tests/context-bridge-self-dos-native.test.cjs` loads a page whose first

@@ -37,6 +37,29 @@ policy is recorded in `fixtures/moji-adapted/api.json` and
 `compatibility/apps/moji-v1.0.5/adapted-preload.json`; the runtime does not
 parse that field yet, the profile behavior is fixed in the host.
 
+### atomic-replace-v1
+
+`file:save` and the save-as document paths no longer call
+`writeToFile:atomically:YES` directly. `writeAtomicReplace`:
+
+1. `lstat`s the target and rejects a symlink, a non-regular file or a file with
+   `st_nlink != 1` (`ELECTRON_MBT_FILE_SYMLINK` / `ELECTRON_MBT_FILE_LINK`);
+2. opens the existing target with `O_NOFOLLOW`, rechecks `st_dev`/`st_ino`, and
+   creates a `mkstemp` file in the same directory;
+3. copies mode/owner/ACL/xattrs with `fcopyfile(COPYFILE_METADATA)` and verifies
+   the mode/owner before writing;
+4. writes all bytes, `fsync`s the temporary file, and checks the target
+   identity again (`ELECTRON_MBT_FILE_CONFLICT` on a changed inode);
+5. `rename`s over the target, then `fsync`s the parent directory. A failed
+   parent fsync reports `durability:"unknown"`; a failure before the rename
+   unlinks the temporary file and leaves the original bytes intact.
+
+A new target is created with mode `0644`. The check-then-rename window remains,
+so this is not a hostile-writer CAS. The positive fixture sets mode `0640` and
+`user.electron-mbt=metadata-preserved`, saves twice, and verifies both survive.
+A hardlinked document is denied with `ELECTRON_MBT_FILE_LINK`, and both links
+keep the same 103 bytes.
+
 ### Test-only UI driver
 
 A new CLI-only native control `trigger-renderer-edit-save` evaluates a fixed
@@ -74,12 +97,14 @@ that the UI's Save reached the native `file:save` handler exactly once.
 
 - `--moji-edit-save-selftest` (Phase 1: open → edit → save);
 - `--moji-reopen-selftest` (Phase 2: restart → open → verify first marker →
-  edit → save).
+  edit → save);
+- `--moji-save-failure-selftest` (Phase 3: open a hardlinked document and call
+  `window.api.save` directly; the broker must reject it).
 
-Both require `--window`, are mutually exclusive, and require a broker scenario
+All require `--window`, are mutually exclusive, and require a broker scenario
 with **zero grants and one open dialog**. The CLI polls `probe-renderer` for
-`window.__mojiEditSaveProbe` and reports `mojiScenario`, `mojiEditSave` and
-`mojiReopen`.
+`window.__mojiEditSaveProbe` and reports `mojiScenario`, `mojiEditSave`,
+`mojiReopen` and `mojiSaveFailure`.
 
 `scripts/nodeless-moji-edit-save.cjs` builds a disposable app from the pinned
 Moji output, creates `documents/note.md` **outside** the source manifest (a save
@@ -102,7 +127,7 @@ The harness report is
 | Command | Result |
 | --- | --- |
 | `node --test tests/nodeless-runtime.test.cjs` | **34 PASS** |
-| `npm test` | **490 pass / 0 fail** |
+| `npm test` | **492 pass / 0 fail** |
 | `moon test --target js` | **145 pass** |
 | `moon test --target native` | **178 pass** |
 | `node scripts/preview-readiness.cjs` | **NOT_READY** (35 checks: 28 PASS / 2 FAIL / 5 NOT RUN) |
@@ -110,19 +135,21 @@ The harness report is
 
 Observed scenario:
 
-| Field | Phase 1 | Phase 2 |
-| --- | --- | --- |
-| open dialog | test-injected, 1 | test-injected, 1 |
-| broker grants | 0 | 0 |
-| document title | `note.md - Moji v1.0.5` | `note.md - Moji v1.0.5` |
-| edit mechanism | `execCommand-insertText` | `execCommand-insertText` |
-| save before open | `ELECTRON_MBT_FILE_DENIED` | not probed |
-| sibling save | `ELECTRON_MBT_FILE_DENIED` | not probed |
-| `fileSaveAdmitted` | 1 | 1 |
-| `fileSaveDenied` | 2 | 0 |
-| reopen marker | n/a | present |
-| document bytes | 47 → 74 | 74 → 103 |
-| final SHA-256 | `a0cfa58c…a27e2` | `aa48440f…a6ba` |
+| Field | Phase 1 | Phase 2 | Phase 3 |
+| --- | --- | --- | --- |
+| open dialog | test-injected, 1 | test-injected, 1 | test-injected, 1 |
+| broker grants | 0 | 0 | 0 |
+| document title | `note.md - Moji v1.0.5` | `note.md - Moji v1.0.5` | `note.md - Moji v1.0.5` |
+| edit mechanism | `execCommand-insertText` | `execCommand-insertText` | direct save probe |
+| save before open | `ELECTRON_MBT_FILE_DENIED` | not probed | not probed |
+| sibling save | `ELECTRON_MBT_FILE_DENIED` | not probed | not probed |
+| `fileSaveAdmitted` | 1 | 1 | 0 |
+| `fileSaveDenied` | 2 | 0 | 1 |
+| reopen marker | n/a | present | n/a |
+| document bytes | 47 → 74 | 74 → 103 | 103 unchanged |
+| save result | ok | ok | `ELECTRON_MBT_FILE_LINK` |
+| mode / xattr | 0640 / preserved | 0640 / preserved | 0640 / preserved |
+| final SHA-256 | `a0cfa58c…a27e2` | `aa48440f…a6ba` | `aa48440f…a6ba` |
 
 The first save inserts the marker at the end of the last text line; the
 contenteditable caret is before the trailing newline, so the inserted marker's
@@ -137,9 +164,12 @@ resulting bytes, not a substring.
   not human keyboard input, IME or accessibility interaction. The replace-panel
   fallback is implemented but was not exercised in this run; both recorded
   phases used `execCommand-insertText`.
-- The save uses the existing Cocoa atomic write (`NSDataWritingAtomic`) and is
-  checked by bytes. `atomic-replace-v1` metadata/ACL/xattr/hardlink, conflict
-  detection and TOCTOU behavior are NOT RUN.
+- The save now uses `atomic-replace-v1`: mode `0640` and the
+  `user.electron-mbt` xattr survive both saves, and a hardlinked document is
+  rejected with `ELECTRON_MBT_FILE_LINK` while both links keep the same bytes.
+  Owner/ACL are copied by `fcopyfile` but are not separately asserted; the
+  check-then-rename conflict window remains. Fault injection for
+  `fsync`/`rename`/reply loss and a hostile-writer CAS are NOT RUN.
 - The restart deliberately re-opens through the picker. It does not restore a
   write grant from the previous session; that is the policy in 0011. The main
   grant store keeps only the main `read` selection. Renderer grants are
@@ -154,7 +184,8 @@ resulting bytes, not a substring.
 1. Run the human open/save panel gate separately, including selection,
    overwrite confirmation and sheet parenting.
 2. Add a real IME/AX/keyboard edit scenario; the current edit is synthetic.
-3. Tighten `atomic-replace-v1` metadata/conflict evidence and test the
-   app-session grant revocation/lifetime explicitly; the current grant survives
-   a reload and is not document-scoped.
+3. Add fault-injection evidence for `fsync`/`rename`/reply loss and a
+   hostile-writer conflict test; test the app-session grant revocation/lifetime
+   explicitly, since the current grant survives a reload and is not
+   document-scoped.
 4. Continue Phase 3 with the human dialog gate and grant-management UI.

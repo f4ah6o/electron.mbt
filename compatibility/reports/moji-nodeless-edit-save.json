@@ -14,9 +14,32 @@
     "path": "documents/note.md",
     "initialBytes": 47,
     "initialSHA256": "039b2071d4b38bf1a80fd1f882fcc7f804056687506932dd5371bf352d73720e",
+    "metadata": {
+      "modeBefore": "640",
+      "xattrName": "user.electron-mbt",
+      "xattrBefore": "metadata-preserved",
+      "phase1": {
+        "mode": "640",
+        "xattr": "metadata-preserved",
+        "nlink": 1
+      },
+      "phase2": {
+        "mode": "640",
+        "xattr": "metadata-preserved",
+        "nlink": 1
+      }
+    },
     "phase1Mechanism": "execCommand-insertText",
     "phase1SHA256": "a0cfa58cd3d113c71705988f042b276e4ced863f709dbb20f80a67207c3a27e2",
     "phase2Mechanism": "execCommand-insertText",
+    "hardlink": {
+      "path": "documents/note-link.md",
+      "nlink": 2,
+      "saveFailure": "ELECTRON_MBT_FILE_LINK",
+      "noteBytes": 103,
+      "linkBytes": 103,
+      "unchanged": true
+    },
     "finalBytes": 103,
     "finalSHA256": "aa48440f07d3f442ac3c3494cd3c9c67a15febec4769491c000bde1f7e23a6ba"
   },
@@ -71,6 +94,7 @@
         "saveError": "",
         "editMechanism": "execCommand-insertText",
         "reopenMarkerPresent": false,
+        "saveFailure": "",
         "beforeOpenSave": "ELECTRON_MBT_FILE_DENIED",
         "siblingSave": "ELECTRON_MBT_FILE_DENIED",
         "documentTitle": "note.md - Moji v1.0.5",
@@ -152,6 +176,7 @@
         "saveError": "",
         "editMechanism": "execCommand-insertText",
         "reopenMarkerPresent": true,
+        "saveFailure": "",
         "beforeOpenSave": "",
         "siblingSave": "",
         "documentTitle": "note.md - Moji v1.0.5",
@@ -198,5 +223,87 @@
     "NSDataWritingAtomic byte equality only; metadata, ACL, hardlink and TOCTOU are NOT RUN",
     "single Node-less window; strict profile, original preload and Electron differential are NOT RUN"
   ],
-  "note": "Pinned Moji renderer drives its own Open/Editor/Save controls under the adapted page API. The open dialog is test-injected and the edit is synthetic. This is not Electron compatibility or human consent."
+  "note": "Pinned Moji renderer drives its own Open/Editor/Save controls under the adapted page API. The open dialog is test-injected and the edit is synthetic. This is not Electron compatibility or human consent.",
+  "phase3": {
+    "status": "PASS",
+    "pageTitle": "note.md - Moji v1.0.5",
+    "pageURL": "electron-mbt-app://app/out/renderer/index.html",
+    "rendererLoaded": true,
+    "preloadExecuted": false,
+    "compatible": false,
+    "hostShutdown": true,
+    "liveLeases": 0,
+    "nodeProcesses": 0,
+    "adapted": {
+      "configured": true,
+      "observed": true,
+      "released": true,
+      "requests": 3,
+      "replyErrors": 0,
+      "rejected": 0,
+      "ingress": {
+        "denied": 1,
+        "fileSaveAdmitted": 0,
+        "fileSaveDenied": 1,
+        "admitted": 4,
+        "lastCode": "ELECTRON_MBT_FILE_LINK",
+        "generation": 1,
+        "unhandled": 0
+      }
+    },
+    "scenario": {
+      "configured": true,
+      "mode": "test-injected-open-for-edit",
+      "grants": 0,
+      "dialogs": 1,
+      "triggered": true,
+      "error": ""
+    },
+    "block": {
+      "ok": true,
+      "phase": "save-failure",
+      "error": "",
+      "probe": {
+        "state": "done",
+        "code": "",
+        "message": "",
+        "open": true,
+        "editor": false,
+        "inserted": false,
+        "dirty": false,
+        "saved": false,
+        "saveError": "",
+        "editMechanism": "",
+        "reopenMarkerPresent": false,
+        "saveFailure": "ELECTRON_MBT_FILE_LINK",
+        "beforeOpenSave": "",
+        "siblingSave": "",
+        "documentTitle": "note.md - Moji v1.0.5",
+        "titleAfterEdit": "",
+        "titleAfterSave": "",
+        "notice": "",
+        "execCommand": false
+      }
+    },
+    "grantStore": {
+      "loaded": true,
+      "persisted": true,
+      "error": "",
+      "files": [
+        {
+          "mode": "read"
+        }
+      ],
+      "directories": 0
+    },
+    "ingress": {
+      "denied": 1,
+      "fileSaveAdmitted": 0,
+      "fileSaveDenied": 1,
+      "admitted": 4,
+      "lastCode": "ELECTRON_MBT_FILE_LINK",
+      "generation": 1,
+      "unhandled": 0
+    }
+  }
 }

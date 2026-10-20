@@ -93,6 +93,34 @@ jobs:
         with:
           name: compiled-core
           path: dist/
+      - name: Bootstrap and validate the pinned toolchain
+        shell: bash
+        env:
+          # The Node boundary builds native/nodeless with `moon build`, so this
+          # job needs the toolchain too. The installer resolves platform-specific
+          # artifacts, so the linux-x86_64 hashes in the moonbit job do not apply
+          # here; these were recorded from the darwin-aarch64 artifact of the
+          # same version. A mismatch fails loudly instead of drifting.
+          MOONBIT_VERSION: '0.10.15+943464bfa'
+          MOONBIT_INSTALLER_SHA256: '46495f8cdc0050f79b6cb195d66478d101cb3601d68506568fbe377fcdf2a9fe'
+          MOON_SHA256: '3285bcd630ad68dbec7c74f308d30c5e8af9503b0e4c0ed95a3719e873c35b33'
+          MOONC_SHA256: '60d8e33110ab7a013a3f23da2013152da64c5f1a9d4c12ca469eec77677160d3'
+          MOONRUN_SHA256: '91f36ac0a5b3c94fd922ceddb4dcb2c1f7622b7157ebd464c6cb8e9e56965a97'
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          curl --fail --silent --show-error --location https://cli.moonbitlang.com/install/unix.sh -o "$RUNNER_TEMP/install-moon.sh"
+          echo "$MOONBIT_INSTALLER_SHA256  $RUNNER_TEMP/install-moon.sh" | shasum -a 256 -c | tee evidence/installer-sha256.txt
+          bash "$RUNNER_TEMP/install-moon.sh" "$MOONBIT_VERSION"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          {
+            echo "$MOON_SHA256  $HOME/.moon/bin/moon"
+            echo "$MOONC_SHA256  $HOME/.moon/bin/moonc"
+            echo "$MOONRUN_SHA256  $HOME/.moon/bin/moonrun"
+          } | shasum -a 256 -c | tee evidence/toolchain-sha256.txt
+          "$HOME/.moon/bin/moon" version --all | tee evidence/moon-version.txt
+          grep -Fq 'moonc v0.10.15+943464bfa (2026-10-12)' evidence/moon-version.txt
+          grep -Fq 'moon 0.1.20261012 (748b63c 2026-10-12)' evidence/moon-version.txt
       - name: Build macOS native control channel
         run: node scripts/build-native.cjs
       - name: Build standalone macOS AppKit WebView host

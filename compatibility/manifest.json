@@ -168,6 +168,7 @@
       "status": "partial",
       "tests": [
         "scripts/m0-bridge-probe.cjs",
+        "scripts/m0-context-bridge-probe.cjs",
         "scripts/macos-probe.cjs",
         "scripts/oracle.cjs",
         "tests/context-bridge-admission-binding-native.test.cjs",
@@ -177,14 +178,17 @@
         "tests/context-bridge-registry.test.cjs",
         "tests/differential.test.cjs",
         "tests/m0-bridge-evidence.test.cjs",
+        "tests/m0-context-bridge-codec.test.cjs",
+        "tests/m0-context-bridge-evidence.test.cjs",
         "tests/m0-electron-oracle-evidence.test.cjs"
       ],
       "evidence": [
         "evidence/b7-admission-binding.json",
+        "evidence/m0-context-bridge.json",
         "evidence/wkcontentworld.json",
         "evidence/wksyncbridge.json"
       ],
-      "gap": "Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute. Separately pinned sandboxed Electron 44.7.0 preload baseline now validates first-script sync/Promise/frozen-data and documents callback identity vs disposer behavior; this is oracle evidence only. Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, test-only native document-grant issue/rotation/replay denial, direct child-frame native rejection with isolated Promise confirmation (not original page-initiator authentication), native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open. The contextBridge handle/registry/bootstrap prerequisite stack is integrated: bounded native-backed JS handles, document-start isolated bootstrap, one-shot native attestation, failed-preload denial and same-URL reload/window-destroy revocation are tested. The experimental B6-C page shim now binds the actual descriptor to the pre-registered preview metadata (bytes/function count/SHA-256) before materializing; a same-key mismatch fails closed, while dynamic/non-deterministic preloads are not admitted. This is not a strict-profile admission. The public contextBridge API and any synchronous cross-world proxy remain NOT_IMPLEMENTED."
+      "gap": "Probe verdict NO_PUBLIC_SYNC_PROXY: public cross-world primitives do not establish a secure synchronous function proxy. Synchronous bridge remains unresolved. The full fixture fails during window creation before preload or contextBridge execute. Separately pinned sandboxed Electron 44.7.0 preload baseline now validates first-script sync/Promise/frozen-data and documents callback identity vs disposer behavior; this is oracle evidence only. Test-only isolated WKContentWorld M0 diagnostic measures synchronous DOM-event dispatch, page-forgeable reply data, page-induced isolated native echo with no initiator attestation, test-only native document-grant issue/rotation/replay denial, direct child-frame native rejection with isolated Promise confirmation (not original page-initiator authentication), native WKScriptMessageHandlerWithReply Promise and document reload; it does not load an actual Electron preload or implement secure contextBridge, Promise/callback proxies, frozen cross-realm copies or native sender attestation. M0 remains open. The contextBridge handle/registry/bootstrap prerequisite stack is integrated: bounded native-backed JS handles, document-start isolated bootstrap, one-shot native attestation, failed-preload denial and same-URL reload/window-destroy revocation are tested. The experimental B6-C page shim now binds the actual descriptor to the pre-registered preview metadata (bytes/function count/SHA-256) before materializing; a same-key mismatch fails closed, while dynamic/non-deterministic preloads are not admitted. This is not a strict-profile admission. The public contextBridge API and any synchronous cross-world proxy remain NOT_IMPLEMENTED. The 2026-10-20 public-WKWebView frame/origin PoC extends the B5 candidate: over one loopback-HTTP origin a same-origin child reached the parent page-world API through `parent` and called it synchronously while an opaque sandboxed child was denied; the same-origin child saw a parent-realm Error (`instanceof Error` false in the child realm). The native report lane still sees only the parent document. The production host remains main-frame-only, so Electron child-frame parity and the child-realm Error contract remain open. strict contextBridge remains blocked; compatible:false."
     },
     {
       "id": "D",
@@ -774,6 +778,13 @@
       "write": "atomic-replace-v1",
       "restart": "reauthorize"
     },
+    "atomicReplace": {
+      "mode": "atomic-replace-v1",
+      "metadata": "mode/owner/ACL/xattr copied with fcopyfile; mode and user xattr asserted",
+      "singleLinkOnly": true,
+      "conflict": "dev/ino rechecked before rename; check-then-rename window remains",
+      "faultInjection": "NOT_RUN"
+    },
     "export": "test-injected HTML + diagram PNG; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED",
     "dialogGrants": true,
     "exportGrants": true
@@ -874,9 +885,11 @@
     "openForEdit": true,
     "phase1Mechanism": "execCommand-insertText",
     "phase2Mechanism": "execCommand-insertText",
+    "metadataPreserved": true,
+    "hardlink": "ELECTRON_MBT_FILE_LINK",
     "preloadExecuted": false,
     "compatible": false,
-    "note": "Pinned Moji renderer drives its own Open/Editor/Save controls under the adapted page API. The open dialog is test-injected and the edit is synthetic; human input/IME and a real picker are NOT RUN."
+    "note": "Pinned Moji renderer drives its own Open/Editor/Save controls under the adapted page API. The open dialog is test-injected and the edit is synthetic; mode and xattr survive the atomic save, hardlinks are rejected. Human input/IME, owner/ACL assertions, fault injection and a real picker are NOT RUN."
   },
   "mojiDialogUI": {
     "status": "PASS",

@@ -46,8 +46,8 @@ existing adapter source), so reload was not a usable path.
 
 | Command | Result |
 | --- | --- |
-| `node --test tests/nodeless-runtime.test.cjs` | **29 PASS** (includes plain reload to generation 2, adapted reload to generation 2, stale event rejected) |
-| `npm test` | **485 pass / 0 fail** |
+| `node --test tests/nodeless-runtime.test.cjs` | **30 PASS** (includes plain reload to generation 2, adapted reload to generation 2, stale event rejected, forged claims ignored, malformed page message denied) |
+| `npm test` | **486 pass / 0 fail** |
 | `moon test --target js` | **145 pass** |
 | `moon test --target native` | **178 pass** |
 | `node scripts/preview-readiness.cjs` | **NOT_READY** (unchanged 27 PASS / 2 FAIL / 5 NOT RUN) |
@@ -75,10 +75,13 @@ Electron differential result.
   production path releases the adapter queue automatically when the document
   load completes; the CLI now waits for `get-adapted-status.released` instead of
   calling the control.
-- Child-frame adapted ingress, page-supplied forged sender fields and a full
-  fault matrix are not covered by this increment. The native host already
-  rejects non-main-frame `electronMbtApp` messages, but there is no dedicated
-  Node-less child-frame test yet.
+- The current event in `--ingress-selftest` carries forged
+  window/generation/sender/origin claims; the pump ignores them and the event
+  is still handled. A malformed main-frame page message is denied at the native
+  ingress, and an iframe/`srcdoc` attempt does not reach Main. A dedicated proof
+  that a **subframe handler message** is rejected is still missing; the
+  Node-less navigation policy is already main-frame-only, so the subframe did
+  not load in this run.
 - `inject-app-request` is test-only and fails without
   `ELECTRON_MBT_TEST_MODE=1`; it is not a user-facing API.
 - No strict-profile admission, no `compatible:true`, no A–J row promotion.
@@ -86,4 +89,6 @@ Electron differential result.
 ## Next
 
 1. Add Node-less child-frame, forged-payload-sender and reload-race negatives.
-2. Then start Phase 3: grant persistence/revocation and normal save/restart.
+2. Add a dedicated subframe-handler rejection proof if the frame policy is
+   relaxed.
+3. Then start Phase 3: grant persistence/revocation and normal save/restart.

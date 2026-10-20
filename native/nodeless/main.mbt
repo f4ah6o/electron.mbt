@@ -1197,7 +1197,14 @@ fn main {
         "request": Json({
           "request": Json("ingress-live"),
           "operation": Json("app:ingress-live"),
-          "payload": Json::empty_object(),
+          // The page may claim any window/generation/sender it likes. The pump
+          // must use the native event envelope, never these payload fields.
+          "payload": Json({
+            "window": Json(999),
+            "generation": Json(999),
+            "sender": Json("forged-page"),
+            "origin": Json("https://evil.example"),
+          }),
         }),
       }).stringify()
       let stale_injected = cli_host_payload("inject-app-request", stale_payload) != None
@@ -1216,6 +1223,7 @@ fn main {
         "window": Json(identity_window),
         "generation": Json(identity_generation),
         "staleGeneration": Json(stale_generation),
+        "forgedClaimsIgnored": Json(handled >= 1 && rejected >= 1),
       })
     }
     let mut probe_title = ""

@@ -232,6 +232,92 @@ test('the Node-less ingress rejects a stale generation before Main dispatch', {
     assert.equal(report.ingressSelftest.window, 1);
     assert.equal(report.ingressSelftest.generation, 1);
     assert.equal(report.ingressSelftest.staleGeneration, 0);
+    assert.equal(report.ingressSelftest.forgedClaimsIgnored, true,
+      'page-supplied window/generation/sender claims must not become authority');
+    assert.equal(report.compatible, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a malformed or frame-originated page message never reaches Node-less Main', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const api = {
+    schema: 3,
+    name: 'api',
+    version: 'ingress-forged',
+    topics: [{ topic: 'doc:open', method: 'onOpenDocument' }],
+    calls: [
+      { name: 'getSettings', operation: 'app:getSettings', args: 'none' },
+      { name: 'getForged', operation: 'app:getForged', args: 'none' },
+    ],
+    queue: { maxCalls: 4, maxBytes: 16384, readyTimeoutMs: 5000 },
+  };
+  const adapter = buildAdapter(api).source;
+  const dir = temporaryApp([
+    "'use strict';",
+    "const { app, BrowserWindow, ipcMain } = require('electron');",
+    "let forged = 0;",
+    "app.whenReady().then(function () {",
+    "  ipcMain.handle('app:forged', function () { forged += 1; return { forged: forged }; });",
+    "  ipcMain.handle('app:getForged', function () { return { forged: forged }; });",
+    "  ipcMain.handle('app:getSettings', function () { return { theme: 'dark' }; });",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'ingress-forged', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "});",
+    '',
+  ].join('\n'), {
+    'nodeless-app.json': `${JSON.stringify({
+      schema: 1, profile: 'electron-nodeless-adapted-v1', adapter: 'adapted/page-api.js',
+    })}\n`,
+    'adapted/api.json': `${JSON.stringify(api)}\n`,
+    'adapted/page-api.js': adapter,
+    'renderer/index.html': '<!doctype html><title>ingress-forged-wait</title><body><div id="root"></div><script type="module" src="./app.js"></script></body>\n',
+    'renderer/app.js': [
+      "'use strict';",
+      "try {",
+      "  const handler = window.webkit && window.webkit.messageHandlers &&",
+      "    window.webkit.messageHandlers.electronMbtApp;",
+      "  if (handler) {",
+      "    const reply = handler.postMessage({ operation: 'app:forged', payload: 'not-an-object' });",
+      "    if (reply && reply.catch) reply.catch(function () {});",
+      "  }",
+      "} catch (_) {}",
+      "try {",
+      "  const frame = document.createElement('iframe');",
+      "  frame.setAttribute('sandbox', 'allow-scripts');",
+      "  frame.srcdoc = '<script>try{const h=window.webkit.messageHandlers.electronMbtApp;" +
+        "const p=h.postMessage({operation:\"app:forged\",payload:{}});" +
+        "if(p&&p.catch)p.catch(function(){});}catch(e){}</script>';",
+      "  document.body.appendChild(frame);",
+      "} catch (_) {}",
+      "window.api.getForged().then(function (result) {",
+      "  document.title = 'forged-' + result.forged;",
+      "  document.getElementById('root').textContent = 'forged';",
+      "}).catch(function (error) {",
+      "  document.title = 'forged-error-' + String(error && (error.code || error.message) || error);",
+      "});",
+      '',
+    ].join('\n'),
+  });
+  manifestFor(dir, 'renderer/index.html', [
+    'package.json', 'src/main.js', 'nodeless-app.json', 'adapted/api.json',
+    'adapted/page-api.js', 'renderer/index.html', 'renderer/app.js',
+  ]);
+  try {
+    const { result, report } = run(binary, dir, ['--window', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.pageTitle, 'forged-0',
+      'neither the malformed main-frame message nor a frame message may reach Main');
+    assert.equal(report.adapted.replyErrors, 0);
+    assert.equal(report.adapted.rejected, 0);
+    assert.ok(report.adapted.ingress.admitted >= 1);
+    assert.ok(report.adapted.ingress.denied >= 1,
+      'the malformed page message must be denied at the native ingress');
     assert.equal(report.compatible, false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

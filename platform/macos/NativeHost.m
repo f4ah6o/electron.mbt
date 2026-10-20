@@ -14,6 +14,7 @@
 #import <string.h>
 #import <errno.h>
 #import <math.h>
+#import <copyfile.h>
 
 #if defined(ELECTRON_MBT_TEST_REAL_WEBKIT_KILL)
 // Do not include private WebKit SPI in the production host: this selector is
@@ -386,6 +387,155 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @interface MBTAppSchemeHandler : NSObject <WKURLSchemeHandler>
 @property(nonatomic, weak) id<MBTAppSchemeSource> source;
 @end
+
+// atomic-replace-v1 for the adapted file broker. The temporary file is created
+// in the target directory, metadata is copied from the existing single-link
+// regular file, the data is fsynced, and only then is the target renamed over.
+// A symlink, hardlink, special file or a changed target identity fails closed;
+// the check-then-rename window remains, so this is not a hostile-writer CAS.
+static NSDictionary *writeAtomicReplace(NSData *content, NSString *canonical,
+                                        NSString **errorCode) {
+  if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_WRITE";
+  if (content == nil || canonical.length == 0) return nil;
+  const char *target = canonical.fileSystemRepresentation;
+  struct stat before;
+  BOOL existed = lstat(target, &before) == 0;
+  if (!existed && errno != ENOENT) return nil;
+  if (existed) {
+    if (S_ISLNK(before.st_mode)) {
+      if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_SYMLINK";
+      return nil;
+    }
+    if (!S_ISREG(before.st_mode)) {
+      if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_WRITE";
+      return nil;
+    }
+    if (before.st_nlink != 1) {
+      // Replacing one link would leave the other links pointing at old bytes.
+      if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_LINK";
+      return nil;
+    }
+  }
+  int sourceFD = -1;
+  if (existed) {
+    sourceFD = open(target, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (sourceFD < 0) return nil;
+    struct stat opened;
+    if (fstat(sourceFD, &opened) != 0 || opened.st_dev != before.st_dev ||
+        opened.st_ino != before.st_ino || !S_ISREG(opened.st_mode) ||
+        opened.st_nlink != 1) {
+      close(sourceFD);
+      if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_CONFLICT";
+      return nil;
+    }
+  }
+  NSString *directory = [canonical stringByDeletingLastPathComponent];
+  char temporary[PATH_MAX];
+  int length = snprintf(temporary, sizeof(temporary), "%s/.electron-mbt-save-XXXXXX",
+    directory.fileSystemRepresentation);
+  if (length <= 0 || length >= (int)sizeof(temporary)) {
+    if (sourceFD >= 0) close(sourceFD);
+    return nil;
+  }
+  int fd = mkstemp(temporary);
+  if (fd < 0) {
+    if (sourceFD >= 0) close(sourceFD);
+    return nil;
+  }
+  BOOL ok = YES;
+  if (existed) {
+    if (fcopyfile(sourceFD, fd, NULL, COPYFILE_METADATA) != 0) {
+      if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_METADATA";
+      ok = NO;
+    }
+    if (ok) {
+      struct stat copied;
+      if (fstat(fd, &copied) != 0) {
+        if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_METADATA";
+        ok = NO;
+      } else {
+        if (copied.st_uid != before.st_uid || copied.st_gid != before.st_gid) {
+          if (fchown(fd, before.st_uid, before.st_gid) != 0) {
+            if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_METADATA";
+            ok = NO;
+          }
+        }
+        if (ok && (copied.st_mode & 07777) != (before.st_mode & 07777)) {
+          if (fchmod(fd, before.st_mode & 07777) != 0) {
+            if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_METADATA";
+            ok = NO;
+          }
+        }
+      }
+    }
+  } else if (fchmod(fd, 0644) != 0) {
+    if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_METADATA";
+    ok = NO;
+  }
+  if (ok) {
+    const uint8_t *bytes = content.bytes;
+    NSUInteger total = content.length;
+    NSUInteger offset = 0;
+    while (offset < total) {
+      ssize_t written = write(fd, bytes + offset, total - offset);
+      if (written < 0) {
+        if (errno == EINTR) continue;
+        if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_WRITE";
+        ok = NO;
+        break;
+      }
+      if (written == 0) {
+        if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_WRITE";
+        ok = NO;
+        break;
+      }
+      offset += (NSUInteger)written;
+    }
+  }
+  if (ok && fsync(fd) != 0) {
+    if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_WRITE";
+    ok = NO;
+  }
+  if (close(fd) != 0 && ok) {
+    if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_WRITE";
+    ok = NO;
+  }
+  if (sourceFD >= 0) close(sourceFD);
+  if (ok) {
+    struct stat current;
+    if (existed) {
+      if (lstat(target, &current) != 0 || current.st_dev != before.st_dev ||
+          current.st_ino != before.st_ino) {
+        if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_CONFLICT";
+        ok = NO;
+      }
+    } else if (lstat(target, &current) == 0 || errno != ENOENT) {
+      if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_CONFLICT";
+      ok = NO;
+    }
+  }
+  if (ok && rename(temporary, target) != 0) {
+    if (errorCode != NULL) *errorCode = @"ELECTRON_MBT_FILE_WRITE";
+    ok = NO;
+  }
+  if (!ok) {
+    unlink(temporary);
+    return nil;
+  }
+  NSString *durability = @"synced";
+  int directoryFD = open(directory.fileSystemRepresentation,
+    O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (directoryFD < 0 || fsync(directoryFD) != 0) durability = @"unknown";
+  if (directoryFD >= 0) close(directoryFD);
+  struct stat after;
+  NSNumber *mode = @0;
+  if (stat(target, &after) == 0) mode = @(after.st_mode & 07777);
+  return @{
+    @"mode": mode,
+    @"created": @(!existed),
+    @"durability": durability,
+  };
+}
 
 @interface MBTWindow : NSObject <WKNavigationDelegate, NSWindowDelegate, WKUIDelegate,
                                 WKScriptMessageHandlerWithReply, MBTAppSchemeSource>
@@ -821,12 +971,21 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [self denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
-    if (![data writeToFile:granted atomically:YES]) {
-      [self denyFile:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
+    NSString *writeError = nil;
+    NSDictionary *writeResult = writeAtomicReplace(data, granted, &writeError);
+    if (writeResult == nil) {
+      [self denyFile:(writeError ?: @"ELECTRON_MBT_FILE_WRITE") reply:reply];
       return;
     }
     self.ingressAdmitted++;
-    reply(@{@"ok": @YES, @"path": granted, @"bytes": @(data.length), @"source": @"test-dialog"}, nil);
+    NSMutableDictionary *result = [@{
+      @"ok": @YES,
+      @"path": granted,
+      @"bytes": @(data.length),
+      @"source": @"test-dialog",
+    } mutableCopy];
+    [result addEntriesFromDictionary:writeResult];
+    reply(result, nil);
     return;
   }
   if (self.native == nil) {
@@ -854,12 +1013,21 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [window denyFile:@"ELECTRON_MBT_FILE_DENIED" reply:reply];
       return;
     }
-    if (![data writeToFile:granted atomically:YES]) {
-      [window denyFile:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
+    NSString *writeError = nil;
+    NSDictionary *writeResult = writeAtomicReplace(data, granted, &writeError);
+    if (writeResult == nil) {
+      [window denyFile:(writeError ?: @"ELECTRON_MBT_FILE_WRITE") reply:reply];
       return;
     }
     window.ingressAdmitted++;
-    reply(@{@"ok": @YES, @"path": granted, @"bytes": @(data.length), @"source": @"dialog"}, nil);
+    NSMutableDictionary *result = [@{
+      @"ok": @YES,
+      @"path": granted,
+      @"bytes": @(data.length),
+      @"source": @"dialog",
+    } mutableCopy];
+    [result addEntriesFromDictionary:writeResult];
+    reply(result, nil);
   }];
 }
 - (void)writeExportData:(NSData *)data suggestedName:(NSString *)suggestedName
@@ -1108,13 +1276,21 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       [self denyFileSave:@"ELECTRON_MBT_FILE_LIMIT" reply:reply];
       return;
     }
-    if (![content writeToFile:canonical atomically:YES]) {
-      [self denyFileSave:@"ELECTRON_MBT_FILE_WRITE" reply:reply];
+    NSString *writeError = nil;
+    NSDictionary *writeResult = writeAtomicReplace(content, canonical, &writeError);
+    if (writeResult == nil) {
+      [self denyFileSave:(writeError ?: @"ELECTRON_MBT_FILE_WRITE") reply:reply];
       return;
     }
     self.fileSaveAdmitted++;
     self.ingressAdmitted++;
-    reply(@{@"ok": @YES, @"path": canonical, @"bytes": @(content.length)}, nil);
+    NSMutableDictionary *result = [@{
+      @"ok": @YES,
+      @"path": canonical,
+      @"bytes": @(content.length),
+    } mutableCopy];
+    [result addEntriesFromDictionary:writeResult];
+    reply(result, nil);
     return;
   }
   if ([operation isEqualToString:@"doc:export"]) {
@@ -4465,7 +4641,8 @@ static NSString *grantModeForBits(NSInteger bits) {
       return;
     }
     if (payload.count != 1 || ![phase isKindOfClass:[NSString class]] ||
-        !([phase isEqualToString:@"edit-save"] || [phase isEqualToString:@"reopen-save"])) {
+        !([phase isEqualToString:@"edit-save"] || [phase isEqualToString:@"reopen-save"] ||
+          [phase isEqualToString:@"save-failure"])) {
       done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
       return;
     }
@@ -4514,6 +4691,10 @@ static NSString *grantModeForBits(NSInteger bits) {
       "for(var i=0;i<tabs.length;i++){if(textOf(tabs[i]).indexOf('note.md')>=0)return true;}"
       "return (document.title||'').indexOf('note.md')>=0;},12000);"
       "probe.open=true;probe.documentTitle=document.title;"
+      "if(PHASE==='save-failure'){try{var failed=await window.api.save(docPath,'link-write');"
+      "probe.saveFailure=failed&&failed.ok?'allowed':String(failed&&failed.error||'denied');}"
+      "catch(error){probe.saveFailure=String(error&&error.code||error);}"
+      "probe.state='done';return;}"
       "var editorButton=findButton('.segment__btn','Editor',1);"
       "if(!editorButton)return fail('ELECTRON_MBT_MOJI_EDITOR_BUTTON');"
       "editorButton.click();"

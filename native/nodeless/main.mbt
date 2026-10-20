@@ -247,6 +247,40 @@ fn cli_apply_broker_scenario(
 }
 
 ///|
+fn cli_realpath(path : String) -> String {
+  let buffer = Bytes::new(4096)
+  let length = nodeless_realpath(@utf8.encode(path), buffer, buffer.length())
+  if length <= 0 {
+    return ""
+  }
+  @utf8.decode_lossy(buffer[:length])
+}
+
+///|
+fn cli_grant_store_has(store : Json, canonical : String, key : String) -> Bool {
+  let mut found = false
+  match cli_field(store, key) {
+    Array(values) => {
+      for item in values {
+        if cli_text(item, "path") is Some(value) && value == canonical {
+          found = true
+        }
+      }
+    }
+    _ => ()
+  }
+  found
+}
+
+///|
+fn cli_grant_store_count(store : Json, key : String) -> Int {
+  match cli_field(store, key) {
+    Array(values) => values.length()
+    _ => 0
+  }
+}
+
+///|
 fn cli_user_file_path(path : String) -> Bool {
   path.length() > 0 && path.length() <= 4096 && path.has_prefix("/")
 }
@@ -815,7 +849,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest]")
+    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest]")
     nodeless_exit(2)
     return
   }
@@ -839,6 +873,8 @@ fn main {
   let save_dialog_selftest = args.contains("--save-dialog-selftest")
   let dialog_ui_selftest = args.contains("--dialog-ui-selftest")
   let ingress_selftest = args.contains("--ingress-selftest")
+  let grant_persist_selftest = args.contains("--grant-persist-selftest")
+  let grant_revoke_selftest = args.contains("--grant-revoke-selftest")
   if fs_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--fs-selftest requires --window")
     return
@@ -865,6 +901,24 @@ fn main {
   }
   if ingress_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--ingress-selftest requires --window")
+    return
+  }
+  if grant_persist_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--grant-persist-selftest requires --window")
+    return
+  }
+  if grant_revoke_selftest && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--grant-revoke-selftest requires --window")
+    return
+  }
+  if user_file_selftest && (grant_persist_selftest || grant_revoke_selftest) {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE",
+      "--user-file-selftest is mutually exclusive with grant persistence/revocation selftests")
+    return
+  }
+  if grant_persist_selftest && grant_revoke_selftest {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE",
+      "--grant-persist-selftest and --grant-revoke-selftest are mutually exclusive")
     return
   }
   if dialog_selftest && dialog_ui_selftest {
@@ -976,7 +1030,7 @@ fn main {
   }
   let mut user_file_read_path = ""
   let mut user_file_write_path = ""
-  if user_file_selftest {
+  if user_file_selftest || grant_persist_selftest || grant_revoke_selftest {
     match cli_user_file_scenario(sources) {
       Ok((read_path, write_path)) => {
         user_file_read_path = read_path
@@ -1104,6 +1158,11 @@ fn main {
     let mut save_dialog_ui_ok = true
     let mut ingress_selftest_json : Json = null
     let mut ingress_selftest_ok = true
+    let mut grant_store : Json = null
+    let mut grant_persist_json : Json = null
+    let mut grant_persist_ok = true
+    let mut grant_revoke_json : Json = null
+    let mut grant_revoke_ok = true
     if user_file_selftest {
       match cli_apply_user_file_grants((user_file_read_path, user_file_write_path)) {
         Ok(_) => ()
@@ -1321,6 +1380,75 @@ fn main {
       user_file_selftest_ok =
         user_dispatch_ok && (cli_field(user_file_selftest_json, "ok") is True)
     }
+    grant_store = cli_host_payload("get-main-grant-store", "{}").unwrap_or(null)
+    if grant_persist_selftest {
+      let read_canonical = cli_realpath(user_file_read_path)
+      let write_canonical = cli_realpath(user_file_write_path)
+      let read_granted = cli_grant_store_has(grant_store, read_canonical, "files")
+      let write_granted = cli_grant_store_has(grant_store, write_canonical, "files")
+      let (user_results, user_dispatch_ok) = cli_dispatch_results(runner, ["userfile:selftest"])
+      let user_dispatch_value = user_results.get("userfile:selftest").unwrap_or(null)
+      user_file_selftest_json = if cli_field(user_dispatch_value, "ok") is True {
+        cli_field(user_dispatch_value, "result")
+      } else {
+        user_dispatch_value
+      }
+      user_file_selftest_ok =
+        user_dispatch_ok && (cli_field(user_file_selftest_json, "ok") is True)
+      grant_persist_ok = read_granted && write_granted && user_file_selftest_ok &&
+        (cli_field(grant_store, "loaded") is True) &&
+        (cli_field(grant_store, "persisted") is True)
+      grant_persist_json = Json({
+        "ok": Json(grant_persist_ok),
+        "readGranted": Json(read_granted),
+        "writeGranted": Json(write_granted),
+        "loaded": cli_field(grant_store, "loaded"),
+        "persisted": cli_field(grant_store, "persisted"),
+        "error": cli_field(grant_store, "error"),
+        "userFileSelftestOk": Json(user_file_selftest_ok),
+      })
+    }
+    if grant_revoke_selftest {
+      let read_payload = Json({
+        "path": Json(user_file_read_path),
+        "kind": Json("file"),
+      }).stringify()
+      let write_payload = Json({
+        "path": Json(user_file_write_path),
+        "kind": Json("file"),
+      }).stringify()
+      let revoked_read = match cli_host_payload("revoke-main-grant", read_payload) {
+        Some(value) => cli_field(value, "revoked") is True
+        None => false
+      }
+      let revoked_write = match cli_host_payload("revoke-main-grant", write_payload) {
+        Some(value) => cli_field(value, "revoked") is True
+        None => false
+      }
+      grant_store = cli_host_payload("get-main-grant-store", "{}").unwrap_or(null)
+      let store_empty = cli_grant_store_count(grant_store, "files") == 0 &&
+        cli_grant_store_count(grant_store, "directories") == 0
+      let read_payload = Json({ "path": Json(user_file_read_path) }).stringify()
+      let write_payload = Json({
+        "path": Json(user_file_write_path),
+        "base64": Json(""),
+      }).stringify()
+      let read_denied = cli_host_payload("main-read-file", read_payload) == None
+      let write_denied = cli_host_payload("main-write-file", write_payload) == None
+      grant_revoke_ok = revoked_read && revoked_write && store_empty &&
+        read_denied && write_denied
+      grant_revoke_json = Json({
+        "ok": Json(grant_revoke_ok),
+        "revokedRead": Json(revoked_read),
+        "revokedWrite": Json(revoked_write),
+        "storeEmpty": Json(store_empty),
+        "readDenied": Json(read_denied),
+        "writeDenied": Json(write_denied),
+        "loaded": cli_field(grant_store, "loaded"),
+        "persisted": cli_field(grant_store, "persisted"),
+        "error": cli_field(grant_store, "error"),
+      })
+    }
     if directory_selftest {
       let (directory_results, directory_dispatch_ok) =
         cli_dispatch_results(runner, ["directory:selftest"])
@@ -1451,7 +1579,6 @@ fn main {
     let not_verified : Array[Json] = [
       Json("preload"),
       Json("production-file-grants"),
-      Json("grant-persistence"),
       Json("human-dialog-ui"),
       Json("production-directory-consent"),
       Json("human-main-dialog-selection"),
@@ -1466,13 +1593,17 @@ fn main {
       Json("asan"),
       Json("external-review"),
     ]
+    if !(grant_persist_ok && (grant_persist_selftest || grant_revoke_selftest)) {
+      not_verified.push(Json("grant-persistence"))
+    }
     if !renderer_loaded {
       not_verified.push(Json("real-renderer"))
     }
     let status_ok = page_title.length() > 0 && shutdown == 0 && live == 0 &&
       adapted_ok && broker_ok && fs_selftest_ok && user_file_selftest_ok &&
       directory_selftest_ok && dialog_selftest_ok && dialog_ui_ok &&
-      save_dialog_selftest_ok && save_dialog_ui_ok && ingress_selftest_ok
+      save_dialog_selftest_ok && save_dialog_ui_ok && ingress_selftest_ok &&
+      grant_persist_ok && grant_revoke_ok
     let report = Json({
       "schema": Json(1),
       "probe": Json("nodeless-window-runtime"),
@@ -1511,6 +1642,9 @@ fn main {
         "ingress": ingress,
       }),
       "ingressSelftest": ingress_selftest_json,
+      "grantStore": grant_store,
+      "grantPersistSelftest": grant_persist_json,
+      "grantRevokeSelftest": grant_revoke_json,
       "broker": Json({
         "configured": Json(broker_configured),
         "mode": Json("test-injected"),

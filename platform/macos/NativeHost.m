@@ -2107,6 +2107,13 @@ static BOOL bridgeApiKeyValid(NSString *key) {
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, MBTWindow *> *windows;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *mainFileGrants;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *mainDirectoryGrants;
+@property(nonatomic, copy) NSString *mainGrantStorePath;
+@property(nonatomic) BOOL mainGrantStoreLoaded;
+@property(nonatomic) BOOL mainGrantStorePersisted;
+@property(nonatomic, copy) NSString *mainGrantStoreError;
+- (BOOL)loadMainGrants;
+- (BOOL)saveMainGrants;
+- (NSDictionary *)mainGrantStoreSnapshot;
 @property(nonatomic, strong) NSOpenPanel *activeMainOpenPanel;
 @property(nonatomic) BOOL mainDialogUIOpened;
 @property(nonatomic) BOOL mainDialogUICompleted;
@@ -2339,6 +2346,190 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   }
   return nil;
 }
+static NSInteger grantBitsForMode(NSString *mode) {
+  if ([mode isEqualToString:@"read"]) return 1;
+  if ([mode isEqualToString:@"write"]) return 2;
+  if ([mode isEqualToString:@"readwrite"]) return 3;
+  return 0;
+}
+static NSString *grantModeForBits(NSInteger bits) {
+  if ((bits & 3) == 3) return @"readwrite";
+  if ((bits & 2) == 2) return @"write";
+  if ((bits & 1) == 1) return @"read";
+  return nil;
+}
+- (NSString *)mainGrantStoreDirectory {
+  if (self.root == nil) return nil;
+  return [[self.root stringByAppendingPathComponent:@".userData"]
+    stringByAppendingPathComponent:@"electron-mbt"];
+}
+- (NSDictionary *)mainGrantStoreSnapshot {
+  NSMutableArray *files = [NSMutableArray array];
+  NSMutableArray *directories = [NSMutableArray array];
+  NSArray *filePaths = [self.mainFileGrants.allKeys sortedArrayUsingSelector:@selector(compare:)];
+  for (NSString *path in filePaths) {
+    NSString *mode = grantModeForBits(self.mainFileGrants[path].integerValue);
+    if (mode != nil) [files addObject:@{@"path": path, @"mode": mode}];
+  }
+  NSArray *directoryPaths =
+    [self.mainDirectoryGrants.allKeys sortedArrayUsingSelector:@selector(compare:)];
+  for (NSString *path in directoryPaths) {
+    NSString *mode = grantModeForBits(self.mainDirectoryGrants[path].integerValue);
+    if (mode != nil) [directories addObject:@{@"path": path, @"mode": mode}];
+  }
+  return @{
+    @"path": self.mainGrantStorePath ?: @"",
+    @"loaded": @(self.mainGrantStoreLoaded),
+    @"persisted": @(self.mainGrantStorePersisted),
+    @"error": self.mainGrantStoreError ?: @"",
+    @"files": files,
+    @"directories": directories,
+  };
+}
+- (BOOL)loadMainGrants {
+  self.mainGrantStoreLoaded = YES;
+  self.mainGrantStorePersisted = NO;
+  self.mainGrantStoreError = @"";
+  if (self.root == nil) {
+    self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+    return NO;
+  }
+  NSString *directory = [self mainGrantStoreDirectory];
+  NSString *path = [directory stringByAppendingPathComponent:@"grants-v1.json"];
+  self.mainGrantStorePath = path;
+  NSFileManager *manager = [NSFileManager defaultManager];
+  if (![manager fileExistsAtPath:path]) return YES;
+  struct stat info;
+  if (lstat(path.fileSystemRepresentation, &info) != 0 || !S_ISREG(info.st_mode) ||
+      info.st_size <= 0 || info.st_size > 262144) {
+    self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+    return NO;
+  }
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  NSError *jsonError = nil;
+  id object = data != nil ? [NSJSONSerialization JSONObjectWithData:data options:0
+    error:&jsonError] : nil;
+  if (jsonError != nil || ![object isKindOfClass:[NSDictionary class]]) {
+    self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+    return NO;
+  }
+  NSDictionary *store = object;
+  NSNumber *schema = store[@"schema"];
+  NSArray *files = store[@"files"];
+  NSArray *directories = store[@"directories"];
+  if (![schema isKindOfClass:[NSNumber class]] || schema.integerValue != 1 ||
+      schema.doubleValue != 1.0 ||
+      CFGetTypeID((__bridge CFTypeRef)schema) == CFBooleanGetTypeID() ||
+      ![files isKindOfClass:[NSArray class]] || files.count > MaxMainFileGrants ||
+      ![directories isKindOfClass:[NSArray class]] ||
+      directories.count > MaxMainDirectoryGrants) {
+    self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+    return NO;
+  }
+  NSMutableDictionary<NSString *, NSNumber *> *fileMap = [NSMutableDictionary dictionary];
+  NSMutableDictionary<NSString *, NSNumber *> *directoryMap = [NSMutableDictionary dictionary];
+  for (id item in files) {
+    if (![item isKindOfClass:[NSDictionary class]] || ((NSDictionary *)item).count != 2) {
+      self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+      return NO;
+    }
+    NSDictionary *entry = item;
+    NSString *storedPath = entry[@"path"];
+    NSString *mode = entry[@"mode"];
+    if (![storedPath isKindOfClass:[NSString class]] || storedPath.length == 0 ||
+        storedPath.length > 4096 || ![mode isKindOfClass:[NSString class]]) {
+      self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+      return NO;
+    }
+    NSInteger bits = grantBitsForMode(mode);
+    NSString *canonical = [self canonicalMainPath:storedPath];
+    if (bits == 0 || canonical == nil || ![canonical isEqualToString:storedPath]) {
+      self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+      return NO;
+    }
+    struct stat fileInfo;
+    if (stat(canonical.fileSystemRepresentation, &fileInfo) != 0) {
+      // A deleted grant target is less privilege; keep the rest of the store.
+      continue;
+    }
+    if (!S_ISREG(fileInfo.st_mode)) {
+      self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+      return NO;
+    }
+    NSNumber *existing = fileMap[canonical];
+    fileMap[canonical] = @((existing != nil ? existing.integerValue : 0) | bits);
+  }
+  for (id item in directories) {
+    if (![item isKindOfClass:[NSDictionary class]] || ((NSDictionary *)item).count != 2) {
+      self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+      return NO;
+    }
+    NSDictionary *entry = item;
+    NSString *storedPath = entry[@"path"];
+    NSString *mode = entry[@"mode"];
+    if (![storedPath isKindOfClass:[NSString class]] || storedPath.length == 0 ||
+        storedPath.length > 4096 || ![mode isKindOfClass:[NSString class]]) {
+      self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+      return NO;
+    }
+    NSInteger bits = grantBitsForMode(mode);
+    NSString *canonical = [self canonicalMainPath:storedPath];
+    if (bits == 0 || canonical == nil || [canonical isEqualToString:@"/"] ||
+        ![canonical isEqualToString:storedPath]) {
+      self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+      return NO;
+    }
+    BOOL isDirectory = NO;
+    if (![manager fileExistsAtPath:canonical isDirectory:&isDirectory]) continue;
+    if (!isDirectory) {
+      self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_INVALID";
+      return NO;
+    }
+    NSNumber *existing = directoryMap[canonical];
+    directoryMap[canonical] = @((existing != nil ? existing.integerValue : 0) | bits);
+  }
+  self.mainFileGrants = fileMap;
+  self.mainDirectoryGrants = directoryMap;
+  self.mainGrantStorePersisted = YES;
+  return YES;
+}
+- (BOOL)saveMainGrants {
+  if (self.root == nil) {
+    self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_WRITE";
+    return NO;
+  }
+  NSString *directory = [self mainGrantStoreDirectory];
+  NSFileManager *manager = [NSFileManager defaultManager];
+  NSError *error = nil;
+  if (![manager createDirectoryAtPath:directory withIntermediateDirectories:YES
+        attributes:@{NSFilePosixPermissions: @0700} error:&error]) {
+    self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_WRITE";
+    return NO;
+  }
+  NSDictionary *snapshot = [self mainGrantStoreSnapshot];
+  NSDictionary *store = @{
+    @"schema": @1,
+    @"files": snapshot[@"files"],
+    @"directories": snapshot[@"directories"],
+  };
+  NSData *data = [NSJSONSerialization dataWithJSONObject:store
+    options:NSJSONWritingSortedKeys error:&error];
+  if (error != nil || data == nil || data.length == 0 || data.length > 262144) {
+    self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_WRITE";
+    return NO;
+  }
+  NSString *path = [directory stringByAppendingPathComponent:@"grants-v1.json"];
+  if (![data writeToFile:path options:NSDataWritingAtomic error:&error]) {
+    self.mainGrantStoreError = @"ELECTRON_MBT_GRANT_STORE_WRITE";
+    return NO;
+  }
+  [manager setAttributes:@{NSFilePosixPermissions: @0600} ofItemAtPath:path error:nil];
+  self.mainGrantStorePath = path;
+  self.mainGrantStoreLoaded = YES;
+  self.mainGrantStorePersisted = YES;
+  self.mainGrantStoreError = @"";
+  return YES;
+}
 - (BOOL)grantMainPath:(NSString *)path mode:(NSString *)mode canonical:(NSString **)canonical {
   NSInteger bits = 0;
   if ([mode isEqualToString:@"read"]) bits = 1;
@@ -2364,6 +2555,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   NSNumber *existing = self.mainFileGrants[resolved];
   if (existing == nil && self.mainFileGrants.count >= MaxMainFileGrants) return NO;
   self.mainFileGrants[resolved] = @((existing != nil ? existing.integerValue : 0) | bits);
+  [self saveMainGrants];
   if (canonical != NULL) *canonical = resolved;
   return YES;
 }
@@ -2388,6 +2580,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   if (existing == nil && self.mainDirectoryGrants.count >= MaxMainDirectoryGrants) return NO;
   self.mainDirectoryGrants[resolved] =
     @((existing != nil ? existing.integerValue : 0) | bits);
+  [self saveMainGrants];
   if (canonical != NULL) *canonical = resolved;
   return YES;
 }
@@ -2634,6 +2827,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   }
   self.mainFileGrants = files;
   self.mainDirectoryGrants = directories;
+  [self saveMainGrants];
   if (filePaths != NULL) *filePaths = canonicalPaths;
   if (code != NULL) *code = @"";
   return YES;
@@ -2685,6 +2879,7 @@ static BOOL bridgeApiKeyValid(NSString *key) {
   // the parent directory, so listing and mkdir next to the file stay denied.
   self.mainFileGrants[canonical] =
     @((existing != nil ? existing.integerValue : 0) | 3);
+  [self saveMainGrants];
   if (filePath != NULL) *filePath = canonical;
   if (code != NULL) *code = @"";
   return YES;
@@ -3334,6 +3529,43 @@ static BOOL bridgeApiKeyValid(NSString *key) {
       return;
     }
     done(@"success", @{@"granted": @YES, @"path": canonical, @"mode": mode});
+    return;
+  }
+  if ([operation isEqualToString:@"get-main-grant-store"]) {
+    if (payload.count != 0) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    done(@"success", [self mainGrantStoreSnapshot]);
+    return;
+  }
+  if ([operation isEqualToString:@"revoke-main-grant"]) {
+    NSString *path = payload[@"path"];
+    NSString *kind = payload[@"kind"];
+    if (payload.count != 2 || ![path isKindOfClass:[NSString class]] ||
+        ![kind isKindOfClass:[NSString class]] || path.length == 0 ||
+        path.length > 4096) {
+      done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+      return;
+    }
+    NSString *canonical = [self canonicalMainPath:path];
+    BOOL revoked = NO;
+    if (canonical != nil) {
+      if ([kind isEqualToString:@"file"]) {
+        revoked = self.mainFileGrants[canonical] != nil;
+        [self.mainFileGrants removeObjectForKey:canonical];
+      } else if ([kind isEqualToString:@"directory"]) {
+        revoked = self.mainDirectoryGrants[canonical] != nil;
+        [self.mainDirectoryGrants removeObjectForKey:canonical];
+      } else {
+        done(@"failure", @{@"code": @"ELECTRON_MBT_INVALID_ENVELOPE"});
+        return;
+      }
+    }
+    if (revoked) [self saveMainGrants];
+    done(@"success", @{@"revoked": @(revoked),
+      @"path": canonical ?: @"",
+      @"store": [self mainGrantStoreSnapshot]});
     return;
   }
   if ([operation isEqualToString:@"create-window"]) {
@@ -4707,6 +4939,7 @@ int main(int argc, const char *argv[]) {
     MBTHost *host = [[MBTHost alloc] init];
     host.root = root;
     host.session = session;
+    (void)[host loadMainGrants];
     for (int fd = kControlChannel; fd <= kLoadChannel; fd++) {
       dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         @autoreleasepool {

@@ -640,6 +640,127 @@ test('main fs reads and writes user files granted by the test scenario', {
   }
 });
 
+test('grant persistence loads across runs and revocation denies access', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-user-file-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-grant-store-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-grant-outside-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    const readPath = path.join(outside, 'read.md');
+    const writePath = path.join(outside, 'write.md');
+    const deniedPath = path.join(outside, 'denied.md');
+    const deniedWritePath = path.join(outside, 'denied-write.md');
+    fs.writeFileSync(readPath, '# user read\n');
+    fs.writeFileSync(deniedPath, 'denied\n');
+    fs.writeFileSync(path.join(dir, 'nodeless-user-file.json'), `${JSON.stringify({
+      schema: 1,
+      readPath,
+      writePath,
+      deniedPath,
+      deniedWritePath,
+    })}\n`);
+    const files = ['index.html', 'package.json', 'src/main.js', 'nodeless-user-file.json'];
+    writeSourceManifest(path.join(dir, 'source-manifest.json'),
+      buildSourceManifest(dir, 'index.html', 'nodeless-user-file', files));
+
+    const first = run(binary, dir, ['--window', '--user-file-selftest', '--entry', 'src/main.js']);
+    assert.equal(first.result.status, 0, `${first.result.stdout}\n${first.result.stderr}`);
+    assert.equal(first.report.status, 'PASS');
+    assert.equal(first.report.grantStore.persisted, true);
+    assert.equal(first.report.grantStore.files.length, 2);
+    const storePath = path.join(dir, '.userData', 'electron-mbt', 'grants-v1.json');
+    assert.equal(fs.existsSync(storePath), true);
+    assert.equal(fs.statSync(storePath).mode & 0o777, 0o600);
+
+    const second = run(binary, dir, ['--window', '--grant-persist-selftest', '--entry', 'src/main.js']);
+    assert.equal(second.result.status, 0, `${second.result.stdout}\n${second.result.stderr}`);
+    assert.equal(second.report.status, 'PASS');
+    assert.equal(second.report.grantPersistSelftest.ok, true);
+    assert.equal(second.report.grantPersistSelftest.readGranted, true);
+    assert.equal(second.report.grantPersistSelftest.writeGranted, true);
+    assert.equal(second.report.grantStore.loaded, true);
+    assert.equal(second.report.grantStore.persisted, true);
+    assert.equal(second.report.userFileSelftestOk, true);
+    assert.equal(second.report.notVerified.includes('grant-persistence'), false);
+
+    const third = run(binary, dir, ['--window', '--grant-revoke-selftest', '--entry', 'src/main.js']);
+    assert.equal(third.result.status, 0, `${third.result.stdout}\n${third.result.stderr}`);
+    assert.equal(third.report.status, 'PASS');
+    assert.equal(third.report.grantRevokeSelftest.ok, true);
+    assert.equal(third.report.grantRevokeSelftest.revokedRead, true);
+    assert.equal(third.report.grantRevokeSelftest.revokedWrite, true);
+    assert.equal(third.report.grantRevokeSelftest.storeEmpty, true);
+    assert.equal(third.report.grantRevokeSelftest.readDenied, true);
+    assert.equal(third.report.grantRevokeSelftest.writeDenied, true);
+    assert.equal(third.report.grantStore.files.length, 0);
+    assert.equal(fs.existsSync(storePath), true);
+
+    const fourth = run(binary, dir, ['--window', '--grant-persist-selftest', '--entry', 'src/main.js']);
+    assert.notEqual(fourth.result.status, 0);
+    assert.equal(fourth.report.status, 'FAIL');
+    assert.equal(fourth.report.grantPersistSelftest.ok, false);
+    assert.equal(fourth.report.userFileSelftestOk, false);
+    assert.equal(fourth.report.compatible, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('a corrupt or non-canonical grant store fails closed', {
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-user-file-app');
+  for (const kind of ['invalid-json', 'non-canonical-symlink']) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `electron-mbt-grant-store-${kind}-`));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), `electron-mbt-grant-store-${kind}-out-`));
+    try {
+      fs.cpSync(source, dir, { recursive: true });
+      const readPath = path.join(outside, 'read.md');
+      const writePath = path.join(outside, 'write.md');
+      fs.writeFileSync(readPath, '# user read\n');
+      fs.writeFileSync(path.join(dir, 'nodeless-user-file.json'), `${JSON.stringify({
+        schema: 1,
+        readPath,
+        writePath,
+        deniedPath: path.join(outside, 'denied.md'),
+        deniedWritePath: path.join(outside, 'denied-write.md'),
+      })}\n`);
+      const files = ['index.html', 'package.json', 'src/main.js', 'nodeless-user-file.json'];
+      writeSourceManifest(path.join(dir, 'source-manifest.json'),
+        buildSourceManifest(dir, 'index.html', 'nodeless-user-file', files));
+      const first = run(binary, dir, ['--window', '--user-file-selftest', '--entry', 'src/main.js']);
+      assert.equal(first.result.status, 0, `${kind}: ${first.result.stdout}\n${first.result.stderr}`);
+      const storePath = path.join(dir, '.userData', 'electron-mbt', 'grants-v1.json');
+      assert.equal(fs.existsSync(storePath), true);
+      if (kind === 'invalid-json') {
+        fs.writeFileSync(storePath, '{"schema":1,"files":[');
+      } else {
+        const link = path.join(outside, 'read-link.md');
+        fs.symlinkSync(readPath, link);
+        fs.writeFileSync(storePath, `${JSON.stringify({
+          schema: 1,
+          files: [{ path: link, mode: 'read' }],
+          directories: [],
+        })}\n`);
+      }
+      const second = run(binary, dir, ['--window', '--grant-persist-selftest', '--entry', 'src/main.js']);
+      assert.notEqual(second.result.status, 0, kind);
+      assert.equal(second.report.status, 'FAIL', kind);
+      assert.equal(second.report.grantStore.error, 'ELECTRON_MBT_GRANT_STORE_INVALID', kind);
+      assert.equal(second.report.grantPersistSelftest.ok, false, kind);
+      assert.equal(second.report.userFileSelftestOk, false, kind);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  }
+});
+
 test('invalid user-file scenarios fail closed', {
   skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
 }, () => {

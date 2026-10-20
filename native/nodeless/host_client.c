@@ -348,7 +348,9 @@ static int ebt_host_request(const char *operation, const char *payload,
                               out, capacity);
   }
   if (strcmp(operation, "grant-main-file") == 0 ||
-      strcmp(operation, "grant-main-directory") == 0) {
+      strcmp(operation, "grant-main-directory") == 0 ||
+      strcmp(operation, "get-main-grant-store") == 0 ||
+      strcmp(operation, "revoke-main-grant") == 0) {
     return send_control_frame(operation, payload, 0, 0, out, capacity);
   }
   if (strcmp(operation, "shutdown") == 0) {

@@ -1152,6 +1152,81 @@ test('the pinned Moji renderer boots without Node under the adapted page API', {
   assert.equal(report.compatible, false);
 });
 
+test('the pinned Moji edits, saves and reopens after restart under the adapted API', {
+  skip: process.platform !== 'darwin' ||
+    !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')) ||
+    !fs.existsSync(process.env.ELECTRON_MBT_MOJI_ROOT || '/tmp/electron-mbt-apps/moji'),
+}, () => {
+  const result = spawnSync(process.execPath, ['scripts/nodeless-moji-edit-save.cjs'], {
+    cwd: root, encoding: 'utf8', timeout: 300000,
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  const lines = `${result.stdout || ''}\n${result.stderr || ''}`.split('\n')
+    .map(line => line.trim()).filter(line => line.startsWith('{') && line.endsWith('}'));
+  assert.ok(lines.length > 0, 'missing Moji edit/save report');
+  const report = JSON.parse(lines.at(-1));
+  assert.equal(report.status, 'PASS');
+  assert.equal(report.probe, 'moji-nodeless-edit-save');
+  assert.equal(report.mode, 'test-injected');
+  assert.equal(report.humanInput, false);
+  assert.equal(report.preloadExecuted, false);
+  assert.equal(report.compatible, false);
+  assert.equal(report.openForEdit.grants, 0);
+  assert.equal(report.openForEdit.dialogs, 1);
+  assert.equal(report.openForEdit.beforeOpenSave, 'ELECTRON_MBT_FILE_DENIED');
+  assert.equal(report.openForEdit.siblingSave, 'ELECTRON_MBT_FILE_DENIED');
+
+  const phase1 = report.phase1;
+  assert.ok(phase1, 'missing phase 1');
+  assert.equal(phase1.status, 'PASS');
+  assert.equal(phase1.block.ok, true);
+  assert.equal(phase1.block.probe.state, 'done');
+  for (const field of ['open', 'editor', 'inserted', 'dirty', 'saved']) {
+    assert.equal(phase1.block.probe[field], true, `phase 1 ${field}`);
+  }
+  assert.equal(phase1.block.probe.saveError, '');
+  assert.ok(['execCommand-insertText', 'replace'].includes(
+    phase1.block.probe.editMechanism));
+  assert.equal(phase1.block.probe.beforeOpenSave, 'ELECTRON_MBT_FILE_DENIED');
+  assert.equal(phase1.block.probe.siblingSave, 'ELECTRON_MBT_FILE_DENIED');
+  assert.equal(phase1.ingress.fileSaveAdmitted, 1);
+  assert.ok(phase1.ingress.fileSaveDenied >= 2);
+  assert.equal(phase1.grantStore.loaded, true);
+  assert.equal(phase1.grantStore.persisted, true);
+  assert.equal(phase1.grantStore.files.length, 1);
+  assert.equal(phase1.grantStore.files[0].mode, 'read');
+  assert.equal(phase1.preloadExecuted, false);
+  assert.equal(phase1.hostShutdown, true);
+  assert.equal(phase1.liveLeases, 0);
+  assert.equal(phase1.nodeProcesses, 0);
+  assert.ok(phase1.pageTitle.includes('note.md'));
+
+  const phase2 = report.phase2;
+  assert.ok(phase2, 'missing phase 2');
+  assert.equal(phase2.status, 'PASS');
+  assert.equal(phase2.block.ok, true);
+  assert.equal(phase2.block.probe.state, 'done');
+  assert.equal(phase2.block.probe.open, true);
+  assert.equal(phase2.block.probe.editor, true);
+  assert.equal(phase2.block.probe.reopenMarkerPresent, true);
+  assert.equal(phase2.block.probe.inserted, true);
+  assert.equal(phase2.block.probe.dirty, true);
+  assert.equal(phase2.block.probe.saved, true);
+  assert.equal(phase2.block.probe.saveError, '');
+  assert.equal(phase2.ingress.fileSaveAdmitted, 1);
+  assert.equal(phase2.ingress.fileSaveDenied, 0);
+  assert.equal(phase2.grantStore.loaded, true);
+  assert.equal(phase2.grantStore.persisted, true);
+  assert.equal(phase2.hostShutdown, true);
+  assert.equal(phase2.liveLeases, 0);
+  assert.equal(phase2.nodeProcesses, 0);
+
+  assert.equal(report.document.phase1Mechanism, phase1.block.probe.editMechanism);
+  assert.equal(report.document.phase2Mechanism, phase2.block.probe.editMechanism);
+  assert.ok(report.document.finalBytes > report.document.initialBytes);
+  assert.notEqual(report.document.initialSHA256, report.document.finalSHA256);
+});
+
 test('an invalid adapted profile fails closed before main evaluation', () => {
   const binary = buildBinary();
   for (const adapter of ['../escape.js', 'adapted/missing.js']) {

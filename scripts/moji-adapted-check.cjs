@@ -54,6 +54,18 @@ function check() {
   if (JSON.stringify(manifest.queue) !== JSON.stringify(record.queue)) {
     errors.push('queue limits mismatch');
   }
+  const filePolicy = manifest.filePolicy || {};
+  if (filePolicy.open !== 'open-for-edit' ||
+      !Array.isArray(filePolicy.rights) ||
+      !filePolicy.rights.includes('read') ||
+      !filePolicy.rights.includes('replace-selected') ||
+      filePolicy.write !== 'atomic-replace-v1' ||
+      filePolicy.restart !== 'reauthorize') {
+    errors.push('Moji adapter must record the open-for-edit file policy');
+  }
+  if (JSON.stringify(record.filePolicy) !== JSON.stringify(filePolicy)) {
+    errors.push('file policy mismatch');
+  }
   const semantics = record.semantics || {};
   if (semantics.contextBridge !== false || semantics.ipcRenderer !== false ||
       semantics.webUtils !== false || semantics.originalPreloadExecuted !== false) {
@@ -70,6 +82,7 @@ function check() {
     calls: manifest.calls.length,
     topics: manifest.topics.length,
     unsupported: record.api.unsupported,
+    filePolicy,
     runtime: semantics.runtime,
     errors,
     compatible: false,

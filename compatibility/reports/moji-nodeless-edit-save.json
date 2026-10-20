@@ -1,0 +1,202 @@
+{
+  "status": "PASS",
+  "probe": "moji-nodeless-edit-save",
+  "sourceRoot": "/tmp/electron-mbt-apps/moji",
+  "engine": "quickjs-2026-06-04",
+  "profile": "electron-nodeless-adapted-v1",
+  "strict": "blocked",
+  "mainSHA256": "41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e",
+  "preloadSHA256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
+  "adapterSHA256": "bdfe8bddb4bc07389060e805464a554ff1b0a24d998a88512564c8a91dcc7501",
+  "rendererIndexSHA256": "fafe339fee4ccecc164748984e77c03f9089c624a24cac62cf3b18ffe4e9e301",
+  "manifestSHA256": "174af0d5d2e50382995f691b85255e78b5e22d4d99866169c4fe68aba79cd793",
+  "document": {
+    "path": "documents/note.md",
+    "initialBytes": 47,
+    "initialSHA256": "039b2071d4b38bf1a80fd1f882fcc7f804056687506932dd5371bf352d73720e",
+    "phase1Mechanism": "execCommand-insertText",
+    "phase1SHA256": "a0cfa58cd3d113c71705988f042b276e4ced863f709dbb20f80a67207c3a27e2",
+    "phase2Mechanism": "execCommand-insertText",
+    "finalBytes": 103,
+    "finalSHA256": "aa48440f07d3f442ac3c3494cd3c9c67a15febec4769491c000bde1f7e23a6ba"
+  },
+  "phase1": {
+    "status": "PASS",
+    "pageTitle": "note.md - Moji v1.0.5",
+    "pageURL": "electron-mbt-app://app/out/renderer/index.html",
+    "rendererLoaded": true,
+    "preloadExecuted": false,
+    "compatible": false,
+    "hostShutdown": true,
+    "liveLeases": 0,
+    "nodeProcesses": 0,
+    "adapted": {
+      "configured": true,
+      "observed": true,
+      "released": true,
+      "requests": 3,
+      "replyErrors": 0,
+      "rejected": 0,
+      "ingress": {
+        "denied": 2,
+        "fileSaveAdmitted": 1,
+        "fileSaveDenied": 2,
+        "admitted": 5,
+        "lastCode": "ELECTRON_MBT_FILE_DENIED",
+        "generation": 1,
+        "unhandled": 0
+      }
+    },
+    "scenario": {
+      "configured": true,
+      "mode": "test-injected-open-for-edit",
+      "grants": 0,
+      "dialogs": 1,
+      "triggered": true,
+      "error": ""
+    },
+    "block": {
+      "ok": true,
+      "phase": "edit-save",
+      "error": "",
+      "probe": {
+        "state": "done",
+        "code": "",
+        "message": "",
+        "open": true,
+        "editor": true,
+        "inserted": true,
+        "dirty": true,
+        "saved": true,
+        "saveError": "",
+        "editMechanism": "execCommand-insertText",
+        "reopenMarkerPresent": false,
+        "beforeOpenSave": "ELECTRON_MBT_FILE_DENIED",
+        "siblingSave": "ELECTRON_MBT_FILE_DENIED",
+        "documentTitle": "note.md - Moji v1.0.5",
+        "titleAfterEdit": "• note.md - Moji v1.0.5",
+        "titleAfterSave": "note.md - Moji v1.0.5",
+        "notice": "Saved",
+        "execCommand": true
+      }
+    },
+    "grantStore": {
+      "loaded": true,
+      "persisted": true,
+      "error": "",
+      "files": [
+        {
+          "mode": "read"
+        }
+      ],
+      "directories": 0
+    },
+    "ingress": {
+      "denied": 2,
+      "fileSaveAdmitted": 1,
+      "fileSaveDenied": 2,
+      "admitted": 5,
+      "lastCode": "ELECTRON_MBT_FILE_DENIED",
+      "generation": 1,
+      "unhandled": 0
+    }
+  },
+  "phase2": {
+    "status": "PASS",
+    "pageTitle": "note.md - Moji v1.0.5",
+    "pageURL": "electron-mbt-app://app/out/renderer/index.html",
+    "rendererLoaded": true,
+    "preloadExecuted": false,
+    "compatible": false,
+    "hostShutdown": true,
+    "liveLeases": 0,
+    "nodeProcesses": 0,
+    "adapted": {
+      "configured": true,
+      "observed": true,
+      "released": true,
+      "requests": 3,
+      "replyErrors": 0,
+      "rejected": 0,
+      "ingress": {
+        "denied": 0,
+        "fileSaveAdmitted": 1,
+        "fileSaveDenied": 0,
+        "admitted": 5,
+        "lastCode": "",
+        "generation": 1,
+        "unhandled": 0
+      }
+    },
+    "scenario": {
+      "configured": true,
+      "mode": "test-injected-open-for-edit",
+      "grants": 0,
+      "dialogs": 1,
+      "triggered": true,
+      "error": ""
+    },
+    "block": {
+      "ok": true,
+      "phase": "reopen-save",
+      "error": "",
+      "probe": {
+        "state": "done",
+        "code": "",
+        "message": "",
+        "open": true,
+        "editor": true,
+        "inserted": true,
+        "dirty": true,
+        "saved": true,
+        "saveError": "",
+        "editMechanism": "execCommand-insertText",
+        "reopenMarkerPresent": true,
+        "beforeOpenSave": "",
+        "siblingSave": "",
+        "documentTitle": "note.md - Moji v1.0.5",
+        "titleAfterEdit": "• note.md - Moji v1.0.5",
+        "titleAfterSave": "note.md - Moji v1.0.5",
+        "notice": "Saved",
+        "execCommand": true
+      }
+    },
+    "grantStore": {
+      "loaded": true,
+      "persisted": true,
+      "error": "",
+      "files": [
+        {
+          "mode": "read"
+        }
+      ],
+      "directories": 0
+    },
+    "ingress": {
+      "denied": 0,
+      "fileSaveAdmitted": 1,
+      "fileSaveDenied": 0,
+      "admitted": 5,
+      "lastCode": "",
+      "generation": 1,
+      "unhandled": 0
+    }
+  },
+  "openForEdit": {
+    "grants": 0,
+    "dialogs": 1,
+    "beforeOpenSave": "ELECTRON_MBT_FILE_DENIED",
+    "siblingSave": "ELECTRON_MBT_FILE_DENIED"
+  },
+  "mode": "test-injected",
+  "humanInput": false,
+  "compatible": false,
+  "preloadExecuted": false,
+  "limits": [
+    "test-injected open dialog; no human picker selection or overwrite confirmation",
+    "synthetic DOM editing/replace; no human input, IME or accessibility interaction",
+    "NSDataWritingAtomic byte equality only; metadata, ACL, hardlink and TOCTOU are NOT RUN",
+    "single Node-less window; strict profile, original preload and Electron differential are NOT RUN"
+  ],
+  "note": "Pinned Moji renderer drives its own Open/Editor/Save controls under the adapted page API. The open dialog is test-injected and the edit is synthetic. This is not Electron compatibility or human consent."
+}

@@ -262,6 +262,43 @@ function buildReport() {
     nodelessBroker === null
       ? 'Node-less Moji broker report is absent'
       : `Node-less broker (test-injected): grants=${nodelessBroker.grants}, dialogs=${nodelessBroker.dialogs}, triggered=${nodelessBroker.triggered}, open=${nodelessApi.openOk}, saveAs=${nodelessApi.saveAsOk}, export=${nodelessApi.exportOk}, pdf=${nodelessApi.pdfOk}, png=${nodelessApi.pngOk}, read=${nodelessApi.readOk}, sample=${nodelessApi.sampleOk}, update=${nodelessApi.updateCheckOk}, settings=${nodelessApi.settingsLanguage}, persisted=${nodelessApp.settingsPersisted}, files=${JSON.stringify(nodelessOutputs)}`));
+  let mojiEditSave = null;
+  try { mojiEditSave = readJson('compatibility/reports/moji-nodeless-edit-save.json'); } catch {}
+  const editSavePhaseOk = (phase, deniedMinimum) => {
+    const block = phase && phase.block ? phase.block : null;
+    const probe = block && block.probe ? block.probe : null;
+    const ingress = phase && phase.ingress ? phase.ingress : null;
+    const store = phase && phase.grantStore ? phase.grantStore : null;
+    return phase !== null && phase.status === 'PASS' && block !== null && block.ok === true &&
+      probe !== null && probe.state === 'done' && probe.open === true &&
+      probe.editor === true && probe.inserted === true && probe.dirty === true &&
+      probe.saved === true && probe.saveError === '' &&
+      ['execCommand-insertText', 'replace'].includes(probe.editMechanism) &&
+      ingress !== null && ingress.fileSaveAdmitted === 1 &&
+      ingress.fileSaveDenied >= deniedMinimum &&
+      store !== null && store.loaded === true && store.persisted === true &&
+      phase.preloadExecuted === false && phase.hostShutdown === true &&
+      phase.liveLeases === 0 && phase.nodeProcesses === 0 &&
+      typeof phase.pageTitle === 'string' && phase.pageTitle.includes('note.md');
+  };
+  const editSaveOk = mojiEditSave !== null && mojiEditSave.status === 'PASS' &&
+    mojiEditSave.mode === 'test-injected' && mojiEditSave.humanInput === false &&
+    mojiEditSave.preloadExecuted === false && mojiEditSave.compatible === false &&
+    mojiEditSave.openForEdit && mojiEditSave.openForEdit.grants === 0 &&
+    mojiEditSave.openForEdit.dialogs === 1 &&
+    mojiEditSave.openForEdit.beforeOpenSave === 'ELECTRON_MBT_FILE_DENIED' &&
+    mojiEditSave.openForEdit.siblingSave === 'ELECTRON_MBT_FILE_DENIED' &&
+    editSavePhaseOk(mojiEditSave.phase1, 2) &&
+    editSavePhaseOk(mojiEditSave.phase2, 0) &&
+    mojiEditSave.phase2.block.probe.reopenMarkerPresent === true &&
+    mojiEditSave.document && mojiEditSave.document.initialSHA256 !== mojiEditSave.document.finalSHA256 &&
+    mojiEditSave.document.finalBytes > mojiEditSave.document.initialBytes;
+  checks.push(check('nodeless-moji-edit-save',
+    mojiEditSave === null || mojiEditSave.status === 'NOT_RUN' ? 'NOT_RUN' :
+      (editSaveOk ? 'PASS' : 'FAIL'),
+    mojiEditSave === null
+      ? 'Moji edit/save/restart report is absent'
+      : `Moji open-for-edit (test-injected, synthetic edit): status=${mojiEditSave.status}, grants=${mojiEditSave.openForEdit && mojiEditSave.openForEdit.grants}, dialogs=${mojiEditSave.openForEdit && mojiEditSave.openForEdit.dialogs}, phase1=${mojiEditSave.phase1 && mojiEditSave.phase1.block && mojiEditSave.phase1.block.probe && mojiEditSave.phase1.block.probe.editMechanism}, phase2=${mojiEditSave.phase2 && mojiEditSave.phase2.block && mojiEditSave.phase2.block.probe && mojiEditSave.phase2.block.probe.reopenMarkerPresent}, save1=${mojiEditSave.phase1 && mojiEditSave.phase1.ingress && mojiEditSave.phase1.ingress.fileSaveAdmitted}, save2=${mojiEditSave.phase2 && mojiEditSave.phase2.ingress && mojiEditSave.phase2.ingress.fileSaveAdmitted}, bytes=${mojiEditSave.document && mojiEditSave.document.finalBytes}, humanInput=${mojiEditSave.humanInput}`));
   checks.push(check('node-less-moji-app-main', mojiRendererOk && nodelessAppOk ? 'PASS' : 'NOT_RUN',
     mojiRendererOk && nodelessAppOk
       ? 'Moji main boots and the adapted Moji renderer loads Node-lessly; original preload NOT_EXECUTED'

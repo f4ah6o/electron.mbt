@@ -766,8 +766,14 @@
     "readBytes": 1048576,
     "saveBytes": 65536,
     "imageBytes": 1048576,
-    "grants": "test-only grant-file; dialogs must grant in production",
-    "dialogs": "test-injected grant path + native NSOpenPanel open/cancel smoke; selection/consent NOT RUN",
+    "grants": "renderer open-for-edit exact-file readwrite (session); main selection read; test-only grant-file",
+    "dialogs": "test-injected open-for-edit dialog + native NSOpenPanel open/cancel smoke; selection/consent NOT RUN",
+    "filePolicy": {
+      "open": "open-for-edit",
+      "rights": ["read", "replace-selected"],
+      "write": "atomic-replace-v1",
+      "restart": "reauthorize"
+    },
     "export": "test-injected HTML + diagram PNG; AppKit save panel compiled; PDF/PNG document export NOT_IMPLEMENTED",
     "dialogGrants": true,
     "exportGrants": true
@@ -858,6 +864,19 @@
     "methods": 18,
     "preloadExecutedInWebKit": false,
     "note": "Virtual CJS evaluation only; no contextBridge/WebKit M0 evidence."
+  },
+  "mojiEditSave": {
+    "status": "PASS",
+    "probe": "moji-nodeless-edit-save",
+    "report": "compatibility/reports/moji-nodeless-edit-save.json",
+    "mode": "test-injected",
+    "humanInput": false,
+    "openForEdit": true,
+    "phase1Mechanism": "execCommand-insertText",
+    "phase2Mechanism": "execCommand-insertText",
+    "preloadExecuted": false,
+    "compatible": false,
+    "note": "Pinned Moji renderer drives its own Open/Editor/Save controls under the adapted page API. The open dialog is test-injected and the edit is synthetic; human input/IME and a real picker are NOT RUN."
   },
   "mojiDialogUI": {
     "status": "PASS",

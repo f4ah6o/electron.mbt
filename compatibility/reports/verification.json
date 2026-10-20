@@ -15,7 +15,7 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "Total tests: 178, passed: 178, failed: 0."
+      "detail": "──────╯"
     },
     {
       "id": "npm-test",
@@ -223,7 +223,7 @@
       "status": "PASS",
       "exit": 0,
       "expectedExit": 0,
-      "detail": "ℹ duration_ms 17939.538375"
+      "detail": "ℹ duration_ms 44353.043792"
     },
     {
       "id": "nodeless-dialog-ui",
@@ -243,8 +243,8 @@
       "detail": {
         "status": "NOT_READY",
         "counts": {
-          "checks": 34,
-          "pass": 27,
+          "checks": 35,
+          "pass": 28,
           "fail": 2,
           "notRun": 5
         }

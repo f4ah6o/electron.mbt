@@ -10,8 +10,8 @@
     "G4": "partial"
   },
   "counts": {
-    "checks": 34,
-    "pass": 27,
+    "checks": 35,
+    "pass": 28,
     "fail": 2,
     "notRun": 5
   },
@@ -165,6 +165,11 @@
       "id": "nodeless-moji-broker",
       "status": "PASS",
       "detail": "Node-less broker (test-injected): grants=1, dialogs=6, triggered=true, open=true, saveAs=true, export=true, pdf=true, png=true, read=true, sample=true, update=true, settings=ja, persisted=true, files={\"save\":true,\"saveAs\":true,\"exportHtml\":true,\"exportPdf\":true,\"exportPng\":true,\"exportDocPng\":true}"
+    },
+    {
+      "id": "nodeless-moji-edit-save",
+      "status": "PASS",
+      "detail": "Moji open-for-edit (test-injected, synthetic edit): status=PASS, grants=0, dialogs=1, phase1=execCommand-insertText, phase2=true, save1=1, save2=1, bytes=103, humanInput=false"
     },
     {
       "id": "node-less-moji-app-main",

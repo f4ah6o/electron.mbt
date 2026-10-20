@@ -29,6 +29,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | Real Moji renderer | `moji-renderer`: real UI text, `rootChildren:1` | PASS (loopback HTTP) |
 | Node-less real renderer | `nodeless-moji-app`: real UI text, custom app scheme, 2 main requests | PASS (adapted; custom scheme) |
 | Node-less broker E2E | `nodeless-moji-app` broker: 1 grant/6 dialogs, open/save/sample/saveAs/HTML/PDF/PNG, 6 output files | PASS (test-injected) |
+| Moji open-for-edit edit/save/restart | `moji-nodeless-edit-save`: real renderer Open/Editor/Save, 0 injected grants, exact 47→74→103 bytes, restart re-open and re-save | PASS (test-injected dialog; synthetic DOM edit; human input NOT RUN) |
 | Node-less document identity / reload | `nodeless-runtime`: plain and adapted reload to generation 2; stale-generation event rejected before Main; forged page claims ignored; malformed page message denied; adapter ingress auto-released at load; `--ingress-selftest` test-only | PASS (test-only; single window; dedicated subframe-handler proof still open) |
 | Main-side fs (app root / data roots) | `nodeless-fs-app`: sync/async read, 200 KiB round-trip, atomic `.appData` write, symlink-escape denial; Moji `settingsPersisted:true` | PASS (partial; host-required) |
 | Directory/metadata fs | `nodeless-fs-app`: partial stat, bounded readdir/Dirent, bounded mkdir; generated escape and 4,097-entry/65-component bound tests | PASS (partial; host-required) |
@@ -50,12 +51,12 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 ## Aggregate evidence
 
 - `verify-state`: 19/19 PASS, `NOT_READY`
-- readiness: 34 checks, 27 PASS, 2 FAIL (`moji-preload-runtime`,
+- readiness: 35 checks, 28 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 489 pass
+- `npm test`: 490 pass
 - `moon test --target js`: 145 pass
 - `moon test --target native`: 178 pass
-- `node --test tests/nodeless-runtime.test.cjs`: 33 pass
+- `node --test tests/nodeless-runtime.test.cjs`: 34 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
 
 ## Remaining scope
@@ -81,9 +82,13 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
    opens a real NSSavePanel and grants test-injected exact-file readwrite
    access (new and existing targets, cancel, cap and denials covered).
    Grant persistence and revocation now work for the trusted main path
-   ([docs/0054](0054-grant-persistence-and-revocation.md)); production
-   directory consent, real file-selection human consent, human save
-   selection/overwrite confirmation and sheet-modal parenting remain open.
+   ([docs/0054](0054-grant-persistence-and-revocation.md)); the adapted
+   renderer open now grants exact-file read+replace for the session and the
+   pinned Moji edit/save/restart path passes with test-injected dialogs and a
+   synthetic DOM edit ([docs/0055](0055-moji-edit-save-restart.md)).
+   Production directory consent, real file-selection human consent, human save
+   selection/overwrite confirmation, IME/real input and sheet-modal parenting
+   remain open.
    App-local main fs is host-backed, including partial directory/metadata
    `stat`/`readdir`/`mkdir`
    ([docs/0046](0046-nodeless-main-fs.md),

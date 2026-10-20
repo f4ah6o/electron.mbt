@@ -448,6 +448,7 @@ QuickJS の engine 選定、Moji/jmd の版、strict/adapted 分離、Moji の a
 
 - 2026-10-17: 固定 source/lock と 16 updater package instances、boot side effects、Moji API、M1〜M3/J1、APP-N01〜N15 を調査・設計。
 - 2026-10-17 polish: 11 必須見出しと必要な質問へ再編。全 pins・source citations・シナリオを保持し、A1 の最小実装、path 所在、app result shape と ingress error、具体 command、調査と runtime 保留の境界を追加。
+- 2026-10-20: M3e/M3f の adapted renderer 経路を test-injected open dialog と synthetic DOM edit で実行した。open-for-edit の exact-file read+replace grant で通常 save、再起動後の picker 再 open と re-save、47→74→103 bytes 一致を確認した。human picker/IME、metadata/TOCTOU は NOT RUN であり、M3e/M3f の checkbox は未完了のままとする。詳細は `docs/0055-moji-edit-save-restart.md`。
 
 ## 注記
 

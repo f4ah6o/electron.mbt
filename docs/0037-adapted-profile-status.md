@@ -28,6 +28,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | Real Moji renderer | `moji-renderer`: real UI text, `rootChildren:1` | PASS (loopback HTTP) |
 | Node-less real renderer | `nodeless-moji-app`: real UI text, custom app scheme, 2 main requests | PASS (adapted; custom scheme) |
 | Node-less broker E2E | `nodeless-moji-app` broker: 1 grant/6 dialogs, open/save/sample/saveAs/HTML/PDF/PNG, 6 output files | PASS (test-injected) |
+| Node-less document identity / reload | `nodeless-runtime`: plain and adapted reload to generation 2; stale-generation event rejected before Main; `--ingress-selftest` test-only | PASS (test-only; single window; production ingress still test-released) |
 | Main-side fs (app root / data roots) | `nodeless-fs-app`: sync/async read, 200 KiB round-trip, atomic `.appData` write, symlink-escape denial; Moji `settingsPersisted:true` | PASS (partial; host-required) |
 | Directory/metadata fs | `nodeless-fs-app`: partial stat, bounded readdir/Dirent, bounded mkdir; generated escape and 4,097-entry/65-component bound tests | PASS (partial; host-required) |
 | Adapted page API → Main | `moji-adapted-native`: dark/unsupported | PASS |
@@ -50,10 +51,10 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 - `verify-state`: 19/19 PASS, `NOT_READY`
 - readiness: 34 checks, 27 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 482 pass
+- `npm test`: 485 pass
 - `moon test --target js`: 145 pass
 - `moon test --target native`: 178 pass
-- `node --test tests/nodeless-runtime.test.cjs`: 26 pass
+- `node --test tests/nodeless-runtime.test.cjs`: 29 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
 
 ## Remaining scope

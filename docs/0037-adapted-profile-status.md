@@ -13,6 +13,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | File broker read/save/image/sample | `fileBroker`/`fileRead`/`fileSave`/`fileDenied`, page probe | PASS (partial) |
 | File grants | test-only `grant-file`; session-scoped main grants from panel completion/test scenario; no production consent | PARTIAL |
 | Main-side user-file grants (session) | `nodeless-user-file-app`: granted outside-root read/write, ungranted `EACCES`, app-code self-grant denied | PASS (test-injected) |
+| Main grant persistence / revocation | `nodeless-runtime`: store 0600/atomic, second process loads read+readwrite, revoke denies read/write, corrupt/non-canonical store fails closed | PASS (trusted-main/test-only; human consent NOT RUN) |
 | Native open/save grant path | test-injected `set-dialog-result`; main open/save test queues | PASS |
 | Native open panel UI | `moji-dialog-ui` open/cancel; `nodeless-dialog-ui` open/cancel | PASS (open/cancel only) |
 | Main open dialog (Node-less) | `nodeless-dialog-app`: test-injected read grants, native open/cancel | PASS (partial) |
@@ -51,10 +52,10 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 - `verify-state`: 19/19 PASS, `NOT_READY`
 - readiness: 34 checks, 27 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 486 pass
+- `npm test`: 488 pass
 - `moon test --target js`: 145 pass
 - `moon test --target native`: 178 pass
-- `node --test tests/nodeless-runtime.test.cjs`: 30 pass
+- `node --test tests/nodeless-runtime.test.cjs`: 32 pass
 - native supervisor/source snapshot/boot/renderer/dialog-ui probes: PASS
 
 ## Remaining scope
@@ -79,9 +80,10 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
    NSOpenPanel with test-injected read grants, and `dialog.showSaveDialog`
    opens a real NSSavePanel and grants test-injected exact-file readwrite
    access (new and existing targets, cancel, cap and denials covered).
-   Grant persistence/revocation, production directory consent, real
-   file-selection human consent, human save selection/overwrite confirmation
-   and sheet-modal parenting remain open.
+   Grant persistence and revocation now work for the trusted main path
+   ([docs/0054](0054-grant-persistence-and-revocation.md)); production
+   directory consent, real file-selection human consent, human save
+   selection/overwrite confirmation and sheet-modal parenting remain open.
    App-local main fs is host-backed, including partial directory/metadata
    `stat`/`readdir`/`mkdir`
    ([docs/0046](0046-nodeless-main-fs.md),

@@ -735,16 +735,21 @@ static void probeMissingObservation(NSMutableArray<NSString *> *missing, NSStrin
   // leave any DOM clipboard eval unresolved; the guard records it and moves on.
   [self guardPhase:12 fallback:^{
     id nativeVerify = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] ?: [NSNull null];
+    // The admission validator requires the stall reason on the trace entry,
+    // not only inside the DOM observation, so a parked eval cannot be recorded
+    // as a bare stall.
+    NSString *stallReason = @"evaluateJavaScript never completed — the web process parked "
+                            @"(a pasteboard-consent prompt is the likely cause); the DOM "
+                            @"clipboard result is unresolved";
     [weakSelf trace:@"pasteboard" body:@{
       @"executed": @YES,
+      @"stalled": @YES,
+      @"reason": stallReason,
       @"observed": @{
         @"native": @{@"pasteboard": @"named:electron-mbt-probe",
                      @"write": @(wrote), @"readBack": readBack ?: [NSNull null],
                      @"generalPasteboardVerify": nativeVerify},
-        @"dom": @{@"stalled": @YES,
-                  @"reason": @"evaluateJavaScript never completed — the web process parked "
-                             @"(a pasteboard-consent prompt is the likely cause); the DOM "
-                             @"clipboard result is unresolved"},
+        @"dom": @{@"stalled": @YES, @"reason": stallReason},
       },
       @"note": @"NSPasteboard round-trips natively. DOM clipboard access is permission/focus "
                @"gated in WKWebView; here the DOM probe itself never resolved.",

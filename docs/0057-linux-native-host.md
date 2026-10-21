@@ -36,6 +36,8 @@ subset:
 | `inject-app-request` | `ELECTRON_MBT_TEST_MODE=1` only; stale/current ingress selftest |
 | `destroy-window` | stop load, fail pending replies, remove snapshot and window |
 
+`native/nodeless --window --hold [--hold-seconds 1..3600]` keeps the real window open and prints `HOLDING`/`HOLD_EXIT`; it is an interactive diagnostic, not a compatibility result. It is mutually exclusive with the selftest flags.
+
 Unknown operations fail with `ELECTRON_MBT_UNSUPPORTED_API`. Preload fields on
 `create-window`, original preload, `contextBridge`, `ipcRenderer`, file broker,
 dialogs, export, main fs, menus, clipboard, IME/AX, close/quit and
@@ -98,8 +100,8 @@ missing host fail instead of silently skipping the five tests.
 | --- | --- |
 | `node scripts/build-linux-host.cjs` | **PASS** (`gtk 3.24.41`, `webkitgtk 2.52.6`) |
 | `node --test tests/linux-host-frame.test.cjs` | **PASS** (1 test; canonical/duplicate/trailing/session/oversize cases) |
-| `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs` | **14 PASS / 0 FAIL / 20 SKIP**; all five shared window tests PASS |
-| `npm test` (host present) | **493 tests / 462 PASS / 0 FAIL / 31 SKIP** |
+| `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs` | **15 PASS / 0 FAIL / 20 SKIP**; all five shared window tests plus the explicit hold-mode test PASS |
+| `npm test` (host present, pinned Moji source present) | **495 tests / 464 PASS / 0 FAIL / 31 SKIP** |
 | `moon test --target js` | **145 PASS** |
 | `moon test --target native` | **178 PASS** |
 | CI `linux-native` | **PASS** — [run 39541356486](https://github.com/f4ah6o/electron.mbt/actions/runs/39541356486), head `63274cf`, 1m14s |

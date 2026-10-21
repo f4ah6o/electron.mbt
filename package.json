@@ -14,6 +14,7 @@
     "build": "node scripts/build-core.cjs && node scripts/build-native.cjs",
     "build:linux-host": "node scripts/build-linux-host.cjs",
     "moji:linux": "node scripts/nodeless-moji-linux.cjs",
+    "moji:linux:hold": "node scripts/nodeless-moji-linux.cjs --hold",
     "test": "node --test tests/*.test.cjs tests/apps/*.test.cjs",
     "test:leaf": "node --test tests/clone.test.cjs tests/loader.test.cjs tests/transport.test.cjs tests/manifest.test.cjs",
     "test:linux-native": "node scripts/build-linux-host.cjs && ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs",

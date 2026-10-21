@@ -1089,6 +1089,34 @@ test('a Node-less adapted app serves modules and dispatches page API calls to Qu
   assert.equal(report.compatible, false);
 });
 
+test('the native window can stay open in explicit hold mode', {
+  skip: !nativeHostSupported || !nativeHostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const { result } = run(binary, path.join(root, 'fixtures/nodeless-adapted-app'),
+    ['--window', '--hold', '--hold-seconds', '2', '--entry', 'src/main.js']);
+  assert.equal(result.status, 0, `${result.stdout}
+${result.stderr}`);
+  const reports = `${result.stdout || ''}
+${result.stderr || ''}`.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('{') && line.endsWith('}'))
+    .map(line => { try { return JSON.parse(line); } catch { return null; } })
+    .filter(Boolean);
+  const holding = reports.find(item => item.status === 'HOLDING');
+  assert.ok(holding, 'missing HOLDING report');
+  assert.equal(holding.probe, 'nodeless-hold');
+  assert.match(holding.pageTitle,
+    /^nodeless-adapted-ready-module-dark-idle-(storage|no-storage)-denied-scheme$/);
+  assert.equal(holding.adapted, true);
+  assert.equal(holding.released, true);
+  assert.equal(holding.compatible, false);
+  const exited = reports.find(item => item.status === 'HOLD_EXIT');
+  assert.ok(exited, 'missing HOLD_EXIT report');
+  assert.equal(exited.reason, 'hold-seconds');
+  assert.equal(exited.compatible, false);
+});
+
 test('the pinned Moji main boots without Node against a probe page', {
   skip: process.platform !== 'darwin' ||
     !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')) ||

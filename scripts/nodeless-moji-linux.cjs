@@ -16,6 +16,21 @@ const { spawnSync } = require('node:child_process');
 const { buildSourceManifest, writeSourceManifest } = require('./source-manifest.cjs');
 
 const root = path.resolve(__dirname, '..');
+const argv = process.argv.slice(2);
+const hold = argv.includes('--hold');
+const holdSecondsIndex = argv.indexOf('--hold-seconds');
+let holdSeconds = 0;
+if (holdSecondsIndex >= 0) {
+  if (!hold || holdSecondsIndex + 1 >= argv.length) {
+    console.error('ELECTRON_MBT_USAGE: --hold-seconds requires --hold and a value');
+    process.exit(2);
+  }
+  holdSeconds = Number(argv[holdSecondsIndex + 1]);
+  if (!Number.isInteger(holdSeconds) || holdSeconds < 1 || holdSeconds > 3600) {
+    console.error('ELECTRON_MBT_USAGE: --hold-seconds must be 1..3600');
+    process.exit(2);
+  }
+}
 const sourceRoot = process.env.ELECTRON_MBT_MOJI_ROOT || '/tmp/electron-mbt-apps/moji';
 const sourceMain = path.join(sourceRoot, 'out/main/main.js');
 const sourcePreload = path.join(sourceRoot, 'out/preload/preload.js');
@@ -139,12 +154,15 @@ try {
   const fakeNode = path.join(fakeBin, 'node');
   fs.writeFileSync(fakeNode, '#!/bin/sh\nexit 99\n');
   fs.chmodSync(fakeNode, 0o700);
-  const result = spawnSync(binary, [
-    'run', appDir, '--window', '--entry', 'out/main/main.js',
-  ], {
+  const runArgs = ['run', appDir, '--window', '--entry', 'out/main/main.js'];
+  if (hold) {
+    runArgs.push('--hold');
+    if (holdSeconds > 0) runArgs.push('--hold-seconds', String(holdSeconds));
+  }
+  const result = spawnSync(binary, runArgs, {
     cwd: root,
-    encoding: 'utf8',
-    timeout: 45000,
+    ...(hold ? { stdio: 'inherit' } : { encoding: 'utf8' }),
+    timeout: hold ? (holdSeconds > 0 ? (holdSeconds + 30) * 1000 : undefined) : 45000,
     env: {
       ...process.env,
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ''}`,
@@ -154,6 +172,12 @@ try {
       LIBGL_ALWAYS_SOFTWARE: '1',
     },
   });
+  if (hold) {
+    // The nodeless process owns the HOLDING/HOLD_EXIT output and exits on
+    // --hold-seconds or when the process is stopped. Do not write a boot
+    // report for an interactive hold.
+    process.exit(result.status === 0 ? 0 : 1);
+  }
   const lines = `${result.stdout || ''}\n${result.stderr || ''}`.split('\n')
     .map(line => line.trim()).filter(line => line.startsWith('{') && line.endsWith('}'));
   let report = null;

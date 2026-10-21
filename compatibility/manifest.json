@@ -939,6 +939,8 @@
       "compatible": false,
       "note": "Real pinned Moji main and Vite renderer boot with 2 adapted calls and no main error. File broker/main fs/dialogs/export/grant persistence/human actions are NOT RUN; this is not app acceptance or compatibility."
     },
+    "hold": "native/nodeless --window --hold [--hold-seconds 1..3600]; HOLDING/HOLD_EXIT; interactive diagnostic only, no report promotion.",
+
     "limits": [
       "no original preload, contextBridge or ipcRenderer",
       "no file broker, main fs, dialogs, export, menu, clipboard, IME or accessibility",

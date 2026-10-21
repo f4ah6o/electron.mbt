@@ -73,6 +73,28 @@ Recorded hashes:
 - adapter `bdfe8bdd...7501`
 - host `38a78033...ba7`
 
+## Keep the window open
+
+The automated harness exits after the boot report. For an interactive window
+that stays open, pass `--hold` (optionally with a bounded `--hold-seconds`):
+
+```sh
+ELECTRON_MBT_MOJI_ROOT=/path/to/pinned/moji \
+  DISPLAY=:10.0 \
+  node scripts/nodeless-moji-linux.cjs --hold
+
+# Bounded smoke run:
+node scripts/nodeless-moji-linux.cjs --hold --hold-seconds 2
+```
+
+The nodeless runtime prints a `HOLDING` JSON line with the page title/URL and
+host PID, then keeps pumping app-request/app-reply events until it is
+terminated or `--hold-seconds` expires. `HOLD_EXIT` is printed on a controlled
+exit. The hold mode is mutually exclusive with the selftest flags. Native
+close/quit is not implemented yet, so closing the GTK window is ignored; stop
+the process to end the session. The Moji window was kept open and captured with
+the initial UI; the file/dialog/export actions remain unimplemented.
+
 ## Environment
 
 | Item | Value |
@@ -86,7 +108,7 @@ Recorded hashes:
 | Screenshot | XWD capture of the 1000x760 WebKitGTK content window, converted to PNG |
 
 The local `npm test` with the pinned source and Linux host present:
-**494 tests / 463 PASS / 0 FAIL / 31 SKIP**. The `linux-native` CI job runs
+**495 tests / 464 PASS / 0 FAIL / 31 SKIP**. The `linux-native` CI job runs
 the shared fixture tests, but this Moji boot harness is **NOT RUN in CI**
 because the pinned Moji source is not fetched there. The macOS Moji suite is
 also **NOT RUN for this Linux result**; Linux is not macOS/WebKit evidence.

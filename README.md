@@ -170,7 +170,10 @@ generated page adapter at document start, routes page calls to QuickJS Main,
 advances document generations on reload and rejects stale ingress. With a
 locally built pinned Moji source, the real main and Vite renderer also boot
 ([docs/0058](docs/0058-moji-linux-boot.md)); file broker/main fs/dialogs/export,
-broker and human actions remain NOT RUN. It does not
+broker and human actions remain NOT RUN. To keep the real window open for
+inspection, run `ELECTRON_MBT_MOJI_ROOT=/path/to/moji node
+scripts/nodeless-moji-linux.cjs --hold` (Ctrl-C/terminate to stop; native
+close/quit is not implemented yet). It does not
 implement original preload, `contextBridge`, `ipcRenderer`, file/dialog/export
 services, native frame sender authority, close/quit, IME/AX, packaging or
 Linux product compatibility. WebKitGTK does not expose the macOS

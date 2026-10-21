@@ -729,6 +729,118 @@ fn cli_host_payload(operation : String, payload : String) -> Json? {
   Some(cli_field(parsed, "payload"))
 }
 
+
+///|
+fn cli_parse_seconds(text : String) -> Int {
+  if text.length() == 0 || text.length() > 6 {
+    return -1
+  }
+  let mut value = 0
+  for i = 0; i < text.length(); i = i + 1 {
+    let code = text[i].to_int()
+    if code < 48 || code > 57 {
+      return -1
+    }
+    value = value * 10 + (code - 48)
+  }
+  value
+}
+
+///|
+fn cli_hold(
+  runner : @app.AppRunner,
+  session : String,
+  adapted_configured : Bool,
+  hold_seconds : Int,
+) -> Unit {
+  let mut title = ""
+  let mut url = ""
+  let mut released = !adapted_configured
+  let mut host_alive = true
+  let mut attempts = 0
+  while attempts < 100 {
+    let _ = cli_pump_events(runner, session, attempts=4, idle_limit=1)
+    if adapted_configured {
+      match cli_host_payload("get-adapted-status", "{}") {
+        Some(value) => {
+          if cli_field(value, "released") is True {
+            released = true
+          }
+        }
+        None => host_alive = false
+      }
+    }
+    match cli_host_payload("get-web-contents-title", "{}") {
+      Some(value) => {
+        match cli_text(value, "title") {
+          Some(text) => if text.length() > 0 { title = text }
+          None => ()
+        }
+      }
+      None => host_alive = false
+    }
+    match cli_host_payload("get-web-contents-url", "{}") {
+      Some(value) => {
+        match cli_text(value, "url") {
+          Some(text) => if text.length() > 0 { url = text }
+          None => ()
+        }
+      }
+      None => host_alive = false
+    }
+    if !host_alive || (title.length() > 0 && released) {
+      break
+    }
+    nodeless_sleep_ms(100)
+    attempts = attempts + 1
+  }
+  println(
+    Json({
+      "schema": Json(1),
+      "probe": Json("nodeless-hold"),
+      "status": Json("HOLDING"),
+      "platform": Json(cli_platform()),
+      "profile": Json("electron-nodeless-adapted-v1"),
+      "pageTitle": Json(title),
+      "pageURL": Json(url),
+      "adapted": Json(adapted_configured),
+      "released": Json(released),
+      "holdSeconds": Json(hold_seconds),
+      "hostPid": Json(nodeless_host_pid()),
+      "compatible": Json(false),
+      "note": Json("Interactive hold only; not a compatibility result."),
+    }).stringify(),
+  )
+  let limit = if hold_seconds > 0 { hold_seconds * 10 } else { -1 }
+  let mut ticks = 0
+  let mut reason = "hold-seconds"
+  while limit < 0 || ticks < limit {
+    let _ = cli_pump_events(runner, session, attempts=1, idle_limit=1)
+    let alive = match cli_host_payload("get-web-contents-title", "{}") {
+      Some(_) => true
+      None => false
+    }
+    if !alive {
+      reason = "host-lost"
+      break
+    }
+    nodeless_sleep_ms(50)
+    ticks = ticks + 1
+  }
+  runner.stop()
+  let _ = nodeless_host_shutdown()
+  println(
+    Json({
+      "schema": Json(1),
+      "probe": Json("nodeless-hold"),
+      "status": Json("HOLD_EXIT"),
+      "reason": Json(reason),
+      "ticks": Json(ticks),
+      "compatible": Json(false),
+    }).stringify(),
+  )
+}
+
 ///|
 fn cli_read_text(root : String, path : String) -> String? {
   let buffer = Bytes::new(16777216)
@@ -849,7 +961,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest] [--moji-edit-save-selftest] [--moji-reopen-selftest] [--moji-save-failure-selftest]")
+    println("usage: nodeless run <app-dir> [--window] [--hold [--hold-seconds <1..3600>]] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest] [--moji-edit-save-selftest] [--moji-reopen-selftest] [--moji-save-failure-selftest]")
     nodeless_exit(2)
     return
   }
@@ -865,6 +977,15 @@ fn main {
   }
   let app_dir = @utf8.decode_lossy(app_dir_buffer[:app_dir_length])
   let window_mode = args.contains("--window")
+  let hold_mode = args.contains("--hold")
+  let mut hold_seconds = 0
+  let mut hold_seconds_set = false
+  for i = 0; i < args.length(); i = i + 1 {
+    if args[i] == "--hold-seconds" && i + 1 < args.length() {
+      hold_seconds_set = true
+      hold_seconds = cli_parse_seconds(args[i + 1])
+    }
+  }
   let broker_selftest = args.contains("--broker-selftest")
   let fs_selftest = args.contains("--fs-selftest")
   let user_file_selftest = args.contains("--user-file-selftest")
@@ -878,6 +999,26 @@ fn main {
   let moji_edit_save_selftest = args.contains("--moji-edit-save-selftest")
   let moji_reopen_selftest = args.contains("--moji-reopen-selftest")
   let moji_save_failure_selftest = args.contains("--moji-save-failure-selftest")
+  if hold_mode && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold requires --window")
+    return
+  }
+  if hold_seconds_set && !hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold-seconds requires --hold")
+    return
+  }
+  if hold_seconds_set && (hold_seconds < 1 || hold_seconds > 3600) {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold-seconds must be 1..3600")
+    return
+  }
+  if hold_mode && (broker_selftest || fs_selftest || user_file_selftest ||
+      directory_selftest || dialog_selftest || save_dialog_selftest ||
+      dialog_ui_selftest || ingress_selftest || grant_persist_selftest ||
+      grant_revoke_selftest || moji_edit_save_selftest || moji_reopen_selftest ||
+      moji_save_failure_selftest) {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold is mutually exclusive with selftests")
+    return
+  }
   if fs_selftest && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--fs-selftest requires --window")
     return
@@ -1160,6 +1301,10 @@ fn main {
       ""
     }
     let adapted_configured = adapted_adapter.length() > 0
+    if hold_mode {
+      cli_hold(runner, session, adapted_configured, hold_seconds)
+      return
+    }
     let mut adapted_observed = false
     let mut adapted_released = false
     let mut adapted_requests = 0

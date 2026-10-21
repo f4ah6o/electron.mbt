@@ -32,6 +32,9 @@ if (capture('pkg-config', ['--exists', ...deps]) === null) {
   fail('ELECTRON_MBT_LINUX_HOST_DEPS',
     'install the development packages: sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev');
 }
+if (capture('pkg-config', ['--atleast-version=2.40', 'webkit2gtk-4.1']) === null) {
+  fail('ELECTRON_MBT_LINUX_HOST_DEPS', 'WebKitGTK 2.40 or newer is required');
+}
 const cflags = capture('pkg-config', ['--cflags', ...deps]);
 const libs = capture('pkg-config', ['--libs', ...deps]);
 if (cflags === null || libs === null) {

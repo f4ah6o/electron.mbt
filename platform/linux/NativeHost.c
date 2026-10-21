@@ -2113,7 +2113,7 @@ static gpointer load_thread_main(gpointer data) {
     Request *request = request_new(host, raw, raw_length, &frame, TRUE);
     g_free(raw);
     g_main_context_invoke(NULL, request_main_cb, request);
-    wait_for_request(request, 30);
+    wait_for_request(request, 14);
     if (request->reply != NULL) {
       if (!write_frame(host->load_fd, request->reply, strlen(request->reply))) {
         request_free(request);

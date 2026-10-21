@@ -1767,6 +1767,11 @@ fn main {
       Json("asan"),
       Json("external-review"),
     ]
+    if cli_platform() == "linux" {
+      // WebKitGTK's UI-process API does not expose WKScriptMessage.frameInfo,
+      // so the native main-frame sender authority remains unproven there.
+      not_verified.push(Json("linux-native-sender-frame-authority"))
+    }
     if !(grant_persist_ok && (grant_persist_selftest || grant_revoke_selftest)) {
       not_verified.push(Json("grant-persistence"))
     }
@@ -1785,6 +1790,8 @@ fn main {
       "status": Json(if status_ok { "PASS" } else { "FAIL" }),
       "engine": Json("quickjs-2026-06-04"),
       "profile": Json("electron-nodeless-adapted-v1"),
+      "platform": Json(cli_platform()),
+      "arch": Json(cli_arch()),
       "strict": Json("blocked"),
       "app": Json({
         "name": Json(name),

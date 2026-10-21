@@ -10,6 +10,15 @@ const { buildSourceManifest, writeSourceManifest } = require('../scripts/source-
 const { buildAdapter } = require('../scripts/adapted-adapter.cjs');
 
 const root = path.resolve(__dirname, '..');
+const nativeHostBinary = path.join(root, process.platform === 'linux'
+  ? 'dist/electron-mbt-native-host-linux'
+  : 'dist/electron-mbt-native-host');
+const nativeHostAvailable = fs.existsSync(nativeHostBinary);
+const nativeHostSupported = process.platform === 'darwin' || process.platform === 'linux';
+if (process.env.ELECTRON_MBT_REQUIRE_NATIVE_HOST === '1' &&
+    nativeHostSupported && !nativeHostAvailable) {
+  throw new Error(`ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 but ${path.relative(root, nativeHostBinary)} is missing`);
+}
 const fixture = path.join(root, 'fixtures/nodeless-app');
 const binaryCandidates = [
   path.join(root, '_build/native/debug/build/native/nodeless/nodeless.exe'),
@@ -147,7 +156,7 @@ test('the nodeless binary does not link or import Node/Node-API', () => {
 });
 
 test('a native window loads a page and reads its title without Node', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: !nativeHostSupported || !nativeHostAvailable,
 }, () => {
   const binary = buildBinary();
   const { result, report } = run(binary, path.join(root, 'fixtures/nodeless-window-app'),
@@ -166,7 +175,7 @@ test('a native window loads a page and reads its title without Node', {
 });
 
 test('a plain Node-less window reload advances the document generation', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: !nativeHostSupported || !nativeHostAvailable,
 }, () => {
   const binary = buildBinary();
   const dir = temporaryApp([
@@ -198,7 +207,7 @@ test('a plain Node-less window reload advances the document generation', {
 });
 
 test('the Node-less ingress rejects a stale generation before Main dispatch', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: !nativeHostSupported || !nativeHostAvailable,
 }, () => {
   const binary = buildBinary();
   const dir = temporaryApp([
@@ -325,7 +334,7 @@ test('a malformed or frame-originated page message never reaches Node-less Main'
 });
 
 test('an adapted Node-less window reloads with a new generation and a fresh ingress', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: !nativeHostSupported || !nativeHostAvailable,
 }, () => {
   const binary = buildBinary();
   const api = {
@@ -1051,7 +1060,7 @@ test('fs selftest requires the native window host', () => {
 });
 
 test('a Node-less adapted app serves modules and dispatches page API calls to QuickJS main', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: !nativeHostSupported || !nativeHostAvailable,
 }, () => {
   const binary = buildBinary();
   const { result, report } = run(binary, path.join(root, 'fixtures/nodeless-adapted-app'),

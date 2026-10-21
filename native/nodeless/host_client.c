@@ -415,7 +415,11 @@ static const char *host_binary_path(void) {
   if (test == NULL || mode == NULL || strcmp(mode, "1") != 0 ||
       test[0] == 0 || strlen(test) > 256 ||
       strncmp(test, "dist/", 5) != 0 || strstr(test, "..") != NULL) {
+#if defined(__linux__)
+    return "dist/electron-mbt-native-host-linux";
+#else
     return "dist/electron-mbt-native-host";
+#endif
   }
   return test;
 }

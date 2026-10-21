@@ -80,6 +80,7 @@ Local Linux (Ubuntu 24.04, GTK 3.24.41, WebKitGTK 4.1 2.52.6, X11, Node
 | `npm test` with host and pinned Moji source | **499 tests / 468 PASS / 0 FAIL / 31 SKIP** |
 | `tests/linux-host-frame.test.cjs` | **PASS** |
 | `moon test --target js` / `native` | **145 / 178 PASS** |
+| CI `linux-native` / `moonbit` / `macos` | **PASS** — [run 39547063739](https://github.com/f4ah6o/electron.mbt/actions/runs/39547063739), head `ce09857`, 1m42s / 54s / 3m43s |
 
 New Linux-only tests:
 
@@ -96,7 +97,8 @@ New Linux-only tests:
 5. Existing hold/five shared fixture tests remain PASS.
 
 The pinned Moji boot report is `compatible:false`; the Moji main/renderer still
-boot with `mainError:""`. The open/save **human** flow in Moji has not been
+boot with `mainError:""`. The CI run above covers the fs/open/save/close tests;
+the Moji boot harness itself remains local-only. The open/save **human** flow in Moji has not been
 recorded as a human acceptance result; the dialog plumbing is covered by the
 auto-selection tests and the user can now try the real buttons.
 

@@ -31,6 +31,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | Node-less broker E2E | `nodeless-moji-app` broker: 1 grant/6 dialogs, open/save/sample/saveAs/HTML/PDF/PNG, 6 output files | PASS (test-injected) |
 | Moji open-for-edit edit/save/restart | `moji-nodeless-edit-save`: real renderer Open/Editor/Save, 0 injected grants, exact 47→74→103 bytes, restart re-open and re-save, 0640+xattr preserved, hardlink denied | PASS (test-injected dialog; synthetic DOM edit; human input NOT RUN) |
 | Node-less document identity / reload | `nodeless-runtime`: plain and adapted reload to generation 2; stale-generation event rejected before Main; forged page claims ignored; malformed page message denied; adapter ingress auto-released at load; `--ingress-selftest` test-only | PASS (test-only; single window; dedicated subframe-handler proof still open) |
+| Linux Node-less native host (experimental) | `nodeless-runtime` on Linux X11: plain/adapted load, custom app scheme, generated adapter, document generation and stale-ingress rejection; canonical-frame negative test | PASS (five shared fixtures; native frame authority, close/quit, file/dialog services, IME/AX and product compatibility NOT RUN; macOS remains the reference; [docs/0057](0057-linux-native-host.md)) |
 | Main-side fs (app root / data roots) | `nodeless-fs-app`: sync/async read, 200 KiB round-trip, atomic `.appData` write, symlink-escape denial; Moji `settingsPersisted:true` | PASS (partial; host-required) |
 | Directory/metadata fs | `nodeless-fs-app`: partial stat, bounded readdir/Dirent, bounded mkdir; generated escape and 4,097-entry/65-component bound tests | PASS (partial; host-required) |
 | Adapted page API → Main | `moji-adapted-native`: dark/unsupported | PASS |
@@ -102,5 +103,10 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 4. **Async depth**: timers/native completion promises, cancellation, deadlines.
 5. **Export depth**: multi-page/print-accurate PDF/PNG, `assetBaseUrl`.
 6. **Compatibility**: no verified rows; strict profile remains blocked.
+7. **Linux backend (experimental)**: GTK3/WebKitGTK 4.1 now runs the same five
+   plain/adapted/reload/ingress fixtures on X11. It has no original preload,
+   file/dialog/export services, native frame sender authority, close/quit,
+   IME/AX or Linux product compatibility; Linux results are not macOS
+   evidence. See [docs/0057](0057-linux-native-host.md).
 
 This document is a checkpoint, not an acceptance of Electron compatibility.

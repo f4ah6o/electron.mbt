@@ -78,6 +78,71 @@ jobs:
           name: linux-evidence
           path: evidence/
           if-no-files-found: error
+  linux-native:
+    needs: moonbit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.21.0'
+      - name: Install GTK/WebKitGTK and a headless display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev xvfb xauth dbus-x11 libgl1-mesa-dri
+      - name: Bootstrap and validate the pinned toolchain
+        shell: bash
+        env:
+          MOONBIT_VERSION: '0.10.15+943464bfa'
+          MOONBIT_INSTALLER_SHA256: '46495f8cdc0050f79b6cb195d66478d101cb3601d68506568fbe377fcdf2a9fe'
+          MOON_SHA256: 'a31026b83410607909ebae469fa19e46c32201cfe403be6099e1da961a5ebf0f'
+          MOONC_SHA256: 'fb950cbc125168c49523ef554d2649effd66499c596dafcb15c80b561d45fd8c'
+          MOONRUN_SHA256: 'ba44070aa78d89c2c6da6524d2aa782e46b18cb4a42dd31cd13bf588107089cf'
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          curl --fail --silent --show-error --location https://cli.moonbitlang.com/install/unix.sh -o "$RUNNER_TEMP/install-moon.sh"
+          echo "$MOONBIT_INSTALLER_SHA256  $RUNNER_TEMP/install-moon.sh" | sha256sum --check | tee evidence/installer-sha256.txt
+          bash "$RUNNER_TEMP/install-moon.sh" "$MOONBIT_VERSION"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          {
+            echo "$MOON_SHA256  $HOME/.moon/bin/moon"
+            echo "$MOONC_SHA256  $HOME/.moon/bin/moonc"
+            echo "$MOONRUN_SHA256  $HOME/.moon/bin/moonrun"
+          } | sha256sum --check | tee evidence/toolchain-sha256.txt
+          "$HOME/.moon/bin/moon" version --all | tee evidence/moon-version.txt
+          grep -Fq 'moonc v0.10.15+943464bfa (2026-10-12)' evidence/moon-version.txt
+          grep -Fq 'moon 0.1.20261012 (748b63c 2026-10-12)' evidence/moon-version.txt
+      - name: Build the Linux GTK/WebKitGTK host
+        shell: bash
+        run: node scripts/build-linux-host.cjs 2>&1 | tee evidence/linux-host-build.log
+      - name: Build the Node-less runtime
+        run: moon build --target native native/nodeless
+      - name: Reject non-canonical control frames
+        shell: bash
+        run: node --test tests/linux-host-frame.test.cjs 2>&1 | tee evidence/linux-host-frame.log
+      - name: Run the shared Node-less window/adapted fixtures on Linux
+        shell: bash
+        env:
+          ELECTRON_MBT_REQUIRE_NATIVE_HOST: '1'
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GDK_BACKEND: 'x11'
+        run: |
+          dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" \
+            node --test tests/nodeless-runtime.test.cjs 2>&1 | tee evidence/linux-native.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: linux-native-evidence
+          path: evidence/
+          if-no-files-found: error
   macos:
     needs: moonbit
     runs-on: macos-15

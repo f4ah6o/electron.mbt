@@ -901,5 +901,45 @@
     "selection": false,
     "compatible": false,
     "note": "Native NSOpenPanel opened and programmatically canceled; no file selection or user consent."
+  },
+  "linuxNativeHost": {
+    "status": "experimental",
+    "compatible": false,
+    "profile": "electron-nodeless-adapted-v1",
+    "platform": "linux",
+    "display": "x11",
+    "gtk": "3.24.41",
+    "webkitgtk": "2.52.6 (4.1 API)",
+    "host": "dist/electron-mbt-native-host-linux",
+    "build": "scripts/build-linux-host.cjs",
+    "sources": [
+      "platform/linux/NativeHost.c",
+      "platform/linux/control_frame.c"
+    ],
+    "tests": [
+      "tests/nodeless-runtime.test.cjs",
+      "tests/linux-host-frame.test.cjs"
+    ],
+    "sharedTests": [
+      "a native window loads a page and reads its title without Node",
+      "a plain Node-less window reload advances the document generation",
+      "a Node-less adapted app serves modules and dispatches page API calls to QuickJS main",
+      "an adapted Node-less window reloads with a new generation and a fresh ingress",
+      "the Node-less ingress rejects a stale generation before Main dispatch"
+    ],
+    "evidence": "docs/0057-linux-native-host.md",
+    "limits": [
+      "no original preload, contextBridge or ipcRenderer",
+      "no file broker, main fs, dialogs, export, menu, clipboard, IME or accessibility",
+      "native main-frame sender/frame authority is not proven; top-frame injection plus per-document nonce only",
+      "no close/quit, focus, native show/hide, child-frame parity, packaging or Linux product compatibility"
+    ],
+    "notVerified": [
+      "native-frame-authority",
+      "linux-close-quit",
+      "linux-ime-ax",
+      "linux-packaging"
+    ],
+    "note": "Experimental GTK3/WebKitGTK 4.1 host for the plain/adapted Node-less fixture path on X11. Linux results are not macOS/WebKit compatibility evidence. compatible:false, strict BLOCKED, original preload NOT_EXECUTED."
   }
 }

@@ -97,8 +97,9 @@ missing host fail instead of silently skipping the five tests.
 | `npm test` (host present) | **493 tests / 462 PASS / 0 FAIL / 31 SKIP** |
 | `moon test --target js` | **145 PASS** |
 | `moon test --target native` | **178 PASS** |
-| CI `linux-native` | **NOT RUN at the time of this local record**; the PR run is authoritative |
-| macOS suite | **NOT RUN for this change**; macOS remains the reference and must run separately |
+| CI `linux-native` | **PASS** — [run 39541356486](https://github.com/f4ah6o/electron.mbt/actions/runs/39541356486), head `63274cf`, 1m14s |
+| CI `moonbit` | **PASS** — same run, 1m21s |
+| CI `macos` | **PASS** — same run, 4m16s; the macOS suite exercises the macOS host, not this Linux host |
 | readiness / G0–G4 | **unchanged NOT_READY**: 35 checks / 28 PASS / 2 FAIL / 5 NOT RUN; this slice adds no compatibility row or readiness PASS |
 
 The first attempt exposed a WebKitGTK/JSC interaction: creating a private
@@ -140,8 +141,8 @@ This is a Linux backend implementation note, not a macOS contract change.
 
 ## Next increments
 
-1. Add the same host path to a Linux CI evidence artifact and attach the CI run
-   URL/head SHA after the PR run.
+1. Keep the `linux-native` evidence artifact and update the run URL/head SHA
+   when the job changes; the 2026-10-21 run is recorded above.
 2. Address native frame/sender authority: document a profile restriction or
    find a WebKitGTK API that exposes the actual frame; do not infer it from a
    page nonce.

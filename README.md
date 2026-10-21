@@ -167,7 +167,10 @@ ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 \
 It creates a real GTK window and WebKitGTK WebView, stages a SHA-256-verified
 source snapshot, serves it through `electron-mbt-app://app/...`, injects the
 generated page adapter at document start, routes page calls to QuickJS Main,
-advances document generations on reload and rejects stale ingress. It does not
+advances document generations on reload and rejects stale ingress. With a
+locally built pinned Moji source, the real main and Vite renderer also boot
+([docs/0058](docs/0058-moji-linux-boot.md)); file broker/main fs/dialogs/export,
+broker and human actions remain NOT RUN. It does not
 implement original preload, `contextBridge`, `ipcRenderer`, file/dialog/export
 services, native frame sender authority, close/quit, IME/AX, packaging or
 Linux product compatibility. WebKitGTK does not expose the macOS

@@ -43,6 +43,11 @@ multi-window are not implemented.
 
 ## Shared fixtures that pass on Linux
 
+A separate local boot harness also runs the pinned real Moji main and Vite
+renderer on this Linux host; see [docs/0058](0058-moji-linux-boot.md). That is
+boot evidence only: the file broker, main fs, dialogs, export, grant
+persistence and human actions remain unimplemented/NOT RUN.
+
 The following existing tests in `tests/nodeless-runtime.test.cjs` now run
 against the Linux host when `dist/electron-mbt-native-host-linux` exists:
 

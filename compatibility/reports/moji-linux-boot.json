@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "probe": "moji-linux-boot",
+  "status": "PASS",
+  "mode": "linux-native-boot",
+  "platform": "linux",
+  "arch": "x64",
+  "app": {
+    "id": "moji-v1.0.5",
+    "mainSHA256": "41cd703c31002c0a80f3e6407f2743a93f60a686eb3084cd08cb98cf31f7046e",
+    "preloadSHA256": "bd0f47d61f79ffa68ebd1a65186d0afc477448ac8c3c911ac8d52aab5d38c544",
+    "rendererIndexSHA256": "fafe339fee4ccecc164748984e77c03f9089c624a24cac62cf3b18ffe4e9e301",
+    "adapterSHA256": "bdfe8bddb4bc07389060e805464a554ff1b0a24d998a88512564c8a91dcc7501",
+    "adapter": "fixtures/moji-adapted/page-api.js"
+  },
+  "runtime": {
+    "engine": "quickjs-2026-06-04",
+    "profile": "electron-nodeless-adapted-v1",
+    "strict": "blocked",
+    "hostSHA256": "38a78033c8de1e93072c54b1f6e0beb28448b6abafc07bb42e1bbc92428b6ba7"
+  },
+  "window": {
+    "pageTitle": "Moji v1.0.5",
+    "pageURL": "electron-mbt-app://app/out/renderer/index.html",
+    "rendererLoaded": true,
+    "documentGeneration": 1
+  },
+  "adapted": {
+    "configured": true,
+    "observed": true,
+    "released": true,
+    "requests": 2,
+    "replyErrors": 0,
+    "ingress": {
+      "admitted": 2,
+      "denied": 0,
+      "unhandled": 0,
+      "fileSaveAdmitted": 0,
+      "fileSaveDenied": 0,
+      "lastCode": "",
+      "generation": 1
+    }
+  },
+  "main": {
+    "error": "",
+    "hostShutdown": true,
+    "liveLeases": 0,
+    "nodeProcesses": 0
+  },
+  "preloadExecuted": false,
+  "broker": "NOT_IMPLEMENTED",
+  "humanInput": false,
+  "compatible": false,
+  "notVerified": [
+    "file-broker",
+    "main-fs",
+    "dialogs",
+    "export",
+    "grant-persistence",
+    "human-input",
+    "original-preload",
+    "updater-behavior",
+    "linux-native-sender-frame-authority",
+    "strict-profile",
+    "macos-suite-for-this-run"
+  ],
+  "limits": [
+    "The real Moji main and Vite renderer boot; file open/save/export, dialogs, main fs and the broker are not implemented on the Linux host.",
+    "The screenshot is the initial UI only; no human file selection, IME, save, export or restart was exercised.",
+    "The original preload is NOT_EXECUTED; the generated adapted page API is used.",
+    "Native main-frame sender/frame authority is unproven (WebKitGTK lacks WKScriptMessage.frameInfo).",
+    "Linux results are not macOS/WebKit compatibility evidence and do not promote a profile or A-J row."
+  ],
+  "note": "Experimental boot evidence only. compatible:false, strict BLOCKED, original preload NOT_EXECUTED."
+}

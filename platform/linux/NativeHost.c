@@ -9,10 +9,11 @@
  * window/generation/sender values as authority.
  *
  * The macOS host in platform/macos/NativeHost.m is the reference for the
- * protocol subset implemented here. This file intentionally implements only
- * the adapted/plain fixture path: no original preload, contextBridge,
- * ipcRenderer, file broker, dialogs, menus, clipboard, IME or close/quit
- * parity. Unsupported operations return a typed failure.
+ * protocol subset implemented here. This file intentionally implements the
+ * adapted/plain fixture path plus a minimal exact-file read/write and
+ * GTK open/save dialog surface. It has no original preload, contextBridge,
+ * ipcRenderer, directory grants, export pipeline, menu, clipboard or IME
+ * parity; unsupported operations return a typed failure.
  */
 #include <arpa/inet.h>
 #include <errno.h>
@@ -46,6 +47,13 @@
 #define EBT_MAX_TITLE 4096
 #define EBT_MAX_URL 8192
 #define EBT_MAX_SAFE_INTEGER 9007199254740991.0
+#define EBT_MAX_MAIN_READ (256 * 1024)
+#define EBT_MAX_MAIN_WRITE (256 * 1024)
+#define EBT_MAX_MAIN_BASE64 (400 * 1024)
+#define EBT_MAX_MAIN_PATH 4096
+#define EBT_MAX_DIALOG_PATHS 16
+#define EBT_GRANT_READ 1
+#define EBT_GRANT_WRITE 2
 
 #define EBT_CONTROL_CHANNEL 3
 #define EBT_LOAD_CHANNEL 4
@@ -109,6 +117,7 @@ typedef struct Host {
   guint64 ingress_unhandled;
   char ingress_last_code[128];
   GHashTable *pending;
+  GHashTable *file_grants;
   GAsyncQueue *events;
   GThread *control_thread;
   GThread *load_thread;
@@ -1815,25 +1824,501 @@ static void handle_inject_app_request(Host *host, Request *request,
   g_object_unref(injected);
 }
 
-static void handle_destroy_window(Host *host, Request *request) {
-  if (!require_current(host, request)) return;
-  if (host->load_request != NULL) fail_load_request(host, "ELECTRON_MBT_WINDOW_DESTROYED");
-  fail_pending(host, "ELECTRON_MBT_WINDOW_DESTROYED");
-  if (host->web != NULL) {
-    webkit_web_view_stop_loading(host->web);
-    webkit_user_content_manager_remove_all_scripts(host->manager);
+/* ---- minimal main fs and GTK open/save dialogs ---- */
+
+static gboolean path_is_under(const char *path, const char *root) {
+  if (path == NULL || root == NULL) return FALSE;
+  size_t root_length = strlen(root);
+  if (root_length == 0 || strncmp(path, root, root_length) != 0) return FALSE;
+  return path[root_length] == 0 || path[root_length] == '/';
+}
+
+static char *host_join_path(Host *host, const char *path) {
+  if (host == NULL || path == NULL || path[0] == 0 ||
+      strlen(path) > EBT_MAX_MAIN_PATH) return NULL;
+  if (g_path_is_absolute(path)) return g_strdup(path);
+  return g_build_filename(host->root, path, NULL);
+}
+
+static char *canonical_existing_path(Host *host, const char *path) {
+  char *joined = host_join_path(host, path);
+  if (joined == NULL) return NULL;
+  char *canonical = realpath(joined, NULL);
+  free(joined);
+  return canonical;
+}
+
+static char *canonical_write_path(Host *host, const char *path) {
+  char *joined = host_join_path(host, path);
+  if (joined == NULL) return NULL;
+  char *canonical = realpath(joined, NULL);
+  if (canonical != NULL) {
+    free(joined);
+    return canonical;
   }
-  if (host->window != NULL) {
-    gtk_widget_destroy(host->window);
-    host->window = NULL;
+  if (errno != ENOENT) {
+    free(joined);
+    return NULL;
   }
-  host->web = NULL;
-  host->manager = NULL;
-  host->handlers_installed = FALSE;
+  char *directory = g_path_get_dirname(joined);
+  char *base = g_path_get_basename(joined);
+  gboolean valid = base != NULL && base[0] != 0 &&
+    strcmp(base, ".") != 0 && strcmp(base, "..") != 0 && strchr(base, '/') == NULL;
+  if (!valid) {
+    g_free(directory);
+    g_free(base);
+    free(joined);
+    return NULL;
+  }
+  char *parent = realpath(directory, NULL);
+  struct stat info;
+  if (parent == NULL || stat(parent, &info) != 0 || !S_ISDIR(info.st_mode)) {
+    free(parent);
+    g_free(directory);
+    g_free(base);
+    free(joined);
+    return NULL;
+  }
+  canonical = g_build_filename(parent, base, NULL);
+  free(parent);
+  g_free(directory);
+  g_free(base);
+  free(joined);
+  if (canonical != NULL && strlen(canonical) > EBT_MAX_MAIN_PATH) {
+    free(canonical);
+    return NULL;
+  }
+  return canonical;
+}
+
+static int file_grant_mode(Host *host, const char *canonical) {
+  if (host == NULL || host->file_grants == NULL || canonical == NULL) return 0;
+  return GPOINTER_TO_INT(g_hash_table_lookup(host->file_grants, canonical));
+}
+
+static void grant_file(Host *host, const char *canonical, int mode) {
+  if (host == NULL || host->file_grants == NULL || canonical == NULL) return;
+  int current = file_grant_mode(host, canonical);
+  g_hash_table_insert(host->file_grants, g_strdup(canonical),
+                      GINT_TO_POINTER(current | mode));
+}
+
+static gboolean app_data_allows_write(Host *host, const char *canonical) {
+  char *app_data = g_build_filename(host->root, ".appData", NULL);
+  char *user_data = g_build_filename(host->root, ".userData", NULL);
+  gboolean allowed = path_is_under(canonical, app_data) ||
+    path_is_under(canonical, user_data);
+  g_free(app_data);
+  g_free(user_data);
+  return allowed;
+}
+
+static gboolean main_read_allowed(Host *host, const char *canonical) {
+  if (path_is_under(canonical, host->root)) return TRUE;
+  return (file_grant_mode(host, canonical) &
+          (EBT_GRANT_READ | EBT_GRANT_WRITE)) != 0;
+}
+
+static gboolean main_write_allowed(Host *host, const char *canonical) {
+  if (app_data_allows_write(host, canonical)) return TRUE;
+  return (file_grant_mode(host, canonical) & EBT_GRANT_WRITE) != 0;
+}
+
+static void handle_main_read_file(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *canonical = path == NULL ? NULL : canonical_existing_path(host, path);
+  if (canonical == NULL || !main_read_allowed(host, canonical)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) != 0) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (!S_ISREG(info.st_mode)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+    return;
+  }
+  if (info.st_size < 0 || (guint64)info.st_size > EBT_MAX_MAIN_READ) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
+  gchar *data = NULL;
+  gsize length = 0;
+  if (!g_file_get_contents(canonical, &data, &length, NULL)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_READ");
+    return;
+  }
+  if (length > EBT_MAX_MAIN_READ) {
+    g_free(data);
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
+  gchar *base64 = g_base64_encode((const guchar *)(data == NULL ? (gchar *)"" : data),
+                                  length);
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  object_set_string(host, reply, "base64", base64 == NULL ? "" : base64);
+  object_set_number(host, reply, "bytes", (double)length);
+  request_complete(request, "success", reply);
+  g_free(base64);
+  g_free(data);
+  g_free(path);
+  free(canonical);
+}
+
+static void handle_main_write_file(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path", "base64"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *base64 = object_get_string(payload, "base64");
+  if (path == NULL || base64 == NULL || strlen(base64) > EBT_MAX_MAIN_BASE64) {
+    g_free(path);
+    g_free(base64);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gsize length = 0;
+  guchar *data = g_base64_decode(base64, &length);
+  if ((data == NULL && length != 0) || length > EBT_MAX_MAIN_WRITE) {
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    request_failure(request, length > EBT_MAX_MAIN_WRITE ? "ELECTRON_MBT_FILE_LIMIT"
+                                                         : "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *canonical = canonical_write_path(host, path);
+  ebt_debug("main-write path=%s canonical=%s allowed=%d\n", path,
+            canonical == NULL ? "(null)" : canonical,
+            canonical == NULL ? 0 : main_write_allowed(host, canonical));
+  if (canonical == NULL || !main_write_allowed(host, canonical)) {
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) == 0 && S_ISDIR(info.st_mode)) {
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+    return;
+  }
+  GError *error = NULL;
+  gboolean written = g_file_set_contents(canonical,
+    data == NULL ? "" : (const gchar *)data, (gssize)length, &error);
+  g_clear_error(&error);
+  if (!written) {
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_WRITE");
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  object_set_number(host, reply, "bytes", (double)length);
+  request_complete(request, "success", reply);
+  g_free(data);
+  g_free(path);
+  g_free(base64);
+  free(canonical);
+}
+
+static void handle_main_stat(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  if (path == NULL) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *canonical = canonical_existing_path(host, path);
+  if (canonical == NULL) {
+    char *joined = host_join_path(host, path);
+    gboolean under_root = joined != NULL && path_is_under(joined, host->root);
+    free(joined);
+    JSCValue *reply = object_new(host);
+    object_set_boolean(host, reply, "exists", FALSE);
+    object_set_boolean(host, reply, "denied", under_root ? FALSE : TRUE);
+    request_complete(request, "success", reply);
+    g_free(path);
+    return;
+  }
+  if (!main_read_allowed(host, canonical)) {
+    JSCValue *reply = object_new(host);
+    object_set_boolean(host, reply, "exists", FALSE);
+    object_set_boolean(host, reply, "denied", TRUE);
+    request_complete(request, "success", reply);
+    g_free(path);
+    free(canonical);
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) != 0) {
+    JSCValue *reply = object_new(host);
+    object_set_boolean(host, reply, "exists", FALSE);
+    object_set_boolean(host, reply, "denied", FALSE);
+    request_complete(request, "success", reply);
+    g_free(path);
+    free(canonical);
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "exists", TRUE);
+  object_set_boolean(host, reply, "isFile", S_ISREG(info.st_mode));
+  object_set_boolean(host, reply, "isDirectory", S_ISDIR(info.st_mode));
+  object_set_number(host, reply, "size", (double)info.st_size);
+  double mtime_ms = (double)info.st_mtime * 1000.0 +
+    (double)info.st_mtim.tv_nsec / 1000000.0;
+  object_set_number(host, reply, "mtimeMs", mtime_ms);
+  object_set_string(host, reply, "path", canonical);
+  object_set_boolean(host, reply, "denied", FALSE);
+  request_complete(request, "success", reply);
+  g_free(path);
+  free(canonical);
+}
+
+static void reply_open_dialog(Host *host, Request *request, gboolean canceled,
+                              GPtrArray *paths) {
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "canceled", canceled);
+  guint count = paths == NULL ? 0 : paths->len;
+  char **strv = g_new0(char *, count + 1);
+  for (guint index = 0; index < count; index++) {
+    strv[index] = g_strdup((const char *)g_ptr_array_index(paths, index));
+  }
+  JSCValue *array = jsc_value_new_array_from_strv(host->json,
+                                                  (const char *const *)strv);
+  jsc_value_object_set_property(reply, "filePaths", array);
+  g_object_unref(array);
+  g_strfreev(strv);
+  request_complete(request, "success", reply);
+}
+
+static gboolean dialog_auto_accept(gpointer data) {
+  GtkWidget *dialog = data;
+  gtk_dialog_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+  return G_SOURCE_REMOVE;
+}
+
+static void install_dialog_auto_response(GtkWidget *dialog, gboolean save) {
+  const char *test_mode = getenv("ELECTRON_MBT_TEST_MODE");
+  const char *selected = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  if (test_mode == NULL || strcmp(test_mode, "1") != 0 ||
+      selected == NULL || selected[0] == 0) return;
+  char *canonical = save ? (g_path_is_absolute(selected) ? g_strdup(selected) : NULL)
+                         : realpath(selected, NULL);
+  if (canonical != NULL) {
+    if (save) {
+      char *directory = g_path_get_dirname(canonical);
+      char *base = g_path_get_basename(canonical);
+      gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), directory);
+      gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), base);
+      /* Also set the full filename; GTK accepts a non-existent save target
+       * and this avoids a current-name/current-folder timing race. */
+      gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(dialog), canonical);
+      g_free(directory);
+      g_free(base);
+    } else {
+      gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(dialog), canonical);
+    }
+    free(canonical);
+  }
+  g_timeout_add(300, dialog_auto_accept, dialog);
+}
+
+static void handle_main_open_dialog(Host *host, Request *request,
+                                    JSCValue *payload) {
+  gint64 parent_window = 0;
+  char *default_path = object_get_string(payload, "defaultPath");
+  char *title = object_get_string(payload, "title");
+  char *button = object_get_string(payload, "buttonLabel");
+  if (title != NULL && strlen(title) > 256) {
+    g_free(default_path);
+    g_free(title);
+    g_free(button);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (button != NULL && strlen(button) > 64) {
+    g_free(default_path);
+    g_free(title);
+    g_free(button);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  GtkWindow *parent = NULL;
+  if (object_get_integer(payload, "window", &parent_window) && parent_window == 1 &&
+      host->window != NULL) {
+    parent = GTK_WINDOW(host->window);
+  }
+  GtkWidget *dialog = gtk_file_chooser_dialog_new(
+    title == NULL || title[0] == 0 ? "Open" : title, parent,
+    GTK_FILE_CHOOSER_ACTION_OPEN, "_Cancel", GTK_RESPONSE_CANCEL,
+    button == NULL || button[0] == 0 ? "_Open" : button, GTK_RESPONSE_ACCEPT, NULL);
+  if (default_path != NULL && default_path[0] != 0) {
+    char *joined = host_join_path(host, default_path);
+    if (joined != NULL) {
+      if (g_file_test(joined, G_FILE_TEST_IS_DIR)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), joined);
+      } else if (g_file_test(joined, G_FILE_TEST_EXISTS)) {
+        gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(dialog), joined);
+      } else {
+        char *directory = g_path_get_dirname(joined);
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), directory);
+        g_free(directory);
+      }
+      free(joined);
+    }
+  }
+  install_dialog_auto_response(dialog, FALSE);
+  gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+  GPtrArray *paths = g_ptr_array_new_with_free_func(g_free);
+  if (response == GTK_RESPONSE_ACCEPT) {
+    char *selected = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+    char *canonical = selected == NULL ? NULL : realpath(selected, NULL);
+    if (canonical != NULL) {
+      /* A native open selection is an exact-file consent for this session.
+       * Grant read+write so an editor can save back to the file it opened;
+       * directory subtrees are still never granted. */
+      grant_file(host, canonical, EBT_GRANT_READ | EBT_GRANT_WRITE);
+      g_ptr_array_add(paths, canonical);
+    }
+    g_free(selected);
+  }
+  gtk_widget_destroy(dialog);
+  g_free(default_path);
+  g_free(title);
+  g_free(button);
+  if (response != GTK_RESPONSE_ACCEPT) {
+    reply_open_dialog(host, request, TRUE, NULL);
+    g_ptr_array_free(paths, TRUE);
+    return;
+  }
+  if (paths->len == 0 || paths->len > EBT_MAX_DIALOG_PATHS) {
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    g_ptr_array_free(paths, TRUE);
+    return;
+  }
+  reply_open_dialog(host, request, FALSE, paths);
+  g_ptr_array_free(paths, TRUE);
+}
+
+static void handle_main_save_dialog(Host *host, Request *request,
+                                    JSCValue *payload) {
+  gint64 parent_window = 0;
+  char *default_path = object_get_string(payload, "defaultPath");
+  char *title = object_get_string(payload, "title");
+  char *button = object_get_string(payload, "buttonLabel");
+  if ((title != NULL && strlen(title) > 256) ||
+      (button != NULL && strlen(button) > 64)) {
+    g_free(default_path);
+    g_free(title);
+    g_free(button);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  GtkWindow *parent = NULL;
+  if (object_get_integer(payload, "window", &parent_window) && parent_window == 1 &&
+      host->window != NULL) {
+    parent = GTK_WINDOW(host->window);
+  }
+  GtkWidget *dialog = gtk_file_chooser_dialog_new(
+    title == NULL || title[0] == 0 ? "Save" : title, parent,
+    GTK_FILE_CHOOSER_ACTION_SAVE, "_Cancel", GTK_RESPONSE_CANCEL,
+    button == NULL || button[0] == 0 ? "_Save" : button, GTK_RESPONSE_ACCEPT, NULL);
+  gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
+  if (default_path != NULL && default_path[0] != 0) {
+    char *joined = host_join_path(host, default_path);
+    if (joined != NULL) {
+      if (g_file_test(joined, G_FILE_TEST_IS_DIR)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), joined);
+      } else {
+        char *directory = g_path_get_dirname(joined);
+        char *base = g_path_get_basename(joined);
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), directory);
+        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), base);
+        g_free(directory);
+        g_free(base);
+      }
+      free(joined);
+    }
+  }
+  install_dialog_auto_response(dialog, TRUE);
+  gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+  char *selected = response == GTK_RESPONSE_ACCEPT
+    ? gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)) : NULL;
+  char *canonical = selected == NULL ? NULL : canonical_write_path(host, selected);
+  gtk_widget_destroy(dialog);
+  g_free(default_path);
+  g_free(title);
+  g_free(button);
+  if (response != GTK_RESPONSE_ACCEPT) {
+    g_free(selected);
+    free(canonical);
+    JSCValue *reply = object_new(host);
+    object_set_boolean(host, reply, "canceled", TRUE);
+    object_set_string(host, reply, "filePath", "");
+    request_complete(request, "success", reply);
+    return;
+  }
+  if (canonical == NULL) {
+    g_free(selected);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  grant_file(host, canonical, EBT_GRANT_WRITE);
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "canceled", FALSE);
+  object_set_string(host, reply, "filePath", canonical);
+  request_complete(request, "success", reply);
+  g_free(selected);
+  free(canonical);
+}
+
+
+static void teardown_window_state(Host *host, const char *code) {
+  if (host == NULL) return;
+  if (host->load_request != NULL) fail_load_request(host, code);
+  fail_pending(host, code);
+  host->load_in_progress = FALSE;
+  host->load_failed = FALSE;
+  host->loaded = FALSE;
+  host->loaded_is_snapshot = FALSE;
   host->content_alive = FALSE;
   host->created = FALSE;
-  host->loaded = FALSE;
-  host->load_in_progress = FALSE;
+  host->handlers_installed = FALSE;
   host->generation = 0;
   g_free(host->loaded_uri);
   host->loaded_uri = NULL;
@@ -1847,6 +2332,20 @@ static void handle_destroy_window(Host *host, Request *request) {
   host->adapter_nonce = NULL;
   snapshot_free(host->snapshot);
   host->snapshot = NULL;
+}
+
+static void handle_destroy_window(Host *host, Request *request) {
+  if (!require_current(host, request)) return;
+  if (host->web != NULL) {
+    webkit_web_view_stop_loading(host->web);
+    if (host->manager != NULL) webkit_user_content_manager_remove_all_scripts(host->manager);
+  }
+  GtkWidget *window = host->window;
+  host->window = NULL;
+  host->web = NULL;
+  host->manager = NULL;
+  teardown_window_state(host, "ELECTRON_MBT_WINDOW_DESTROYED");
+  if (window != NULL) gtk_widget_destroy(window);
   JSCValue *reply = object_new(host);
   object_set_boolean(host, reply, "destroyed", TRUE);
   request_complete(request, "success", reply);
@@ -1876,6 +2375,32 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     }
     host->shutting_down = TRUE;
     request_success_empty(request);
+    return;
+  }
+  if (strcmp(operation, "simulate-window-close") == 0) {
+    const char *test_mode = getenv("ELECTRON_MBT_TEST_MODE");
+    if (test_mode == NULL || strcmp(test_mode, "1") != 0 ||
+        !object_has_exact_keys(payload, NULL, 0) || host->window == NULL) {
+      request_failure(request, "ELECTRON_MBT_UNSUPPORTED_API");
+      return;
+    }
+    /* Exercise the same GTK delete-event path a window-manager close uses.
+     * Returning FALSE lets GTK destroy the window after on_window_delete has
+     * cleared the host pointers. */
+    gtk_window_close(GTK_WINDOW(host->window));
+    request_success_empty(request);
+    return;
+  }
+  if (strcmp(operation, "get-window-state") == 0) {
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    JSCValue *reply = object_new(host);
+    object_set_boolean(host, reply, "open",
+                       host->created && host->window != NULL);
+    object_set_number(host, reply, "generation", (double)host->generation);
+    request_complete(request, "success", reply);
     return;
   }
   if (strcmp(operation, "prepare-source") == 0) {
@@ -2024,6 +2549,26 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     handle_destroy_window(host, request);
     return;
   }
+  if (strcmp(operation, "main-read-file") == 0) {
+    handle_main_read_file(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-write-file") == 0) {
+    handle_main_write_file(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-stat") == 0) {
+    handle_main_stat(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-open-dialog") == 0) {
+    handle_main_open_dialog(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-save-dialog") == 0) {
+    handle_main_save_dialog(host, request, payload);
+    return;
+  }
   request_failure(request, "ELECTRON_MBT_UNSUPPORTED_API");
 }
 
@@ -2126,12 +2671,26 @@ static gpointer load_thread_main(gpointer data) {
 
 static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event,
                                  gpointer data) {
-  (void)widget;
   (void)event;
-  (void)data;
-  /* Native close/quit is not part of this slice. Keep the window alive so a
-   * test cannot silently turn a close into a success ACK. */
-  return TRUE;
+  Host *host = data;
+  if (host == NULL || widget == NULL || host->window != widget) return TRUE;
+  if (host->web != NULL) {
+    webkit_web_view_stop_loading(host->web);
+    if (host->manager != NULL) webkit_user_content_manager_remove_all_scripts(host->manager);
+  }
+  /* Clear the host pointers before destroying the GTK tree: destroying the
+   * WebView can synchronously emit load/termination callbacks. The host stays
+   * alive so the control thread can answer the caller's liveness query and
+   * shut down without a broken-pipe crash. */
+  host->web = NULL;
+  host->manager = NULL;
+  host->window = NULL;
+  teardown_window_state(host, "ELECTRON_MBT_WINDOW_CLOSED");
+  /* Let GTK perform the default destroy after this handler returns. Calling
+   * gtk_widget_destroy synchronously here re-enters the event/draw machinery
+   * and produced BadDrawable under Xvfb. The host pointers are already cleared,
+   * so the destroy path cannot use a dangling window. */
+  return FALSE;
 }
 
 int main(int argc, char **argv) {
@@ -2165,7 +2724,23 @@ int main(int argc, char **argv) {
   host->load_fd = EBT_LOAD_CHANNEL;
   host->event_fd = EBT_EVENT_CHANNEL;
   host->pending = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, pending_free);
+  host->file_grants = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
   host->events = g_async_queue_new();
+  /* App-local data roots are the only paths writable without a dialog grant.
+   * Creating them here keeps the main-thread fs handler from having to create
+   * arbitrary parents (and therefore from following an app-controlled symlink
+   * before the policy check). */
+  char *app_data = g_build_filename(root, ".appData", NULL);
+  char *user_data = g_build_filename(root, ".userData", NULL);
+  if (g_mkdir_with_parents(app_data, 0700) != 0 ||
+      g_mkdir_with_parents(user_data, 0700) != 0) {
+    g_free(app_data);
+    g_free(user_data);
+    free(root);
+    return 64;
+  }
+  g_free(app_data);
+  g_free(user_data);
   host->next_event = 0;
   host->next_request = 0;
 
@@ -2175,6 +2750,12 @@ int main(int argc, char **argv) {
   WebKitSecurityManager *security = webkit_web_context_get_security_manager(context);
   webkit_security_manager_register_uri_scheme_as_secure(security, "electron-mbt-app");
   webkit_security_manager_register_uri_scheme_as_cors_enabled(security, "electron-mbt-app");
+  /* The main fs/dialog surface is reachable before create-window (app ready
+   * reads settings before creating a BrowserWindow), so the JSC context must
+   * exist before the first request. It is created only after the WebKit
+   * context/security setup, not before it. */
+  host->json = jsc_context_new();
+  if (host->json == NULL) return 64;
 
   host->event_thread = g_thread_new("electron-mbt-events", event_writer, host);
   host->control_thread = g_thread_new("electron-mbt-control", control_thread_main, host);

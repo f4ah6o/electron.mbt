@@ -581,6 +581,92 @@ app.whenReady().then(function () {
   }
 });
 
+test('Linux main fs reads app sources and writes userData without Node', {
+  skip: process.platform !== 'linux' || !nativeHostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-linux-fs-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-fs-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-fs-outside-'));
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'secret\n');
+    fs.mkdirSync(path.join(dir, '.userData'), { recursive: true });
+    fs.symlinkSync(outside, path.join(dir, '.userData', 'escape'));
+    const { result, report } = run(binary, dir,
+      ['--window', '--entry', 'src/main.js']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.pageTitle, 'nodeless-linux-fs-ready');
+    assert.equal(report.mainError, '');
+    assert.equal(report.lastRejection, '');
+    assert.equal(report.preloadExecuted, false);
+    assert.equal(report.compatible, false);
+    assert.equal(fs.readFileSync(path.join(dir, '.userData', 'settings.json'), 'utf8'),
+      '{"ok":true}');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('Linux main open dialog grants an exact file to the app', {
+  skip: process.platform !== 'linux' || !nativeHostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-linux-dialog-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-dialog-'));
+  const selected = path.join(dir, 'selected.md');
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    fs.writeFileSync(selected, 'dialog-selected\n');
+    const { result, report } = run(binary, dir,
+      ['--window', '--entry', 'src/main.js'], {
+        ELECTRON_MBT_TEST_MODE: '1',
+        ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT: selected,
+      });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.pageTitle, 'nodeless-linux-dialog-ready');
+    assert.equal(report.mainError, '');
+    assert.equal(report.compatible, false);
+    assert.equal(fs.readFileSync(selected, 'utf8'), 'dialog-updated\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Linux main save dialog grants an exact file and writes it', {
+  skip: process.platform !== 'linux' || !nativeHostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-linux-save-dialog-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-save-dialog-'));
+  const selected = path.join(os.tmpdir(),
+    `electron-mbt-linux-saved-${process.pid}-${Date.now()}.md`);
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    fs.rmSync(selected, { force: true });
+    const { result, report } = run(binary, dir,
+      ['--window', '--entry', 'src/main.js'], {
+        ELECTRON_MBT_TEST_MODE: '1',
+        ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT: selected,
+      });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.pageTitle, 'nodeless-linux-save-dialog-ready');
+    assert.equal(report.mainError, '');
+    assert.equal(report.compatible, false);
+    assert.equal(fs.readFileSync(selected, 'utf8'), 'dialog-saved\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(selected, { force: true });
+  }
+});
+
 test('main fs reads and writes user files granted by the test scenario', {
   skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
 }, () => {
@@ -1287,6 +1373,29 @@ test('the pinned Moji edits, saves and reopens after restart under the adapted A
   assert.equal(report.document.phase2Mechanism, phase2.block.probe.editMechanism);
   assert.ok(report.document.finalBytes > report.document.initialBytes);
   assert.notEqual(report.document.initialSHA256, report.document.finalSHA256);
+});
+
+test('a native window close exits the explicit hold cleanly', {
+  skip: process.platform !== 'linux' || !nativeHostSupported || !nativeHostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const { result } = run(binary, path.join(root, 'fixtures/nodeless-adapted-app'),
+    ['--window', '--hold', '--hold-close-after-ms', '500', '--entry', 'src/main.js'],
+    { ELECTRON_MBT_TEST_MODE: '1' });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  const reports = `${result.stdout || ''}\n${result.stderr || ''}`.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('{') && line.endsWith('}'))
+    .map(line => { try { return JSON.parse(line); } catch { return null; } })
+    .filter(Boolean);
+  const holding = reports.find(item => item.status === 'HOLDING');
+  assert.ok(holding, 'missing HOLDING report');
+  assert.match(holding.pageTitle,
+    /^nodeless-adapted-ready-module-dark-idle-(storage|no-storage)-denied-scheme$/);
+  const exited = reports.find(item => item.status === 'HOLD_EXIT');
+  assert.ok(exited, 'missing HOLD_EXIT report');
+  assert.equal(exited.reason, 'window-closed');
+  assert.equal(exited.compatible, false);
 });
 
 test('an invalid adapted profile fails closed before main evaluation', () => {

@@ -35,20 +35,28 @@ subset:
 | `app-reply` | resolves/rejects the pending page `postMessage` Promise |
 | `inject-app-request` | `ELECTRON_MBT_TEST_MODE=1` only; stale/current ingress selftest |
 | `destroy-window` | stop load, fail pending replies, remove snapshot and window |
+| `get-window-state` | `open`/generation diagnostic; used by hold mode after a user close |
+| `main-read-file` / `main-write-file` | app sources, `.appData`/`.userData`, exact session-granted files; 256 KiB read/write; see [docs/0059](0059-linux-file-and-close.md) |
+| `main-stat` | `exists`, `isFile`, `isDirectory`, `size`, `mtimeMs`, `denied` under the same read policy |
+| `main-open-dialog` / `main-save-dialog` | real GTK file chooser on the main thread; exact-file readwrite (open) / write (save) grants; single selection |
 
-`native/nodeless --window --hold [--hold-seconds 1..3600]` keeps the real window open and prints `HOLDING`/`HOLD_EXIT`; it is an interactive diagnostic, not a compatibility result. It is mutually exclusive with the selftest flags.
+`native/nodeless --window --hold [--hold-seconds 1..3600]` keeps the real window open and prints `HOLDING`/`HOLD_EXIT`; it is an interactive diagnostic, not a compatibility result. It is mutually exclusive with the selftest flags. A GTK window close ends the hold with `reason:"window-closed"`; `--hold-close-after-ms N` is the test-only close path.
 
 Unknown operations fail with `ELECTRON_MBT_UNSUPPORTED_API`. Preload fields on
-`create-window`, original preload, `contextBridge`, `ipcRenderer`, file broker,
-dialogs, export, main fs, menus, clipboard, IME/AX, close/quit and
-multi-window are not implemented.
+`create-window`, original preload, `contextBridge`, `ipcRenderer`, directory
+grants/`main-read-dir`/`main-mkdir`, export/print, grant persistence and
+revocation, menus, clipboard, IME/AX, `app.quit`/menu/tray and multi-window are
+not implemented. Exact-file open/save and app-local main fs are implemented
+with limits (see [docs/0059](0059-linux-file-and-close.md)); they are not a
+directory broker or product compatibility.
 
 ## Shared fixtures that pass on Linux
 
 A separate local boot harness also runs the pinned real Moji main and Vite
-renderer on this Linux host; see [docs/0058](0058-moji-linux-boot.md). That is
-boot evidence only: the file broker, main fs, dialogs, export, grant
-persistence and human actions remain unimplemented/NOT RUN.
+renderer on this Linux host; see [docs/0058](0058-moji-linux-boot.md). Exact-file
+open/save, app-local main fs and a window close are implemented and recorded in
+[docs/0059](0059-linux-file-and-close.md); directory grants, export, grant
+persistence, human dialog selection and real human acceptance remain NOT RUN.
 
 The following existing tests in `tests/nodeless-runtime.test.cjs` now run
 against the Linux host when `dist/electron-mbt-native-host-linux` exists:
@@ -60,9 +68,10 @@ against the Linux host when `dist/electron-mbt-native-host-linux` exists:
 5. `the Node-less ingress rejects a stale generation before Main dispatch`
 
 The tests use the same `native/nodeless` CLI, the same source manifests and the
-same generated adapter as the macOS path. On Linux, the other window tests
-(main fs, dialogs, grants, Moji, malformed/frame message) remain macOS-only and
-are reported as skipped, not PASS.
+same generated adapter as the macOS path. Linux also runs its own exact-file fs,
+open-dialog, save-dialog and window-close tests. The macOS-only directory/grant/
+Malformed-frame/Moji tests and the human dialog selection remain skipped or NOT
+RUN on Linux rather than being counted as PASS.
 
 ## Environment and commands
 
@@ -100,20 +109,21 @@ missing host fail instead of silently skipping the five tests.
 | --- | --- |
 | `node scripts/build-linux-host.cjs` | **PASS** (`gtk 3.24.41`, `webkitgtk 2.52.6`) |
 | `node --test tests/linux-host-frame.test.cjs` | **PASS** (1 test; canonical/duplicate/trailing/session/oversize cases) |
-| `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs` | **15 PASS / 0 FAIL / 20 SKIP**; all five shared window tests plus the explicit hold-mode test PASS |
-| `npm test` (host present, pinned Moji source present) | **495 tests / 464 PASS / 0 FAIL / 31 SKIP** |
+| `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs` | **19 PASS / 0 FAIL / 20 SKIP**; five shared window tests, hold, close, exact-file fs and dialog plumbing PASS |
+| `npm test` (host present, pinned Moji source present) | **499 tests / 468 PASS / 0 FAIL / 31 SKIP** |
 | `moon test --target js` | **145 PASS** |
 | `moon test --target native` | **178 PASS** |
-| CI `linux-native` | **PASS** — [run 39541356486](https://github.com/f4ah6o/electron.mbt/actions/runs/39541356486), head `63274cf`, 1m14s |
-| CI `moonbit` | **PASS** — same run, 1m21s |
-| CI `macos` | **PASS** — same run, 4m16s; the macOS suite exercises the macOS host, not this Linux host |
+| CI `linux-native` | **NOT RUN for this fs/dialog/close slice at the time of this local record**; the previous host run [39541356486](https://github.com/f4ah6o/electron.mbt/actions/runs/39541356486) covered only the earlier fixture slice |
+| CI `moonbit` / `macos` | **NOT RUN for this slice at the time of this local record**; run them with the PR/merge and record the new URL/head |
 | readiness / G0–G4 | **unchanged NOT_READY**: 35 checks / 28 PASS / 2 FAIL / 5 NOT RUN; this slice adds no compatibility row or readiness PASS |
 
 The first attempt exposed a WebKitGTK/JSC interaction: creating a private
-`JSCContext` before the first `WebKitWebView` stalled page loading in this build.
-The host now creates its control JSON context only after the WebView exists;
-pre-window control replies (`hello`/`ready`) use a bounded manual serializer.
-This is a Linux backend implementation note, not a macOS contract change.
+`JSCContext` before WebKit initialisation stalled page loading in this build.
+The host now creates its control JSON context after the WebKit context/security
+setup and before the control threads, so pre-window main fs works and the
+adapted page still loads. Pre-window `hello`/`ready` replies use a bounded
+manual serializer. This is a Linux backend implementation note, not a macOS
+contract change.
 
 ## Security boundaries and limits
 
@@ -144,7 +154,11 @@ This is a Linux backend implementation note, not a macOS contract change.
   Chromium or Node. The tests put a fake `node` first on `PATH` and still pass.
 - `show:false` native visibility is not implemented in this slice: the GTK
   window is realized/shown for loading and the reply records the requested
-  `show` value. Native close/quit, focus, IME and accessibility are NOT RUN.
+  `show` value. GTK window close is implemented; `app.quit`/menu/tray, focus,
+  IME, accessibility and human dialog selection are NOT RUN.
+- Exact-file grants are session-only and canonical. Directory subtrees,
+  `main-read-dir`/`main-mkdir`, multi-select/filters, overwrite-confirmation UI
+  and grant persistence/revocation are NOT implemented.
 
 ## Next increments
 
@@ -153,9 +167,10 @@ This is a Linux backend implementation note, not a macOS contract change.
 2. Address native frame/sender authority: document a profile restriction or
    find a WebKitGTK API that exposes the actual frame; do not infer it from a
    page nonce.
-3. Implement Linux close/quit, native visibility, focus and child-frame policy
-   with negative tests.
-4. Add Linux file/dialog/export services only after the same grant and
-   lifetime contracts as macOS, not by copying the test-injected path.
-5. Keep macOS as the reference; do not substitute Linux GTK/WebKitGTK results
+3. Add the directory picker/subtree grants, `main-read-dir`/`main-mkdir` and
+   session grant persistence/revocation with bounded negative tests.
+4. Implement export/print, `app.quit`/menu/tray, native visibility and focus.
+5. Exercise the real Moji Open → edit → Save → Export flow with human input;
+   keep it NOT RUN until recorded.
+6. Keep macOS as the reference; do not substitute Linux GTK/WebKitGTK results
    for macOS/WebKit compatibility or for the strict profile.

@@ -1,0 +1,27 @@
+{
+  "schema": 2,
+  "app": "nodeless-linux-fs",
+  "entry": "index.html",
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "12e7ae6bf31cd7ddb7dcd586e8d7ac336dce178ff9d1b817b6c25d26d28a8478",
+      "bytes": 109
+    },
+    {
+      "path": "package.json",
+      "sha256": "53b2cf2b2c632d62be0aa74be7821ca0c39bd8c7941c2c4e8da3aee4c60f7b42",
+      "bytes": 68
+    },
+    {
+      "path": "src/main.js",
+      "sha256": "0073c2bf34a0a5504aff76375c9af0cc9d6a38d787f92c2beaeb930d0b094922",
+      "bytes": 1595
+    },
+    {
+      "path": "sample.txt",
+      "sha256": "aaf9ff488e0767da5ea1d56118e6f65a16c5633b0cefc1fa089bd3ab1810613d",
+      "bytes": 7
+    }
+  ]
+}

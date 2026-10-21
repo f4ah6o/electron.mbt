@@ -1,0 +1,22 @@
+{
+  "schema": 2,
+  "app": "nodeless-linux-save-dialog",
+  "entry": "index.html",
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "d0d8f68d1fe29f5e234f315c6cb6b432b873dd8d90525e3d937b795450ecc474",
+      "bytes": 127
+    },
+    {
+      "path": "package.json",
+      "sha256": "43d0e5c7c81b962edc2dc6c5114126473160d108e472826d69efecc46f160f0a",
+      "bytes": 77
+    },
+    {
+      "path": "src/main.js",
+      "sha256": "7c70611648b92aa8e6315ed5d613602045b42575d51c4da18961f53a858fe42d",
+      "bytes": 577
+    }
+  ]
+}

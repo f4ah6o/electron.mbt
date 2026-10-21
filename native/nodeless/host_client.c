@@ -348,6 +348,12 @@ static int ebt_host_request(const char *operation, const char *payload,
     return send_control_frame(operation, payload, active_window, active_generation,
                               out, capacity);
   }
+  if (strcmp(operation, "get-window-state") == 0) {
+    return send_control_frame(operation, payload, 0, 0, out, capacity);
+  }
+  if (strcmp(operation, "simulate-window-close") == 0) {
+    return send_control_frame(operation, payload, 0, 0, out, capacity);
+  }
   if (strcmp(operation, "grant-main-file") == 0 ||
       strcmp(operation, "grant-main-directory") == 0 ||
       strcmp(operation, "get-main-grant-store") == 0 ||

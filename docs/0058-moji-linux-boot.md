@@ -71,7 +71,7 @@ Recorded hashes:
 - preload `bd0f47d6...c544`
 - renderer index `fafe339f...e301`
 - adapter `bdfe8bdd...7501`
-- host `38a78033...ba7`
+- host `b8c2acae...d90f`
 
 ## Keep the window open
 
@@ -89,11 +89,13 @@ node scripts/nodeless-moji-linux.cjs --hold --hold-seconds 2
 
 The nodeless runtime prints a `HOLDING` JSON line with the page title/URL and
 host PID, then keeps pumping app-request/app-reply events until it is
-terminated or `--hold-seconds` expires. `HOLD_EXIT` is printed on a controlled
-exit. The hold mode is mutually exclusive with the selftest flags. Native
-close/quit is not implemented yet, so closing the GTK window is ignored; stop
-the process to end the session. The Moji window was kept open and captured with
-the initial UI; the file/dialog/export actions remain unimplemented.
+terminated, `--hold-seconds` expires, or the GTK window is closed. A user close
+now ends the hold with `HOLD_EXIT` / `reason:"window-closed"`; `app.quit` and
+menu/tray semantics remain partial. The hold mode is mutually exclusive with
+the selftest flags. The Moji window was kept open and captured with the initial
+UI; exact-file open/save and app-local fs are implemented separately in
+[docs/0059](0059-linux-file-and-close.md), but the human Moji Open/Save flow has
+not been recorded as an acceptance result.
 
 ## Environment
 
@@ -108,15 +110,20 @@ the initial UI; the file/dialog/export actions remain unimplemented.
 | Screenshot | XWD capture of the 1000x760 WebKitGTK content window, converted to PNG |
 
 The local `npm test` with the pinned source and Linux host present:
-**495 tests / 464 PASS / 0 FAIL / 31 SKIP**. The `linux-native` CI job runs
-the shared fixture tests, but this Moji boot harness is **NOT RUN in CI**
-because the pinned Moji source is not fetched there. The macOS Moji suite is
-also **NOT RUN for this Linux result**; Linux is not macOS/WebKit evidence.
+**499 tests / 468 PASS / 0 FAIL / 31 SKIP**. The `linux-native` CI job runs
+the shared fixture tests plus the Linux fs/dialog/close tests, but this Moji
+boot harness is **NOT RUN in CI** because the pinned Moji source is not fetched
+there. The macOS Moji suite is also **NOT RUN for this Linux result**; Linux is
+not macOS/WebKit evidence.
 
 ## Limits / not verified
 
-- File broker, main fs, open/save dialogs, export, grant persistence, updater
-  behavior and zlib streams are not implemented on the Linux host.
+- Exact-file open/save and app-local main fs are implemented (docs/0059);
+  directory grants, multi-select/filters, overwrite-confirmation UI, grant
+  persistence/revocation, export/print, updater behavior and zlib streams are
+  not implemented or NOT RUN.
+- The human Moji Open → edit → Save flow is NOT RUN; the dialog plumbing is
+  covered by CI auto-selection tests, not by a human acceptance run.
 - Human file selection, IME, editing, save, export and restart are NOT RUN.
 - The original preload is NOT_EXECUTED; the generated adapted page API is used.
 - Native main-frame sender/frame authority is unproven (WebKitGTK does not

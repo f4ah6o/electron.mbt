@@ -242,11 +242,10 @@ try {
     compatible: false,
     notVerified: [
       'file-broker',
-      'main-fs',
-      'dialogs',
       'export',
       'grant-persistence',
       'human-input',
+      'human-dialog-selection',
       'original-preload',
       'updater-behavior',
       'linux-native-sender-frame-authority',
@@ -254,7 +253,7 @@ try {
       'macos-suite-for-this-run',
     ],
     limits: [
-      'The real Moji main and Vite renderer boot; file open/save/export, dialogs, main fs and the broker are not implemented on the Linux host.',
+      'The real Moji main and Vite renderer boot; exact-file open/save and app-local fs are implemented (docs/0059), but human Open/Save, directory grants, export and the test-injected broker are NOT RUN/IMPLEMENTED.',
       'The screenshot is the initial UI only; no human file selection, IME, save, export or restart was exercised.',
       'The original preload is NOT_EXECUTED; the generated adapted page API is used.',
       'Native main-frame sender/frame authority is unproven (WebKitGTK lacks WKScriptMessage.frameInfo).',

@@ -774,7 +774,10 @@
     "dialogs": "test-injected open-for-edit dialog + native NSOpenPanel open/cancel smoke; selection/consent NOT RUN",
     "filePolicy": {
       "open": "open-for-edit",
-      "rights": ["read", "replace-selected"],
+      "rights": [
+        "read",
+        "replace-selected"
+      ],
       "write": "atomic-replace-v1",
       "restart": "reauthorize"
     },
@@ -937,22 +940,40 @@
       "humanInput": false,
       "preloadExecuted": false,
       "compatible": false,
-      "note": "Real pinned Moji main and Vite renderer boot with 2 adapted calls and no main error. File broker/main fs/dialogs/export/grant persistence/human actions are NOT RUN; this is not app acceptance or compatibility."
+      "note": "Real pinned Moji main and Vite renderer boot with 2 adapted calls and no main error. Exact-file open/save and app-local main fs are covered separately in docs/0059; human Open/Save, directory grants, export, grant persistence and the test-injected broker are NOT RUN/IMPLEMENTED. Not app acceptance or compatibility."
     },
-    "hold": "native/nodeless --window --hold [--hold-seconds 1..3600]; HOLDING/HOLD_EXIT; interactive diagnostic only, no report promotion.",
-
+    "hold": "native/nodeless --window --hold [--hold-seconds 1..3600] [--hold-close-after-ms 1..60000 test-only]; HOLDING/HOLD_EXIT; a GTK window close ends the hold with reason \"window-closed\"; interactive diagnostic only, no report promotion.",
     "limits": [
       "no original preload, contextBridge or ipcRenderer",
-      "no file broker, main fs, dialogs, export, menu, clipboard, IME or accessibility",
+      "exact-file open/save and app-local main fs only; no directory grants, main-read-dir/main-mkdir, export/print, grant persistence, multi-select/filters, menu, clipboard, IME or accessibility",
       "native main-frame sender/frame authority is not proven; top-frame injection plus per-document nonce only",
-      "no close/quit, focus, native show/hide, child-frame parity, packaging or Linux product compatibility"
+      "no app.quit/menu/tray lifecycle, focus, native show/hide, child-frame parity, packaging or Linux product compatibility"
     ],
     "notVerified": [
       "native-frame-authority",
-      "linux-close-quit",
+      "linux-app-quit",
+      "linux-human-file-selection",
+      "linux-overwrite-confirmation",
+      "linux-directory-grants",
+      "linux-file-grant-persistence",
+      "linux-multi-select-filters",
       "linux-ime-ax",
       "linux-packaging"
     ],
-    "note": "Experimental GTK3/WebKitGTK 4.1 host for the plain/adapted Node-less fixture path on X11. Linux results are not macOS/WebKit compatibility evidence. compatible:false, strict BLOCKED, original preload NOT_EXECUTED."
+    "note": "Experimental GTK3/WebKitGTK 4.1 host for the plain/adapted Node-less fixture path on X11, with a partial exact-file open/save and window-close surface. Linux results are not macOS/WebKit compatibility evidence. compatible:false, strict BLOCKED, original preload NOT_EXECUTED.",
+    "fileServices": {
+      "status": "PARTIAL",
+      "evidence": "docs/0059-linux-file-and-close.md",
+      "operations": [
+        "main-read-file",
+        "main-write-file",
+        "main-stat",
+        "main-open-dialog",
+        "main-save-dialog"
+      ],
+      "grants": "session-only exact-file; open grants readwrite, save grants write; no directory grants",
+      "limits": "256 KiB read/write, 400 KiB base64, canonical paths, no main-read-dir/main-mkdir, no grant persistence/revocation, no multi-select/filters/openDirectory, no human-selection evidence",
+      "compatible": false
+    }
   }
 }

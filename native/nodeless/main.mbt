@@ -752,6 +752,7 @@ fn cli_hold(
   session : String,
   adapted_configured : Bool,
   hold_seconds : Int,
+  close_after_ms : Int,
 ) -> Unit {
   let mut title = ""
   let mut url = ""
@@ -814,14 +815,34 @@ fn cli_hold(
   let limit = if hold_seconds > 0 { hold_seconds * 10 } else { -1 }
   let mut ticks = 0
   let mut reason = "hold-seconds"
+  let mut close_sent = false
   while limit < 0 || ticks < limit {
     let _ = cli_pump_events(runner, session, attempts=1, idle_limit=1)
-    let alive = match cli_host_payload("get-web-contents-title", "{}") {
-      Some(_) => true
-      None => false
+    if close_after_ms > 0 && !close_sent && ticks >= close_after_ms / 100 {
+      close_sent = true
+      let _ = cli_host_payload("simulate-window-close", "{}")
     }
-    if !alive {
-      reason = "host-lost"
+    let mut open = true
+    match cli_host_payload("get-window-state", "{}") {
+      Some(value) =>
+        if cli_field(value, "open") is False {
+          open = false
+          reason = "window-closed"
+        }
+      None => {
+        // The macOS host predates get-window-state. Fall back to the title
+        // query for liveness so hold mode remains platform-neutral; Linux
+        // still gets the precise window-closed reason.
+        match cli_host_payload("get-web-contents-title", "{}") {
+          Some(_) => ()
+          None => {
+            open = false
+            reason = "host-lost"
+          }
+        }
+      }
+    }
+    if !open {
       break
     }
     nodeless_sleep_ms(50)
@@ -961,7 +982,7 @@ fn cli_dispatch_results(
 fn main {
   let args = @env.args()
   if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--hold [--hold-seconds <1..3600>]] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest] [--moji-edit-save-selftest] [--moji-reopen-selftest] [--moji-save-failure-selftest]")
+    println("usage: nodeless run <app-dir> [--window] [--hold [--hold-seconds <1..3600>] [--hold-close-after-ms <1..60000>]] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest] [--moji-edit-save-selftest] [--moji-reopen-selftest] [--moji-save-failure-selftest]")
     nodeless_exit(2)
     return
   }
@@ -980,10 +1001,16 @@ fn main {
   let hold_mode = args.contains("--hold")
   let mut hold_seconds = 0
   let mut hold_seconds_set = false
+  let mut hold_close_after_ms = 0
+  let mut hold_close_after_set = false
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--hold-seconds" && i + 1 < args.length() {
       hold_seconds_set = true
       hold_seconds = cli_parse_seconds(args[i + 1])
+    }
+    if args[i] == "--hold-close-after-ms" && i + 1 < args.length() {
+      hold_close_after_set = true
+      hold_close_after_ms = cli_parse_seconds(args[i + 1])
     }
   }
   let broker_selftest = args.contains("--broker-selftest")
@@ -1009,6 +1036,14 @@ fn main {
   }
   if hold_seconds_set && (hold_seconds < 1 || hold_seconds > 3600) {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold-seconds must be 1..3600")
+    return
+  }
+  if hold_close_after_set && !hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold-close-after-ms requires --hold")
+    return
+  }
+  if hold_close_after_set && (hold_close_after_ms < 1 || hold_close_after_ms > 60000) {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold-close-after-ms must be 1..60000")
     return
   }
   if hold_mode && (broker_selftest || fs_selftest || user_file_selftest ||
@@ -1302,7 +1337,7 @@ fn main {
     }
     let adapted_configured = adapted_adapter.length() > 0
     if hold_mode {
-      cli_hold(runner, session, adapted_configured, hold_seconds)
+      cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms)
       return
     }
     let mut adapted_observed = false

@@ -78,6 +78,11 @@ than a file-grant failure:
   host now ignore SIGPIPE; a broken control channel becomes `EPIPE`/host-loss
   (`HOLD_EXIT reason:"host-lost"`), not process death. Regression:
   `host loss during an explicit hold does not SIGPIPE the runtime`.
+- The host control thread used the ordinary **15-second** request wait for
+  `main-open-dialog`/`main-save-dialog`, while the client already waits one
+  hour. A chooser left open for more than 15 seconds made the host `_exit(2)`,
+  which looked like a crash. Dialog requests now use the same **3600-second**
+  bound. Regression: a 16-second auto-selected chooser.
 - A GTK close/dialog could make `gtk_main()` return; the host then used
   `_exit(2)` as a fail-closed path while a control request was still in flight.
   The host now re-enters the main loop and stays alive until the control thread
@@ -108,11 +113,11 @@ Local Linux (Ubuntu 24.04, GTK 3.24.41, WebKitGTK 4.1 2.52.6, X11, Node
 | Command | Result |
 | --- | --- |
 | `node scripts/build-linux-host.cjs` | **PASS** |
-| `node --test tests/nodeless-runtime.test.cjs` with host | **21 PASS / 0 FAIL / 20 SKIP** |
-| `npm test` with host and pinned Moji source | **501 tests / 470 PASS / 0 FAIL / 31 SKIP** |
+| `node --test tests/nodeless-runtime.test.cjs` with host | **22 PASS / 0 FAIL / 20 SKIP** |
+| `npm test` with host and pinned Moji source | **502 tests / 471 PASS / 0 FAIL / 31 SKIP** |
 | `tests/linux-host-frame.test.cjs` | **PASS** |
 | `moon test --target js` / `native` | **145 / 178 PASS** |
-| CI `linux-native` / `moonbit` / `macos` | **PASS** — [run 39713769966](https://github.com/f4ah6o/electron.mbt/actions/runs/39713769966), head `86355f2`, 1m45s / 1m18s / 4m10s |
+| CI `linux-native` / `moonbit` / `macos` | **NOT RUN for the 15-second dialog-timeout fix at the time of this local record**; record the new URL/head after the PR/merge |
 
 New Linux-only tests:
 
@@ -126,7 +131,9 @@ New Linux-only tests:
    chooser with CI auto-selection and write grant.
 4. `a native window close exits the explicit hold cleanly` — `gtk_window_close`
    through the test-only control, `HOLD_EXIT reason:"window-closed"`.
-5. Existing hold/five shared fixture tests remain PASS.
+5. `Linux main open dialog survives beyond the ordinary 15-second control
+   timeout` — a 16-second auto-selected chooser still completes.
+6. Existing hold/five shared fixture tests remain PASS.
 
 The pinned Moji boot report is `compatible:false`; the Moji main/renderer still
 boot with `mainError:""`. The CI run above covers the fs/open/save/close tests;

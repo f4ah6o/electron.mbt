@@ -71,7 +71,7 @@ Recorded hashes:
 - preload `bd0f47d6...c544`
 - renderer index `fafe339f...e301`
 - adapter `bdfe8bdd...7501`
-- host `604db7f3...4c2b`
+- host `6479893a...2dd4`
 
 ## Keep the window open
 
@@ -110,7 +110,7 @@ not been recorded as an acceptance result.
 | Screenshot | XWD capture of the 1000x760 WebKitGTK content window, converted to PNG |
 
 The local `npm test` with the pinned source and Linux host present:
-**501 tests / 470 PASS / 0 FAIL / 31 SKIP**. The `linux-native` CI job runs
+**502 tests / 471 PASS / 0 FAIL / 31 SKIP**. The `linux-native` CI job runs
 the shared fixture tests plus the Linux fs/dialog/close tests, but this Moji
 boot harness is **NOT RUN in CI** because the pinned Moji source is not fetched
 there. The macOS Moji suite is also **NOT RUN for this Linux result**; Linux is

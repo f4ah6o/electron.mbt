@@ -2239,7 +2239,14 @@ static void install_dialog_auto_response(GtkWidget *dialog, gboolean save) {
     }
     free(canonical);
   }
-  g_timeout_add(300, dialog_auto_accept, dialog);
+  guint delay_ms = 300;
+  const char *delay = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT_DELAY_MS");
+  if (delay != NULL && delay[0] != 0) {
+    long parsed = strtol(delay, NULL, 10);
+    if (parsed >= 1 && parsed <= 60000) delay_ms = (guint)parsed;
+  }
+  ebt_debug("dialog-auto selected=%s delay=%u\n", selected, delay_ms);
+  g_timeout_add(delay_ms, dialog_auto_accept, dialog);
 }
 
 static void handle_main_open_dialog(Host *host, Request *request,
@@ -2731,7 +2738,13 @@ static gpointer control_thread_main(gpointer data) {
     Request *request = request_new(host, raw, raw_length, &frame, FALSE);
     g_free(raw);
     g_main_context_invoke(NULL, request_main_cb, request);
-    wait_for_request(request, 15);
+    // A human file chooser legitimately takes longer than an ordinary control
+    // round trip. The client already waits one hour for open/save dialogs;
+    // the host's control thread must use the same bound instead of the normal
+    // 15-second request timeout.
+    gboolean is_dialog = strcmp(frame.operation, "main-open-dialog") == 0 ||
+                         strcmp(frame.operation, "main-save-dialog") == 0;
+    wait_for_request(request, is_dialog ? 3600 : 15);
     gboolean shutting_down = host->shutting_down;
     if (request->reply != NULL) {
       if (!write_frame(host->control_fd, request->reply, strlen(request->reply))) {

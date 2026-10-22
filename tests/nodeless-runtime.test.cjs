@@ -786,6 +786,37 @@ test('Linux main write falls back when the parent directory is read-only', {
   }
 });
 
+test('Linux main open dialog survives beyond the ordinary 15-second control timeout', {
+  skip: process.platform !== 'linux' || !nativeHostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-linux-dialog-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-slow-dialog-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-slow-dialog-out-'));
+  const selected = path.join(outside, 'selected.md');
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    fs.writeFileSync(selected, 'dialog-selected\n');
+    const started = Date.now();
+    const { result, report } = run(binary, dir,
+      ['--window', '--entry', 'src/main.js'], {
+        ELECTRON_MBT_TEST_MODE: '1',
+        ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT: selected,
+        ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT_DELAY_MS: '16000',
+      });
+    const elapsed = Date.now() - started;
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.mainError, '');
+    assert.ok(elapsed >= 15000, `dialog test finished too early: ${elapsed}ms`);
+    assert.equal(fs.readFileSync(selected, 'utf8'), 'dialog-updated\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('main fs reads and writes user files granted by the test scenario', {
   skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
 }, () => {

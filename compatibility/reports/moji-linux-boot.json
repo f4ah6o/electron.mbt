@@ -17,7 +17,7 @@
     "engine": "quickjs-2026-06-04",
     "profile": "electron-nodeless-adapted-v1",
     "strict": "blocked",
-    "hostSHA256": "604db7f3f64ddaeacce640a91909b3d6e7792e1b0c7a8d62710fb552c07d4c2b"
+    "hostSHA256": "6479893a39cdf1055de08d08f675a1a967e86cc14e08ae90a65af356260e2dd4"
   },
   "window": {
     "pageTitle": "Moji v1.0.5",

@@ -112,7 +112,7 @@ Local Linux (Ubuntu 24.04, GTK 3.24.41, WebKitGTK 4.1 2.52.6, X11, Node
 | `npm test` with host and pinned Moji source | **501 tests / 470 PASS / 0 FAIL / 31 SKIP** |
 | `tests/linux-host-frame.test.cjs` | **PASS** |
 | `moon test --target js` / `native` | **145 / 178 PASS** |
-| CI `linux-native` / `moonbit` / `macos` | **NOT RUN for the host-loss/read-only hardening at the time of this local record**; record the new URL/head after the PR/merge |
+| CI `linux-native` / `moonbit` / `macos` | **PASS** — [run 39713769966](https://github.com/f4ah6o/electron.mbt/actions/runs/39713769966), head `86355f2`, 1m45s / 1m18s / 4m10s |
 
 New Linux-only tests:
 

@@ -113,6 +113,8 @@ missing host fail instead of silently skipping the five tests.
 | `npm test` (host present, pinned Moji source present) | **502 tests / 471 PASS / 0 FAIL / 31 SKIP** |
 | `moon test --target js` | **145 PASS** |
 | `moon test --target native` | **178 PASS** |
+| Human Open/Save (single manual session) | **PASS** — opened `_build/markdown.md`, saved as `_build/Untitled.md` (4 bytes), reopened it; host exit 0; not a broad/automated acceptance result |
+
 | CI `linux-native` | **PASS** — [run 39736298608](https://github.com/f4ah6o/electron.mbt/actions/runs/39736298608), head `836d5a9`, 1m55s; includes the 16-second slow-dialog test |
 | CI `moonbit` | **PASS** — same run, 1m8s |
 | CI `macos` | **PASS** — same run, 3m53s; the macOS suite exercises the macOS host, not this Linux host |

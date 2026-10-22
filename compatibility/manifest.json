@@ -958,7 +958,8 @@
       "linux-file-grant-persistence",
       "linux-multi-select-filters",
       "linux-ime-ax",
-      "linux-packaging"
+      "linux-packaging",
+      "settings-persistence-nested-appData"
     ],
     "note": "Experimental GTK3/WebKitGTK 4.1 host for the plain/adapted Node-less fixture path on X11, with a partial exact-file open/save and window-close surface. Linux results are not macOS/WebKit compatibility evidence. compatible:false, strict BLOCKED, original preload NOT_EXECUTED.",
     "fileServices": {
@@ -972,8 +973,29 @@
         "main-save-dialog"
       ],
       "grants": "session-only exact-file; open grants readwrite, save grants write; no directory grants",
-      "limits": "256 KiB read/write, 400 KiB base64, canonical paths, no main-read-dir/main-mkdir, no grant persistence/revocation, no multi-select/filters/openDirectory, no human-selection evidence",
+      "limits": "256 KiB read/write, 400 KiB base64, canonical paths, no main-read-dir/main-mkdir, no grant persistence/revocation, no multi-select/filters/openDirectory, one manual workspace Open/Save/reopen observation; no automated human UI",
       "compatible": false
+    },
+    "humanOpenSave": {
+      "status": "PASS",
+      "scope": "single manual session on 2026-10-22; not automated or broad acceptance",
+      "opened": "_build/markdown.md",
+      "savedAs": "_build/Untitled.md",
+      "savedBytes": 4,
+      "reopened": "_build/Untitled.md",
+      "hostExit": 0,
+      "compatible": false,
+      "notVerified": [
+        "overwrite-confirmation",
+        "multi-select",
+        "filters",
+        "export",
+        "ime",
+        "restart",
+        "directory-grants",
+        "grant-persistence",
+        "settings-persistence"
+      ]
     }
   }
 }

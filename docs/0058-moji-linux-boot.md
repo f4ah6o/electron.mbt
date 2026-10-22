@@ -17,8 +17,9 @@ UI is visible in a WebKitGTK window.
 
 This is **not** an app-acceptance result. The Linux host does not implement the
 file broker, main fs, dialogs, export, grant persistence, the original preload
-or native frame authority. The screenshot is the initial UI only; no human
-Open/Save/Export/IME/restart action was exercised.
+or native frame authority. The screenshot is the initial UI only. A separate
+manual workspace Open/Save/reopen session is recorded in [docs/0059](0059-linux-file-and-close.md);
+Export/IME/restart were not exercised.
 
 ## Reproduce
 
@@ -94,8 +95,9 @@ now ends the hold with `HOLD_EXIT` / `reason:"window-closed"`; `app.quit` and
 menu/tray semantics remain partial. The hold mode is mutually exclusive with
 the selftest flags. The Moji window was kept open and captured with the initial
 UI; exact-file open/save and app-local fs are implemented separately in
-[docs/0059](0059-linux-file-and-close.md), but the human Moji Open/Save flow has
-not been recorded as an acceptance result.
+[docs/0059](0059-linux-file-and-close.md). The human Moji Open/Save flow has
+been exercised once on a workspace path (docs/0059); it is not part of this boot
+report, and the report still declares `human input: false`.
 
 ## Environment
 
@@ -125,9 +127,11 @@ not macOS/WebKit evidence.
   not implemented or NOT RUN. A save target on a read-only mount (for example
   `~/Downloads` here) returns `ELECTRON_MBT_FILE_READ_ONLY`; use a writable
   workspace path.
-- The human Moji Open → edit → Save flow is NOT RUN; the dialog plumbing is
-  covered by CI auto-selection tests, not by a human acceptance run.
-- Human file selection, IME, editing, save, export and restart are NOT RUN.
+- The human Moji Open → edit → Save → reopen flow has one workspace-path
+  observation (docs/0059); it is not automated and has no Export/IME/restart
+  coverage. The boot report still has `human input: false`.
+- Human overwrite confirmation, multi-select/filters, IME, export and restart
+  are NOT RUN.
 - The original preload is NOT_EXECUTED; the generated adapted page API is used.
 - Native main-frame sender/frame authority is unproven (WebKitGTK does not
   expose `WKScriptMessage.frameInfo` in its UI-process API); see

@@ -57,8 +57,8 @@ at startup; no arbitrary parent directories are created for writes.
   not implemented. The save dialog enables overwrite confirmation.
 - `ELECTRON_MBT_TEST_MODE=1` plus `ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT=<path>`
   is a CI-only auto-selection hook; it drives the same chooser path.
-- A human mouse/keyboard selection and the overwrite-confirmation UI remain
-  **NOT RUN**.
+- A human mouse/keyboard selection was observed once on 2026-10-22 on a
+  workspace path (below); the overwrite-confirmation UI remains **NOT RUN**.
 
 ### JSC context ordering
 
@@ -102,8 +102,9 @@ read-only root mount in this environment (`findmnt`: `/ ... ro`). In-place save
 therefore returns the explicit read-only error; the supported test path is a
 writable workspace copy such as
 `/home/hirohito-fujita/src/electron.mbt/_build/markdown.md`. This is an
-environment boundary, not a grant bypass. Human file selection and the GUI
-Open/Save flow are still **NOT RUN as a human acceptance result**.
+environment boundary, not a grant bypass. A single manual Open/Save session on
+a workspace path succeeded on 2026-10-22; it is not a broad or automated human
+acceptance result.
 
 ## Automated evidence
 
@@ -137,14 +138,40 @@ New Linux-only tests:
 
 The pinned Moji boot report is `compatible:false`; the Moji main/renderer still
 boot with `mainError:""`. The CI run above covers the fs/open/save/close tests;
-the Moji boot harness itself remains local-only. The open/save **human** flow in Moji has not been
-recorded as a human acceptance result; the dialog plumbing is covered by the
-auto-selection tests and the user can now try the real buttons.
+the Moji boot harness itself remains local-only. A single human Open/Save
+session on a workspace path is recorded above; it is not a broad acceptance
+result and is not automated.
+
+## Human Open/Save observation (2026-10-22)
+
+One manual session on the repaired host (host exit 0, `reason=control_thread_main`)
+produced the first real human Open/Save evidence:
+
+- Open selected `/home/hirohito-fujita/src/electron.mbt/_build/markdown.md`
+  through the real GTK chooser.
+- Save As selected `/home/hirohito-fujita/src/electron.mbt/_build/Untitled.md`;
+  the file contains 4 bytes (`aaaa`) and was written with the exact-file grant.
+- The reopened document selected `_build/Untitled.md`; the user reported that it
+  opened.
+- The chooser stayed open beyond the old 15-second host bound. The host now uses
+  the same 3600-second bound as the client, and the 16-second regression test
+  covers that path.
+- The host exited normally (`status=0`, `reason=control_thread_main`); there was
+  no SIGPIPE, `_exit(2)`, or host-loss in this session.
+
+This does **not** verify overwrite confirmation, filters, multi-select, export,
+IME, restart, directory grants, settings persistence, or a second app/session.
+The save used the writable workspace; `~/Downloads` remains on a read-only mount.
+Settings writes to `.appData/moji/settings.json` were denied because the host
+creates `.appData`/`.userData` but not arbitrary nested app-name directories;
+the app continued and the user-visible Open/Save flow still worked. Settings
+persistence therefore remains partial.
 
 ## NOT RUN / limits
 
-- Human dialog selection, overwrite-confirmation UI, keyboard shortcuts and
-  sheet-modal parenting.
+- Overwrite-confirmation UI, keyboard shortcuts and sheet-modal parenting;
+  broader human selection beyond the single workspace Open/Save session.
+- Settings persistence for nested app-name directories (`.appData/moji`).
 - Multi-selection, filters, open-directory, grant caps beyond one exact file.
 - Directory grants, `main-read-dir`, `main-mkdir`, grant persistence/revocation.
 - Export HTML/PDF/PNG, print-accurate rendering, updater/zlib behavior.
@@ -161,7 +188,7 @@ is promoted.
 1. Add directory grants + `main-read-dir`/`main-mkdir` only with an explicit
    directory picker and a bounded subtree policy.
 2. Add session grant persistence/revocation with an atomic 0600 store.
-3. Exercise the real Moji Open → edit → Save → Export flow with human input;
-   record NOT RUN until it passes.
+3. Extend the manual Moji Open → edit → Save flow to Export and a second
+   restart/session; basic workspace Open/Save/reopen is now observed once.
 4. Implement `app.quit`/menu/tray and close/quit lifecycle semantics.
 5. Keep resolving the frame authority issue 0022 separately.

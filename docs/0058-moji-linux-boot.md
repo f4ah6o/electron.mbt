@@ -71,7 +71,7 @@ Recorded hashes:
 - preload `bd0f47d6...c544`
 - renderer index `fafe339f...e301`
 - adapter `bdfe8bdd...7501`
-- host `b8c2acae...d90f`
+- host `604db7f3...4c2b`
 
 ## Keep the window open
 
@@ -110,7 +110,7 @@ not been recorded as an acceptance result.
 | Screenshot | XWD capture of the 1000x760 WebKitGTK content window, converted to PNG |
 
 The local `npm test` with the pinned source and Linux host present:
-**499 tests / 468 PASS / 0 FAIL / 31 SKIP**. The `linux-native` CI job runs
+**501 tests / 470 PASS / 0 FAIL / 31 SKIP**. The `linux-native` CI job runs
 the shared fixture tests plus the Linux fs/dialog/close tests, but this Moji
 boot harness is **NOT RUN in CI** because the pinned Moji source is not fetched
 there. The macOS Moji suite is also **NOT RUN for this Linux result**; Linux is
@@ -118,10 +118,13 @@ not macOS/WebKit evidence.
 
 ## Limits / not verified
 
-- Exact-file open/save and app-local main fs are implemented (docs/0059);
+- Exact-file open/save and app-local main fs are implemented (docs/0059),
+  including host-loss SIGPIPE handling and a read-only-filesystem error code;
   directory grants, multi-select/filters, overwrite-confirmation UI, grant
   persistence/revocation, export/print, updater behavior and zlib streams are
-  not implemented or NOT RUN.
+  not implemented or NOT RUN. A save target on a read-only mount (for example
+  `~/Downloads` here) returns `ELECTRON_MBT_FILE_READ_ONLY`; use a writable
+  workspace path.
 - The human Moji Open → edit → Save flow is NOT RUN; the dialog plumbing is
   covered by CI auto-selection tests, not by a human acceptance run.
 - Human file selection, IME, editing, save, export and restart are NOT RUN.

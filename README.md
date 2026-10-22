@@ -175,9 +175,12 @@ persistence and human Open/Save acceptance remain NOT RUN
 ([docs/0059](docs/0059-linux-file-and-close.md)). To keep the real window open
 for inspection, run `ELECTRON_MBT_MOJI_ROOT=/path/to/moji node
 scripts/nodeless-moji-linux.cjs --hold`; close the GTK window to end the hold,
-or use Ctrl-C/terminate. `app.quit`/menu/tray semantics remain partial. It does
-not implement original preload, `contextBridge`, `ipcRenderer`, directory
-grants, export/print, grant persistence, native frame sender authority,
+or use Ctrl-C/terminate. `app.quit`/menu/tray semantics remain partial. A save target on a read-only
+mount (such as `~/Downloads` in this sandbox) returns
+`ELECTRON_MBT_FILE_READ_ONLY`; use a writable workspace path. Host loss now ends
+the hold with `host-lost` rather than a SIGPIPE crash. It does not implement
+original preload, `contextBridge`, `ipcRenderer`, directory grants,
+export/print, grant persistence, native frame sender authority,
 `app.quit`/menu/tray, IME/AX, packaging or Linux product compatibility. WebKitGTK does not expose the macOS
 `frameInfo.isMainFrame` authority in its UI-process API, so the host uses
 top-frame injection plus a per-document nonce and explicitly does not claim

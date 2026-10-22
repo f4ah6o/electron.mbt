@@ -100,6 +100,11 @@ static int read_frame(int fd, char *out, int32_t capacity, int32_t timeout_ms) {
 static int start_host(const char *binary, const char *root, const char *session) {
   if (child_pid > 0 || binary == NULL || root == NULL || session == NULL ||
       strlen(session) != 32) return -1;
+  /* The host can close its control/event channels before an in-flight reply
+   * is written (for example when a window is closed while a modal dialog is
+   * open). A bare write() must fail with EPIPE and become host-loss, not
+   * terminate the whole runtime with SIGPIPE. */
+  signal(SIGPIPE, SIG_IGN);
   char *canonical_root = realpath(root, NULL);
   if (canonical_root == NULL) return -1;
   struct stat info;

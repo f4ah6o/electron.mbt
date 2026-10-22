@@ -109,13 +109,11 @@ missing host fail instead of silently skipping the five tests.
 | --- | --- |
 | `node scripts/build-linux-host.cjs` | **PASS** (`gtk 3.24.41`, `webkitgtk 2.52.6`) |
 | `node --test tests/linux-host-frame.test.cjs` | **PASS** (1 test; canonical/duplicate/trailing/session/oversize cases) |
-| `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs` | **19 PASS / 0 FAIL / 20 SKIP**; five shared window tests, hold, close, exact-file fs and dialog plumbing PASS |
-| `npm test` (host present, pinned Moji source present) | **499 tests / 468 PASS / 0 FAIL / 31 SKIP** |
+| `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs` | **21 PASS / 0 FAIL / 20 SKIP**; five shared window tests, hold, close, exact-file fs, dialog plumbing, host-loss and read-only-dir fallback PASS |
+| `npm test` (host present, pinned Moji source present) | **501 tests / 470 PASS / 0 FAIL / 31 SKIP** |
 | `moon test --target js` | **145 PASS** |
 | `moon test --target native` | **178 PASS** |
-| CI `linux-native` | **PASS** — [run 39547063739](https://github.com/f4ah6o/electron.mbt/actions/runs/39547063739), head `ce09857`, 1m42s; includes fs/open/save/close tests |
-| CI `moonbit` | **PASS** — same run, 54s |
-| CI `macos` | **PASS** — same run, 3m43s; the macOS suite exercises the macOS host, not this Linux host |
+| CI `linux-native` / `moonbit` / `macos` | **NOT RUN for the host-loss/read-only hardening at the time of this local record**; record the new URL/head after the PR/merge |
 | readiness / G0–G4 | **unchanged NOT_READY**: 35 checks / 28 PASS / 2 FAIL / 5 NOT RUN; this slice adds no compatibility row or readiness PASS |
 
 The first attempt exposed a WebKitGTK/JSC interaction: creating a private

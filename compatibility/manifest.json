@@ -945,7 +945,7 @@
     "hold": "native/nodeless --window --hold [--hold-seconds 1..3600] [--hold-close-after-ms 1..60000 test-only]; HOLDING/HOLD_EXIT; a GTK window close ends the hold with reason \"window-closed\"; interactive diagnostic only, no report promotion.",
     "limits": [
       "no original preload, contextBridge or ipcRenderer",
-      "exact-file open/save and app-local main fs only; no directory grants, main-read-dir/main-mkdir, export/print, grant persistence, multi-select/filters, menu, clipboard, IME or accessibility",
+      "exact-file open/save and app-local main fs only; no directory grants, main-read-dir/main-mkdir, export/print, grant persistence, multi-select/filters, menu, clipboard, IME or accessibility Read-only filesystem targets are reported as ELECTRON_MBT_FILE_READ_ONLY (EROFS) and cannot be saved in place.",
       "native main-frame sender/frame authority is not proven; top-frame injection plus per-document nonce only",
       "no app.quit/menu/tray lifecycle, focus, native show/hide, child-frame parity, packaging or Linux product compatibility"
     ],

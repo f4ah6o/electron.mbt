@@ -29,6 +29,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdarg.h>
@@ -119,6 +120,8 @@ typedef struct Host {
   GHashTable *pending;
   GHashTable *file_grants;
   GAsyncQueue *events;
+  GtkWidget *active_dialog;
+  gboolean close_after_dialog;
   GThread *control_thread;
   GThread *load_thread;
   GThread *event_thread;
@@ -149,6 +152,13 @@ static void ebt_debug(const char *format, ...) {
   va_end(arguments);
   fflush(stderr);
 }
+
+static void __attribute__((noreturn)) host_exit(int status, const char *reason) {
+  ebt_debug("host-exit status=%d reason=%s\n", status, reason);
+  syscall(SYS_exit_group, status);
+  __builtin_unreachable();
+}
+#define _exit(status) host_exit((status), __func__)
 
 /* ---- bounded frame I/O ---- */
 
@@ -1985,6 +1995,31 @@ static void handle_main_read_file(Host *host, Request *request, JSCValue *payloa
   free(canonical);
 }
 
+static gboolean direct_write_file(const char *path, const char *data, size_t length,
+                                  int *out_errno) {
+  int fd = open(path, O_WRONLY | O_TRUNC | O_NOFOLLOW | O_CLOEXEC);
+  if (fd < 0) {
+    if (out_errno != NULL) *out_errno = errno;
+    return FALSE;
+  }
+  size_t offset = 0;
+  while (offset < length) {
+    ssize_t written = write(fd, data + offset, length - offset);
+    if (written < 0 && errno == EINTR) continue;
+    if (written <= 0) {
+      if (out_errno != NULL) *out_errno = written < 0 ? errno : EIO;
+      close(fd);
+      return FALSE;
+    }
+    offset += (size_t)written;
+  }
+  if (close(fd) != 0) {
+    if (out_errno != NULL) *out_errno = errno;
+    return FALSE;
+  }
+  return TRUE;
+}
+
 static void handle_main_write_file(Host *host, Request *request, JSCValue *payload) {
   static const char *const expected[] = {"path", "base64"};
   if (!object_has_exact_keys(payload, expected, 2)) {
@@ -2030,18 +2065,59 @@ static void handle_main_write_file(Host *host, Request *request, JSCValue *paylo
     request_failure(request, "ELECTRON_MBT_FILE_TYPE");
     return;
   }
+  const char *bytes = data == NULL ? "" : (const char *)data;
   GError *error = NULL;
-  gboolean written = g_file_set_contents(canonical,
-    data == NULL ? "" : (const gchar *)data, (gssize)length, &error);
-  g_clear_error(&error);
+  gboolean written = g_file_set_contents(canonical, bytes, (gssize)length, &error);
   if (!written) {
-    g_free(data);
-    g_free(path);
-    g_free(base64);
-    free(canonical);
-    request_failure(request, "ELECTRON_MBT_FILE_WRITE");
-    return;
+    gboolean readonly = (error != NULL && error->domain == G_FILE_ERROR &&
+                         error->code == G_FILE_ERROR_ROFS);
+    gboolean parent_permission = (error != NULL && error->domain == G_FILE_ERROR &&
+                                  (error->code == G_FILE_ERROR_ACCES ||
+                                   error->code == G_FILE_ERROR_PERM));
+    ebt_debug("main-write atomic failed path=%s readonly=%d parent-permission=%d error=%s\n",
+              canonical, readonly, parent_permission,
+              error == NULL ? "(null)" : error->message);
+    g_clear_error(&error);
+    if (readonly) {
+      g_free(data);
+      g_free(path);
+      g_free(base64);
+      free(canonical);
+      request_failure(request, "ELECTRON_MBT_FILE_READ_ONLY");
+      return;
+    }
+    if (!parent_permission) {
+      g_free(data);
+      g_free(path);
+      g_free(base64);
+      free(canonical);
+      request_failure(request, "ELECTRON_MBT_FILE_WRITE");
+      return;
+    }
+    /* g_file_set_contents writes a sibling temp file and renames it. That
+     * requires write permission on the parent directory even when the exact
+     * file is writable. Electron/Node fs.writeFile opens the file itself, so
+     * fall back to a direct exact-file write only for the parent-permission
+     * case; a full disk or read-only filesystem must not truncate the file. */
+    struct stat direct_info;
+    int direct_errno = 0;
+    gboolean direct = stat(canonical, &direct_info) == 0 &&
+      S_ISREG(direct_info.st_mode) &&
+      direct_write_file(canonical, bytes, (size_t)length, &direct_errno);
+    if (!direct) {
+      g_free(data);
+      g_free(path);
+      g_free(base64);
+      free(canonical);
+      request_failure(request,
+        direct_errno == EROFS ? "ELECTRON_MBT_FILE_READ_ONLY"
+        : direct_errno == EACCES || direct_errno == EPERM
+          ? "ELECTRON_MBT_FILE_DENIED" : "ELECTRON_MBT_FILE_WRITE");
+      return;
+    }
+    written = TRUE;
   }
+  g_clear_error(&error);
   JSCValue *reply = object_new(host);
   object_set_string(host, reply, "path", canonical);
   object_set_number(host, reply, "bytes", (double)length);
@@ -2126,6 +2202,14 @@ static void reply_open_dialog(Host *host, Request *request, gboolean canceled,
   request_complete(request, "success", reply);
 }
 
+static gboolean close_window_idle(gpointer data) {
+  Host *host = data;
+  if (host != NULL && host->window != NULL) {
+    gtk_window_close(GTK_WINDOW(host->window));
+  }
+  return G_SOURCE_REMOVE;
+}
+
 static gboolean dialog_auto_accept(gpointer data) {
   GtkWidget *dialog = data;
   gtk_dialog_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
@@ -2203,10 +2287,14 @@ static void handle_main_open_dialog(Host *host, Request *request,
     }
   }
   install_dialog_auto_response(dialog, FALSE);
+  host->active_dialog = dialog;
   gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+  host->active_dialog = NULL;
+  ebt_debug("main-open-dialog response=%d\n", response);
   GPtrArray *paths = g_ptr_array_new_with_free_func(g_free);
   if (response == GTK_RESPONSE_ACCEPT) {
     char *selected = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+    ebt_debug("main-open-dialog selected=%s\n", selected == NULL ? "(null)" : selected);
     char *canonical = selected == NULL ? NULL : realpath(selected, NULL);
     if (canonical != NULL) {
       /* A native open selection is an exact-file consent for this session.
@@ -2218,6 +2306,10 @@ static void handle_main_open_dialog(Host *host, Request *request,
     g_free(selected);
   }
   gtk_widget_destroy(dialog);
+  if (host->close_after_dialog) {
+    host->close_after_dialog = FALSE;
+    if (host->window != NULL) g_idle_add(close_window_idle, host);
+  }
   g_free(default_path);
   g_free(title);
   g_free(button);
@@ -2226,12 +2318,14 @@ static void handle_main_open_dialog(Host *host, Request *request,
     g_ptr_array_free(paths, TRUE);
     return;
   }
+  ebt_debug("main-open-dialog paths=%u\n", paths->len);
   if (paths->len == 0 || paths->len > EBT_MAX_DIALOG_PATHS) {
     request_failure(request, "ELECTRON_MBT_FILE_DENIED");
     g_ptr_array_free(paths, TRUE);
     return;
   }
   reply_open_dialog(host, request, FALSE, paths);
+  ebt_debug("main-open-dialog replied\n");
   g_ptr_array_free(paths, TRUE);
 }
 
@@ -2276,11 +2370,19 @@ static void handle_main_save_dialog(Host *host, Request *request,
     }
   }
   install_dialog_auto_response(dialog, TRUE);
+  host->active_dialog = dialog;
   gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+  host->active_dialog = NULL;
+  ebt_debug("main-save-dialog response=%d\n", response);
   char *selected = response == GTK_RESPONSE_ACCEPT
     ? gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)) : NULL;
+  ebt_debug("main-save-dialog selected=%s\n", selected == NULL ? "(null)" : selected);
   char *canonical = selected == NULL ? NULL : canonical_write_path(host, selected);
   gtk_widget_destroy(dialog);
+  if (host->close_after_dialog) {
+    host->close_after_dialog = FALSE;
+    if (host->window != NULL) g_idle_add(close_window_idle, host);
+  }
   g_free(default_path);
   g_free(title);
   g_free(button);
@@ -2674,6 +2776,14 @@ static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event,
   (void)event;
   Host *host = data;
   if (host == NULL || widget == NULL || host->window != widget) return TRUE;
+  if (host->active_dialog != NULL) {
+    /* A modal chooser is running a nested loop. Destroying its parent first
+     * can leave the control request and the GTK dialog inconsistent; cancel
+     * the chooser, then close the window from an idle callback. */
+    host->close_after_dialog = TRUE;
+    gtk_dialog_response(GTK_DIALOG(host->active_dialog), GTK_RESPONSE_CANCEL);
+    return TRUE;
+  }
   if (host->web != NULL) {
     webkit_web_view_stop_loading(host->web);
     if (host->manager != NULL) webkit_user_content_manager_remove_all_scripts(host->manager);
@@ -2716,6 +2826,10 @@ int main(int argc, char **argv) {
     free(root);
     return 64;
   }
+
+  /* A closed peer must produce EPIPE in a write, not SIGPIPE that kills the
+   * host before it can report the failed request. */
+  signal(SIGPIPE, SIG_IGN);
 
   Host *host = g_new0(Host, 1);
   host->root = root;
@@ -2761,9 +2875,15 @@ int main(int argc, char **argv) {
   host->control_thread = g_thread_new("electron-mbt-control", control_thread_main, host);
   host->load_thread = g_thread_new("electron-mbt-load", load_thread_main, host);
 
-  gtk_main();
-  /* The control thread exits the process after replying to shutdown. If the
-   * main loop ends for another reason, fail closed rather than returning a
-   * success status for an incomplete session. */
+  for (;;) {
+    gtk_main();
+    ebt_debug("gtk-main-returned shutting_down=%d\n", host->shutting_down);
+    if (host->shutting_down) break;
+    /* GTK can return from gtk_main when the last window is destroyed or a
+     * nested dialog loop quits it. The session is not over: keep the host
+     * alive until the control thread answers the in-flight dialog/app-reply
+     * and processes shutdown. */
+    g_usleep(10000);
+  }
   _exit(2);
 }

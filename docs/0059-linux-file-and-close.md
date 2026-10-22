@@ -68,6 +68,38 @@ first `WebKitWebView` because an earlier context-before-WebKit order stalled
 page loading on WebKitGTK 2.52.6. With this order, pre-window main fs (settings)
 works and the adapted page still loads in the same run.
 
+## Host-loss, GTK main-loop and read-only save hardening (2026-10-22)
+
+The first manual file-dialog attempts exposed three lifecycle problems rather
+than a file-grant failure:
+
+- If the host closed while nodeless was writing an `app-reply`, the nodeless
+  process died with **SIGPIPE**. Both the nodeless host client and the Linux
+  host now ignore SIGPIPE; a broken control channel becomes `EPIPE`/host-loss
+  (`HOLD_EXIT reason:"host-lost"`), not process death. Regression:
+  `host loss during an explicit hold does not SIGPIPE the runtime`.
+- A GTK close/dialog could make `gtk_main()` return; the host then used
+  `_exit(2)` as a fail-closed path while a control request was still in flight.
+  The host now re-enters the main loop and stays alive until the control thread
+  completes the request and processes shutdown. A window close while a chooser
+  is active cancels the chooser, then closes the window from an idle callback.
+  `host_exit` records `status=... reason=...` under `ELECTRON_MBT_LINUX_DEBUG`.
+- `g_file_set_contents` (atomic temp+rename) requires write permission on the
+  parent directory even when the exact file is writable. The host now falls
+  back to a direct exact-file write **only** for `EPERM`/`EACCES` parent
+  permission failures. `EROFS` is reported as
+  `ELECTRON_MBT_FILE_READ_ONLY` (prelude `EROFS`); other failures such as a full
+  disk do not fall back and cannot truncate the file. Regression:
+  `Linux main write falls back when the parent directory is read-only`.
+
+The user's save target `/home/hirohito-fujita/Downloads/markdown.md` lives on a
+read-only root mount in this environment (`findmnt`: `/ ... ro`). In-place save
+therefore returns the explicit read-only error; the supported test path is a
+writable workspace copy such as
+`/home/hirohito-fujita/src/electron.mbt/_build/markdown.md`. This is an
+environment boundary, not a grant bypass. Human file selection and the GUI
+Open/Save flow are still **NOT RUN as a human acceptance result**.
+
 ## Automated evidence
 
 Local Linux (Ubuntu 24.04, GTK 3.24.41, WebKitGTK 4.1 2.52.6, X11, Node
@@ -76,11 +108,11 @@ Local Linux (Ubuntu 24.04, GTK 3.24.41, WebKitGTK 4.1 2.52.6, X11, Node
 | Command | Result |
 | --- | --- |
 | `node scripts/build-linux-host.cjs` | **PASS** |
-| `node --test tests/nodeless-runtime.test.cjs` with host | **19 PASS / 0 FAIL / 20 SKIP** |
-| `npm test` with host and pinned Moji source | **499 tests / 468 PASS / 0 FAIL / 31 SKIP** |
+| `node --test tests/nodeless-runtime.test.cjs` with host | **21 PASS / 0 FAIL / 20 SKIP** |
+| `npm test` with host and pinned Moji source | **501 tests / 470 PASS / 0 FAIL / 31 SKIP** |
 | `tests/linux-host-frame.test.cjs` | **PASS** |
 | `moon test --target js` / `native` | **145 / 178 PASS** |
-| CI `linux-native` / `moonbit` / `macos` | **PASS** — [run 39547063739](https://github.com/f4ah6o/electron.mbt/actions/runs/39547063739), head `ce09857`, 1m42s / 54s / 3m43s |
+| CI `linux-native` / `moonbit` / `macos` | **NOT RUN for the host-loss/read-only hardening at the time of this local record**; record the new URL/head after the PR/merge |
 
 New Linux-only tests:
 

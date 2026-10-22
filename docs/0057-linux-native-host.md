@@ -113,7 +113,9 @@ missing host fail instead of silently skipping the five tests.
 | `npm test` (host present, pinned Moji source present) | **502 tests / 471 PASS / 0 FAIL / 31 SKIP** |
 | `moon test --target js` | **145 PASS** |
 | `moon test --target native` | **178 PASS** |
-| CI `linux-native` / `moonbit` / `macos` | **NOT RUN for the 15-second dialog-timeout fix at the time of this local record**; record the new URL/head after the PR/merge |
+| CI `linux-native` | **PASS** — [run 39736298608](https://github.com/f4ah6o/electron.mbt/actions/runs/39736298608), head `836d5a9`, 1m55s; includes the 16-second slow-dialog test |
+| CI `moonbit` | **PASS** — same run, 1m8s |
+| CI `macos` | **PASS** — same run, 3m53s; the macOS suite exercises the macOS host, not this Linux host |
 | readiness / G0–G4 | **unchanged NOT_READY**: 35 checks / 28 PASS / 2 FAIL / 5 NOT RUN; this slice adds no compatibility row or readiness PASS |
 
 The first attempt exposed a WebKitGTK/JSC interaction: creating a private

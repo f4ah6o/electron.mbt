@@ -117,7 +117,7 @@ Local Linux (Ubuntu 24.04, GTK 3.24.41, WebKitGTK 4.1 2.52.6, X11, Node
 | `npm test` with host and pinned Moji source | **502 tests / 471 PASS / 0 FAIL / 31 SKIP** |
 | `tests/linux-host-frame.test.cjs` | **PASS** |
 | `moon test --target js` / `native` | **145 / 178 PASS** |
-| CI `linux-native` / `moonbit` / `macos` | **NOT RUN for the 15-second dialog-timeout fix at the time of this local record**; record the new URL/head after the PR/merge |
+| CI `linux-native` / `moonbit` / `macos` | **PASS** — [run 39736298608](https://github.com/f4ah6o/electron.mbt/actions/runs/39736298608), head `836d5a9`, 1m55s / 1m8s / 3m53s |
 
 New Linux-only tests:
 

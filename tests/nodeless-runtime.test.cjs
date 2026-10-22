@@ -726,6 +726,12 @@ test('host loss during an explicit hold does not SIGPIPE the runtime', {
       child.stderr.on('data', chunk => { output += chunk; });
       try {
         const hostPid = await waitForHostChild(child.pid, child);
+        // The host appears as soon as posix_spawn returns, before GTK/WebKit
+        // and the nodeless hello/ready handshake complete. Killing it during
+        // that window makes nodeless report "native host start failed" rather
+        // than exercising an in-flight hold. Let the session reach its hold
+        // loop before injecting host loss.
+        await sleep(3000);
         process.kill(hostPid, 'SIGKILL');
         const status = await waitForExit(child);
         last = { status, output };

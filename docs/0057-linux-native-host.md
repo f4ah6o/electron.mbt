@@ -118,6 +118,14 @@ missing host fail instead of silently skipping the five tests.
 | CI `linux-native` | **PASS** — [run 39736298608](https://github.com/f4ah6o/electron.mbt/actions/runs/39736298608), head `836d5a9`, 1m55s; includes the 16-second slow-dialog test |
 | CI `moonbit` | **PASS** — same run, 1m8s |
 | CI `macos` | **PASS** — same run, 3m53s; the macOS suite exercises the macOS host, not this Linux host |
+
+2026-10-23 update: the local suite is now **525 tests / 492 PASS / 0 FAIL / 33
+SKIP** and `moon test` is **163 JS / 196 native PASS**. The Linux nodeless suite
+is **22 PASS / 21 SKIP** because the real 16-second chooser test is gated on
+`ELECTRON_MBT_ISOLATED_DISPLAY=1` and skips on an interactive desktop; the new
+unmapped control-hold test covers the same 15-second host bound locally. The
+native CLI parity suite is **12 PASS**, including the adapted native `dev`
+window. macOS native execution and publication remain NOT RUN.
 | readiness / G0–G4 | **unchanged NOT_READY**: 35 checks / 28 PASS / 2 FAIL / 5 NOT RUN; this slice adds no compatibility row or readiness PASS |
 
 The first attempt exposed a WebKitGTK/JSC interaction: creating a private

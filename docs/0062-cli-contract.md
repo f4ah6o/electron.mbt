@@ -1,17 +1,18 @@
 # `emoon` CLI contract
 
-Status: **partial**. The Node reference CLI is implemented; the native CLI is
-implemented for the runtime and preflight commands.
+Status: **implemented for the developer commands on Linux; macOS native
+execution is NOT RUN.** Both implementations emit `compatible:false`. This is a
+developer-tool contract, not a compatibility result.
 
 ## Two implementations, one command name
 
 | command | native `emoon` | Node `emoon` |
 | --- | --- | --- |
-| `init` | not implemented | implemented (reference) |
-| `inspect` | not implemented | implemented (reference) |
-| `migrate` | not implemented | implemented (reference) |
+| `init` | implemented | implemented (reference) |
+| `inspect` | implemented | implemented (reference) |
+| `migrate` | implemented | implemented (reference) |
 | `doctor` | implemented | delegates to native |
-| `dev` | not implemented | node staging, then native doctor/run |
+| `dev` | native staging + in-process doctor/run | node staging, then native doctor/run |
 | `run` | implemented | delegates to native |
 | `version` / `help` | implemented | implemented |
 
@@ -20,12 +21,23 @@ binary is `cmd/emoon.cjs`; it is a development reference and never reimplements
 the runtime. `emoon version` reports `impl:"native"` or `impl:"node"` and the
 resolved native runtime path for the Node CLI.
 
+The two implementations share the developer contract in
+[`cli/emoon_contract`](../cli/emoon_contract/): argument parsing, config merge,
+path rules, entry-type classification, the static scanner, the schema-2 manifest
+writer and the adapted adapter generator. The Node reference remains the oracle;
+`tests/emoon-cli-parity.test.cjs` compares reports, exit codes, stage bytes and
+file modes.
+
 ## Native runtime resolution (Node CLI)
 
 `--runtime` → `EMOON_RUNTIME` → `node_modules/electromoon/dist` → repository
 `dist/` → `_build/native/{debug,release}/build/cmd/emoon` → `PATH`. Node scripts
 are skipped. `emoon-host` is resolved from `--host` (not implemented as a flag
 yet), `EMOON_HOST`, the same directory as the native binary, `dist/`, or `PATH`.
+
+The native `dev` command rejects `--runtime`: the native CLI is the runtime and
+starts doctor/run in the same process. The Node `dev` command keeps `--runtime`
+because it delegates to a resolved native binary.
 
 ## Exit codes
 
@@ -40,6 +52,10 @@ yet), `EMOON_HOST`, the same directory as the native binary, `dist/`, or `PATH`.
 ## Native commands
 
 ```sh
+emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--force] [--config <file>]
+emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
+emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
+emoon dev [app-dir] [--api <file>] [--no-launch] [--config <file>]
 emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ...] [selftests]
 emoon doctor <app-dir> [--profile <id>]
 emoon version
@@ -56,13 +72,64 @@ page, the runtime uses `package.json`'s `main` as the module entry.
 2 as blocked. `desktop-core-v1` and `moonbit-native-v1` exit 2 as engine
 mismatches. Unknown IDs exit 2.
 
+## Shared staging contract
+
+- `init` writes `.emoon/config.json` (schema 1) and `.emoon/.gitignore`
+  (`app/\n`). It never edits the app root `.gitignore` or source files.
+- `inspect` writes nothing. The report keeps `compatible:false` and
+  `claim:"not-a-compatibility-result"`.
+- `migrate` stages into `.emoon/app` (or `--out`), writes
+  `.emoon/migration-report.json`, and leaves the app source unchanged.
+- `dev` runs init (when the config is absent), inspect, migrate, doctor and,
+  unless `--no-launch`, `run --window --entry <config.main>`.
+- The generated `source-manifest.json` is schema 2: the page is the manifest
+  entry and every listed file is pinned by SHA-256 and byte count. The main
+  module stays a separate file and is passed with `--entry`.
+- The generated `nodeless-app.json` and `adapted/page-api.js` are schema 1 and
+  byte-identical between the two implementations on the parity fixtures.
+- `migration-report.json` contains the observed tier, blockers, warnings,
+  generated hashes and `compatible:false`.
+
+### Limits and refusal rules
+
+- 4096 staged files, 64 MiB total, 16 MiB per file.
+- Static scan: `.js`/`.cjs`/`.mjs`/`.ts`/`.tsx`, 1 MiB per file, 4 MiB total,
+  and a 1 MiB main-file preload check.
+- Inspect walk: 16384 entries, 8192 files, 256 MiB total, 32 MiB per file,
+  depth 64.
+- Any symlink under the app tree, a symlinked stage, `package.json` or config is
+  `ELECTRON_MBT_MIGRATE_SYMLINK`. This is intentionally stricter than silently
+  following links, and matches the migration refusal rule.
+- `.git` and `.emoon` are skipped when walking the renderer/include trees;
+  `node_modules/.cache` is skipped by path prefix. (The previous reference code
+  compared the cache path against a single basename and never skipped it.)
+- An existing stage is not replaced without `--force`. A stage containing
+  `.appData` or `.userData` is not replaced without `--reset-data`.
+- `--out` equal to the app root, outside the app root, or a symlink is rejected.
+  `--config` is app-relative, must stay inside the app root, and its directory is
+  the report workspace.
+- Empty files are skipped while walking; an empty main, page or `package.json`
+  is rejected.
+- Path escapes, non-regular files and limits are fail-closed; errors print
+  `{ok:false, compatible:false, code, message}` and exit 1.
+
+### Entry resolution
+
+The native CLI resolves `package.json` `main` with the same absolute-path subset
+as `require.resolve`: exact file, then `.js`/`.json`/`.node` when the path has no
+extension, then a directory's `package.json` `main` and `index.js`/`index.json`/
+`index.node`. Package `exports` and conditional resolution are not used; a path
+that only resolves through them fails with `ELECTRON_MBT_ENTRY_MISSING` instead
+of guessing. `entryType` comes from the resolved `package.json` main (`app.entry`),
+while the preload scan reads the configured `main`; this mirrors the reference.
+
 ## Node commands
 
 ```sh
-emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--force]
+emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--force] [--config <file>]
 emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
-emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force] [--reset-data] [--dry-run]
-emoon dev [app-dir] [--api <file>] [--no-launch] [--runtime <path>]
+emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
+emoon dev [app-dir] [--api <file>] [--no-launch] [--config <file>] [--runtime <path>]
 emoon doctor <stage> [--runtime <path>]
 emoon run <stage> [--window] [--entry <file>] [--runtime <path>]
 emoon version | --version
@@ -71,6 +138,14 @@ emoon help | --help
 
 The Node CLI writes `.emoon/` only. It does not copy the original preload, does
 not execute it, and does not claim Electron compatibility.
+
+## Evidence boundary
+
+Linux parity is automated by `tests/emoon-cli-parity.test.cjs` and the window E2E
+uses the real GTK/WebKitGTK host. macOS native execution of these commands is
+NOT RUN in this environment; the macOS CI job is the first place it is
+exercised. Human dialog UI, signing, publication and `moon binstall` remain NOT
+RUN.
 
 ## Legacy Node CLI
 

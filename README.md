@@ -10,10 +10,14 @@ MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/p
 
 | command | implementation | supported commands |
 | --- | --- | --- |
-| native `emoon` | MoonBit, Node-free | `run`, `doctor`, `version`, `help` |
+| native `emoon` | MoonBit, Node-free | `init`, `inspect`, `migrate`, `dev`, `run`, `doctor`, `version`, `help` |
 | Node `emoon` | Node reference CLI | `init`, `inspect`, `migrate`, `dev`; `doctor`/`run` delegate to the native runtime |
 
-The Node CLI is the current reference for migration and development. The native CLI is the shipped runtime path. Native `init`/`inspect`/`migrate`/`dev`, the Mooncakes publication and the `moon binstall` release are still being ported and are **not** part of this increment yet.
+The native CLI is the shipped runtime path. The Node CLI is the development
+reference and oracle for the shared staging contract; it never reimplements the
+runtime. Linux parity is automated by `tests/emoon-cli-parity.test.cjs`. The
+Mooncakes publication, the `moon binstall` release and macOS native execution of
+the developer commands are still pending and are **not** part of this increment.
 
 ### Build and smoke the native runtime
 
@@ -22,24 +26,27 @@ node scripts/build-cli.cjs
 dist/emoon --version
 dist/emoon doctor fixtures/nodeless-app
 dist/emoon run fixtures/nodeless-app
+dist/emoon init fixtures/migrate-source-app
+dist/emoon dev fixtures/migrate-source-app --api adapted-preload.json --no-launch
 ```
 
 `node scripts/build-cli.cjs` builds `cmd/emoon` and the platform host, then copies
-`dist/emoon` and `dist/emoon-host` so the Node reference CLI can resolve them.
+`dist/emoon` and `dist/emoon-host` so both CLIs can resolve them. The native
+developer commands write the same `.emoon/` stage as the Node reference; the
+parity test compares their bytes and file modes.
 
-### Develop and migrate with the Node reference CLI
+### Develop and migrate with either CLI
 
 ```sh
-node cmd/emoon.cjs init fixtures/migrate-source-app
-node cmd/emoon.cjs inspect fixtures/migrate-source-app
-node cmd/emoon.cjs migrate fixtures/migrate-source-app --api adapted-preload.json
+dist/emoon dev fixtures/migrate-source-app --api adapted-preload.json --no-launch
 node cmd/emoon.cjs dev fixtures/migrate-source-app --api adapted-preload.json --no-launch
 ```
 
 `emoon dev` writes only `.emoon/` inside the app; the app source is not modified.
 The stage is `.emoon/app` and the report is `.emoon/migration-report.json`.
-`emoon dev` without `--no-launch` starts the native window; `doctor`/`run` delegate
-to `dist/emoon` or another resolved native runtime.
+`emoon dev` without `--no-launch` starts the native window. The Node `dev`
+resolves `dist/emoon` (or another native runtime) for doctor/run; the native
+`dev` runs doctor/run in the same process.
 
 ### Package status
 
@@ -47,6 +54,8 @@ to `dist/emoon` or another resolved native runtime.
 - `moon.mod` is `f4ah6o/electromoon` version `0.1.0`, `preferred_target = "native"`.
 - `moon-binstall.json` maps `cmd/emoon` and `cmd/emoon-host` to release assets, but
   no release has been published and `moon binstall` has not been run.
+- Native `init`/`inspect`/`migrate`/`dev` are implemented. Linux stage/parity and
+  the adapted window E2E pass; macOS native execution is NOT RUN here.
 - `package.json` provides the Node CLI bin `emoon`; npm publication is not done.
 
 See [the CLI contract](docs/0062-cli-contract.md) and [the migration note](docs/0061-migrating-from-electron.md).

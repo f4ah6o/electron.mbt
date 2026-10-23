@@ -234,3 +234,46 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   test SKIPs locally, the new hold test PASSes in 17.8 s, and the open/save
   dialog tests PASS. The full `npm test` result is recorded with the native CLI
   work so the counts are not split across two runs.
+
+## Native `emoon` developer commands (2026-10-23)
+
+- Native `emoon` now implements `init`, `inspect`, `migrate` and `dev` in
+  addition to `run`/`doctor`/`version`/`help`. `dev` stages and then invokes
+  doctor/run in the same process; the runtime is not reimplemented.
+- The shared contract lives in `cli/emoon_contract`: argument parsing, config
+  merge, path rules, entry-type classification, the static scanner, the schema-2
+  manifest writer and the schema-3 adapted adapter generator. The Node reference
+  remains the oracle.
+- The native staging FS primitives are bounded in `cmd/emoon/file_io.c`: app-root
+  containment, symlink and `..` rejection, 4096 files / 64 MiB / 16 MiB, atomic
+  JSON writes and mode-preserving copies. Inspect uses 16384 entries / 8192
+  files / 256 MiB / 32 MiB / depth 64. Any symlink under the app tree, a
+  symlinked stage, config or `package.json` fails closed.
+- The Node reference was aligned with the same contract: `--config` is
+  app-relative and root-constrained, inspect rejects symlinks, `.git`/`.emoon`
+  and `node_modules/.cache` are skipped by path, `package.json` is bounded to
+  64 KiB, and common FS errors map to documented `ELECTRON_MBT_*` codes.
+- The builtin classification table now covers the Node 24.21/24.22
+  `builtinModules` set (unsupported entries stay unsupported). The native and
+  Node scanner outputs match on the parity fixtures and corpus forms.
+- Linux parity (`tests/emoon-cli-parity.test.cjs`): 12 PASS. Stage trees,
+  file modes, `source-manifest.json`, `nodeless-app.json` and
+  `adapted/page-api.js` are byte-identical on the fixtures; reports differ only
+  in `tool.impl` and the absolute `appDir`. The adapted native `dev` window
+  reaches `status:"PASS"`, `pageTitle:"migrate-fixture-ready"`, adapter requests
+  1 and `compatible:false`.
+- Validation on this Linux host:
+  - `moon test --target js`: **163 PASS / 0 FAIL**.
+  - `moon test --target native`: **196 PASS / 0 FAIL**.
+  - `node --test tests/emoon-cli.test.cjs`: **10 PASS / 0 FAIL**.
+  - `node --test tests/emoon-cli-parity.test.cjs`: **12 PASS / 0 FAIL** (the
+    window E2E was included).
+  - `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test
+    tests/nodeless-runtime.test.cjs`: **22 PASS / 0 FAIL / 21 SKIP**. The real
+    16-second chooser test is skipped locally (it needs
+    `ELECTRON_MBT_ISOLATED_DISPLAY=1`); the unmapped control-hold test passes in
+    17.77 s.
+  - `npm test`: **525 tests / 492 PASS / 0 FAIL / 33 SKIP**.
+- Not run: macOS native execution of the developer commands, `moon publish`,
+  GitHub Release creation, `moon binstall`, `npm publish`, signing/notarization,
+  human dialog UI and a clean-machine install. No compatibility row is promoted.

@@ -1,7 +1,8 @@
 # Migrating an existing Electron app (experimental)
 
-Status: **Node reference flow implemented; native ports pending**. This is not a
-compatibility result and does not modify the app source.
+Status: **native and Node flows implemented and parity-tested on Linux; macOS
+native execution is NOT RUN.** This is not a compatibility result and does not
+modify the app source.
 
 ## Prerequisites
 
@@ -17,11 +18,14 @@ compatibility result and does not modify the app source.
 # from the runtime repository
 node scripts/build-cli.cjs
 
-# from the Electron app repository
-node /path/to/electromoon/cmd/emoon.cjs init
-node /path/to/electromoon/cmd/emoon.cjs inspect
-node /path/to/electromoon/cmd/emoon.cjs migrate
-node /path/to/electromoon/cmd/emoon.cjs doctor
+# from the Electron app repository, with the native CLI
+/path/to/electromoon/dist/emoon init
+/path/to/electromoon/dist/emoon inspect
+/path/to/electromoon/dist/emoon migrate
+/path/to/electromoon/dist/emoon doctor .emoon/app
+/path/to/electromoon/dist/emoon dev
+
+# or the Node reference CLI
 node /path/to/electromoon/cmd/emoon.cjs dev
 ```
 
@@ -72,7 +76,11 @@ automatic rollback, signing or update channel.
 
 ## Current gap
 
-The Node CLI is the reference implementation of `init`, `inspect`, `migrate` and
-`dev`. The native `emoon` binary implements `run`, `doctor`, `version` and
-`help`; native `init`/`inspect`/`migrate`/`dev` are not implemented yet. When both
-CLIs are installed, `emoon version` identifies the implementation.
+Both CLIs implement `init`, `inspect`, `migrate` and `dev`. The native `emoon`
+binary also implements `run`, `doctor`, `version` and `help`; the Node CLI
+delegates `doctor`/`run` to the native runtime and never reimplements it. The
+Linux parity suite compares stage bytes, file modes, manifest/adapter bytes,
+reports and exit codes (`node --test tests/emoon-cli-parity.test.cjs`). macOS
+native execution of these developer commands is NOT RUN here; the macOS CI job
+is the first check. When both CLIs are installed, `emoon version` identifies the
+implementation.

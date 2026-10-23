@@ -11,3 +11,4 @@ node_modules/
 !fixtures/native-app/node_modules/**
 !fixtures/nodeless-app/node_modules/
 !fixtures/nodeless-app/node_modules/**
+.emoon/

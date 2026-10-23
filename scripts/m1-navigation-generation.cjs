@@ -19,7 +19,7 @@ async function waitForExit(child) {
 async function main() {
   if (process.platform !== 'darwin') throw new Error('macOS native navigation test required');
   const root = path.resolve(__dirname, '../fixtures/m1-app');
-  const nativeBinary = path.resolve(__dirname, '../dist/electron-mbt-native-host-stale-navigation-test');
+  const nativeBinary = path.resolve(__dirname, '../dist/emoon-host-stale-navigation-test');
   const before = snapshot(root).sha256;
   const runtime = new ExperimentalRuntime(inspectApp(root), {
     nativeHostOptions: { testingExecutable: nativeBinary, watchdogMs: 10000 },

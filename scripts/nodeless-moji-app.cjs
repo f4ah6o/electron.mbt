@@ -18,8 +18,8 @@ const adapted = JSON.parse(fs.readFileSync(
   path.join(root, 'compatibility/apps/moji-v1.0.5/adapted-preload.json'), 'utf8'));
 const adapterPath = path.join(root, adapted.adapter.path);
 const reportPath = path.join(root, 'compatibility/reports/moji-nodeless-app.json');
-const binary = path.join(root, '_build/native/debug/build/native/nodeless/nodeless.exe');
-const hostBinary = path.join(root, 'dist/electron-mbt-native-host');
+const binary = path.join(root, '_build/native/debug/build/cmd/emoon/emoon.exe');
+const hostBinary = path.join(root, 'dist/emoon-host');
 
 function hashFile(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -46,7 +46,7 @@ if (process.platform !== 'darwin' || !fs.existsSync(hostBinary)) {
   writeReport({
     status: 'NOT_RUN',
     probe: 'moji-nodeless-app',
-    reason: 'the native host is macOS-only or dist/electron-mbt-native-host is missing',
+    reason: 'the native host is macOS-only or dist/emoon-host is missing',
     compatible: false,
   });
   process.exit(0);
@@ -70,7 +70,7 @@ if (mainSHA256 !== provenance.hashes.main || preloadSHA256 !== provenance.hashes
   process.stderr.write('ELECTRON_MBT_MOJI_NODELESS_APP: source hash mismatch\n');
   process.exit(1);
 }
-const build = spawnSync('moon', ['build', '--target', 'native', 'native/nodeless'], {
+const build = spawnSync('moon', ['build', '--target', 'native', 'cmd/emoon'], {
   cwd: root, encoding: 'utf8', timeout: 180000,
 });
 if (build.status !== 0 || !fs.existsSync(binary)) {

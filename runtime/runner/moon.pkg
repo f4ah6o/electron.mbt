@@ -1,6 +1,6 @@
 import {
-  "f4ah6o/electron/bridges/embedded-js" @engine,
-  "f4ah6o/electron/runtime/embedded" @scheduler,
+  "f4ah6o/electromoon/bridges/embedded-js" @engine,
+  "f4ah6o/electromoon/runtime/embedded" @scheduler,
 }
 
 options(

@@ -6,8 +6,8 @@ const { spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const fixture = path.join(root, 'fixtures/nodeless-dialog-app');
-const binary = path.join(root, '_build/native/debug/build/native/nodeless/nodeless.exe');
-const hostBinary = path.join(root, 'dist/electron-mbt-native-host-main-dialog-cancel-sim');
+const binary = path.join(root, '_build/native/debug/build/cmd/emoon/emoon.exe');
+const hostBinary = path.join(root, 'dist/emoon-host-main-dialog-cancel-sim');
 const reportPath = path.join(root, 'compatibility/reports/nodeless-dialog-ui.json');
 
 function hashFile(file) {
@@ -31,7 +31,7 @@ if (process.platform !== 'darwin') {
   })}\n`);
   process.exit(0);
 }
-const build = spawnSync('moon', ['build', '--target', 'native', 'native/nodeless'], {
+const build = spawnSync('moon', ['build', '--target', 'native', 'cmd/emoon'], {
   cwd: root, encoding: 'utf8', timeout: 180000,
 });
 if (build.status !== 0 || !fs.existsSync(binary)) {
@@ -66,7 +66,7 @@ const run = spawnSync(binary,
     env: {
       ...process.env,
       ELECTRON_MBT_TEST_MODE: '1',
-      ELECTRON_MBT_TEST_NATIVE_HOST: 'dist/electron-mbt-native-host-main-dialog-cancel-sim',
+      ELECTRON_MBT_TEST_NATIVE_HOST: 'dist/emoon-host-main-dialog-cancel-sim',
     },
   });
 const lines = `${run.stdout || ''}\n${run.stderr || ''}`.split('\n')

@@ -18,8 +18,8 @@ const adapted = JSON.parse(fs.readFileSync(
   path.join(root, 'compatibility/apps/moji-v1.0.5/adapted-preload.json'), 'utf8'));
 const adapterPath = path.join(root, adapted.adapter.path);
 const reportPath = path.join(root, 'compatibility/reports/moji-nodeless-edit-save.json');
-const binary = path.join(root, '_build/native/debug/build/native/nodeless/nodeless.exe');
-const hostBinary = path.join(root, 'dist/electron-mbt-native-host');
+const binary = path.join(root, '_build/native/debug/build/cmd/emoon/emoon.exe');
+const hostBinary = path.join(root, 'dist/emoon-host');
 
 const documentRelative = 'documents/note.md';
 const markerA = '\n<!-- electron-mbt-edit -->\n';
@@ -212,7 +212,7 @@ const report = {
 try {
   if (process.platform !== 'darwin' || !fs.existsSync(hostBinary)) {
     report.status = 'NOT_RUN';
-    report.reason = 'the native host is macOS-only or dist/electron-mbt-native-host is missing';
+    report.reason = 'the native host is macOS-only or dist/emoon-host is missing';
     writeReport(report);
     process.exit(0);
   }
@@ -234,7 +234,7 @@ try {
   requireValue(report.adapterSHA256 === adapted.adapter.sha256,
     'adapted page API hash does not match its record');
 
-  const build = spawnSync('moon', ['build', '--target', 'native', 'native/nodeless'], {
+  const build = spawnSync('moon', ['build', '--target', 'native', 'cmd/emoon'], {
     cwd: root, encoding: 'utf8', timeout: 180000,
   });
   requireValue(build.status === 0 && fs.existsSync(binary),

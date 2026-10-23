@@ -1,7 +1,7 @@
 import {
   "moonbitlang/core/encoding/utf8" @utf8,
   "moonbitlang/core/json" @json,
-  "f4ah6o/electron/runtime/modules" @modules,
+  "f4ah6o/electromoon/runtime/modules" @modules,
 }
 
 options(

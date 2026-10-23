@@ -6,6 +6,10 @@
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
+#include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -420,19 +424,48 @@ static int ebt_js_host_request(const char *operation, const char *payload,
 // A CI-only override lets the UI smoke select the auto-cancel host build.
 // Accept only a repository-relative dist/ path under an explicit test mode, so
 // an ordinary app launch cannot point the runtime at an arbitrary executable.
+static char same_directory_host[4096];
+
+static const char *same_directory_host_path(void) {
+  same_directory_host[0] = 0;
+#if defined(__APPLE__)
+  uint32_t size = (uint32_t)sizeof(same_directory_host);
+  if (_NSGetExecutablePath(same_directory_host, &size) != 0) return NULL;
+#elif defined(__linux__)
+  ssize_t length = readlink("/proc/self/exe", same_directory_host,
+                            sizeof(same_directory_host) - 1);
+  if (length <= 0 || (size_t)length >= sizeof(same_directory_host)) return NULL;
+  same_directory_host[length] = 0;
+#else
+  return NULL;
+#endif
+  char *slash = strrchr(same_directory_host, '/');
+  if (slash == NULL) return NULL;
+  *slash = 0;
+  size_t used = strlen(same_directory_host);
+  const char suffix[] = "/emoon-host";
+  if (used + sizeof(suffix) > sizeof(same_directory_host)) return NULL;
+  memcpy(same_directory_host + used, suffix, sizeof(suffix));
+  if (access(same_directory_host, X_OK) != 0) return NULL;
+  return same_directory_host;
+}
+
+// A launch-time override is user-controlled: the app bundle cannot set the
+// environment of the process that spawns the host. The test-only override
+// remains restricted to repository-relative dist/ paths.
 static const char *host_binary_path(void) {
+  const char *explicit = getenv("EMOON_HOST");
+  if (explicit != NULL && explicit[0] != 0 && strlen(explicit) < 4096) return explicit;
   const char *test = getenv("ELECTRON_MBT_TEST_NATIVE_HOST");
   const char *mode = getenv("ELECTRON_MBT_TEST_MODE");
-  if (test == NULL || mode == NULL || strcmp(mode, "1") != 0 ||
-      test[0] == 0 || strlen(test) > 256 ||
-      strncmp(test, "dist/", 5) != 0 || strstr(test, "..") != NULL) {
-#if defined(__linux__)
-    return "dist/electron-mbt-native-host-linux";
-#else
-    return "dist/electron-mbt-native-host";
-#endif
+  if (test != NULL && mode != NULL && strcmp(mode, "1") == 0 &&
+      test[0] != 0 && strlen(test) <= 256 &&
+      strncmp(test, "dist/", 5) == 0 && strstr(test, "..") == NULL) {
+    return test;
   }
-  return test;
+  const char *same = same_directory_host_path();
+  if (same != NULL) return same;
+  return "dist/emoon-host";
 }
 
 int32_t moonbit_ebt_nodeless_host_open(moonbit_bytes_t root_bytes) {

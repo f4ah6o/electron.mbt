@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
-const output = path.join(root, 'dist/electron-mbt-native-host-linux');
+const output = path.join(root, 'dist/emoon-host');
 const sources = [
   path.join(root, 'platform/linux/NativeHost.c'),
   path.join(root, 'platform/linux/control_frame.c'),

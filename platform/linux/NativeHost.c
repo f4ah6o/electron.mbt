@@ -2,7 +2,7 @@
  * Experimental Linux GTK/WebKitGTK host for the Node-less adapted profile.
  *
  * This is a native leaf, not a second policy engine. MoonBit in
- * native/nodeless and runtime/app_runner owns lifecycle, identifiers, limits,
+ * cmd/emoon and runtime/app_runner owns lifecycle, identifiers, limits,
  * grants, document generations and request terminal state. This process owns
  * the actual GTK window, WebKitWebView, snapshot files and the private
  * control/load/event socketpairs. It must never accept renderer-claimed
@@ -2817,6 +2817,10 @@ static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event,
 }
 
 int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+    printf("emoon-host 0.1.0\n");
+    return 0;
+  }
   if (argc != 2 || fcntl(EBT_CONTROL_CHANNEL, F_GETFD) < 0 ||
       fcntl(EBT_LOAD_CHANNEL, F_GETFD) < 0 ||
       fcntl(EBT_EVENT_CHANNEL, F_GETFD) < 0) {

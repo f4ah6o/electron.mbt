@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const sourceRoot = process.env.ELECTRON_MBT_MOJI_ROOT || '/tmp/electron-mbt-apps/moji';
 const sourceMain = path.join(sourceRoot, 'out/main/main.js');
-const hostBinary = path.join(root, 'dist/electron-mbt-native-host-linux');
+const hostBinary = path.join(root, 'dist/emoon-host');
 
 test('the pinned Moji main and real renderer boot on the Linux native host', {
   skip: process.platform !== 'linux' ||

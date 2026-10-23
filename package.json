@@ -1,11 +1,11 @@
 {
-  "name": "electron-mbt",
-  "version": "0.0.1",
-  "private": true,
-  "description": "MoonBit-first Electron runtime feasibility implementation; not a compatible runtime release",
+  "name": "electromoon",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Electron-compatible desktop runtime with a native MoonBit CLI and a maintained Node development CLI; not a compatible runtime release",
   "type": "commonjs",
   "bin": {
-    "electron-mbt": "cmd/electron-mbt.cjs"
+    "emoon": "cmd/emoon.cjs"
   },
   "engines": {
     "node": ">=22.16.0"
@@ -19,7 +19,23 @@
     "test:leaf": "node --test tests/clone.test.cjs tests/loader.test.cjs tests/transport.test.cjs tests/manifest.test.cjs",
     "test:linux-native": "node scripts/build-linux-host.cjs && ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs",
     "test:core": "moon test --target js && moon test --target native && node --test tests/core-integration.test.cjs",
-    "doctor": "node cmd/electron-mbt.cjs doctor fixtures/cjs",
-    "probe:macos": "node scripts/macos-probe.cjs"
-  }
+    "doctor": "node cmd/legacy-node.cjs doctor fixtures/cjs",
+    "probe:macos": "node scripts/macos-probe.cjs",
+    "emoon:node": "node cmd/emoon.cjs"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/f4ah6o/electromoon.git"
+  },
+  "files": [
+    "cmd/emoon.cjs",
+    "scripts/migrate-app.cjs",
+    "scripts/source-manifest.cjs",
+    "scripts/adapted-adapter.cjs",
+    "scripts/app-inventory.cjs",
+    "scripts/dev-flow.cjs",
+    "bridges/node/app-files.cjs",
+    "bridges/node/errors.cjs"
+  ]
 }

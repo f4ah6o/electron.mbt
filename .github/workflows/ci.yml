@@ -123,7 +123,7 @@ jobs:
         shell: bash
         run: node scripts/build-linux-host.cjs 2>&1 | tee evidence/linux-host-build.log
       - name: Build the Node-less runtime
-        run: moon build --target native native/nodeless
+        run: moon build --target native cmd/emoon
       - name: Reject non-canonical control frames
         shell: bash
         run: node --test tests/linux-host-frame.test.cjs 2>&1 | tee evidence/linux-host-frame.log
@@ -161,7 +161,7 @@ jobs:
       - name: Bootstrap and validate the pinned toolchain
         shell: bash
         env:
-          # The Node boundary builds native/nodeless with `moon build`, so this
+          # The Node boundary builds cmd/emoon with `moon build`, so this
           # job needs the toolchain too. The installer resolves platform-specific
           # artifacts, so the linux-x86_64 hashes in the moonbit job do not apply
           # here; these were recorded from the darwin-aarch64 artifact of the

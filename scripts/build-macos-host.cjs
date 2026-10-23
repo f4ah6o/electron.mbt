@@ -32,7 +32,7 @@ const output = path.join(root, 'dist',
   killRealWebKitProcess ? 'electron-mbt-native-host-webkit-kill-test' :
   simulateStaleNavigationCallback ? 'electron-mbt-native-host-stale-navigation-test' :
   simulateMainDialogCancel ? 'electron-mbt-native-host-main-dialog-cancel-sim' :
-  'electron-mbt-native-host');
+  'emoon-host');
 fs.mkdirSync(path.dirname(output), { recursive: true });
 const args = [
   '-fobjc-arc', '-fblocks', '-O2', '-Wall', '-Wextra', '-Werror',

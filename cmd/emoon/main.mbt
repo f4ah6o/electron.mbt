@@ -979,13 +979,108 @@ fn cli_dispatch_results(
 }
 
 ///|
+///|
+fn cli_product_name() -> String { "electromoon" }
+
+///|
+fn cli_command_name() -> String { "emoon" }
+
+///|
+fn cli_product_version() -> String { "0.1.0" }
+
+///|
+fn cli_print_help() -> Unit {
+  println("usage: emoon <run|doctor|version|help> <app-dir> [options]")
+  println("  run      run a prepared app (--window, --entry, --profile, --hold, selftests)")
+  println("  doctor   validate a prepared app without launching it")
+  println("  version  print the machine-readable version")
+  println("  help     print this help")
+  println("The Node reference CLI implements init/inspect/migrate/dev until the native ports land.")
+}
+
+///|
+fn cli_print_version_json() -> Unit {
+  println(
+    Json({
+      "schema": Json(1),
+      "product": Json(cli_product_name()),
+      "cli": Json(cli_command_name()),
+      "impl": Json("native"),
+      "version": Json(cli_product_version()),
+      "engine": Json("quickjs-2026-06-04"),
+      "compatible": Json(false),
+    }).stringify(),
+  )
+}
+
+///|
+fn cli_block(code : String, message : String) -> Unit {
+  println(
+    Json({
+      "schema": Json(1),
+      "product": Json(cli_product_name()),
+      "status": Json("BLOCKED"),
+      "code": Json(code),
+      "message": Json(message),
+      "compatible": Json(false),
+    }).stringify(),
+  )
+  nodeless_exit(2)
+}
+
+///|
+fn cli_not_implemented(command : String) -> Unit {
+  println(
+    Json({
+      "schema": Json(1),
+      "product": Json(cli_product_name()),
+      "command": Json(command),
+      "status": Json("not-implemented"),
+      "code": Json("ELECTRON_MBT_NATIVE_COMMAND_NOT_IMPLEMENTED"),
+      "message": Json("the native CLI does not implement this command yet; use the Node reference CLI (`npx emoon " + command + " ...`)"),
+      "compatible": Json(false),
+    }).stringify(),
+  )
+  nodeless_exit(1)
+}
+
+///|
 fn main {
   let args = @env.args()
-  if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--hold [--hold-seconds <1..3600>] [--hold-close-after-ms <1..60000>]] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest] [--moji-edit-save-selftest] [--moji-reopen-selftest] [--moji-save-failure-selftest]")
-    nodeless_exit(2)
+  if args.length() < 2 {
+    cli_print_help()
+    nodeless_exit(1)
     return
   }
+  let command = args[1]
+  if command == "help" || command == "--help" {
+    cli_print_help()
+    return
+  }
+  if command == "version" {
+    cli_print_version_json()
+    return
+  }
+  if command == "--version" {
+    println(cli_command_name() + " " + cli_product_version())
+    return
+  }
+  if command == "init" || command == "inspect" || command == "migrate" ||
+    command == "dev" {
+    cli_not_implemented(command)
+    return
+  }
+  if command != "run" && command != "doctor" {
+    cli_print_help()
+    nodeless_exit(1)
+    return
+  }
+  if args.length() < 3 {
+    cli_print_help()
+    nodeless_exit(1)
+    return
+  }
+  let doctor_mode = command == "doctor"
   let app_dir_buffer = Bytes::new(4096)
   let app_dir_length = nodeless_realpath(
     @utf8.encode(args[2]),
@@ -1194,6 +1289,30 @@ fn main {
     }
     hashes[path] = hash
   }
+  let empty_package : Map[String, Json] = {}
+  let package_json = match sources.get("package.json") {
+    Some(value) => @json.parse(value) catch { _ => Json(empty_package) }
+    None => Json(empty_package)
+  }
+  let name = match cli_text(package_json, "name") {
+    Some(value) => value
+    None => "nodeless-app"
+  }
+  let version = match cli_text(package_json, "version") {
+    Some(value) => value
+    None => "0.0.0"
+  }
+  let manifest_entry = match cli_text(manifest_json, "entry") {
+    Some(value) => value
+    None => ""
+  }
+  let package_main = match cli_text(package_json, "main") {
+    Some(value) => value
+    None => ""
+  }
+  if module_entry == "" && package_main != "" && package_main != manifest_entry {
+    module_entry = package_main
+  }
   let snapshot = match @app.SourceSnapshot::from_manifest(
     manifest,
     sources,
@@ -1214,25 +1333,84 @@ fn main {
       return
     }
   }
-  let empty_package : Map[String, Json] = {}
-  let package_json = match sources.get("package.json") {
-    Some(value) => @json.parse(value) catch { _ => Json(empty_package) }
-    None => Json(empty_package)
-  }
-  let name = match cli_text(package_json, "name") {
-    Some(value) => value
-    None => "nodeless-app"
-  }
-  let version = match cli_text(package_json, "version") {
-    Some(value) => value
-    None => "0.0.0"
-  }
   let adapted_adapter = match cli_profile_adapter(sources) {
     Ok(value) => value
     Err(message) => {
       cli_fail("ELECTRON_MBT_NODELESS_PROFILE", message)
       return
     }
+  }
+  let mut requested_profile = ""
+  for i = 0; i < args.length(); i = i + 1 {
+    if args[i] == "--profile" && i + 1 < args.length() {
+      requested_profile = args[i + 1]
+    }
+  }
+  if requested_profile != "" {
+    if requested_profile == "electron-nodeless-v1" {
+      cli_block(
+        "ELECTRON_MBT_PROFILE_BLOCKED",
+        "the strict electron-nodeless-v1 profile is blocked",
+      )
+      return
+    }
+    if requested_profile == "desktop-core-v1" ||
+      requested_profile == "moonbit-native-v1" {
+      cli_block(
+        "ELECTRON_MBT_PROFILE_ENGINE_MISMATCH",
+        "the requested profile uses a different engine",
+      )
+      return
+    }
+    if requested_profile != "electron-nodeless-adapted-v1" {
+      cli_block("ELECTRON_MBT_UNKNOWN_PROFILE", "unknown runtime profile")
+      return
+    }
+    if adapted_adapter == "" {
+      cli_fail(
+        "ELECTRON_MBT_NODELESS_PROFILE",
+        "electron-nodeless-adapted-v1 requires nodeless-app.json",
+      )
+      return
+    }
+  }
+  if doctor_mode {
+    let manifest_hash = match cli_sha256(app_dir, "source-manifest.json") {
+      Some(value) => value
+      None => ""
+    }
+    let adapted_json = if adapted_adapter != "" {
+      Json({ "adapter": Json(adapted_adapter) })
+    } else {
+      Json(null)
+    }
+    println(
+      Json({
+        "schema": Json(1),
+        "product": Json(cli_product_name()),
+        "version": Json(cli_product_version()),
+        "command": Json("doctor"),
+        "status": Json("ready"),
+        "compatible": Json(false),
+        "engine": Json("quickjs-2026-06-04"),
+        "profile": if adapted_adapter != "" {
+          Json("electron-nodeless-adapted-v1")
+        } else {
+          Json(null)
+        },
+        "source": Json({
+          "manifest": Json("source-manifest.json"),
+          "manifestSha256": Json(manifest_hash),
+          "entry": Json(snapshot.entry),
+          "files": Json(snapshot.files.length()),
+          "app": Json({ "name": Json(name), "version": Json(version) }),
+        }),
+        "adapted": adapted_json,
+        "blockers": Json([]),
+        "note": Json("static admission only; no window, engine execution, or compatibility result"),
+      }).stringify(),
+    )
+    return
   }
   let mut user_file_read_path = ""
   let mut user_file_write_path = ""

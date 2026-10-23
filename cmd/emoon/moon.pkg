@@ -1,7 +1,7 @@
 supported_targets = "native"
 
 import {
-  "f4ah6o/electron/runtime/app_runner" @app,
+  "f4ah6o/electromoon/runtime/app_runner" @app,
   "moonbitlang/core/encoding/utf8" @utf8,
   "moonbitlang/core/env" @env,
   "moonbitlang/core/json" @json,

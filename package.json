@@ -18,6 +18,7 @@
     "test": "node --test --test-concurrency=1 tests/*.test.cjs tests/apps/*.test.cjs",
     "test:leaf": "node --test tests/clone.test.cjs tests/loader.test.cjs tests/transport.test.cjs tests/manifest.test.cjs",
     "test:linux-native": "node scripts/build-linux-host.cjs && ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test tests/nodeless-runtime.test.cjs",
+    "test:emoon-native": "moon build --target native cmd/emoon && node --test tests/emoon-cli-parity.test.cjs",
     "test:core": "moon test --target js && moon test --target native && node --test tests/core-integration.test.cjs",
     "doctor": "node cmd/legacy-node.cjs doctor fixtures/cjs",
     "probe:macos": "node scripts/macos-probe.cjs",

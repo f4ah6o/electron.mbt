@@ -990,12 +990,15 @@ fn cli_product_version() -> String { "0.1.0" }
 
 ///|
 fn cli_print_help() -> Unit {
-  println("usage: emoon <run|doctor|version|help> <app-dir> [options]")
+  println("usage: emoon <init|inspect|migrate|dev|run|doctor|version|help> [app-dir] [options]")
+  println("  init     write .emoon/config.json for an Electron app")
+  println("  inspect  report the app tier and blockers without writing a stage")
+  println("  migrate  stage the app under .emoon/app and write the migration report")
+  println("  dev      init/inspect/migrate, validate with doctor, then run --window")
   println("  run      run a prepared app (--window, --entry, --profile, --hold, selftests)")
   println("  doctor   validate a prepared app without launching it")
   println("  version  print the machine-readable version")
   println("  help     print this help")
-  println("The Node reference CLI implements init/inspect/migrate/dev until the native ports land.")
 }
 
 ///|
@@ -1029,24 +1032,8 @@ fn cli_block(code : String, message : String) -> Unit {
 }
 
 ///|
-fn cli_not_implemented(command : String) -> Unit {
-  println(
-    Json({
-      "schema": Json(1),
-      "product": Json(cli_product_name()),
-      "command": Json(command),
-      "status": Json("not-implemented"),
-      "code": Json("ELECTRON_MBT_NATIVE_COMMAND_NOT_IMPLEMENTED"),
-      "message": Json("the native CLI does not implement this command yet; use the Node reference CLI (`npx emoon " + command + " ...`)"),
-      "compatible": Json(false),
-    }).stringify(),
-  )
-  nodeless_exit(1)
-}
-
 ///|
-fn main {
-  let args = @env.args()
+fn cli_main(args : Array[String]) -> Unit {
   if args.length() < 2 {
     cli_print_help()
     nodeless_exit(1)
@@ -1065,9 +1052,71 @@ fn main {
     println(cli_command_name() + " " + cli_product_version())
     return
   }
-  if command == "init" || command == "inspect" || command == "migrate" ||
-    command == "dev" {
-    cli_not_implemented(command)
+  if command == "init" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    let parsed = match @cli.parse_args(raw) {
+      Ok(value) => value
+      Err(error) => {
+        command_error(error)
+        return
+      }
+    }
+    let root = command_app_dir(parsed.app_dir)
+    command_init_with_args(root, parsed)
+    return
+  }
+  if command == "inspect" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    let parsed = match @cli.parse_args(raw) {
+      Ok(value) => value
+      Err(error) => {
+        command_error(error)
+        return
+      }
+    }
+    let root = command_app_dir(parsed.app_dir)
+    let code = command_inspect_with_args(root, parsed)
+    nodeless_exit(code)
+    return
+  }
+  if command == "migrate" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    let parsed = match @cli.parse_args(raw) {
+      Ok(value) => value
+      Err(error) => {
+        command_error(error)
+        return
+      }
+    }
+    let root = command_app_dir(parsed.app_dir)
+    let code = command_migrate_with_args(root, parsed)
+    nodeless_exit(code)
+    return
+  }
+  if command == "dev" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    let parsed = match @cli.parse_args(raw) {
+      Ok(value) => value
+      Err(error) => {
+        command_error(error)
+        return
+      }
+    }
+    let root = command_app_dir(parsed.app_dir)
+    let code = command_dev_with_args(root, parsed)
+    nodeless_exit(code)
     return
   }
   if command != "run" && command != "doctor" {
@@ -2276,4 +2325,9 @@ fn main {
   if !ok || live != 0 {
     nodeless_exit(1)
   }
+}
+
+///|
+fn main {
+  cli_main(@env.args())
 }

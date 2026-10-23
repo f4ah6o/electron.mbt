@@ -118,6 +118,11 @@ function parseDev(argv) {
 function dev(argv) {
   const options = parseDev(argv);
   options.appDir = require('node:fs').realpathSync(options.appDir);
+  if (options.config && path.isAbsolute(options.config)) {
+    const error = new Error('--config must be app-relative');
+    error.code = 'ELECTRON_MBT_PATH_ESCAPE';
+    throw error;
+  }
   const configFile = options.config ? path.resolve(options.appDir, options.config) : path.join(options.appDir, '.emoon/config.json');
   const args = migrateArgs(options);
   if (!fs.existsSync(configFile)) {

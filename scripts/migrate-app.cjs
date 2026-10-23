@@ -25,18 +25,28 @@ function codeError(code, message) {
 }
 function fail(code, message) { throw codeError(code, message); }
 function sha256(data) { return crypto.createHash('sha256').update(data).digest('hex'); }
-function readJson(file) {
+function readJson(file, limit = 16 * 1024 * 1024) {
   let text;
-  try { text = fs.readFileSync(file, 'utf8'); }
-  catch (error) { fail('ELECTRON_MBT_MIGRATE_IO', `cannot read ${file}: ${error.message}`); }
+  try {
+    const info = fs.lstatSync(file);
+    if (info.isSymbolicLink()) fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${file}`);
+    if (!info.isFile()) fail('ELECTRON_MBT_MIGRATE_IO', `not a regular file: ${file}`);
+    if (info.size > limit) fail('ELECTRON_MBT_MIGRATE_LIMIT', `file exceeds its read limit: ${file}`);
+    text = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error && error.code && String(error.code).startsWith('ELECTRON_MBT_')) throw error;
+    fail('ELECTRON_MBT_MIGRATE_IO', `cannot read ${file}: ${error.message}`);
+  }
   try { return JSON.parse(text); }
   catch { fail('ELECTRON_MBT_MIGRATE_JSON', `invalid JSON: ${file}`); }
 }
 function writeJsonAtomic(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
-  fs.renameSync(temporary, file);
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const temporary = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
+    fs.renameSync(temporary, file);
+  } catch (error) { fail('ELECTRON_MBT_MIGRATE_IO', `cannot write ${file}: ${error.message}`); }
 }
 function parseArgs(argv) {
   const result = { appDir: '.', positional: [], include: [] };
@@ -72,13 +82,16 @@ function resolveInside(root, relative, label) {
   return resolved;
 }
 function packageOf(appDir) {
-  const root = fs.realpathSync(appDir);
+  let root;
+  try { root = fs.realpathSync(appDir); }
+  catch { fail('ELECTRON_MBT_INVALID_APP', 'cannot resolve the app directory'); }
   if (!fs.statSync(root).isDirectory()) fail('ELECTRON_MBT_INVALID_APP', 'app root must be a directory');
-  const pkg = readJson(path.join(root, 'package.json'));
+  const pkg = readJson(path.join(root, 'package.json'), 65536);
   if (typeof pkg.main !== 'string' || pkg.main.length === 0 || path.isAbsolute(pkg.main)) {
     fail('ELECTRON_MBT_INVALID_APP', 'package.json main must be an app-relative path');
   }
-  return { root, pkg, main: pkg.main.split(path.sep).join('/') };
+  const main = normalizeRelative(pkg.main, 'main');
+  return { root, pkg, main };
 }
 function detectRenderer(root) {
   for (const candidate of RENDERER_CANDIDATES) {
@@ -91,7 +104,11 @@ function stagePath(root, config, options) {
   return path.resolve(root, options.out || path.join(config.workspace, 'app'));
 }
 function configPath(root, options) {
-  return options.config ? path.resolve(root, options.config) : path.join(root, WORKSPACE, 'config.json');
+  if (!options.config) return path.join(root, WORKSPACE, 'config.json');
+  if (path.isAbsolute(options.config)) fail('ELECTRON_MBT_PATH_ESCAPE', '--config must be app-relative');
+  const resolved = path.resolve(root, normalizeRelative(options.config, 'config'));
+  if (!inside(root, resolved)) fail('ELECTRON_MBT_PATH_ESCAPE', '--config escapes the app root');
+  return resolved;
 }
 function loadConfig(root, options) {
   const file = configPath(root, options);
@@ -133,6 +150,21 @@ function ensureNotSymlink(file) {
   if (info.isSymbolicLink()) fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${file}`);
   return info;
 }
+function statConfig(file, label) {
+  let info;
+  try { info = fs.lstatSync(file); }
+  catch { fail('ELECTRON_MBT_MIGRATE_CONFIG', `${label} does not exist: ${file}`); }
+  if (info.isSymbolicLink()) fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${file}`);
+  return info;
+}
+function isSkippedPath(relative) {
+  const parts = relative.split('/');
+  if (parts.includes('.git') || parts.includes('.emoon')) return true;
+  for (let index = 0; index + 1 < parts.length; index += 1) {
+    if (parts[index] === 'node_modules' && parts[index + 1] === '.cache') return true;
+  }
+  return false;
+}
 function collectTree(root, relative, out, limitState) {
   const absolute = resolveInside(root, relative, relative);
   const info = ensureNotSymlink(absolute);
@@ -147,8 +179,9 @@ function collectTree(root, relative, out, limitState) {
   }
   if (!info.isDirectory()) fail('ELECTRON_MBT_MIGRATE_TYPE', `not a regular file or directory: ${relative}`);
   for (const name of fs.readdirSync(absolute).sort()) {
-    if (name === '.git' || name === '.emoon' || name === 'node_modules/.cache') continue;
-    collectTree(root, `${relative}/${name}`, out, limitState);
+    const child = `${relative}/${name}`;
+    if (isSkippedPath(child)) continue;
+    collectTree(root, child, out, limitState);
   }
 }
 function collectFiles(root, config, options) {
@@ -176,6 +209,9 @@ function collectFiles(root, config, options) {
 }
 function inspectReport(root, pkg, config, options) {
   const app = inspectApp(root);
+  if (app.inventory.links.length > 0) {
+    fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${app.inventory.links[0].path}`);
+  }
   const stageRelative = path.relative(root, stagePath(root, config, options)).split(path.sep).join('/');
   const inventory = {
     ...app.inventory,
@@ -240,20 +276,23 @@ function cliInit(argv) {
   const renderer = options.renderer ? normalizeRelative(options.renderer, 'renderer') : detectRenderer(root);
   if (!renderer) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'could not detect a renderer directory; pass --renderer <dir>');
   const mainPath = resolveInside(root, main, 'main');
-  const mainInfo = ensureNotSymlink(mainPath);
+  const mainInfo = statConfig(mainPath, 'main');
   if (!mainInfo.isFile() || mainInfo.size <= 0) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'main must be a non-empty regular file');
   const rendererPath = resolveInside(root, renderer, 'renderer');
-  if (!fs.statSync(rendererPath).isDirectory()) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'renderer must be a directory');
+  if (!statConfig(rendererPath, 'renderer').isDirectory()) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'renderer must be a directory');
   const page = options.page ? normalizeRelative(options.page, 'page') : `${renderer}/index.html`;
   const pagePath = resolveInside(root, page, 'page');
-  const pageInfo = ensureNotSymlink(pagePath);
+  const pageInfo = statConfig(pagePath, 'page');
   if (!pageInfo.isFile() || pageInfo.size <= 0) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'page must be a non-empty regular file');
   const include = (options.include || []).map(value => normalizeRelative(value, 'include'));
-  for (const item of include) ensureNotSymlink(resolveInside(root, item, 'include'));
+  for (const item of include) statConfig(resolveInside(root, item, 'include'), 'include');
   const api = options.api ? normalizeRelative(options.api, 'api') : null;
   if (api && !fs.existsSync(resolveInside(root, api, 'api'))) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'api manifest does not exist');
   const file = configPath(root, options);
-  if (fs.existsSync(file) && !options.force) fail('ELECTRON_MBT_MIGRATE_EXISTS', '.emoon/config.json already exists; pass --force to replace it');
+  let configInfo = null;
+  try { configInfo = fs.lstatSync(file); } catch { configInfo = null; }
+  if (configInfo && configInfo.isSymbolicLink()) fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${file}`);
+  if (configInfo && !options.force) fail('ELECTRON_MBT_MIGRATE_EXISTS', '.emoon/config.json already exists; pass --force to replace it');
   const config = { schema: 1, main, renderer, page, include, api };
   writeJsonAtomic(file, config);
   const gitignore = path.join(path.dirname(file), '.gitignore');
@@ -287,9 +326,11 @@ function copyFile(root, relative, stage) {
   if (!info.isFile() || info.size <= 0) return null;
   if (info.size > LIMITS.fileBytes) fail('ELECTRON_MBT_MIGRATE_LIMIT', `file exceeds 16 MiB: ${relative}`);
   const destination = resolveInside(stage, relative, relative);
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.copyFileSync(source, destination);
-  fs.chmodSync(destination, info.mode & 0o777);
+  try {
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(source, destination);
+    fs.chmodSync(destination, info.mode & 0o777);
+  } catch (error) { fail('ELECTRON_MBT_MIGRATE_IO', `cannot stage ${relative}: ${error.message}`); }
   return { path: relative, sha256: sha256(fs.readFileSync(destination)), bytes: info.size };
 }
 function dataPresent(stage) {
@@ -307,9 +348,11 @@ function prepareStage(root, config, options) {
     if (info.isSymbolicLink()) fail('ELECTRON_MBT_MIGRATE_SYMLINK', 'stage is a symlink');
     if (!options.force) fail('ELECTRON_MBT_MIGRATE_EXISTS', 'stage already exists; pass --force to replace it');
     if (dataPresent(stage) && !options['reset-data']) fail('ELECTRON_MBT_MIGRATE_DATA_PRESENT', 'stage contains app data; pass --reset-data to delete it');
-    fs.rmSync(stage, { recursive: true, force: true });
+    try { fs.rmSync(stage, { recursive: true, force: true }); }
+    catch (error) { fail('ELECTRON_MBT_MIGRATE_IO', `cannot remove the existing stage: ${error.message}`); }
   }
-  fs.mkdirSync(stage, { recursive: true });
+  try { fs.mkdirSync(stage, { recursive: true }); }
+  catch (error) { fail('ELECTRON_MBT_MIGRATE_IO', `cannot create the stage: ${error.message}`); }
   return stage;
 }
 function cliMigrate(argv) {

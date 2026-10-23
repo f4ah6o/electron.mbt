@@ -187,6 +187,26 @@ test('native inspect and migrate fail closed for a native addon and an ESM main'
   } finally { cleanup(app); }
 });
 
+test('native inspect lists empty files and migrate skips them like the reference', () => {
+  const app = pair();
+  try {
+    assert.equal(runNative(['init', app.native], app.native).result.status, 0);
+    assert.equal(runNode(['init', app.node], app.node).result.status, 0);
+    for (const target of [app.native, app.node]) {
+      fs.writeFileSync(path.join(target, 'out/renderer/empty.js'), '');
+    }
+    const inspectNative = runNative(['inspect', app.native], app.native);
+    const inspectNode = runNode(['inspect', app.node], app.node);
+    compareReports(inspectNative, inspectNode, app, 'inspect empty file');
+    assert.equal(inspectNative.report.observations.scan.scannedFiles, 4);
+    const migrateNative = runNative(['migrate', app.native], app.native);
+    const migrateNode = runNode(['migrate', app.node], app.node);
+    compareReports(migrateNative, migrateNode, app, 'migrate empty file');
+    assert.deepEqual(tree(path.join(app.native, '.emoon/app')), tree(path.join(app.node, '.emoon/app')));
+    assert.equal(fs.existsSync(path.join(app.native, '.emoon/app/out/renderer/empty.js')), false);
+  } finally { cleanup(app); }
+});
+
 test('native migrate stages a byte-identical plain tree', () => {
   const app = pair();
   try {

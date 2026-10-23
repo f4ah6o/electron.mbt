@@ -256,7 +256,7 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - The builtin classification table now covers the Node 24.21/24.22
   `builtinModules` set (unsupported entries stay unsupported). The native and
   Node scanner outputs match on the parity fixtures and corpus forms.
-- Linux parity (`tests/emoon-cli-parity.test.cjs`): 12 PASS. Stage trees,
+- Linux parity (`tests/emoon-cli-parity.test.cjs`): 13 PASS. Stage trees,
   file modes, `source-manifest.json`, `nodeless-app.json` and
   `adapted/page-api.js` are byte-identical on the fixtures; reports differ only
   in `tool.impl` and the absolute `appDir`. The adapted native `dev` window
@@ -266,14 +266,14 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   - `moon test --target js`: **163 PASS / 0 FAIL**.
   - `moon test --target native`: **196 PASS / 0 FAIL**.
   - `node --test tests/emoon-cli.test.cjs`: **10 PASS / 0 FAIL**.
-  - `node --test tests/emoon-cli-parity.test.cjs`: **12 PASS / 0 FAIL** (the
+  - `node --test tests/emoon-cli-parity.test.cjs`: **13 PASS / 0 FAIL** (the
     window E2E was included).
   - `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test
     tests/nodeless-runtime.test.cjs`: **22 PASS / 0 FAIL / 21 SKIP**. The real
     16-second chooser test is skipped locally (it needs
     `ELECTRON_MBT_ISOLATED_DISPLAY=1`); the unmapped control-hold test passes in
     17.77 s.
-  - `npm test`: **525 tests / 492 PASS / 0 FAIL / 33 SKIP**.
+  - `npm test`: **526 tests / 493 PASS / 0 FAIL / 33 SKIP**.
 - Not run: macOS native execution of the developer commands, `moon publish`,
   GitHub Release creation, `moon binstall`, `npm publish`, signing/notarization,
   human dialog UI and a clean-machine install. No compatibility row is promoted.

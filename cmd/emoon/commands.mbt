@@ -400,6 +400,7 @@ fn command_walk(
   depth : Int,
   limits : WalkLimits,
   skip_entries : Bool,
+  skip_empty : Bool,
   state : WalkState,
 ) -> Result[Unit, @cli.CliError] {
   state.entries = state.entries + 1
@@ -432,7 +433,7 @@ fn command_walk(
         continue
       }
       let child = if relative == "" { name } else { relative + "/" + name }
-      match command_walk(root, child, depth + 1, limits, skip_entries, state) {
+      match command_walk(root, child, depth + 1, limits, skip_entries, skip_empty, state) {
         Ok(_) => ()
         Err(error) => return Err(error)
       }
@@ -448,6 +449,13 @@ fn command_walk(
       ))
     }
     if size == 0 {
+      if skip_empty {
+        return Ok(())
+      }
+      state.files.push((relative, 0))
+      if state.files.length() > limits.files {
+        return Err(command_limit_error("app tree exceeds the file limit"))
+      }
       return Ok(())
     }
     if size > limits.file_bytes {
@@ -869,7 +877,7 @@ fn command_inspect_input(
     entries: 16384,
     depth: 64,
   }
-  match command_walk(root, "", 0, limits, false, state) {
+  match command_walk(root, "", 0, limits, false, false, state) {
     Ok(_) => ()
     Err(error) => command_error(error)
   }
@@ -1069,7 +1077,7 @@ fn command_collect_files(
     Err(error) => return Err(error)
   }
   let before = state.files.length()
-  match command_walk(root, config.renderer, 0, limits, true, state) {
+  match command_walk(root, config.renderer, 0, limits, true, true, state) {
     Ok(_) => ()
     Err(error) => return Err(error)
   }
@@ -1094,7 +1102,7 @@ fn command_collect_files(
       ))
     }
     let start = state.files.length()
-    match command_walk(root, include, 0, limits, true, state) {
+    match command_walk(root, include, 0, limits, true, true, state) {
     Ok(_) => ()
     Err(error) => return Err(error)
   }

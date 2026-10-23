@@ -183,3 +183,33 @@ On this integration SHA (macOS arm64 / SDK 26.5), the following were executed an
 ## Delegation status
 
 Implementation delegation through the GitHub Codex integration was attempted on PR #1. The bot replied that a repository environment must first be created, so no delegated implementation execution was confirmed. The implementation was written by the coordinating agent. Independent code review is requested on the implementation PR and its actual response belongs in the PR record; an implementation-environment error is not a review result.
+
+## Electromoon rename and dual CLI (2026-10-23)
+
+- Renamed the MoonBit module target to `f4ah6o/electromoon`, moved the native
+  CLI package from `native/nodeless` to `cmd/emoon`, and renamed the legacy Node
+  CLI to `cmd/legacy-node.cjs`. The GitHub repository rename is still an owner
+  action; the README states that it is pending.
+- Added the Node reference CLI `cmd/emoon.cjs` with `init`, `inspect`, `migrate`
+  and `dev`. `doctor` and `run` delegate to a resolved native runtime; the Node
+  CLI never reimplements the runtime. The shared workspace is `.emoon/` and the
+  migration report is `.emoon/migration-report.json` with `compatible:false`.
+- Added the native `emoon` `help`, `version`, `doctor` and `--profile` admission
+  paths while preserving the existing `run` behavior. `doctor` validates the
+  manifest, hashes, graph, profile and adapter without launching the app. The
+  native `init`/`inspect`/`migrate`/`dev` ports are not implemented yet.
+- Added `scripts/migrate-app.cjs`, `scripts/dev-flow.cjs`,
+  `scripts/build-cli.cjs`, `moon-binstall.json`, the MIT `LICENSE`, `SECURITY.md`
+  and docs 0060–0063. `moon-binstall.json` maps `cmd/emoon` and `cmd/emoon-host`
+  to release assets, but no GitHub Release or Mooncakes publication exists.
+- Verification on this Linux host: `moon test --target js` 145 PASS;
+  `moon test --target native` 178 PASS; the new `tests/emoon-cli.test.cjs` 10
+  PASS; `npm test` 479 PASS / 1 FAIL / 32 SKIP. The failure is the Linux
+  slow-dialog timing test (`open dialog survives beyond the ordinary 15-second
+  control timeout`), which passed on an isolated manual rerun at 17.9 s with the
+  selected file updated; the suite run recorded a shorter duration. The native
+  adapted fixture and the Node `emoon dev` flow reach `status:"PASS"` with
+  `pageTitle:"migrate-fixture-ready"` and `compatible:false`.
+- Not run: `moon publish`, GitHub Release creation, `moon binstall`,
+  `npm publish`, macOS native execution/signing, and clean-machine install.
+  No compatibility row is promoted.

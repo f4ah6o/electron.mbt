@@ -2216,6 +2216,26 @@ static gboolean dialog_auto_accept(gpointer data) {
   return G_SOURCE_REMOVE;
 }
 
+/* Test-only control-thread hold for the dialog-wait regression. A real modal
+ * chooser on an interactive desktop takes focus, and the next Enter or click
+ * from the person at the machine accepts it long before the requested delay.
+ * This hold keeps the open-dialog request pending for a bounded interval so the
+ * control thread's dialog-specific wait can be exercised without mapping any
+ * window. It is gated on ELECTRON_MBT_TEST_MODE=1, a valid AUTOSELECT target and
+ * an explicit env var; production dialogs and the normal dialog tests still use
+ * the real GTK chooser. */
+static guint dialog_test_hold_ms(void) {
+  const char *mode = getenv("ELECTRON_MBT_TEST_MODE");
+  const char *selected = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  const char *hold = getenv("ELECTRON_MBT_LINUX_DIALOG_HOLD_MS");
+  if (mode == NULL || strcmp(mode, "1") != 0 ||
+      selected == NULL || selected[0] == 0 ||
+      hold == NULL || hold[0] == 0) return 0;
+  long parsed = strtol(hold, NULL, 10);
+  if (parsed < 1 || parsed > 60000) return 0;
+  return (guint)parsed;
+}
+
 static void install_dialog_auto_response(GtkWidget *dialog, gboolean save) {
   const char *test_mode = getenv("ELECTRON_MBT_TEST_MODE");
   const char *selected = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
@@ -2267,6 +2287,28 @@ static void handle_main_open_dialog(Host *host, Request *request,
     g_free(title);
     g_free(button);
     request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  guint hold_ms = dialog_test_hold_ms();
+  if (hold_ms > 0) {
+    const char *held = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+    ebt_debug("main-open-dialog test-hold ms=%u\n", hold_ms);
+    g_usleep((gulong)hold_ms * 1000);
+    GPtrArray *held_paths = g_ptr_array_new_with_free_func(g_free);
+    char *canonical = held == NULL ? NULL : realpath(held, NULL);
+    if (canonical != NULL) {
+      grant_file(host, canonical, EBT_GRANT_READ | EBT_GRANT_WRITE);
+      g_ptr_array_add(held_paths, canonical);
+    }
+    g_free(default_path);
+    g_free(title);
+    g_free(button);
+    if (held_paths->len == 0) {
+      reply_open_dialog(host, request, TRUE, NULL);
+    } else {
+      reply_open_dialog(host, request, FALSE, held_paths);
+    }
+    g_ptr_array_free(held_paths, TRUE);
     return;
   }
   GtkWindow *parent = NULL;

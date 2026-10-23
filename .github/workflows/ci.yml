@@ -131,6 +131,7 @@ jobs:
         shell: bash
         env:
           ELECTRON_MBT_REQUIRE_NATIVE_HOST: '1'
+          ELECTRON_MBT_ISOLATED_DISPLAY: '1'
           WEBKIT_DISABLE_COMPOSITING_MODE: '1'
           LIBGL_ALWAYS_SOFTWARE: '1'
           GDK_BACKEND: 'x11'

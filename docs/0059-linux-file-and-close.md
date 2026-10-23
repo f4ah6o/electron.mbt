@@ -133,8 +133,16 @@ New Linux-only tests:
 4. `a native window close exits the explicit hold cleanly` — `gtk_window_close`
    through the test-only control, `HOLD_EXIT reason:"window-closed"`.
 5. `Linux main open dialog survives beyond the ordinary 15-second control
-   timeout` — a 16-second auto-selected chooser still completes.
-6. Existing hold/five shared fixture tests remain PASS.
+   timeout` — a 16-second auto-selected real chooser still completes. This runs
+   only under an isolated display (`ELECTRON_MBT_ISOLATED_DISPLAY=1`, set by the
+   CI `linux-native` job's Xvfb session); on an interactive desktop the modal
+   chooser takes focus and the next Enter or click can accept it early.
+6. `Linux main open dialog request survives beyond the ordinary 15-second
+   control timeout without a mapped chooser` — a test-only control hold keeps
+   the open-dialog request pending for 16 seconds with no GTK chooser. It
+   exercises the host's dialog-specific wait on every Linux run, including
+   interactive desktops, without stealing focus.
+7. Existing hold/five shared fixture tests remain PASS.
 
 The pinned Moji boot report is `compatible:false`; the Moji main/renderer still
 boot with `mainError:""`. The CI run above covers the fs/open/save/close tests;
@@ -154,8 +162,9 @@ produced the first real human Open/Save evidence:
 - The reopened document selected `_build/Untitled.md`; the user reported that it
   opened.
 - The chooser stayed open beyond the old 15-second host bound. The host now uses
-  the same 3600-second bound as the client, and the 16-second regression test
-  covers that path.
+  the same 3600-second bound as the client, and the paired 16-second regression
+  tests (real chooser under Xvfb; unmapped control hold on interactive
+  displays) cover that path.
 - The host exited normally (`status=0`, `reason=control_thread_main`); there was
   no SIGPIPE, `_exit(2)`, or host-loss in this session.
 

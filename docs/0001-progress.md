@@ -213,3 +213,24 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - Not run: `moon publish`, GitHub Release creation, `moon binstall`,
   `npm publish`, macOS native execution/signing, and clean-machine install.
   No compatibility row is promoted.
+
+## Dialog timeout test isolation (2026-10-23)
+
+- Root cause of the local slow-dialog failure: the X display used for development
+  (`:10.0`) is an interactive xrdp/xfce session. The modal GTK chooser takes
+  focus, and the next Enter or click from the person at the machine accepts it
+  before the 16-second delay. This is test-environment isolation, not a host
+  timeout regression; the same test is stable under CI's Xvfb display.
+- The regression is now split. The real 16-second chooser test runs only when
+  `ELECTRON_MBT_ISOLATED_DISPLAY=1` is set (the CI `linux-native` job does this
+  inside Xvfb). A new test-only `ELECTRON_MBT_LINUX_DIALOG_HOLD_MS` path keeps
+  the open-dialog request pending for 16 seconds without mapping a chooser, so
+  the host's dialog-specific wait is also exercised on interactive desktops
+  without stealing focus. The hold is gated on `ELECTRON_MBT_TEST_MODE=1`, a
+  valid `AUTOSELECT` target and the explicit hold variable; production dialogs
+  still use the real GTK chooser.
+- Local `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test
+  tests/nodeless-runtime.test.cjs`: 22 PASS / 0 FAIL / 21 SKIP. The real-chooser
+  test SKIPs locally, the new hold test PASSes in 17.8 s, and the open/save
+  dialog tests PASS. The full `npm test` result is recorded with the native CLI
+  work so the counts are not split across two runs.

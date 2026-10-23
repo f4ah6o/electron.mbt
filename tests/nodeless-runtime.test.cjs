@@ -787,7 +787,13 @@ test('Linux main write falls back when the parent directory is read-only', {
 });
 
 test('Linux main open dialog survives beyond the ordinary 15-second control timeout', {
-  skip: process.platform !== 'linux' || !nativeHostAvailable,
+  // A real modal chooser takes focus on an interactive desktop, and the next
+  // Enter or click from the person at the machine accepts it early. CI's
+  // linux-native job runs this under Xvfb with ELECTRON_MBT_ISOLATED_DISPLAY=1.
+  // The companion control-hold test below covers the same host bound on an
+  // interactive desktop without mapping a chooser.
+  skip: process.platform !== 'linux' || !nativeHostAvailable ||
+    process.env.ELECTRON_MBT_ISOLATED_DISPLAY !== '1',
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-linux-dialog-app');
@@ -810,6 +816,41 @@ test('Linux main open dialog survives beyond the ordinary 15-second control time
     assert.equal(report.status, 'PASS');
     assert.equal(report.mainError, '');
     assert.ok(elapsed >= 15000, `dialog test finished too early: ${elapsed}ms`);
+    assert.equal(fs.readFileSync(selected, 'utf8'), 'dialog-updated\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('Linux main open dialog request survives beyond the ordinary 15-second control timeout without a mapped chooser', {
+  skip: process.platform !== 'linux' || !nativeHostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-linux-dialog-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-hold-dialog-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-hold-dialog-out-'));
+  const selected = path.join(outside, 'selected.md');
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    fs.writeFileSync(selected, 'dialog-selected\n');
+    const started = Date.now();
+    const { result, report } = run(binary, dir,
+      ['--window', '--entry', 'src/main.js'], {
+        ELECTRON_MBT_TEST_MODE: '1',
+        ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT: selected,
+        // Test-only: hold the open-dialog request pending for 16 seconds with
+        // no GTK chooser. If the host still used the ordinary 15-second control
+        // wait for dialogs it would _exit(2) before the hold completes. The
+        // mapped-chooser variant above runs in CI's isolated Xvfb session.
+        ELECTRON_MBT_LINUX_DIALOG_HOLD_MS: '16000',
+      });
+    const elapsed = Date.now() - started;
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.mainError, '');
+    assert.ok(elapsed >= 15000, `dialog hold finished too early: ${elapsed}ms`);
     assert.equal(fs.readFileSync(selected, 'utf8'), 'dialog-updated\n');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

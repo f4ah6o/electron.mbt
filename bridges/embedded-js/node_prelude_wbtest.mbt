@@ -140,6 +140,8 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
       "const electron = require('electron');\n" +
       "electron.protocol.registerSchemesAsPrivileged([{ scheme: 'protocol-test' }]);\n" +
       "electron.protocol.handle('protocol-test', function () {});\n" +
+      "electron.ipcMain.on('listener-test', function (_event, value) { globalThis.__listenerValue = value; });\n" +
+      "const listenerReply = JSON.parse(globalThis.__mbt_dispatch('listener-test', JSON.stringify({ args: [7] })));\n" +
       "const readReply = JSON.parse(globalThis.__mbt_dispatch('emoon:read-file', JSON.stringify({ args: ['/missing'] })));\n" +
       "let renameCode = ''; try { fs.renameSync('/a', '/b'); } catch (error) { renameCode = error.code; }\n" +
       "let unlinkCode = ''; try { fs.unlinkSync('/a'); } catch (error) { unlinkCode = error.code; }\n" +
@@ -159,7 +161,8 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
       "  globalPerformance: typeof performance.now(),\n" +
       "  protocolHandled: electron.protocol.isProtocolHandled('protocol-test'),\n" +
       "  readCode: readReply.code, renameCode: renameCode, unlinkCode: unlinkCode,\n" +
-      "  aborted: controller.signal.aborted, abortEvents: abortEvents };\n",
+      "  aborted: controller.signal.aborted, abortEvents: abortEvents,\n" +
+      "  listenerOk: listenerReply.ok === true && globalThis.__listenerValue === 7 };\n",
       {},
       false,
     ),
@@ -181,6 +184,7 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
   assert_true(result.exports.contains("\"unlinkCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
   assert_true(result.exports.contains("\"aborted\":true"))
   assert_true(result.exports.contains("\"abortEvents\":1"))
+  assert_true(result.exports.contains("\"listenerOk\":true"))
   context.destroy()
   engine.destroy()
 }

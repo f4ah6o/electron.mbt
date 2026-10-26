@@ -475,3 +475,20 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   `update:get-state`, macOS native and publication items. No compatibility
   claim. See [docs/0069](0069-adapted-sender-events.md) and
   [docs/0070](0070-main-fs-directories.md).
+
+## Moji 1.0.7 drafts and settings UI (round 4)
+
+- Verified draft autosave: `drafts:save` → `main-write-file` → `main-rename`
+  created `.appData/<app>/drafts/manifest.json` and a `.md` draft; the next
+  launch restored the Untitled document.
+- Verified the Settings panel (General/Preview/Editor/Shortcuts) and the
+  persisted recent-file welcome screen.
+- Verified the Export dialog UI (PDF/HTML/PNG, page size, orientation); the
+  export pipeline itself still requires a hidden export BrowserWindow and
+  `webContents.printToPDF`.
+- Added a native regression assertion that `ipcMain.on` (send-style) listeners
+  are dispatched alongside `ipcMain.handle`.
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**; 1.0.5 adapted hold remains PASS. Remaining: export/PDF,
+  drag-and-drop, `update:get-state`, macOS native/publication. No compatibility
+  claim.

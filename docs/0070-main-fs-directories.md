@@ -51,3 +51,17 @@ recursive directory removal, chmod/chown, or host-control operation is exposed.
 
 Draft autosave, export/PDF, drag-and-drop and the settings panel remain NOT
 verified. macOS native remains NOT RUN; no compatibility claim.
+
+## Draft autosave and settings UI (round 4)
+
+- Typing into a new document produced `drafts:save` → `main-write-file` →
+  `main-rename`; the shared app data directory now contains
+  `.appData/<app>/drafts/manifest.json` and a draft `.md` file. The next launch
+  restores the Untitled document (seen in the Settings screenshot).
+- The Settings panel opens and shows General/Preview/Editor/Shortcuts tabs;
+  settings and the recent-file welcome screen use the persisted
+  `settings.json`.
+- The Export dialog opens and offers PDF/HTML/PNG, page size and orientation.
+  The actual export pipeline still needs a hidden export BrowserWindow and
+  `webContents.printToPDF`; those remain unimplemented. No export success is
+  claimed.

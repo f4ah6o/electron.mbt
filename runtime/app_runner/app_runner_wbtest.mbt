@@ -178,6 +178,33 @@ test "app runner loads a CJS graph and dispatches sync and async handlers" {
 }
 
 ///|
+test "app runner pumps detached promise work after a synchronous dispatch" {
+  let main =
+    "const { app, ipcMain } = require('electron');\n" +
+    "app.whenReady().then(function () {\n" +
+    "  ipcMain.handle('start', function () {\n" +
+    "    Promise.resolve().then(function () { globalThis.__detached = 41; });\n" +
+    "    return { started: true };\n" +
+    "  });\n" +
+    "  ipcMain.handle('read', function () { return { value: globalThis.__detached || 0 }; });\n" +
+    "});\n"
+  let files = [("src/main.js", main)]
+  let snapshot = ar_snapshot(files)
+  let runner = AppRunner::new(snapshot, ar_config())
+  assert_true(runner.load() is Ok(_))
+  let start = runner.dispatch("start", "{}")
+  assert_true(start is Ok(_))
+  runner.pump_idle()
+  let read = runner.dispatch("read", "{}")
+  let text = match read {
+    Ok(value) => value
+    Err(_) => ""
+  }
+  assert_true(text.contains("\"value\":41"))
+  runner.stop()
+}
+
+///|
 test "app runner rejects computed require and missing modules" {
   let computed = [
     ("src/main.js", "const name = './lib/a'; require(name);\n"),

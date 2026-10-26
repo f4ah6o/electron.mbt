@@ -133,6 +133,10 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
       "const workerThreads = require('node:worker_threads');\n" +
       "const perf = require('node:perf_hooks').performance;\n" +
       "const fs = require('node:fs');\n" +
+      "const controller = new AbortController();\n" +
+      "let abortEvents = 0;\n" +
+      "controller.signal.addEventListener('abort', function () { abortEvents += 1; });\n" +
+      "controller.abort();\n" +
       "const electron = require('electron');\n" +
       "electron.protocol.registerSchemesAsPrivileged([{ scheme: 'protocol-test' }]);\n" +
       "electron.protocol.handle('protocol-test', function () {});\n" +
@@ -154,7 +158,8 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
       "  measuresAfter: perf.getEntriesByName('m', 'measure').length,\n" +
       "  globalPerformance: typeof performance.now(),\n" +
       "  protocolHandled: electron.protocol.isProtocolHandled('protocol-test'),\n" +
-      "  readCode: readReply.code, renameCode: renameCode, unlinkCode: unlinkCode };\n",
+      "  readCode: readReply.code, renameCode: renameCode, unlinkCode: unlinkCode,\n" +
+      "  aborted: controller.signal.aborted, abortEvents: abortEvents };\n",
       {},
       false,
     ),
@@ -174,6 +179,8 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
   assert_true(result.exports.contains("\"readCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
   assert_true(result.exports.contains("\"renameCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
   assert_true(result.exports.contains("\"unlinkCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
+  assert_true(result.exports.contains("\"aborted\":true"))
+  assert_true(result.exports.contains("\"abortEvents\":1"))
   context.destroy()
   engine.destroy()
 }

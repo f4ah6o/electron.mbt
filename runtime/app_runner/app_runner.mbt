@@ -837,6 +837,17 @@ fn AppRunner::run_timers(self : AppRunner, now : Int64, limit : Int32) -> Result
 }
 
 ///|
+/// Pumps detached app work that is not attached to a pending main request.
+/// Electron apps routinely start a fire-and-forget async task and return a
+/// synchronous IPC response; the task must still get its promise/timer turns.
+pub fn AppRunner::pump_idle(self : AppRunner) -> Unit {
+  let now = @engine.Engine::now_ms()
+  let _ = self.sync_timers()
+  let _ = self.run_timers(now, 64)
+  let _ = self.run_jobs(256)
+}
+
+///|
 pub fn AppRunner::load(self : AppRunner) -> Result[Unit, AppError] {
   let _ = self.scheduler.advance_to(@engine.Engine::now_ms())
   let modules = match build_graph(self.snapshot) {

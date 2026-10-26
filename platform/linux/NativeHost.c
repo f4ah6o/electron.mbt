@@ -1111,6 +1111,7 @@ static gboolean on_app_message(WebKitUserContentManager *manager,
     return TRUE;
   }
 
+  ebt_debug("app-request op=%s\n", operation);
   char *request_id = g_strdup_printf("r%" G_GUINT64_FORMAT, ++host->next_request);
   PendingReply *pending = g_new0(PendingReply, 1);
   pending->reply = webkit_script_message_reply_ref(reply);
@@ -1745,6 +1746,7 @@ static void handle_app_reply(Host *host, Request *request, JSCValue *payload) {
   g_free(request_id);
   g_free(json);
   if (parsed == NULL || !jsc_value_is_object(parsed)) {
+    ebt_debug("app-reply invalid json=%s\n", json == NULL ? "(null)" : json);
     webkit_script_message_reply_return_error_message(pending->reply,
                                                      "ELECTRON_MBT_MAIN_ERROR");
   } else {
@@ -1764,8 +1766,19 @@ static void handle_app_reply(Host *host, Request *request, JSCValue *payload) {
       }
     } else {
       char *code = object_get_string(parsed, "code");
-      webkit_script_message_reply_return_error_message(
-        pending->reply, code == NULL ? "ELECTRON_MBT_MAIN_ERROR" : code);
+      char *message = object_get_string(parsed, "message");
+      char *short_message = message == NULL ? NULL : g_strndup(message, 1024);
+      char *error_text = g_strdup_printf("%s%s%s",
+        code == NULL ? "ELECTRON_MBT_MAIN_ERROR" : code,
+        short_message == NULL || short_message[0] == 0 ? "" : ": ",
+        short_message == NULL ? "" : short_message);
+      ebt_debug("app-reply error code=%s message=%s\n",
+                code == NULL ? "(null)" : code,
+                short_message == NULL ? "(null)" : short_message);
+      webkit_script_message_reply_return_error_message(pending->reply, error_text);
+      g_free(error_text);
+      g_free(short_message);
+      g_free(message);
       g_free(code);
     }
   }
@@ -1846,8 +1859,14 @@ static gboolean path_is_under(const char *path, const char *root) {
 static char *host_join_path(Host *host, const char *path) {
   if (host == NULL || path == NULL || path[0] == 0 ||
       strlen(path) > EBT_MAX_MAIN_PATH) return NULL;
-  if (g_path_is_absolute(path)) return g_strdup(path);
-  return g_build_filename(host->root, path, NULL);
+  if (g_path_is_absolute(path)) return strdup(path);
+  size_t root_length = strlen(host->root);
+  size_t path_length = strlen(path);
+  size_t needed = root_length + 1 + path_length + 1;
+  char *joined = (char *)malloc(needed);
+  if (joined == NULL) return NULL;
+  snprintf(joined, needed, "%s/%s", host->root, path);
+  return joined;
 }
 
 static char *canonical_existing_path(Host *host, const char *path) {
@@ -1889,7 +1908,9 @@ static char *canonical_write_path(Host *host, const char *path) {
     free(joined);
     return NULL;
   }
-  canonical = g_build_filename(parent, base, NULL);
+  size_t needed = strlen(parent) + 1 + strlen(base) + 1;
+  canonical = (char *)malloc(needed);
+  if (canonical != NULL) snprintf(canonical, needed, "%s/%s", parent, base);
   free(parent);
   g_free(directory);
   g_free(base);
@@ -2134,6 +2155,7 @@ static const char *main_fs_error_code(int error) {
     case EACCES:
     case EPERM: return "ELECTRON_MBT_FILE_DENIED";
     case EROFS: return "ELECTRON_MBT_FILE_READ_ONLY";
+    case EEXIST: return "ELECTRON_MBT_FILE_EXISTS";
     case EISDIR:
     case ENOTDIR: return "ELECTRON_MBT_FILE_TYPE";
     case EFBIG:
@@ -2248,6 +2270,159 @@ static void handle_main_unlink(Host *host, Request *request, JSCValue *payload) 
   }
   JSCValue *reply = object_new(host);
   object_set_string(host, reply, "path", canonical);
+  request_complete(request, "success", reply);
+  g_free(path);
+  free(canonical);
+}
+
+static void handle_main_read_dir(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *canonical = path == NULL ? NULL : canonical_existing_path(host, path);
+  if (canonical == NULL || !main_read_allowed(host, canonical)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) != 0) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (!S_ISDIR(info.st_mode)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+    return;
+  }
+  GError *error = NULL;
+  GDir *directory = g_dir_open(canonical, 0, &error);
+  if (directory == NULL) {
+    g_clear_error(&error);
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_READ");
+    return;
+  }
+  GString *json = g_string_new("[");
+  guint count = 0;
+  const char *name = NULL;
+  while ((name = g_dir_read_name(directory)) != NULL && count < 4096) {
+    if (name[0] == 0 || strlen(name) > 255 ||
+        strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+      continue;
+    }
+    char *full = g_build_filename(canonical, name, NULL);
+    if (full == NULL) continue;
+    struct stat entry_info;
+    const char *kind = "other";
+    if (lstat(full, &entry_info) == 0) {
+      if (S_ISREG(entry_info.st_mode)) kind = "file";
+      else if (S_ISDIR(entry_info.st_mode)) kind = "directory";
+      else if (S_ISLNK(entry_info.st_mode)) kind = "symlink";
+    }
+    g_free(full);
+    JSCValue *name_value = jsc_value_new_string(host->json, name);
+    char *quoted_name = name_value == NULL ? NULL : jsc_value_to_json(name_value, 0);
+    if (name_value != NULL) g_object_unref(name_value);
+    if (quoted_name == NULL) continue;
+    if (count > 0) g_string_append_c(json, ',');
+    g_string_append_printf(json, "{\"name\":%s,\"kind\":\"%s\"}", quoted_name, kind);
+    g_free(quoted_name);
+    count += 1;
+  }
+  g_dir_close(directory);
+  g_string_append_c(json, ']');
+  JSCValue *entries = json_parse(host, json->str, json->len);
+  g_string_free(json, TRUE);
+  if (entries == NULL) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_MAIN_ERROR");
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  jsc_value_object_set_property(reply, "entries", entries);
+  g_object_unref(entries);
+  request_complete(request, "success", reply);
+  g_free(path);
+  free(canonical);
+}
+
+static void handle_main_mkdir(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path", "recursive"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  JSCValue *recursive_value = object_get_value(payload, "recursive");
+  gboolean recursive = recursive_value != NULL && jsc_value_is_boolean(recursive_value) &&
+    jsc_value_to_boolean(recursive_value);
+  if (recursive_value != NULL) g_object_unref(recursive_value);
+  if (path == NULL) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *canonical = canonical_write_path(host, path);
+  gboolean created = FALSE;
+  if (canonical == NULL && recursive) {
+    char *joined = host_join_path(host, path);
+    char *normalized = joined == NULL ? NULL : g_canonicalize_filename(joined, NULL);
+    if (normalized != NULL && main_write_allowed(host, normalized)) {
+      if (g_mkdir_with_parents(normalized, 0700) == 0) {
+        canonical = strdup(normalized);
+        created = TRUE;
+      }
+    }
+    free(joined);
+    g_free(normalized);
+  }
+  if (canonical == NULL) {
+    g_free(path);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (!main_write_allowed(host, canonical)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) == 0) {
+    if (!S_ISDIR(info.st_mode)) {
+      g_free(path);
+      free(canonical);
+      request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+      return;
+    }
+    if (!recursive) {
+      g_free(path);
+      free(canonical);
+      request_failure(request, "ELECTRON_MBT_FILE_EXISTS");
+      return;
+    }
+  } else if (!created && mkdir(canonical, 0700) != 0) {
+    int error = errno;
+    g_free(path);
+    free(canonical);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  } else {
+    created = TRUE;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  object_set_string(host, reply, "firstCreated", created ? canonical : "");
   request_complete(request, "success", reply);
   g_free(path);
   free(canonical);
@@ -2825,6 +3000,59 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     handle_destroy_window(host, request);
     return;
   }
+  if (strcmp(operation, "send-adapted-event") == 0) {
+    static const char *const expected[] = {"topic", "payload"};
+    if (!object_has_exact_keys(payload, expected, 2)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    char *topic = object_get_string(payload, "topic");
+    char *payload_text = object_get_string(payload, "payload");
+    if (topic == NULL || strlen(topic) > 128 ||
+        payload_text == NULL || strlen(payload_text) > EBT_MAX_APP_PAYLOAD) {
+      g_free(topic);
+      g_free(payload_text);
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    if (host->web == NULL || host->json == NULL || host->adapter_nonce == NULL ||
+        !host->content_alive || !host->loaded) {
+      g_free(topic);
+      g_free(payload_text);
+      request_failure(request, "ELECTRON_MBT_STALE_DOCUMENT");
+      return;
+    }
+    JSCValue *topic_value = jsc_value_new_string(host->json, topic);
+    JSCValue *payload_value = jsc_value_new_string(host->json, payload_text);
+    char *quoted_topic = topic_value == NULL ? NULL : jsc_value_to_json(topic_value, 0);
+    char *quoted_payload = payload_value == NULL ? NULL : jsc_value_to_json(payload_value, 0);
+    if (topic_value != NULL) g_object_unref(topic_value);
+    if (payload_value != NULL) g_object_unref(payload_value);
+    if (quoted_topic == NULL || quoted_payload == NULL) {
+      g_free(quoted_topic);
+      g_free(quoted_payload);
+      g_free(topic);
+      g_free(payload_text);
+      request_failure(request, "ELECTRON_MBT_MAIN_ERROR");
+      return;
+    }
+    char *script = g_strdup_printf(
+      "if (typeof window.__electronMbtDispatch === 'function') { window.__electronMbtDispatch(\"%s\", %s, JSON.parse(%s)); }",
+      host->adapter_nonce, quoted_topic, quoted_payload);
+    ebt_debug("send-adapted-event topic=%s\n", topic);
+    if (script != NULL) {
+      webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL,
+                                          NULL, NULL);
+    }
+    g_free(script);
+    g_free(quoted_topic);
+    g_free(quoted_payload);
+    g_free(topic);
+    g_free(payload_text);
+    JSCValue *reply = object_new(host);
+    request_complete(request, "success", reply);
+    return;
+  }
   if (strcmp(operation, "main-read-file") == 0) {
     handle_main_read_file(host, request, payload);
     return;
@@ -2839,6 +3067,14 @@ static void dispatch_request(Request *request, JSCValue *payload) {
   }
   if (strcmp(operation, "main-unlink") == 0) {
     handle_main_unlink(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-read-dir") == 0) {
+    handle_main_read_dir(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-mkdir") == 0) {
+    handle_main_mkdir(host, request, payload);
     return;
   }
   if (strcmp(operation, "main-stat") == 0) {

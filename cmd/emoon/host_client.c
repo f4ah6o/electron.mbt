@@ -353,7 +353,10 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "main-read-file") == 0 ||
       strcmp(operation, "main-write-file") == 0 ||
       strcmp(operation, "main-read-dir") == 0 ||
-      strcmp(operation, "main-mkdir") == 0) {
+      strcmp(operation, "main-mkdir") == 0 ||
+      strcmp(operation, "main-rename") == 0 ||
+      strcmp(operation, "main-unlink") == 0 ||
+      strcmp(operation, "send-adapted-event") == 0) {
     return send_control_frame(operation, payload, active_window, active_generation,
                               out, capacity);
   }
@@ -394,9 +397,12 @@ static int js_host_operation_allowed(const char *operation) {
     "main-stat",
     "main-read-file",
     "main-write-file",
+    "main-rename",
+    "main-unlink",
     "main-read-dir",
     "main-mkdir",
     "main-open-dialog",
+    "send-adapted-event",
     "main-save-dialog",
     NULL
   };

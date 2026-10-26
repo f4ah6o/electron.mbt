@@ -431,3 +431,47 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   0 FAIL / 33 SKIP**, parity **20 PASS**. File open/save, export and human
   dialogs remain NOT verified; no compatibility claim. See
   [docs/0068](0068-main-fs-rename.md).
+
+## Adapted sender authority, events and AbortController (2026-10-26)
+
+- Fixed the adapted main bridge to pass the real `BrowserWindow.webContents`
+  object as `event.sender` (`senderFrame:null`, `mainFrame` alias,
+  `id`, `isDestroyed`). This satisfies Electron apps' trusted-sender checks;
+  Moji 1.0.7's `isTrustedSender` had rejected every handler with `forbidden`.
+- Implemented `webContents.send` through a new generic Linux host
+  `send-adapted-event` operation that evaluates the page adapter's
+  `__electronMbtDispatch` for a manifest topic. Added `AbortController` /
+  `AbortSignal`, and propagated main handler error messages to the page error.
+- A probe page with the captured 1.0.7 API now receives
+  `openDialog() = {ok:true, sessionId, total:1}` after the host dialog and
+  auto-select, where it previously failed with `MAIN_ERROR`.
+- Validation: native **198 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**, parity **20 PASS**. Moji 1.0.7 initial renderer and Moji
+  1.0.5 hold remain PASS. Open-many progress/file open/render, macOS event
+  delivery, zlib, worker threads and human dialogs remain NOT verified. See
+  [docs/0069](0069-adapted-sender-events.md).
+
+## Moji 1.0.7 open, edit and save (2026-10-26)
+
+- Trusted-sender fix: adapted main handlers receive the real
+  `BrowserWindow.webContents` as `event.sender` and `senderFrame:null`, so
+  Moji's `isTrustedSender` no longer rejects every IPC call with `forbidden`.
+- Added Linux main-to-page event delivery (`send-adapted-event`), app-code host
+  operation allowlisting/dispatch for `main-rename`, `main-unlink` and
+  `send-adapted-event`, `AbortController`, detached-work pumping, and
+  `ipcMain.on` listener dispatch.
+- Added generic `main-mkdir` / `main-read-dir` and ensured `app.getPath`
+  app-data directories exist. Fixed new-file path allocation/free mismatches
+  that crashed the host at draft/settings startup.
+- Verified Moji 1.0.7 end to end for the core reader workflow: Ctrl+O native
+  dialog → open-many progress/done → `emoon:read-file` → rendered preview
+  (`Emoon open test` / `UNIQUE_OPEN_MARKER_12345`); Editor + Ctrl+S wrote
+  `EDITED_BY_EMOON` to the selected file; `.appData/<app>/settings.json`
+  persisted `recentFiles` / `lastDialogDirectory` and the next launch shows the
+  recent file. Initial UI has no draft-recovery toast and host stays alive.
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**, parity **20 PASS**; 1.0.5 adapted hold remains PASS.
+- Remaining: draft autosave, export/PDF, drag-and-drop, settings panel,
+  `update:get-state`, macOS native and publication items. No compatibility
+  claim. See [docs/0069](0069-adapted-sender-events.md) and
+  [docs/0070](0070-main-fs-directories.md).

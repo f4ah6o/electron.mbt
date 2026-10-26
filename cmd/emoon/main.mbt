@@ -620,6 +620,7 @@ fn cli_pump_events(
   let event_buffer = Bytes::new(65536)
   let reply_buffer = Bytes::new(65536)
   let (identity_window, identity_generation) = cli_host_identity()
+  runner.pump_idle()
   let mut handled = 0
   let mut errors = 0
   let mut rejected = 0
@@ -698,6 +699,7 @@ fn cli_pump_events(
     if sent <= 0 {
       errors += 1
     }
+    runner.pump_idle()
     handled += 1
   }
   (handled, errors, rejected)

@@ -55,7 +55,7 @@ because it delegates to a resolved native binary.
 emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--force] [--config <file>]
 emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
 emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
-emoon dev [app-dir] [--api <file>] [--no-launch] [--config <file>]
+emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--config <file>]
 emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ...] [selftests]
 emoon doctor <app-dir> [--profile <id>]
 emoon version
@@ -89,6 +89,34 @@ mismatches. Unknown IDs exit 2.
   byte-identical between the two implementations on the parity fixtures.
 - `migration-report.json` contains the observed tier, blockers, warnings,
   generated hashes and `compatible:false`.
+- `dev --no-launch` stops after doctor and prints the `run --hold` command for
+  manual inspection. `dev --build` is the only path that invokes npm.
+
+### Source trees, build output and `--build`
+
+`dev` consumes an already-built app: `package.json` `main` and the renderer
+output must exist. The preflight order is package.json → main → renderer, so an
+unbuilt source tree fails with:
+
+```json
+{"ok":false,"compatible":false,"code":"ELECTRON_MBT_MIGRATE_BUILD_MISSING","message":"package.json main \"out/main/main.js\" does not exist; build the app first (npm run build) or pass emoon dev --build"}
+```
+
+- `dev --build` is an explicit opt-in. It checks `scripts.build` and
+  `node_modules/`, runs `npm run build` in the app root, then continues with
+  init/inspect/migrate/doctor. It never runs `npm install`.
+- The child build writes stdout to **stderr**, so `emoon`'s JSON stdout stays
+  parseable. `--build` is a developer convenience; the runtime itself remains
+  Node-free.
+- The build may rewrite the app's build output. `sourceUnchanged` in the
+  migration report refers to migrate, not to the user-requested build.
+- A missing output after `--build` is still `BUILD_MISSING`; a missing build
+  script or a nonzero build is `ELECTRON_MBT_MIGRATE_BUILD`; missing
+  dependencies is `ELECTRON_MBT_MIGRATE_BUILD_DEPS`.
+- When `dirname(main)` is not the app root, the whole main output directory is
+  staged (for example `out/main/main.js` plus `out/main/pngWorker.js`), so
+  multi-entry main builds resolve. A main at the app root stages only the entry
+  unless `--include` adds siblings.
 
 ### Limits and refusal rules
 
@@ -100,9 +128,12 @@ mismatches. Unknown IDs exit 2.
 - Any symlink under the app tree, a symlinked stage, `package.json` or config is
   `ELECTRON_MBT_MIGRATE_SYMLINK`. This is intentionally stricter than silently
   following links, and matches the migration refusal rule.
-- `.git` and `.emoon` are skipped when walking the renderer/include trees;
-  `node_modules/.cache` is skipped by path prefix. (The previous reference code
-  compared the cache path against a single basename and never skipped it.)
+- Inspect skips `.git`, `.emoon` and `node_modules` at any depth. Staging also
+  skips these trees; a source checkout can therefore be inspected without
+  walking dependency files or `node_modules/.bin` symlinks.
+- The generated stage never contains `node_modules`; dependencies must be
+  bundled into the build output. Symlinks in the remaining tree still fail
+  closed.
 - An existing stage is not replaced without `--force`. A stage containing
   `.appData` or `.userData` is not replaced without `--reset-data`.
 - `--out` equal to the app root, outside the app root, or a symlink is rejected.
@@ -129,7 +160,7 @@ while the preload scan reads the configured `main`; this mirrors the reference.
 emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--force] [--config <file>]
 emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
 emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
-emoon dev [app-dir] [--api <file>] [--no-launch] [--config <file>] [--runtime <path>]
+emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--config <file>] [--runtime <path>]
 emoon doctor <stage> [--runtime <path>]
 emoon run <stage> [--window] [--entry <file>] [--runtime <path>]
 emoon version | --version

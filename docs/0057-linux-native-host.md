@@ -119,12 +119,12 @@ missing host fail instead of silently skipping the five tests.
 | CI `moonbit` | **PASS** — same run, 1m8s |
 | CI `macos` | **PASS** — same run, 3m53s; the macOS suite exercises the macOS host, not this Linux host |
 
-2026-10-23 update: the local suite is now **526 tests / 493 PASS / 0 FAIL / 33
+2026-10-26 update: the local suite is now **532 tests / 499 PASS / 0 FAIL / 33
 SKIP** and `moon test` is **163 JS / 196 native PASS**. The Linux nodeless suite
 is **22 PASS / 21 SKIP** because the real 16-second chooser test is gated on
 `ELECTRON_MBT_ISOLATED_DISPLAY=1` and skips on an interactive desktop; the new
 unmapped control-hold test covers the same 15-second host bound locally. The
-native CLI parity suite is **13 PASS**, including the adapted native `dev`
+native CLI parity suite is **19 PASS**, including the adapted native `dev`
 window. macOS native execution and publication remain NOT RUN.
 | readiness / G0–G4 | **unchanged NOT_READY**: 35 checks / 28 PASS / 2 FAIL / 5 NOT RUN; this slice adds no compatibility row or readiness PASS |
 

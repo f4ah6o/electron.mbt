@@ -48,6 +48,12 @@ The stage is `.emoon/app` and the report is `.emoon/migration-report.json`.
 resolves `dist/emoon` (or another native runtime) for doctor/run; the native
 `dev` runs doctor/run in the same process.
 
+`dev` consumes an **already-built** app. If `package.json` main is missing,
+`dev` fails with `ELECTRON_MBT_MIGRATE_BUILD_MISSING`; use `dev --build` after
+`npm install` to run the app's own build script. `node_modules`, `.git` and
+`.emoon` are ignored by inspect/staging, and a multi-file main output directory
+(e.g. `out/main`) is staged with its siblings.
+
 ### Try it manually
 
 ```sh
@@ -57,7 +63,11 @@ npm run demo:emoon
 This builds the native CLI if needed, stages
 [`fixtures/manual-demo-app`](fixtures/manual-demo-app/), prints the
 `init`/`inspect`/`migrate`/`doctor` reports, and opens a real GTK/WebKitGTK
-window that stays until you close it. The page's buttons call the generated
+window that stays until you close it. To try the prepared Moji 1.0.5 stage:
+
+```sh
+dist/emoon run _build/moji-linux-app --window --hold --entry out/main/main.js
+``` The page's buttons call the generated
 `window.api`, which reaches `ipcMain.handle` in the demo main. Use `--no-launch`
 to stop after doctor, `--reset` to copy the demo app again, or `--rebuild` to
 rebuild the CLI. See [the manual trial note](docs/0064-manual-trial.md).

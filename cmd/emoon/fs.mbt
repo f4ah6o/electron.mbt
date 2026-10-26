@@ -158,3 +158,14 @@ fn fs_realpath(path : String) -> String? {
     Some(@utf8.decode_lossy(buffer[:length]))
   }
 }
+
+///|
+#borrow(root)
+extern "C" fn emoon_run_build(
+  root : Bytes,
+) -> Int = "moonbit_emoon_run_build"
+
+///|
+fn run_build(root : String) -> Int {
+  emoon_run_build(@utf8.encode(root))
+}

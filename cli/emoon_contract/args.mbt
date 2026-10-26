@@ -30,7 +30,8 @@ fn is_boolean_flag(key : String) -> Bool {
   key == "dry-run" ||
   key == "json" ||
   key == "help" ||
-  key == "no-launch"
+  key == "no-launch" ||
+  key == "build"
 }
 
 ///|

@@ -17,6 +17,7 @@ const LIMITS = Object.freeze({
   scanBytes: 4 * 1024 * 1024,
 });
 const RENDERER_CANDIDATES = ['out/renderer', 'dist/renderer', 'build/renderer'];
+const INSPECT_SKIP = ['.git', '.emoon', 'node_modules'];
 
 function codeError(code, message) {
   const error = new Error(message);
@@ -145,6 +146,16 @@ function loadConfig(root, options) {
     workspace: path.join(root, WORKSPACE),
   };
 }
+function buildOutputInfo(file, main) {
+  let info;
+  try { info = fs.lstatSync(file); }
+  catch {
+    fail('ELECTRON_MBT_MIGRATE_BUILD_MISSING',
+      `package.json main "${main}" does not exist; build the app first (npm run build) or pass emoon dev --build`);
+  }
+  if (info.isSymbolicLink()) fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${file}`);
+  return info;
+}
 function ensureNotSymlink(file) {
   const info = fs.lstatSync(file);
   if (info.isSymbolicLink()) fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${file}`);
@@ -159,11 +170,7 @@ function statConfig(file, label) {
 }
 function isSkippedPath(relative) {
   const parts = relative.split('/');
-  if (parts.includes('.git') || parts.includes('.emoon')) return true;
-  for (let index = 0; index + 1 < parts.length; index += 1) {
-    if (parts[index] === 'node_modules' && parts[index + 1] === '.cache') return true;
-  }
-  return false;
+  return parts.includes('.git') || parts.includes('.emoon') || parts.includes('node_modules');
 }
 function collectTree(root, relative, out, limitState) {
   const absolute = resolveInside(root, relative, relative);
@@ -198,6 +205,12 @@ function collectFiles(root, config, options) {
   files.add(config.page);
   state.files += 1;
   state.bytes += pageInfo.size;
+  const mainDirectory = path.dirname(config.main);
+  if (mainDirectory !== '.' && mainDirectory !== '') {
+    const directoryInfo = ensureNotSymlink(resolveInside(root, mainDirectory, 'main'));
+    if (!directoryInfo.isDirectory()) fail('ELECTRON_MBT_MIGRATE_TYPE', 'main directory must be a directory');
+    collectTree(root, mainDirectory, files, state);
+  }
   collectTree(root, config.renderer, files, state);
   for (const include of config.include) collectTree(root, include, files, state);
   // A generated stage must not be admitted into itself.
@@ -208,7 +221,7 @@ function collectFiles(root, config, options) {
   return [...files];
 }
 function inspectReport(root, pkg, config, options) {
-  const app = inspectApp(root);
+  const app = inspectApp(root, INSPECT_SKIP);
   if (app.inventory.links.length > 0) {
     fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${app.inventory.links[0].path}`);
   }
@@ -273,11 +286,14 @@ function cliInit(argv) {
   const root = fs.realpathSync(options.appDir);
   if (!fs.statSync(root).isDirectory()) fail('ELECTRON_MBT_INVALID_APP', 'app root must be a directory');
   const { pkg, main } = packageOf(root);
-  const renderer = options.renderer ? normalizeRelative(options.renderer, 'renderer') : detectRenderer(root);
-  if (!renderer) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'could not detect a renderer directory; pass --renderer <dir>');
   const mainPath = resolveInside(root, main, 'main');
-  const mainInfo = statConfig(mainPath, 'main');
+  const mainInfo = buildOutputInfo(mainPath, main);
   if (!mainInfo.isFile() || mainInfo.size <= 0) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'main must be a non-empty regular file');
+  const renderer = options.renderer ? normalizeRelative(options.renderer, 'renderer') : detectRenderer(root);
+  if (!renderer) {
+    fail('ELECTRON_MBT_MIGRATE_CONFIG',
+      'could not detect a renderer directory (checked out/renderer, dist/renderer, build/renderer); build the app or pass --renderer <dir>');
+  }
   const rendererPath = resolveInside(root, renderer, 'renderer');
   if (!statConfig(rendererPath, 'renderer').isDirectory()) fail('ELECTRON_MBT_MIGRATE_CONFIG', 'renderer must be a directory');
   const page = options.page ? normalizeRelative(options.page, 'page') : `${renderer}/index.html`;

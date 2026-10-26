@@ -45,6 +45,50 @@ Options:
   `node scripts/try-emoon.cjs` (the existing copy is kept). Use `--reset` to
   restore the fixture copy.
 
+## Trying Moji 1.0.5 from the prepared stage
+
+A prepared Moji stage is kept under the gitignored `_build/moji-linux-app`. It
+contains the 1.0.5 build, `source-manifest.json`, the adapted page API and
+`.appData`/`.userData`:
+
+```sh
+dist/emoon doctor _build/moji-linux-app
+dist/emoon run _build/moji-linux-app --window --hold --entry out/main/main.js
+```
+
+The window title is `Moji v1.0.5`. Close it with the window manager; the CLI then
+prints `HOLD_EXIT reason:"window-closed"` and exits 0. This is the adapted
+profile (`compatible:false`); the original preload is not executed.
+
+## Why `dev ./_build/Moji` fails
+
+`_build/Moji` is a 1.0.7 **source checkout**, not a built app: it has neither
+`out/` nor `node_modules/`. `emoon dev` stages an already-built app and does not
+run TypeScript/Vite builds by default. The preflight now reports:
+
+```json
+{"ok":false,"compatible":false,"code":"ELECTRON_MBT_MIGRATE_BUILD_MISSING","message":"package.json main \"out/main/main.js\" does not exist; build the app first (npm run build) or pass emoon dev --build"}
+```
+
+After installing dependencies, either build manually or let the explicit
+`--build` flag run the app's own `build` script:
+
+```sh
+cd _build/Moji
+npm install
+npm run build
+cd ../..
+dist/emoon dev _build/Moji --no-launch
+
+# or, after npm install:
+dist/emoon dev _build/Moji --build --no-launch
+```
+
+`--build` never runs `npm install`; missing `node_modules` is
+`ELECTRON_MBT_MIGRATE_BUILD_DEPS`, and a missing/failing build script is
+`ELECTRON_MBT_MIGRATE_BUILD`. The 1.0.7 build above is **NOT RUN** in this
+increment; the 1.0.5 prepared stage is the verified Moji path.
+
 ## Using your own app
 
 ```sh

@@ -26,7 +26,7 @@ Usage:
   emoon init [app-dir] [--renderer <dir>] [--include <path,...>] [--api <file>] [--force]
   emoon inspect [app-dir] [--renderer <dir>] [--api <file>]
   emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--force] [--reset-data] [--dry-run]
-  emoon dev [app-dir] [--api <file>] [--no-launch] [--runtime <path>]
+  emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--runtime <path>]
   emoon doctor <stage> [--profile <id>] [--runtime <path>]
   emoon run <stage> [--window] [--entry <file>] [--runtime <path>]
   emoon version | --version

@@ -300,3 +300,41 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   is still not executed.
 - Scope: Linux only; macOS native execution, human dialog UI, publication and
   `moon binstall` remain NOT RUN.
+
+## Unbuilt source trees, dependency skips and `dev --build` (2026-10-26)
+
+- Diagnosed `dist/emoon dev ./_build/Moji --no-launch`: `_build/Moji` is a 1.0.7
+  source checkout without `out/` or `node_modules/`. The preflight used to check
+  the renderer first and reported "could not detect a renderer directory"; it
+  now validates `package.json` main first and returns
+  `ELECTRON_MBT_MIGRATE_BUILD_MISSING` with the missing path and the
+  `npm run build` / `dev --build` hint. The Node reference matches.
+- Inspect and staging now skip `.git`, `.emoon` and `node_modules` at any depth.
+  This removes the `node_modules/.bin/*` symlink failure and the 8,192-file
+  inspect limit failure on real app repositories; `node_modules` never enters a
+  stage. Symlinks in the remaining tree still fail closed.
+- When `dirname(main)` is not the app root, the whole main output directory is
+  staged. This covers electron-vite multi-entry builds such as Moji 1.0.7's
+  `out/main/main.js` plus `pngWorker.js`; the worker is present in the manifest
+  and the doctor graph resolves it.
+- Added opt-in `emoon dev --build` (native and Node). It checks `scripts.build`
+  and `node_modules/`, runs `npm run build` in the app root (stdout redirected to
+  stderr so JSON stdout stays clean), then continues with init/inspect/migrate/
+  doctor. It never runs `npm install`. Missing output, missing dependencies and a
+  failing build report `ELECTRON_MBT_MIGRATE_BUILD_MISSING`,
+  `..._BUILD_DEPS` and `..._BUILD`. The Node `dev` also forwards `--page`.
+- Real-app checks on this Linux host:
+  - `dist/emoon dev ./_build/Moji --no-launch` now reports BUILD_MISSING naming
+    `out/main/main.js`; the Node CLI reports the same code/message.
+  - `dist/emoon dev ./_build/moji-check --no-launch --force` (built Moji 1.0.5
+    with 19k-file `node_modules`) reaches inspect/migrate/doctor with a 109-file
+    stage and doctor `ready`; no node_modules in the stage.
+  - `dist/emoon run _build/moji-linux-app --window --hold --entry
+    out/main/main.js` shows `Moji v1.0.5`; WM close gives
+    `HOLD_EXIT reason:"window-closed"` and exit 0.
+- Validation: `moon test --target js` **163 PASS**, `--target native` **196
+  PASS**, `tests/emoon-cli.test.cjs` **10 PASS**, parity **19 PASS**, `npm test`
+  **532 tests / 499 PASS / 0 FAIL / 33 SKIP**.
+- Not run: `_build/Moji` 1.0.7 `npm install`/`npm run build` and its
+  `dev --build` (the user selected the prepared 1.0.5 stage); macOS native,
+  publication, `moon binstall`, signing and human dialog UI remain NOT RUN.

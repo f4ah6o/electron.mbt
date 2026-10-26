@@ -994,7 +994,7 @@ fn cli_print_help() -> Unit {
   println("  init     write .emoon/config.json for an Electron app")
   println("  inspect  report the app tier and blockers without writing a stage")
   println("  migrate  stage the app under .emoon/app and write the migration report")
-  println("  dev      init/inspect/migrate, validate with doctor, then run --window")
+  println("  dev      init/inspect/migrate, validate with doctor, then run --window (--build runs npm run build)")
   println("  run      run a prepared app (--window, --entry, --profile, --hold, selftests)")
   println("  doctor   validate a prepared app without launching it")
   println("  version  print the machine-readable version")

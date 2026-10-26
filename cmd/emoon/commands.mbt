@@ -134,6 +134,100 @@ fn command_detect_renderer(root : String) -> String? {
 }
 
 ///|
+fn command_require_main(root : String, main : String) -> Unit {
+  let kind = fs_kind(root, main)
+  if kind == 3 {
+    command_fail(
+      "ELECTRON_MBT_MIGRATE_SYMLINK",
+      "symlink is not admitted: " + main,
+    )
+  }
+  if kind == 0 {
+    command_fail(
+      "ELECTRON_MBT_MIGRATE_BUILD_MISSING",
+      "package.json main \"" + main +
+      "\" does not exist; build the app first (npm run build) or pass emoon dev --build",
+    )
+  }
+  if kind != 1 {
+    command_fail(
+      "ELECTRON_MBT_MIGRATE_CONFIG",
+      "main must be a non-empty regular file",
+    )
+  }
+  if fs_size(root, main) <= 0 {
+    command_fail(
+      "ELECTRON_MBT_MIGRATE_CONFIG",
+      "main must be a non-empty regular file",
+    )
+  }
+}
+
+///|
+fn command_build_script(root : String) -> String? {
+  let parsed = match command_read_json(
+    root,
+    "package.json",
+    "ELECTRON_MBT_MIGRATE_IO",
+    "ELECTRON_MBT_MIGRATE_JSON",
+  ) {
+    Ok(value) => value
+    Err(error) => {
+      command_error(error)
+      Json(null)
+    }
+  }
+  match parsed {
+    Object(fields) =>
+      match fields.get("scripts") {
+        Some(Object(scripts)) =>
+          match scripts.get("build") {
+            Some(String(text)) => Some(text)
+            _ => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+fn command_build_app(root : String) -> Unit {
+  let script = match command_build_script(root) {
+    Some(value) => value
+    None => {
+      command_fail(
+        "ELECTRON_MBT_MIGRATE_BUILD",
+        "package.json has no build script; build the app manually",
+      )
+      ""
+    }
+  }
+  if script.trim_space().to_owned() == "" {
+    command_fail(
+      "ELECTRON_MBT_MIGRATE_BUILD",
+      "package.json has no build script; build the app manually",
+    )
+  }
+  if fs_kind(root, "node_modules") != 2 {
+    command_fail(
+      "ELECTRON_MBT_MIGRATE_BUILD_DEPS",
+      "dependencies are not installed; run npm install in " + root,
+    )
+  }
+  eprintln("[emoon] npm run build in " + root)
+  let status = run_build(root)
+  if status != 0 {
+    let message = if status == 127 {
+      "npm was not found or the build script could not start"
+    } else {
+      "npm run build exited with " + status.to_string()
+    }
+    command_fail("ELECTRON_MBT_MIGRATE_BUILD", message)
+  }
+}
+
+///|
 fn command_require_file(root : String, relative : String, label : String) -> Int {
   let kind = fs_kind(root, relative)
   if kind == 3 {
@@ -167,6 +261,7 @@ fn command_require_file(root : String, relative : String, label : String) -> Int
 ///|
 fn command_init_with_args(root : String, args : @cli.CliArgs) -> Unit {
   let pkg = command_package(root)
+  command_require_main(root, pkg.main)
   let renderer = match args.value("renderer") {
     Some(value) =>
       match @cli.normalize_relative(value, "renderer") {
@@ -182,7 +277,7 @@ fn command_init_with_args(root : String, args : @cli.CliArgs) -> Unit {
         None => {
           command_fail(
             "ELECTRON_MBT_MIGRATE_CONFIG",
-            "could not detect a renderer directory; pass --renderer <dir>",
+            "could not detect a renderer directory (checked out/renderer, dist/renderer, build/renderer); build the app or pass --renderer <dir>",
           )
           ""
         }
@@ -204,7 +299,6 @@ fn command_init_with_args(root : String, args : @cli.CliArgs) -> Unit {
       "renderer must be a directory: " + renderer,
     )
   }
-  command_require_file(root, pkg.main, "main") |> ignore
   let page = match args.value("page") {
     Some(value) =>
       match @cli.normalize_relative(value, "page") {
@@ -386,11 +480,8 @@ fn command_limit_error(message : String) -> @cli.CliError {
 
 ///|
 fn command_skip_entry(relative : String, name : String) -> Bool {
-  if name == ".git" || name == ".emoon" {
-    return true
-  }
-  name == ".cache" &&
-  (relative == "node_modules" || relative.has_suffix("/node_modules"))
+  ignore(relative)
+  name == ".git" || name == ".emoon" || name == "node_modules"
 }
 
 ///|
@@ -877,7 +968,7 @@ fn command_inspect_input(
     entries: 16384,
     depth: 64,
   }
-  match command_walk(root, "", 0, limits, false, false, state) {
+  match command_walk(root, "", 0, limits, true, false, state) {
     Ok(_) => ()
     Err(error) => command_error(error)
   }
@@ -1075,6 +1166,19 @@ fn command_collect_files(
   match command_add_file(root, files, state, config.page) {
     Ok(_) => ()
     Err(error) => return Err(error)
+  }
+  let main_directory = @cli.path_dirname(config.main)
+  if main_directory != "." && main_directory != "" {
+    let main_start = state.files.length()
+    match command_walk(root, main_directory, 0, limits, true, true, state) {
+      Ok(_) => ()
+      Err(error) => return Err(error)
+    }
+    for (path, _) in state.files[main_start:] {
+      if not(files.contains(path)) {
+        files.push(path)
+      }
+    }
   }
   let before = state.files.length()
   match command_walk(root, config.renderer, 0, limits, true, true, state) {
@@ -1400,6 +1504,9 @@ fn command_dev_with_args(root : String, args : @cli.CliArgs) -> Int {
       "ELECTRON_MBT_MIGRATE_USAGE",
       "the native CLI is the runtime; --runtime is a Node CLI option",
     )
+  }
+  if args.has("build") {
+    command_build_app(root)
   }
   let config_file = command_config_path(root, args)
   let config_relative = match command_relative_to(root, config_file) {

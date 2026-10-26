@@ -7,7 +7,12 @@ modify the app source.
 ## Prerequisites
 
 - The app already builds its main process to CommonJS and its renderer to static
-  assets. Bundle the main process first; the runtime consumes the build output.
+  assets. Build it first (`npm install && npm run build`); the runtime consumes
+  the build output. `emoon dev --build` can run the existing `build` script
+  after dependencies are installed, but never runs `npm install`.
+- `node_modules`, `.git` and `.emoon` are ignored by inspect and staging. A main
+  output directory is staged with its siblings, so electron-vite worker entries
+  are not lost.
 - No native addons, ASAR, ESM main or Node-only Electron features.
 - The main entry is `package.json`'s `main`.
 - The renderer entry is a static page, by default `<renderer>/index.html`.
@@ -33,7 +38,9 @@ node /path/to/electromoon/cmd/emoon.cjs dev
 edits the app's root `.gitignore` or source files. `inspect` writes nothing.
 `migrate` stages the build output into `.emoon/app` and writes a report.
 `doctor` validates the stage without launching it. `dev` runs init, inspect,
-migrate and doctor, then starts the native window.
+migrate and doctor, then starts the native window. `dev --build` explicitly runs the app's own `npm run build`; without it, an
+unbuilt source tree fails with `ELECTRON_MBT_MIGRATE_BUILD_MISSING`. It does not
+install dependencies.
 
 ## Tiers
 

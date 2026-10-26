@@ -36,10 +36,13 @@ function nativeCli() {
   if (!binary) binary = nativeBinary();
   return binary;
 }
-function temporaryApp() {
+function copyFixture(name) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'emoon-parity-'));
-  fs.cpSync(fixture, directory, { recursive: true });
+  fs.cpSync(path.join(root, 'fixtures', name), directory, { recursive: true });
   return directory;
+}
+function temporaryApp() {
+  return copyFixture('migrate-source-app');
 }
 function run(command, args, cwd, extraEnv = {}) {
   const result = spawnSync(command, args, {
@@ -98,6 +101,9 @@ function compareReports(native, node, app, label) {
 }
 function pair() {
   return { native: temporaryApp(), node: temporaryApp() };
+}
+function pairFrom(name) {
+  return { native: copyFixture(name), node: copyFixture(name) };
 }
 function cleanup(app) {
   fs.rmSync(app.native, { recursive: true, force: true });
@@ -346,6 +352,137 @@ test('native dev --no-launch matches the reference doctor report', () => {
     assert.equal(native.report.profile, 'electron-nodeless-adapted-v1');
     assert.equal(native.report.compatible, false);
     assert.deepEqual(tree(path.join(app.native, '.emoon/app')), tree(path.join(app.node, '.emoon/app')));
+  } finally { cleanup(app); }
+});
+
+
+test('native and reference explain an unbuilt app before renderer detection', () => {
+  const app = pairFrom('migrate-unbuilt-app');
+  try {
+    const native = runNative(['dev', '--no-launch', app.native], app.native);
+    const node = runNode(['dev', '--no-launch', app.node], app.node);
+    compareReports(native, node, app, 'dev unbuilt');
+    assert.equal(native.result.status, 1);
+    assert.equal(native.report.code, 'ELECTRON_MBT_MIGRATE_BUILD_MISSING');
+    assert.match(native.report.message, /out\/main\/index\.js/);
+    assert.match(native.report.message, /npm run build/);
+  } finally { cleanup(app); }
+});
+
+test('native and reference build and stage a source app with --build', () => {
+  const app = pairFrom('migrate-unbuilt-app');
+  try {
+    for (const target of [app.native, app.node]) fs.mkdirSync(path.join(target, 'node_modules'), { recursive: true });
+    const native = runNative(['dev', '--build', '--no-launch', app.native], app.native);
+    const node = runNode(['dev', '--build', '--no-launch', '--runtime', nativeCli(), app.node], app.node);
+    compareReports(native, node, app, 'dev build');
+    assert.equal(native.result.status, 0, `${native.stdout}\n${native.stderr}`);
+    assert.equal(native.report.command, 'doctor');
+    assert.equal(native.report.status, 'ready');
+    assert.match(native.stderr, /\[emoon\] npm run build/);
+    assert.ok(!native.stdout.includes('unbuilt-app@'), native.stdout);
+    assert.ok(!node.stdout.includes('unbuilt-app@'), node.stdout);
+    const stage = path.join(app.native, '.emoon/app');
+    assert.ok(fs.existsSync(path.join(stage, 'out/main/worker.js')), 'worker.js was not staged');
+    assert.deepEqual(tree(stage), tree(path.join(app.node, '.emoon/app')));
+    const manifest = JSON.parse(fs.readFileSync(path.join(stage, 'source-manifest.json'), 'utf8'));
+    assert.ok(manifest.files.some(file => file.path === 'out/main/worker.js'));
+  } finally { cleanup(app); }
+});
+
+test('native and reference require installed dependencies for --build', () => {
+  const app = pairFrom('migrate-unbuilt-app');
+  try {
+    const native = runNative(['dev', '--build', '--no-launch', app.native], app.native);
+    const node = runNode(['dev', '--build', '--no-launch', app.node], app.node);
+    compareReports(native, node, app, 'dev build deps');
+    assert.equal(native.result.status, 1);
+    assert.equal(native.report.code, 'ELECTRON_MBT_MIGRATE_BUILD_DEPS');
+    assert.match(native.report.message, /npm install/);
+  } finally { cleanup(app); }
+});
+
+test('native and reference report a failed --build', () => {
+  const app = pairFrom('migrate-unbuilt-app');
+  try {
+    for (const target of [app.native, app.node]) {
+      fs.mkdirSync(path.join(target, 'node_modules'), { recursive: true });
+      fs.writeFileSync(path.join(target, 'fail.cjs'), 'process.exit(1);\n');
+      const pkg = JSON.parse(fs.readFileSync(path.join(target, 'package.json'), 'utf8'));
+      pkg.scripts.build = 'node fail.cjs';
+      fs.writeFileSync(path.join(target, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
+    }
+    const native = runNative(['dev', '--build', '--no-launch', app.native], app.native);
+    const node = runNode(['dev', '--build', '--no-launch', app.node], app.node);
+    compareReports(native, node, app, 'dev build failed');
+    assert.equal(native.result.status, 1);
+    assert.equal(native.report.code, 'ELECTRON_MBT_MIGRATE_BUILD');
+    assert.match(native.report.message, /exited with 1/);
+  } finally { cleanup(app); }
+});
+
+test('native and reference ignore node_modules and .git during inspect and staging', () => {
+  const app = pair();
+  try {
+    for (const target of [app.native, app.node]) {
+      const modules = path.join(target, 'node_modules');
+      fs.mkdirSync(path.join(modules, 'pkg'), { recursive: true });
+      fs.mkdirSync(path.join(modules, '.bin'), { recursive: true });
+      fs.writeFileSync(path.join(modules, 'pkg/tool.js'), "'use strict';\n");
+      fs.writeFileSync(path.join(modules, 'pkg/asar.node'), 'not-an-addon');
+      fs.symlinkSync('../pkg/tool.js', path.join(modules, '.bin/tool'));
+      for (let index = 0; index < 9000; index += 1) {
+        fs.writeFileSync(path.join(modules, 'pkg', `f${index}.js`), '');
+      }
+      fs.mkdirSync(path.join(target, '.git/objects'), { recursive: true });
+      fs.writeFileSync(path.join(target, '.git/objects/x'), 'x');
+      fs.mkdirSync(path.join(target, 'out/renderer/node_modules'), { recursive: true });
+      fs.writeFileSync(path.join(target, 'out/renderer/node_modules/junk.js'), 'junk');
+    }
+    assert.equal(runNative(['init', app.native], app.native).result.status, 0);
+    assert.equal(runNode(['init', app.node], app.node).result.status, 0);
+    const native = runNative(['inspect', app.native], app.native);
+    const node = runNode(['inspect', app.node], app.node);
+    compareReports(native, node, app, 'inspect skipped trees');
+    assert.equal(native.result.status, 0, native.stderr);
+    assert.equal(native.report.observations.nativeAddons, false);
+    const migratedNative = runNative(['migrate', app.native], app.native);
+    const migratedNode = runNode(['migrate', app.node], app.node);
+    compareReports(migratedNative, migratedNode, app, 'migrate skipped trees');
+    const stage = path.join(app.native, '.emoon/app');
+    assert.equal(fs.existsSync(path.join(stage, 'node_modules')), false);
+    assert.equal(fs.existsSync(path.join(stage, 'out/renderer/node_modules')), false);
+    assert.deepEqual(tree(stage), tree(path.join(app.node, '.emoon/app')));
+  } finally { cleanup(app); }
+});
+
+test('native and reference forward dev --page', () => {
+  const app = pair();
+  try {
+    for (const target of [app.native, app.node]) {
+      fs.copyFileSync(
+        path.join(target, 'out/renderer/index.html'),
+        path.join(target, 'out/renderer/custom.html'),
+      );
+    }
+    const native = runNative(
+      ['dev', '--no-launch', '--page', 'out/renderer/custom.html', app.native],
+      app.native,
+    );
+    const node = runNode(
+      ['dev', '--no-launch', '--page', 'out/renderer/custom.html', '--runtime', nativeCli(), app.node],
+      app.node,
+    );
+    compareReports(native, node, app, 'dev page');
+    assert.equal(native.result.status, 0, native.stderr);
+    const nativeConfig = JSON.parse(fs.readFileSync(path.join(app.native, '.emoon/config.json'), 'utf8'));
+    const nodeConfig = JSON.parse(fs.readFileSync(path.join(app.node, '.emoon/config.json'), 'utf8'));
+    assert.equal(nativeConfig.page, 'out/renderer/custom.html');
+    assert.deepEqual(nativeConfig, nodeConfig);
+    assert.deepEqual(
+      tree(path.join(app.native, '.emoon/app')),
+      tree(path.join(app.node, '.emoon/app')),
+    );
   } finally { cleanup(app); }
 });
 

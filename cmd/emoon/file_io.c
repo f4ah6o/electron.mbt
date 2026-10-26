@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
@@ -942,4 +943,40 @@ int32_t moonbit_emoon_fs_remove_tree(moonbit_bytes_t root_bytes,
   free(parent);
   free(base);
   return result;
+}
+
+
+// Run the app's own `npm run build` from a developer command. This is not part
+// of the runtime: `emoon dev --build` is an explicit opt-in for source trees.
+// The child gets stdin from /dev/null, stdout redirected to stderr so the CLI's
+// JSON stdout stays parseable, a 20-minute alarm, and the app root as cwd.
+int32_t moonbit_emoon_run_build(moonbit_bytes_t root_bytes) {
+  char *root = copy_bytes(root_bytes);
+  if (root == NULL) return -1;
+  pid_t pid = fork();
+  if (pid < 0) {
+    free(root);
+    return -1;
+  }
+  if (pid == 0) {
+    if (chdir(root) != 0) _exit(127);
+    int input = open("/dev/null", O_RDONLY);
+    if (input >= 0) {
+      if (dup2(input, STDIN_FILENO) < 0) _exit(127);
+      if (input > STDIN_FILENO) close(input);
+    }
+    if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) _exit(127);
+    alarm(1200);
+    execlp("npm", "npm", "run", "build", (char *)NULL);
+    _exit(127);
+  }
+  free(root);
+  int status = 0;
+  pid_t waited = -1;
+  do {
+    waited = waitpid(pid, &status, 0);
+  } while (waited < 0 && errno == EINTR);
+  if (waited < 0) return -1;
+  if (WIFEXITED(status)) return WEXITSTATUS(status);
+  return -1;
 }

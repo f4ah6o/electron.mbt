@@ -29,14 +29,11 @@ A plain stage from the built 1.0.7 source now reaches:
  "mainError":"","compatible":false}
 ```
 
-This means the main process and native window boot. It is **not** a working app:
-the plain stage has no adapted `window.api`, the renderer probe is not loaded,
-and `moji-asset` handlers are not executed. The adapted 1.0.5 stage still reaches
-`HOLDING`/`HOLD_EXIT` and exits 0.
-
-Next for 1.0.7 is an adapted API manifest (including drafts/openMany and the
-`readPath` stream contract), then renderer verification; zlib and real worker
-threads remain separate gaps.
+This means the main process and native window boot. With a captured adapted
+manifest, the same 1.0.7 stage reaches `rendererLoaded:true`, `apiPresent:true`,
+4 requests / 0 reply errors and the initial Moji UI; see
+[docs/0067](0067-preload-api-capture.md). File opening, editing, export,
+`moji-asset://` images, zlib and real workers remain unverified or limited.
 
 ## Tests
 

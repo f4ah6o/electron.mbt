@@ -135,6 +135,7 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
       "const electron = require('electron');\n" +
       "electron.protocol.registerSchemesAsPrivileged([{ scheme: 'protocol-test' }]);\n" +
       "electron.protocol.handle('protocol-test', function () {});\n" +
+      "const readReply = JSON.parse(globalThis.__mbt_dispatch('emoon:read-file', JSON.stringify({ args: ['/missing'] })));\n" +
       "perf.mark('a');\n" +
       "perf.mark('b');\n" +
       "perf.measure('m', 'a', 'b');\n" +
@@ -149,7 +150,8 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
       "  durationAtLeastZero: duration >= 0,\n" +
       "  measuresAfter: perf.getEntriesByName('m', 'measure').length,\n" +
       "  globalPerformance: typeof performance.now(),\n" +
-      "  protocolHandled: electron.protocol.isProtocolHandled('protocol-test') };\n",
+      "  protocolHandled: electron.protocol.isProtocolHandled('protocol-test'),\n" +
+      "  readCode: readReply.code };\n",
       {},
       false,
     ),
@@ -166,6 +168,7 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
   assert_true(result.exports.contains("\"measuresAfter\":0"))
   assert_true(result.exports.contains("\"globalPerformance\":\"number\""))
   assert_true(result.exports.contains("\"protocolHandled\":true"))
+  assert_true(result.exports.contains("\"readCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
   context.destroy()
   engine.destroy()
 }

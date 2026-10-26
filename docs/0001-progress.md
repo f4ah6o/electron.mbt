@@ -389,3 +389,28 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - Limits: `worker_threads` is not implemented, `zlib.createDeflate` is still
   unsupported, `os`/`v8` values are placeholders, and the 1.0.7 adapted API
   (drafts, openMany, readPath stream) is NOT RUN. See [docs/0066](0066-node-runtime-surfaces.md).
+
+## Moji 1.0.7 adapted renderer and preload capture (2026-10-26)
+
+- Added `scripts/capture-preload-api.cjs`, a generic dev-time capture tool for
+  built contextBridge preloads. It evaluates the preload once with a fake
+  `electron`, records the first IPC call/event per exposed function, supports
+  explicit `--operation method=operation` overrides, and writes a schema-3
+  adapted manifest. It does not execute the preload in the app.
+- Added the generic reserved operation `emoon:read-file` for granted files
+  (host `main-read-file`, 256 KiB cap), returning
+  `{ok,path,content,sizeBytes,sizeProfile}` for adapted manifests that map a
+  streamed read to a simple read.
+- Captured the built Moji 1.0.7 preload (23 calls, 6 topics, 1 unsupported
+  `getDroppedPath`) with `readPath=emoon:read-file`, staged it with
+  `init --api`/`dev` (143 files, doctor `ready`), and ran it on Linux:
+  `rendererLoaded:true`, `apiPresent:true`, initial UI text `New / Open / Save /
+  Preview / Editor / Export` and `A LIGHTWEIGHT, SIMPLE MARKDOWN READER`,
+  adapted 4 requests / 0 reply errors / 0 rejected, `HOLDING` then
+  `HOLD_EXIT reason:"window-closed"`, exit 0.
+- Added a generic preload-capture test fixture/test. Validation: native **198
+  PASS**, JS **163 PASS**, npm **534 tests / 501 PASS / 0 FAIL / 33 SKIP**,
+  parity **20 PASS**.
+- Limits: file open/edit/save/drag/export/human dialogs are NOT verified;
+  `getDroppedPath`, `moji-asset://`, zlib compression and real worker threads
+  remain limited. No compatibility claim.

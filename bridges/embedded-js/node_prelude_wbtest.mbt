@@ -121,6 +121,56 @@ test "node crypto provides sha256, uuid, bytes and host entropy" {
 }
 
 ///|
+test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
+  let engine = Engine::new()
+  let context = Context::new(engine)
+  let modules = [
+    ModuleSource::new(
+      "entry",
+      "sha256:runtime-surfaces",
+      "const v8 = require('node:v8');\n" +
+      "const os = require('node:os');\n" +
+      "const workerThreads = require('node:worker_threads');\n" +
+      "const perf = require('node:perf_hooks').performance;\n" +
+      "const electron = require('electron');\n" +
+      "electron.protocol.registerSchemesAsPrivileged([{ scheme: 'protocol-test' }]);\n" +
+      "electron.protocol.handle('protocol-test', function () {});\n" +
+      "perf.mark('a');\n" +
+      "perf.mark('b');\n" +
+      "perf.measure('m', 'a', 'b');\n" +
+      "const entries = perf.getEntriesByName('m', 'measure');\n" +
+      "const duration = entries.length > 0 ? entries[entries.length - 1].duration : -1;\n" +
+      "perf.clearMeasures('m');\n" +
+      "let workerCode = '';\n" +
+      "try { new workerThreads.Worker('x'); } catch (error) { workerCode = error.code; }\n" +
+      "module.exports = { heap: typeof v8.getHeapStatistics().heap_size_limit,\n" +
+      "  platform: os.platform(), cpus: os.cpus().length, totalmem: os.totalmem(),\n" +
+      "  isMainThread: workerThreads.isMainThread, workerCode: workerCode,\n" +
+      "  durationAtLeastZero: duration >= 0,\n" +
+      "  measuresAfter: perf.getEntriesByName('m', 'measure').length,\n" +
+      "  globalPerformance: typeof performance.now(),\n" +
+      "  protocolHandled: electron.protocol.isProtocolHandled('protocol-test') };\n",
+      {},
+      false,
+    ),
+  ]
+  let result = context.eval_cjs_with_prelude(modules, "entry", node_prelude(), prelude_config())
+  assert_true(result.status is Value)
+  assert_true(result.exports.contains("\"heap\":\"number\""))
+  assert_true(result.exports.contains("\"platform\":\"darwin\""))
+  assert_true(result.exports.contains("\"cpus\":1"))
+  assert_true(result.exports.contains("\"totalmem\":0"))
+  assert_true(result.exports.contains("\"isMainThread\":true"))
+  assert_true(result.exports.contains("\"workerCode\":\"ELECTRON_MBT_UNSUPPORTED_API\""))
+  assert_true(result.exports.contains("\"durationAtLeastZero\":true"))
+  assert_true(result.exports.contains("\"measuresAfter\":0"))
+  assert_true(result.exports.contains("\"globalPerformance\":\"number\""))
+  assert_true(result.exports.contains("\"protocolHandled\":true"))
+  context.destroy()
+  engine.destroy()
+}
+
+///|
 test "node prelude dispatches sync and async handlers exactly once" {
   let engine = Engine::new()
   let context = Context::new(engine)

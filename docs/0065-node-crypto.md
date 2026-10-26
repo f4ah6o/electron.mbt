@@ -39,10 +39,10 @@ application preload is still not executed.
 - `npm test`: 533 tests / 500 PASS / 0 FAIL / 33 SKIP.
 - Moji 1.0.5 adapted hold window still reaches `HOLDING`/`HOLD_EXIT` and exits 0.
 
-The pinned Moji 1.0.7 main now gets past `node:crypto`; its next main-eval
-failure is `ELECTRON_MBT_MODULE_DEPENDENCY:node:v8`. `node:worker_threads`,
-`node:perf_hooks`, zlib, the 1.0.7 adapted API and a normal window mode remain
-open. macOS entropy and a full 1.0.7 window are NOT RUN.
+The pinned Moji 1.0.7 main now gets past `node:crypto`. After the follow-up
+v8/os/perf_hooks/protocol surfaces, its main and window boot; the plain renderer
+still has no adapted API. See [docs/0066](0066-node-runtime-surfaces.md).
+macOS entropy and a full 1.0.7 renderer window remain NOT RUN.
 
 Files: `bridges/embedded-js/node_prelude.mbt`,
 `bridges/embedded-js/quickjs_adapter.c`, `runtime/modules/builtins.mbt`.

@@ -368,3 +368,24 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   `node:perf_hooks`, zlib, the 1.0.7 adapted manifest and a normal window mode
   remain. macOS entropy and a full 1.0.7 window are NOT RUN. See
   [docs/0065](0065-node-crypto.md).
+
+## Moji 1.0.7 main/window boot (2026-10-26)
+
+- Added minimal import/boot surfaces for `node:v8` (`getHeapStatistics` with a
+  fixed 256 MiB limit), `node:worker_threads` (import-only, fail-closed
+  `Worker`), `node:perf_hooks` (local mark/measure), `node:os` (host
+  placeholders) and `electron.protocol` (`registerSchemesAsPrivileged` no-op;
+  `handle` stores but does not execute; `moji-asset://` is not served). The
+  global `performance` object is exposed.
+- The plain Moji 1.0.7 stage now reports `status:"PASS"` for the main/window
+  runtime: `windowLoaded:true`, `pageTitle:"Moji v1.0.7"`, `mainError:""`,
+  `compatible:false`. It is **not** a working app: `rendererLoaded:false`,
+  `rootChildren:0`, `apiPresent:false`, `adapted.requests:0`; a plain stage has
+  no adapted API and protocol handlers are not executed.
+- Moji 1.0.5 adapted hold remains `HOLDING` → `HOLD_EXIT reason:"window-closed"`,
+  exit 0.
+- Tests: `moon test --target native` **198 PASS**, `--target js` **163 PASS**,
+  `npm test` **533 tests / 500 PASS / 0 FAIL / 33 SKIP**, parity **20 PASS**.
+- Limits: `worker_threads` is not implemented, `zlib.createDeflate` is still
+  unsupported, `os`/`v8` values are placeholders, and the 1.0.7 adapted API
+  (drafts, openMany, readPath stream) is NOT RUN. See [docs/0066](0066-node-runtime-surfaces.md).

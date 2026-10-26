@@ -33,7 +33,7 @@ fn builtin_table() -> Map[String, BuiltinStatus] {
     "https": Unsupported,
     "http2": Unsupported,
     "dns": Unsupported,
-    "crypto": Unsupported,
+    "crypto": Planned,
     "stream": Unsupported,
     "readline": Unsupported,
     "repl": Unsupported,
@@ -115,6 +115,7 @@ fn builtin_symbols_table() -> Map[String, Array[String]] {
     "events": ["EventEmitter", "on", "once", "off", "emit"],
     "process": ["platform", "arch", "argv", "env", "resourcesPath"],
     "zlib": ["createDeflate"],
+    "crypto": ["createHash", "randomUUID", "randomBytes", "getRandomValues"],
   }
 }
 

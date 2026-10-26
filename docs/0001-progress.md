@@ -344,3 +344,27 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - Not run: `_build/Moji` 1.0.7 `npm install`/`npm run build` and its
   `dev --build` (the user selected the prepared 1.0.5 stage); macOS native,
   publication, `moon binstall`, signing and human dialog UI remain NOT RUN.
+
+## `node:crypto` subset (2026-10-26)
+
+- Implemented `node:crypto` / `crypto` in the embedded Node prelude:
+  `createHash('sha256'|'sha-256')` with `update` over strings, Buffer,
+  ArrayBuffer and number arrays and `digest` in hex/base64/Buffer;
+  `randomUUID` (v4), `randomBytes` and `getRandomValues`. Unsupported
+  algorithms, encodings and WebCrypto surfaces fail closed.
+- Host entropy is `getrandom` on Linux, `arc4random_buf` on macOS (compiled, not
+  run here) and `/dev/urandom` elsewhere; there is no `Math.random` fallback. The
+  random length is capped at 65,536 bytes and hash input at 64 MiB.
+- Registered `crypto` in the builtin surface as a planned/implemented subset;
+  the original preload is still not executed.
+- Evidence: native prelude crypto test (empty/abc SHA-256 vectors, base64, UUID
+  v4 shape/variant/distinctness, random bytes, `getRandomValues`, unsupported
+  algorithm), `moon test --target native` **197 PASS**, `--target js` **163
+  PASS**, `npm test` **533 tests / 500 PASS / 0 FAIL / 33 SKIP**, parity **20
+  PASS**. The Moji 1.0.5 adapted hold still reaches `HOLDING`/`HOLD_EXIT` and
+  exits 0.
+- Moji 1.0.7 now advances past `node:crypto`; the next main-eval failure is
+  `ELECTRON_MBT_MODULE_DEPENDENCY:node:v8`. `node:worker_threads`,
+  `node:perf_hooks`, zlib, the 1.0.7 adapted manifest and a normal window mode
+  remain. macOS entropy and a full 1.0.7 window are NOT RUN. See
+  [docs/0065](0065-node-crypto.md).

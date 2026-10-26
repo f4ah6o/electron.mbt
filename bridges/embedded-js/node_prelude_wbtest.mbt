@@ -72,6 +72,55 @@ test "node prelude provides bounded builtins and fail-closed modules" {
 }
 
 ///|
+test "node crypto provides sha256, uuid, bytes and host entropy" {
+  let engine = Engine::new()
+  let context = Context::new(engine)
+  assert_true(context.install_host_bridge())
+  let modules = [
+    ModuleSource::new(
+      "entry",
+      "sha256:crypto",
+      "const crypto = require('node:crypto');\n" +
+      "const { Buffer } = require('node:buffer');\n" +
+      "const empty = crypto.createHash('sha256').digest('hex');\n" +
+      "const abc = crypto.createHash('sha256').update('abc').digest('hex');\n" +
+      "const b64 = crypto.createHash('sha256').update('abc').digest('base64');\n" +
+      "const hashBuffer = Buffer.isBuffer(crypto.createHash('sha256').digest());\n" +
+      "const uuid1 = crypto.randomUUID();\n" +
+      "const uuid2 = crypto.randomUUID();\n" +
+      "const bytes = crypto.randomBytes(8);\n" +
+      "const array = new Uint8Array(4);\n" +
+      "crypto.getRandomValues(array);\n" +
+      "let algorithm = '';\n" +
+      "try { crypto.createHash('md5'); } catch (error) { algorithm = error.code; }\n" +
+      "module.exports = { empty: empty, abc: abc, b64: b64, hashBuffer: hashBuffer,\n" +
+      "  uuidLength: uuid1.length, uuidVersion: uuid1.charAt(14),\n" +
+      "  uuidVariant: '89ab'.indexOf(uuid1.charAt(19)) >= 0, uuidDistinct: uuid1 !== uuid2,\n" +
+      "  byteLength: bytes.length, isBuffer: Buffer.isBuffer(bytes),\n" +
+      "  randomArray: array.length, algorithm: algorithm };\n",
+      {},
+      false,
+    ),
+  ]
+  let result = context.eval_cjs_with_prelude(modules, "entry", node_prelude(), prelude_config())
+  assert_true(result.status is Value)
+  assert_true(result.exports.contains("\"empty\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\""))
+  assert_true(result.exports.contains("\"abc\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\""))
+  assert_true(result.exports.contains("\"b64\":\"ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=\""))
+  assert_true(result.exports.contains("\"hashBuffer\":true"))
+  assert_true(result.exports.contains("\"uuidLength\":36"))
+  assert_true(result.exports.contains("\"uuidVersion\":\"4\""))
+  assert_true(result.exports.contains("\"uuidVariant\":true"))
+  assert_true(result.exports.contains("\"uuidDistinct\":true"))
+  assert_true(result.exports.contains("\"byteLength\":8"))
+  assert_true(result.exports.contains("\"isBuffer\":true"))
+  assert_true(result.exports.contains("\"randomArray\":4"))
+  assert_true(result.exports.contains("\"algorithm\":\"ELECTRON_MBT_UNSUPPORTED_API\""))
+  context.destroy()
+  engine.destroy()
+}
+
+///|
 test "node prelude dispatches sync and async handlers exactly once" {
   let engine = Engine::new()
   let context = Context::new(engine)

@@ -120,7 +120,7 @@ missing host fail instead of silently skipping the five tests.
 | CI `macos` | **PASS** — same run, 3m53s; the macOS suite exercises the macOS host, not this Linux host |
 
 2026-10-26 update: the local suite is now **533 tests / 500 PASS / 0 FAIL / 33
-SKIP** and `moon test` is **163 JS / 196 native PASS**. The Linux nodeless suite
+SKIP** and `moon test` is **163 JS / 197 native PASS**. The Linux nodeless suite
 is **22 PASS / 21 SKIP** because the real 16-second chooser test is gated on
 `ELECTRON_MBT_ISOLATED_DISPLAY=1` and skips on an interactive desktop; the new
 unmapped control-hold test covers the same 15-second host bound locally. The

@@ -1,10 +1,16 @@
 #include "quickjs.h"
 #include "moonbit.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
+#if defined(__linux__)
+#include <sys/random.h>
+#endif
 
 // A minimal, explicit-lifetime QuickJS adapter. C owns the engine/context/value
 // handles; MoonBit owns the policy, request ledger and scheduling decisions.
@@ -236,6 +242,64 @@ static JSValue emb_js_host_request(JSContext *ctx, JSValueConst this_val,
   return result;
 }
 
+static int emb_fill_random(uint8_t *out, size_t length) {
+  if (length == 0) return 1;
+#if defined(__linux__)
+  size_t offset = 0;
+  while (offset < length) {
+    ssize_t got = getrandom(out + offset, length - offset, 0);
+    if (got < 0) {
+      if (errno == EINTR || errno == EAGAIN) continue;
+      return 0;
+    }
+    if (got == 0) return 0;
+    offset += (size_t)got;
+  }
+  return 1;
+#elif defined(__APPLE__)
+  arc4random_buf(out, length);
+  return 1;
+#else
+  int fd = open("/dev/urandom", O_RDONLY);
+  if (fd < 0) return 0;
+  size_t offset = 0;
+  while (offset < length) {
+    ssize_t got = read(fd, out + offset, length - offset);
+    if (got < 0) {
+      if (errno == EINTR) continue;
+      close(fd);
+      return 0;
+    }
+    if (got == 0) {
+      close(fd);
+      return 0;
+    }
+    offset += (size_t)got;
+  }
+  close(fd);
+  return 1;
+#endif
+}
+
+static JSValue emb_js_random_bytes(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv) {
+  (void)this_val;
+  int32_t length = 0;
+  if (argc < 1 || JS_ToInt32(ctx, &length, argv[0]) < 0) return JS_EXCEPTION;
+  if (length < 0 || length > 65536) {
+    return JS_ThrowRangeError(ctx, "random byte length out of range");
+  }
+  uint8_t *bytes = (uint8_t *)malloc((size_t)(length > 0 ? length : 1));
+  if (bytes == NULL) return JS_ThrowInternalError(ctx, "random allocation failed");
+  if (length > 0 && !emb_fill_random(bytes, (size_t)length)) {
+    free(bytes);
+    return JS_ThrowInternalError(ctx, "random source unavailable");
+  }
+  JSValue result = JS_NewArrayBufferCopy(ctx, bytes, (size_t)length);
+  free(bytes);
+  return result;
+}
+
 MOONBIT_FFI_EXPORT
 int32_t moonbit_emb_install_host_bridge(void *raw_context) {
   EmbContext *context = (EmbContext *)raw_context;
@@ -249,6 +313,14 @@ int32_t moonbit_emb_install_host_bridge(void *raw_context) {
     return 0;
   }
   JS_SetPropertyStr(context->ctx, global, "__mbt_host_request", function);
+  JSValue random = JS_NewCFunction(context->ctx, emb_js_random_bytes,
+                                   "__mbt_random_bytes", 1);
+  if (JS_IsException(random)) {
+    JS_FreeValue(context->ctx, random);
+    JS_FreeValue(context->ctx, global);
+    return 0;
+  }
+  JS_SetPropertyStr(context->ctx, global, "__mbt_random_bytes", random);
   JS_FreeValue(context->ctx, global);
   return 1;
 }

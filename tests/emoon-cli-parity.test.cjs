@@ -109,6 +109,20 @@ function cleanup(app) {
   fs.rmSync(app.native, { recursive: true, force: true });
   fs.rmSync(app.node, { recursive: true, force: true });
 }
+function makeWritable(dir) {
+  if (!fs.existsSync(dir)) return;
+  const walk = (current) => {
+    const info = fs.lstatSync(current);
+    if (info.isSymbolicLink()) return;
+    if (info.isDirectory()) {
+      try { fs.chmodSync(current, 0o755); } catch { /* best effort */ }
+      for (const name of fs.readdirSync(current)) walk(path.join(current, name));
+    } else if (info.isFile()) {
+      try { fs.chmodSync(current, 0o644); } catch { /* best effort */ }
+    }
+  };
+  try { walk(dir); } catch { /* best effort */ }
+}
 
 test('native init matches the reference config and report', () => {
   const app = pair();
@@ -454,6 +468,38 @@ test('native and reference ignore node_modules and .git during inspect and stagi
     assert.equal(fs.existsSync(path.join(stage, 'out/renderer/node_modules')), false);
     assert.deepEqual(tree(stage), tree(path.join(app.node, '.emoon/app')));
   } finally { cleanup(app); }
+});
+
+
+test('native and reference move a non-removable stage aside', () => {
+  const app = pair();
+  try {
+    assert.equal(runNative(['init', app.native], app.native).result.status, 0);
+    assert.equal(runNode(['init', app.node], app.node).result.status, 0);
+    assert.equal(runNative(['migrate', app.native], app.native).result.status, 0);
+    assert.equal(runNode(['migrate', app.node], app.node).result.status, 0);
+    for (const target of [app.native, app.node]) {
+      fs.chmodSync(path.join(target, '.emoon/app/out/renderer'), 0o555);
+    }
+    const native = runNative(['migrate', '--force', app.native], app.native);
+    const node = runNode(['migrate', '--force', app.node], app.node);
+    compareReports(native, node, app, 'migrate move aside');
+    assert.equal(native.result.status, 0, native.stderr);
+    for (const target of [app.native, app.node]) {
+      assert.ok(fs.existsSync(path.join(target, '.emoon/app.stale')), `${target}: stale stage is missing`);
+      assert.ok(fs.existsSync(path.join(target, '.emoon/app/out/renderer')), `${target}: new stage is missing`);
+    }
+    assert.match(native.stderr, /moved it to/);
+    assert.match(node.stderr, /moved it to/);
+    assert.deepEqual(
+      tree(path.join(app.native, '.emoon/app')),
+      tree(path.join(app.node, '.emoon/app')),
+    );
+  } finally {
+    makeWritable(app.native);
+    makeWritable(app.node);
+    cleanup(app);
+  }
 });
 
 test('native and reference forward dev --page', () => {

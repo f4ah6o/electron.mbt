@@ -61,6 +61,19 @@ extern "C" fn emoon_fs_remove_tree(
 ) -> Int = "moonbit_emoon_fs_remove_tree"
 
 ///|
+#borrow(root, from, to)
+extern "C" fn emoon_fs_rename(
+  root : Bytes,
+  from : Bytes,
+  to : Bytes,
+) -> Int = "moonbit_emoon_fs_rename"
+
+///|
+fn fs_rename(root : String, from : String, to : String) -> Int {
+  emoon_fs_rename(@utf8.encode(root), @utf8.encode(from), @utf8.encode(to))
+}
+
+///|
 fn fs_kind(root : String, relative : String) -> Int {
   emoon_fs_kind(@utf8.encode(root), @utf8.encode(relative))
 }

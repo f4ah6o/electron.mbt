@@ -136,6 +136,13 @@ unbuilt source tree fails with:
   closed.
 - An existing stage is not replaced without `--force`. A stage containing
   `.appData` or `.userData` is not replaced without `--reset-data`.
+- `--force` normally removes the stage. If removal fails (for example when the
+  stage was created by another UID), the stage is atomically moved to
+  `.emoon/app.stale` (or `.stale-N`) and a warning goes to stderr; a fresh stage
+  is then created. The stale tree is retained for manual removal, is never used,
+  and is skipped by inspect. With `--reset-data`, app data inside the stale tree
+  is likewise retained; the warning names the path. `.emoon/.gitignore` ignores
+  `app.stale*/`.
 - `--out` equal to the app root, outside the app root, or a symlink is rejected.
   `--config` is app-relative, must stay inside the app root, and its directory is
   the report workspace.

@@ -434,7 +434,7 @@ fn command_init_with_args(root : String, args : @cli.CliArgs) -> Unit {
     )
   }
   if gitignore_kind == 0 {
-    if fs_write_atomic(root, gitignore, "app/\n") != 0 {
+    if fs_write_atomic(root, gitignore, "app/\napp.stale*/\n") != 0 {
       command_fail(
         "ELECTRON_MBT_MIGRATE_IO",
         "cannot write " + gitignore,
@@ -1246,6 +1246,27 @@ fn command_data_present(root : String, stage : String) -> Bool {
 }
 
 ///|
+fn command_move_stage_aside(root : String, stage : String) -> String? {
+  let mut index = 0
+  while index < 100 {
+    let suffix = if index == 0 {
+      ".stale"
+    } else {
+      ".stale-" + index.to_string()
+    }
+    let stale = stage + suffix
+    if fs_kind(root, stale) == 0 {
+      if fs_rename(root, stage, stale) == 0 {
+        return Some(stale)
+      }
+      return None
+    }
+    index += 1
+  }
+  None
+}
+
+///|
 fn command_prepare_stage(
   root : String,
   stage : String,
@@ -1275,7 +1296,19 @@ fn command_prepare_stage(
       )
     }
     if fs_remove_tree(root, stage) != 0 {
-      command_fail("ELECTRON_MBT_MIGRATE_IO", "cannot remove the existing stage")
+      match command_move_stage_aside(root, stage) {
+        Some(stale) =>
+          eprintln(
+            "[emoon] existing stage was not removable; moved it to " +
+            stale +
+            " (remove it manually)",
+          )
+        None =>
+          command_fail(
+            "ELECTRON_MBT_MIGRATE_IO",
+            "cannot remove or move the existing stage: " + stage,
+          )
+      }
     }
   }
   if fs_mkdir_p(root, stage) != 0 {

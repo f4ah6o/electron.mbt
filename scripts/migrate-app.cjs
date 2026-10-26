@@ -312,7 +312,7 @@ function cliInit(argv) {
   const config = { schema: 1, main, renderer, page, include, api };
   writeJsonAtomic(file, config);
   const gitignore = path.join(path.dirname(file), '.gitignore');
-  if (!fs.existsSync(gitignore)) fs.writeFileSync(gitignore, 'app/\n');
+  if (!fs.existsSync(gitignore)) fs.writeFileSync(gitignore, 'app/\napp.stale*/\n');
   const report = {
     schema: 1,
     tool: { name: 'emoon', version: '0.1.0', impl: 'node' },
@@ -356,6 +356,18 @@ function dataPresent(stage) {
   }
   return false;
 }
+function moveStageAside(stage) {
+  for (let index = 0; index < 100; index += 1) {
+    const stale = `${stage}.stale${index === 0 ? '' : `-${index}`}`;
+    let exists = false;
+    try { fs.lstatSync(stale); exists = true; }
+    catch (error) { if (error.code !== 'ENOENT') return null; }
+    if (exists) continue;
+    try { fs.renameSync(stage, stale); return stale; }
+    catch { return null; }
+  }
+  return null;
+}
 function prepareStage(root, config, options) {
   const stage = stagePath(root, config, options);
   if (stage === root || !inside(root, stage)) fail('ELECTRON_MBT_MIGRATE_OUT', 'stage must be inside the app root');
@@ -365,7 +377,12 @@ function prepareStage(root, config, options) {
     if (!options.force) fail('ELECTRON_MBT_MIGRATE_EXISTS', 'stage already exists; pass --force to replace it');
     if (dataPresent(stage) && !options['reset-data']) fail('ELECTRON_MBT_MIGRATE_DATA_PRESENT', 'stage contains app data; pass --reset-data to delete it');
     try { fs.rmSync(stage, { recursive: true, force: true }); }
-    catch (error) { fail('ELECTRON_MBT_MIGRATE_IO', `cannot remove the existing stage: ${error.message}`); }
+    catch (error) {
+      const stale = moveStageAside(stage);
+      if (!stale) fail('ELECTRON_MBT_MIGRATE_IO', `cannot remove or move the existing stage: ${error.message}`);
+      const display = path.relative(root, stale).split(path.sep).join('/');
+      console.error(`[emoon] existing stage was not removable; moved it to ${display} (remove it manually)`);
+    }
   }
   try { fs.mkdirSync(stage, { recursive: true }); }
   catch (error) { fail('ELECTRON_MBT_MIGRATE_IO', `cannot create the stage: ${error.message}`); }

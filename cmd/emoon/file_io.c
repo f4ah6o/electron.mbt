@@ -946,6 +946,63 @@ int32_t moonbit_emoon_fs_remove_tree(moonbit_bytes_t root_bytes,
 }
 
 
+int32_t moonbit_emoon_fs_rename(moonbit_bytes_t root_bytes,
+                                 moonbit_bytes_t from_bytes,
+                                 moonbit_bytes_t to_bytes) {
+  char *root = copy_bytes(root_bytes);
+  char *from = copy_bytes(from_bytes);
+  char *to = copy_bytes(to_bytes);
+  if (root == NULL || from == NULL || to == NULL) {
+    free(root);
+    free(from);
+    free(to);
+    return -1;
+  }
+  char *canonical_root = emoon_canonical_root(root);
+  free(root);
+  if (canonical_root == NULL) {
+    free(from);
+    free(to);
+    return -1;
+  }
+  char *from_parent = NULL;
+  char *from_base = NULL;
+  char *to_parent = NULL;
+  char *to_base = NULL;
+  int32_t result = -1;
+  if (from[0] != 0 && to[0] != 0) {
+    from_parent = emoon_destination_parent(canonical_root, from, &from_base);
+    to_parent = emoon_destination_parent(canonical_root, to, &to_base);
+    if (from_parent != NULL && to_parent != NULL &&
+        strcmp(from_parent, to_parent) == 0 &&
+        strcmp(from_base, to_base) != 0) {
+      size_t from_length = strlen(from_parent) + strlen(from_base) + 2;
+      size_t to_length = strlen(to_parent) + strlen(to_base) + 2;
+      char *from_path = (char *)malloc(from_length);
+      char *to_path = (char *)malloc(to_length);
+      if (from_path != NULL && to_path != NULL) {
+        snprintf(from_path, from_length, "%s/%s", from_parent, from_base);
+        snprintf(to_path, to_length, "%s/%s", to_parent, to_base);
+        struct stat existing;
+        if (lstat(to_path, &existing) != 0 && errno == ENOENT &&
+            rename(from_path, to_path) == 0) {
+          result = 0;
+        }
+      }
+      free(from_path);
+      free(to_path);
+    }
+  }
+  free(from_parent);
+  free(to_parent);
+  free(from_base);
+  free(to_base);
+  free(canonical_root);
+  free(from);
+  free(to);
+  return result;
+}
+
 // Run the app's own `npm run build` from a developer command. This is not part
 // of the runtime: `emoon dev --build` is an explicit opt-in for source trees.
 // The child gets stdin from /dev/null, stdout redirected to stderr so the CLI's

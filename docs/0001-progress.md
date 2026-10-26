@@ -332,9 +332,15 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   - `dist/emoon run _build/moji-linux-app --window --hold --entry
     out/main/main.js` shows `Moji v1.0.5`; WM close gives
     `HOLD_EXIT reason:"window-closed"` and exit 0.
+- `--force` fallback: when an existing stage cannot be removed (for example a
+  stage owned by another UID), both CLIs rename it to `.emoon/app.stale` (or
+  `.stale-N`), warn on stderr, and create a fresh stage. The real `_build/Moji`
+  run hit this: the old stage was owned by `nobody`, and `dist/emoon dev
+  _build/Moji --force --no-launch` now moves it aside, stages 1.0.7 (141 files)
+  and reaches doctor `ready`.
 - Validation: `moon test --target js` **163 PASS**, `--target native` **196
-  PASS**, `tests/emoon-cli.test.cjs` **10 PASS**, parity **19 PASS**, `npm test`
-  **532 tests / 499 PASS / 0 FAIL / 33 SKIP**.
+  PASS**, `tests/emoon-cli.test.cjs` **10 PASS**, parity **20 PASS**, `npm test`
+  **533 tests / 500 PASS / 0 FAIL / 33 SKIP**.
 - Not run: `_build/Moji` 1.0.7 `npm install`/`npm run build` and its
   `dev --build` (the user selected the prepared 1.0.5 stage); macOS native,
   publication, `moon binstall`, signing and human dialog UI remain NOT RUN.

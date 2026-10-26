@@ -54,7 +54,7 @@ test('emoon init writes the shared .emoon config and gitignore', () => {
     assert.equal(config.main, 'out/main/index.js');
     assert.equal(config.renderer, 'out/renderer');
     assert.equal(config.page, 'out/renderer/index.html');
-    assert.equal(fs.readFileSync(path.join(app, '.emoon/.gitignore'), 'utf8'), 'app/\n');
+    assert.equal(fs.readFileSync(path.join(app, '.emoon/.gitignore'), 'utf8'), 'app/\napp.stale*/\n');
     const second = run(['init'], app);
     assert.notEqual(second.result.status, 0);
     assert.equal(second.report.code, 'ELECTRON_MBT_MIGRATE_EXISTS');

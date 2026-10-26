@@ -22,7 +22,8 @@
     "test:core": "moon test --target js && moon test --target native && node --test tests/core-integration.test.cjs",
     "doctor": "node cmd/legacy-node.cjs doctor fixtures/cjs",
     "probe:macos": "node scripts/macos-probe.cjs",
-    "emoon:node": "node cmd/emoon.cjs"
+    "emoon:node": "node cmd/emoon.cjs",
+    "demo:emoon": "node scripts/try-emoon.cjs"
   },
   "license": "MIT",
   "repository": {

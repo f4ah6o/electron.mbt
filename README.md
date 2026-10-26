@@ -48,6 +48,20 @@ The stage is `.emoon/app` and the report is `.emoon/migration-report.json`.
 resolves `dist/emoon` (or another native runtime) for doctor/run; the native
 `dev` runs doctor/run in the same process.
 
+### Try it manually
+
+```sh
+npm run demo:emoon
+```
+
+This builds the native CLI if needed, stages
+[`fixtures/manual-demo-app`](fixtures/manual-demo-app/), prints the
+`init`/`inspect`/`migrate`/`doctor` reports, and opens a real GTK/WebKitGTK
+window that stays until you close it. The page's buttons call the generated
+`window.api`, which reaches `ipcMain.handle` in the demo main. Use `--no-launch`
+to stop after doctor, `--reset` to copy the demo app again, or `--rebuild` to
+rebuild the CLI. See [the manual trial note](docs/0064-manual-trial.md).
+
 ### Package status
 
 - `LICENSE` is MIT.

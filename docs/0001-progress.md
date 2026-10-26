@@ -277,3 +277,26 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - Not run: macOS native execution of the developer commands, `moon publish`,
   GitHub Release creation, `moon binstall`, `npm publish`, signing/notarization,
   human dialog UI and a clean-machine install. No compatibility row is promoted.
+
+## Manual demo window (2026-10-26)
+
+- Added [`fixtures/manual-demo-app`](../fixtures/manual-demo-app/) and
+  [`scripts/try-emoon.cjs`](../scripts/try-emoon.cjs) (`npm run demo:emoon`):
+  copy the demo app, run native `init`/`inspect`/`migrate`/`doctor`, then open a
+  real GTK/WebKitGTK window with `run --window --hold`. The window stays until
+  the human closes it (`--no-launch`, `--reset`, `--rebuild` are available).
+- Verified the adapted demo on this Linux host: the report is `status:"PASS"`,
+  the page title is `Electromoon manual demo`, the page shows
+  `ready: theme=dark`, the initial `window.api.getSettings()` request reaches
+  `ipcMain.handle` (`requests:1`, zero reply errors), and a window-manager close
+  exits with `HOLD_EXIT reason:"window-closed"` and status 0.
+- Documented the trial flow in [`docs/0064-manual-trial.md`](0064-manual-trial.md).
+  The demo is a developer convenience, not a compatibility result.
+- Page-script finding: the generated adapter defines the exposed name as a
+  non-configurable `window` property. A classic script with a top-level
+  `const api = window.api` fails in JavaScriptCore with `Can't create dup` and
+  never runs. The demo wraps its script in an IIFE and the manual note tells
+  users to read `window.api` directly or wrap the script. The original preload
+  is still not executed.
+- Scope: Linux only; macOS native execution, human dialog UI, publication and
+  `moon binstall` remain NOT RUN.

@@ -132,10 +132,13 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
       "const os = require('node:os');\n" +
       "const workerThreads = require('node:worker_threads');\n" +
       "const perf = require('node:perf_hooks').performance;\n" +
+      "const fs = require('node:fs');\n" +
       "const electron = require('electron');\n" +
       "electron.protocol.registerSchemesAsPrivileged([{ scheme: 'protocol-test' }]);\n" +
       "electron.protocol.handle('protocol-test', function () {});\n" +
       "const readReply = JSON.parse(globalThis.__mbt_dispatch('emoon:read-file', JSON.stringify({ args: ['/missing'] })));\n" +
+      "let renameCode = ''; try { fs.renameSync('/a', '/b'); } catch (error) { renameCode = error.code; }\n" +
+      "let unlinkCode = ''; try { fs.unlinkSync('/a'); } catch (error) { unlinkCode = error.code; }\n" +
       "perf.mark('a');\n" +
       "perf.mark('b');\n" +
       "perf.measure('m', 'a', 'b');\n" +
@@ -151,7 +154,7 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
       "  measuresAfter: perf.getEntriesByName('m', 'measure').length,\n" +
       "  globalPerformance: typeof performance.now(),\n" +
       "  protocolHandled: electron.protocol.isProtocolHandled('protocol-test'),\n" +
-      "  readCode: readReply.code };\n",
+      "  readCode: readReply.code, renameCode: renameCode, unlinkCode: unlinkCode };\n",
       {},
       false,
     ),
@@ -169,6 +172,8 @@ test "node prelude exposes v8, worker_threads, perf_hooks and os surfaces" {
   assert_true(result.exports.contains("\"globalPerformance\":\"number\""))
   assert_true(result.exports.contains("\"protocolHandled\":true"))
   assert_true(result.exports.contains("\"readCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
+  assert_true(result.exports.contains("\"renameCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
+  assert_true(result.exports.contains("\"unlinkCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
   context.destroy()
   engine.destroy()
 }

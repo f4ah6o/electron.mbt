@@ -414,3 +414,20 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - Limits: file open/edit/save/drag/export/human dialogs are NOT verified;
   `getDroppedPath`, `moji-asset://`, zlib compression and real worker threads
   remain limited. No compatibility claim.
+
+## Main fs rename/unlink (2026-10-26)
+
+- Added generic `main-rename` / `main-unlink` host operations and
+  `fs.renameSync` / `fs.unlinkSync` plus `fs.promises.rename`/`unlink` in the
+  Node prelude. They use the existing write policy (app `.appData`/`.userData`
+  or a write-granted exact file), canonical paths, directory rejection and
+  `ELECTRON_MBT_FILE_*` error mapping.
+- This fixes Moji 1.0.7's atomic settings/draft persistence path: the initial
+  `Could not restore recovery drafts: ELECTRON_MBT_MAIN_ERROR` toast is gone.
+  The adapted 1.0.7 initial UI still reports `rendererLoaded:true`,
+  `apiPresent:true`, 4 requests / 0 reply errors; the 1.0.5 adapted hold remains
+  PASS.
+- Validation: native **198 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**, parity **20 PASS**. File open/save, export and human
+  dialogs remain NOT verified; no compatibility claim. See
+  [docs/0068](0068-main-fs-rename.md).

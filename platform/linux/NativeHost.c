@@ -2128,6 +2128,131 @@ static void handle_main_write_file(Host *host, Request *request, JSCValue *paylo
   free(canonical);
 }
 
+static const char *main_fs_error_code(int error) {
+  switch (error) {
+    case ENOENT: return "ELECTRON_MBT_FILE_NOT_FOUND";
+    case EACCES:
+    case EPERM: return "ELECTRON_MBT_FILE_DENIED";
+    case EROFS: return "ELECTRON_MBT_FILE_READ_ONLY";
+    case EISDIR:
+    case ENOTDIR: return "ELECTRON_MBT_FILE_TYPE";
+    case EFBIG:
+    case ENOSPC:
+    case EDQUOT: return "ELECTRON_MBT_FILE_LIMIT";
+    default: return "ELECTRON_MBT_FILE_WRITE";
+  }
+}
+
+static void handle_main_rename(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path", "destination"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *destination = object_get_string(payload, "destination");
+  if (path == NULL || destination == NULL) {
+    g_free(path);
+    g_free(destination);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *source = canonical_existing_path(host, path);
+  char *target = canonical_write_path(host, destination);
+  if (source == NULL) {
+    g_free(path);
+    g_free(destination);
+    free(target);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (target == NULL || !main_write_allowed(host, source) ||
+      !main_write_allowed(host, target)) {
+    g_free(path);
+    g_free(destination);
+    free(source);
+    free(target);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(source, &info) != 0) {
+    g_free(path);
+    g_free(destination);
+    free(source);
+    free(target);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (!S_ISREG(info.st_mode)) {
+    g_free(path);
+    g_free(destination);
+    free(source);
+    free(target);
+    request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+    return;
+  }
+  if (rename(source, target) != 0) {
+    int error = errno;
+    g_free(path);
+    g_free(destination);
+    free(source);
+    free(target);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", target);
+  request_complete(request, "success", reply);
+  g_free(path);
+  g_free(destination);
+  free(source);
+  free(target);
+}
+
+static void handle_main_unlink(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *canonical = path == NULL ? NULL : canonical_existing_path(host, path);
+  if (canonical == NULL || !main_write_allowed(host, canonical)) {
+    const char *code = canonical == NULL ? "ELECTRON_MBT_FILE_NOT_FOUND"
+                                          : "ELECTRON_MBT_FILE_DENIED";
+    g_free(path);
+    free(canonical);
+    request_failure(request, code);
+    return;
+  }
+  struct stat info;
+  if (lstat(canonical, &info) != 0) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (S_ISDIR(info.st_mode)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+    return;
+  }
+  if (unlink(canonical) != 0) {
+    int error = errno;
+    g_free(path);
+    free(canonical);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  request_complete(request, "success", reply);
+  g_free(path);
+  free(canonical);
+}
+
 static void handle_main_stat(Host *host, Request *request, JSCValue *payload) {
   static const char *const expected[] = {"path"};
   if (!object_has_exact_keys(payload, expected, 1)) {
@@ -2706,6 +2831,14 @@ static void dispatch_request(Request *request, JSCValue *payload) {
   }
   if (strcmp(operation, "main-write-file") == 0) {
     handle_main_write_file(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-rename") == 0) {
+    handle_main_rename(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-unlink") == 0) {
+    handle_main_unlink(host, request, payload);
     return;
   }
   if (strcmp(operation, "main-stat") == 0) {

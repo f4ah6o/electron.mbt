@@ -74,6 +74,9 @@ Observed with the built 1.0.7 source on Linux:
   `A LIGHTWEIGHT, SIMPLE MARKDOWN READER`;
 - adapted: 4 requests, 0 reply errors, 0 rejected, released;
 - hold: `HOLDING` then `HOLD_EXIT reason:"window-closed"`, exit 0.
+- after adding `main-rename`/`main-unlink`, the initial
+  `Could not restore recovery drafts` toast is gone (see
+  [docs/0068](0068-main-fs-rename.md)).
 
 This proves the initial renderer and the captured API. File opening, editing,
 saving, drag-and-drop, export, dialogs and `moji-asset://` images are **NOT

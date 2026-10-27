@@ -553,6 +553,10 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   positioned FileHandle writes with short-write failure, O_NOFOLLOW/CLOEXEC,
   capture event flush, no-arg capturePage defaults, Buffer offset defaults and
   shared ArrayBuffer views, and run_jobs yielding rather than failing.
-- Remaining: HiDPI capture (scaleFactor hardcoded), very long multi-slice
-  stress, drag-and-drop, actual toolbar button automation, true PDF print
-  layout, macOS. See [docs/0071](0071-pdf-html-export.md).
+- HiDPI: WebKitGTK snapshots can be CSS- or device-sized. The host now derives
+  the ratio from the allocated CSS width and downscales device snapshots to
+  CSS. GDK_SCALE=2 probe: 794x4020 / 94,425-byte PNG with all 20 bands. This is
+  CSS-resolution output, not 2x native pixels.
+- Remaining: very long multi-slice stress, drag-and-drop, actual toolbar
+  button automation, true PDF print layout, macOS. See
+  [docs/0071](0071-pdf-html-export.md).

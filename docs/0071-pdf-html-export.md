@@ -90,7 +90,8 @@ was the same 3885-byte `%PDF-1.7` A4 page. The pinned Moji build itself uses
 - Probe HTML: 75-byte file with the expected
   `<!doctype html>...HELLO_PDF...` content.
 - Probe PNG: 794x1123 / 9,845-byte RGBA PNG and 794x4020 / 94,430-byte
-  two-slice RGBA PNG, both `file`/`identify`-valid.
+  two-slice RGBA PNG, both `file`/`identify`-valid. A GDK_SCALE=2 run also
+  produced 794x4020 / 94,425 bytes with all 20 bands visible.
 - Moji 1.0.7 open/edit/save/settings/drafts and 1.0.5 hold remain PASS.
 - The probes are manual (`_build` artifacts) using the pinned main; the
   behavioral prelude additions are covered by the zlib/Buffer assertions in
@@ -110,8 +111,11 @@ was the same 3885-byte `%PDF-1.7` A4 page. The pinned Moji build itself uses
   not a full Node stream/EventEmitter. FileHandle `"w"` creates/truncates on
   open and writes positioned chunks, but `close` has no flush/error surface.
 - `capturePage` requires the returned size to equal the requested size; a
-  failed GTK resize fails rather than silently omitting rows. `screen.scaleFactor`
-  is still hardcoded and HiDPI capture is NOT RUN.
+  failed GTK resize fails rather than silently omitting rows. WebKitGTK may
+  return CSS- or device-sized snapshots; the host derives the ratio from the
+  allocated CSS width and downscales device snapshots. A GDK_SCALE=2 probe
+  produced the same 794x4020 / 94,425-byte PNG with all slices intact (CSS-
+  resolution output, not 2x native pixels).
 - The `.tmp` sibling grant is exact-path, write-only and session-long; it is
   documented in [docs/0047](0047-node-less-main-user-file-grants.md).
 - `executeJavaScript` does not await Promise-valued expressions; Moji's

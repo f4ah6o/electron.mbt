@@ -2789,9 +2789,22 @@ static void handle_export_capture_page(Host *host, Request *request,
   }
   cairo_surface_t *visible = wait->surface;
   wait->surface = NULL;
-  int visible_width = cairo_image_surface_get_width(visible);
-  int visible_height = cairo_image_surface_get_height(visible);
-  if (x >= visible_width || y >= visible_height) {
+  /* WebKitGTK may return a CSS-sized snapshot even when the widget reports a
+   * device scale factor. Derive the real ratio from the allocated CSS width;
+   * when the surface is device-sized, downscale it to CSS for capturePage. */
+  int surface_width = cairo_image_surface_get_width(visible);
+  int surface_height = cairo_image_surface_get_height(visible);
+  int allocated_width = gtk_widget_get_allocated_width(GTK_WIDGET(host->export_web));
+  int scale = 1;
+  if (allocated_width > 0 && surface_width > allocated_width &&
+      surface_width % allocated_width == 0) {
+    scale = surface_width / allocated_width;
+  }
+  if (scale < 1) scale = 1;
+  int visible_width = surface_width / scale;
+  int visible_height = surface_height / scale;
+  if (x >= visible_width || y >= visible_height ||
+      x + width > visible_width || y + height > visible_height) {
     cairo_surface_destroy(visible);
     request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
     export_wait_unref(wait);
@@ -2799,11 +2812,10 @@ static void handle_export_capture_page(Host *host, Request *request,
   }
   int crop_width = (int)width;
   int crop_height = (int)height;
-  if (crop_width > visible_width - (int)x) crop_width = visible_width - (int)x;
-  if (crop_height > visible_height - (int)y) crop_height = visible_height - (int)y;
   cairo_surface_t *crop = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, crop_width, crop_height);
   cairo_t *cr = cairo_create(crop);
-  cairo_set_source_surface(cr, visible, -(double)x, -(double)y);
+  cairo_scale(cr, 1.0 / (double)scale, 1.0 / (double)scale);
+  cairo_set_source_surface(cr, visible, -(double)x * scale, -(double)y * scale);
   cairo_paint(cr);
   cairo_destroy(cr);
   cairo_surface_destroy(visible);

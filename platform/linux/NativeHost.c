@@ -52,10 +52,11 @@
 #define EBT_MAX_URL 8192
 #define EBT_MAX_SAFE_INTEGER 9007199254740991.0
 #define EBT_MAX_MAIN_READ (256 * 1024)
-#define EBT_MAX_MAIN_WRITE (256 * 1024)
+#define EBT_MAX_MAIN_WRITE (700 * 1024)
 #define EBT_MAX_MAIN_OFFSET (256 * 1024 * 1024)
 #define EBT_MAX_CAPTURE_BYTES (16 * 1024 * 1024)
-#define EBT_MAX_MAIN_BASE64 (400 * 1024)
+#define EBT_MAX_MAIN_BASE64 (950 * 1024)
+#define EBT_MAX_APP_WRITE (256 * 1024)
 #define EBT_MAX_MAIN_PATH 4096
 #define EBT_MAX_DIALOG_PATHS 16
 #define EBT_GRANT_READ 1
@@ -2085,12 +2086,11 @@ static void handle_main_write_file(Host *host, Request *request, JSCValue *paylo
   }
   gsize length = 0;
   guchar *data = g_base64_decode(base64, &length);
-  if ((data == NULL && length != 0) || length > EBT_MAX_MAIN_WRITE) {
+  if (data == NULL && length != 0) {
     g_free(data);
     g_free(path);
     g_free(base64);
-    request_failure(request, length > EBT_MAX_MAIN_WRITE ? "ELECTRON_MBT_FILE_LIMIT"
-                                                         : "ELECTRON_MBT_INVALID_ENVELOPE");
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
     return;
   }
   char *canonical = canonical_write_path(host, path);
@@ -2103,6 +2103,16 @@ static void handle_main_write_file(Host *host, Request *request, JSCValue *paylo
     g_free(base64);
     free(canonical);
     request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  gsize write_limit = (file_grant_mode(host, canonical) & EBT_GRANT_WRITE) != 0
+    ? EBT_MAX_MAIN_WRITE : EBT_MAX_APP_WRITE;
+  if (length > write_limit) {
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
     return;
   }
   struct stat info;
@@ -3489,6 +3499,88 @@ static void export_snapshot_finished(GObject *source, GAsyncResult *result,
   export_wait_unref(wait);
 }
 
+typedef struct PrintWait {
+  GMainLoop *loop;
+  gboolean done;
+  gboolean failed;
+} PrintWait;
+
+static void on_print_finished(WebKitPrintOperation *operation, gpointer data) {
+  (void)operation;
+  PrintWait *wait = data;
+  wait->done = TRUE;
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+}
+
+static void on_print_failed(WebKitPrintOperation *operation, GError *error,
+                            gpointer data) {
+  (void)operation; (void)error;
+  PrintWait *wait = data;
+  wait->done = TRUE;
+  wait->failed = TRUE;
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+}
+
+static gboolean on_print_timeout(gpointer data) {
+  PrintWait *wait = data;
+  wait->failed = TRUE;
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean try_print_layout_pdf(Host *host, const char *path,
+                                     const char *page_size,
+                                     gboolean landscape) {
+  if (host == NULL || host->export_web == NULL || path == NULL) return FALSE;
+  GtkPrintSettings *settings = gtk_print_settings_new();
+  GtkPageSetup *page_setup = gtk_page_setup_new();
+  GtkPaperSize *paper = NULL;
+  if (strcmp(page_size, "Letter") == 0) paper = gtk_paper_size_new("na_letter");
+  else if (strcmp(page_size, "Legal") == 0) paper = gtk_paper_size_new("na_legal");
+  else paper = gtk_paper_size_new("iso_a4");
+  if (settings == NULL || page_setup == NULL || paper == NULL) {
+    if (paper != NULL) gtk_paper_size_free(paper);
+    if (page_setup != NULL) g_object_unref(page_setup);
+    if (settings != NULL) g_object_unref(settings);
+    return FALSE;
+  }
+  gtk_print_settings_set_printer(settings, "Print to File");
+  gtk_print_settings_set(settings, GTK_PRINT_SETTINGS_OUTPUT_FILE_FORMAT, "pdf");
+  char *uri = g_filename_to_uri(path, NULL, NULL);
+  if (uri != NULL) {
+    gtk_print_settings_set(settings, GTK_PRINT_SETTINGS_OUTPUT_URI, uri);
+    g_free(uri);
+  }
+  gtk_page_setup_set_paper_size(page_setup, paper);
+  gtk_page_setup_set_orientation(page_setup, landscape ? GTK_PAGE_ORIENTATION_LANDSCAPE
+                                                        : GTK_PAGE_ORIENTATION_PORTRAIT);
+  gtk_paper_size_free(paper);
+  WebKitPrintOperation *operation = webkit_print_operation_new(host->export_web);
+  if (operation == NULL) {
+    g_object_unref(page_setup);
+    g_object_unref(settings);
+    return FALSE;
+  }
+  webkit_print_operation_set_print_settings(operation, settings);
+  webkit_print_operation_set_page_setup(operation, page_setup);
+  PrintWait wait;
+  memset(&wait, 0, sizeof(wait));
+  wait.loop = g_main_loop_new(NULL, FALSE);
+  g_signal_connect(operation, "finished", G_CALLBACK(on_print_finished), &wait);
+  g_signal_connect(operation, "failed", G_CALLBACK(on_print_failed), &wait);
+  guint timeout = g_timeout_add(5000, on_print_timeout, &wait);
+  webkit_print_operation_print(operation);
+  g_main_loop_run(wait.loop);
+  if (timeout != 0) g_source_remove(timeout);
+  g_main_loop_unref(wait.loop);
+  g_object_unref(operation);
+  g_object_unref(page_setup);
+  g_object_unref(settings);
+  struct stat info;
+  return wait.done && !wait.failed && stat(path, &info) == 0 &&
+    S_ISREG(info.st_mode) && info.st_size > 1024;
+}
+
 static void handle_export_print_pdf(Host *host, Request *request,
                                     JSCValue *payload) {
   static const char *const expected[] = {"pageSize", "landscape"};
@@ -3538,6 +3630,34 @@ static void handle_export_print_pdf(Host *host, Request *request,
     return;
   }
   close(pdf_fd);
+  if (try_print_layout_pdf(host, pdf_path, page_size, landscape)) {
+    ebt_debug("export-print-layout wrote %s\n", pdf_path);
+    gchar *layout_data = NULL;
+    gsize layout_length = 0;
+    GError *layout_error = NULL;
+    gboolean layout_read = g_file_get_contents(pdf_path, &layout_data, &layout_length, &layout_error);
+    ebt_debug("export-print-layout read=%d length=%zu error=%s\n", layout_read,
+              (size_t)layout_length,
+              layout_error == NULL ? "(null)" : layout_error->message);
+    if (layout_read && layout_length > 0 && layout_length <= EBT_MAX_MAIN_WRITE) {
+      gchar *layout_base64 = g_base64_encode((const guchar *)layout_data, layout_length);
+      JSCValue *layout_reply = object_new(host);
+      object_set_string(host, layout_reply, "base64", layout_base64);
+      object_set_number(host, layout_reply, "sizeBytes", (double)layout_length);
+      request_complete(request, "success", layout_reply);
+      g_free(layout_base64);
+      g_free(layout_data);
+      unlink(pdf_path);
+      g_free(pdf_path);
+      g_free(page_size);
+      return;
+    }
+    g_clear_error(&layout_error);
+    g_free(layout_data);
+    unlink(pdf_path);
+    /* Fall through to the bitmap snapshot path when the print-layout PDF is
+     * unreadable or too large for one host response frame. */
+  }
   char *pdf_uri = g_filename_to_uri(pdf_path, NULL, &error);
   if (pdf_uri == NULL) {
     g_clear_error(&error);

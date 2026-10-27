@@ -557,6 +557,10 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   the ratio from the allocated CSS width and downscales device snapshots to
   CSS. GDK_SCALE=2 probe: 794x4020 / 94,425-byte PNG with all 20 bands. This is
   CSS-resolution output, not 2x native pixels.
+- True print-layout PDF: `WebKitPrintOperation` with the "Print to File" PDF
+  backend produces a text-selectable A4 PDF (520,046 bytes, Skia/PDF m145;
+  `pdftotext` returns PRINT LAYOUT / SELECTABLE_TEXT_MARKER). A failed, timed-out
+  or oversized print falls back to the existing Cairo raster snapshot. The
+  host/main-write caps are now 700 KiB payload / 950 KiB base64.
 - Remaining: very long multi-slice stress, drag-and-drop, actual toolbar
-  button automation, true PDF print layout, macOS. See
-  [docs/0071](0071-pdf-html-export.md).
+  button automation, macOS. See [docs/0071](0071-pdf-html-export.md).

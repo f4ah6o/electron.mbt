@@ -31,12 +31,15 @@ now provides these surfaces generically.
 
 ### PDF
 
-`export-print-pdf` takes a full-document WebKit snapshot, then uses Cairo's PDF
-surface to place the raster snapshot on A4/Letter/Legal pages (portrait or
-landscape). The result is a real PDF (`%PDF-1.7`, A4 595x842 in the probe), but
-it is **raster**: text is not selectable and print CSS/page breaks are not
-honored. Internal export waits have 10/12 s deadlines below the 15 s host
-request bound and use refcounted callback lifetimes.
+`export-print-pdf` first runs a real WebKitGTK print operation with the
+"Print to File" PDF backend, A4/Letter/Legal page setup and orientation. That
+produces a **print-layout, text-selectable PDF** (Skia/PDF m145 in the probe:
+520,046 bytes, A4, 1 page; `pdftotext` returns the expected markers). If the
+print operation fails, times out (5 s), or its PDF exceeds the one-response
+limit, the host falls back to a full-document WebKit snapshot rendered through
+Cairo: a real but raster PDF (`%PDF-1.7`, 595x842, 3.8 KB in the probe).
+Internal export waits have 10/12 s deadlines below the 15 s host request bound
+and use refcounted callback lifetimes.
 
 ### HTML
 
@@ -86,7 +89,9 @@ was the same 3885-byte `%PDF-1.7` A4 page. The pinned Moji build itself uses
 - Probe page using the actual pinned Moji main and captured `exportAs` API:
   `doc:export` → `main-save-dialog` → `.appData/tmp/*.html` → hidden export
   WebView → `export-print-pdf` → `main-write-file`.
-- Probe PDF: 3885 bytes, `%PDF-1.7`, `pdfinfo`: A4, 1 page, Producer cairo.
+- Probe PDF: 520,046 bytes, PDF 1.4, A4, 1 page, Producer Skia/PDF m145;
+  `pdftotext` returns `PRINT LAYOUT` and `SELECTABLE_TEXT_MARKER`. The snapshot
+  fallback remains a 3.8 KB `%PDF-1.7` Cairo PDF.
 - Probe HTML: 75-byte file with the expected
   `<!doctype html>...HELLO_PDF...` content.
 - Probe PNG: 794x1123 / 9,845-byte RGBA PNG and 794x4020 / 94,430-byte
@@ -101,8 +106,10 @@ was the same 3885-byte `%PDF-1.7` A4 page. The pinned Moji build itself uses
 
 ## Limits
 
-- PDF is image-only and capped at 700 KiB raw (base64/JSON must stay under the
-  1 MiB host frame); larger exports fail with `FILE_LIMIT`.
+- Print-layout PDF is preferred. A print result above 700 KiB, or a failed/
+  timed-out print, falls back to a raster snapshot; the returned Buffer is
+  frame-bounded. The response/frame and main-write caps were raised to 700 KiB
+  payload / 950 KiB base64 for the 520 KB print-layout probe.
 - PNG uses the host zlib stream (not stored blocks) when the host is present.
   The probe A4 page is 9,845 bytes and the 4020 px two-slice page is 94,430
   bytes. Each capture is capped at 16 MiB; output offsets are capped at
@@ -130,5 +137,5 @@ was the same 3885-byte `%PDF-1.7` A4 page. The pinned Moji build itself uses
 - Two subagent reviews identified the timeout/lifetime, directory-list/PDF
   caps, symlinked recursive mkdir, window registry, single export view, zlib
   buffering, capture caps, FileHandle and `.tmp` issues; the listed fixes were
-  applied. Raster PDF, promise font waits, HiDPI, drag-and-drop and macOS
-  remain open.
+  applied. Print-layout PDF and HiDPI are now verified; promise font waits,
+  drag-and-drop, Export UI automation and macOS remain open.

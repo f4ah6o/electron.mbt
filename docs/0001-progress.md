@@ -512,3 +512,18 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
   0 FAIL / 33 SKIP**; 1.0.5 hold PASS; Moji open/edit/save regression PASS. No
   compatibility claim. See [docs/0071](0071-pdf-html-export.md).
+
+## Offscreen data-URL loadURL (resume)
+
+- Added `BrowserWindow.loadURL` support for offscreen `data:text/html` URLs,
+  including optional `baseURLForDataURL` insertion. It decodes to an app-local
+  temp file, loads via `load-export-file`, and removes the temp file in
+  `destroy`; non-data/non-offscreen loadURL still fails closed.
+- Verified by switching the export probe main from `loadFile` to `loadURL`:
+  PDF `%PDF-1.7`, A4 1 page, 3885 bytes; temp files cleaned up.
+- This addresses the export review's `loadURL` gap generically. The pinned
+  Moji 1.0.7 build still uses `loadFile`.
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**; 1.0.5 hold PASS; actual app open regression PASS.
+- Remaining: raster PDF/print CSS, PNG, drag-and-drop, actual toolbar-button
+  automation, macOS. No compatibility claim.

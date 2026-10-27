@@ -40,6 +40,22 @@ request bound and use refcounted callback lifetimes.
 
 HTML export is the direct string write path and needs no offscreen window.
 
+### Offscreen `loadURL`
+
+An offscreen `BrowserWindow` also supports data-URL navigation:
+
+```js
+win.loadURL("data:text/html;charset=utf-8,...", { baseURLForDataURL: "file:///..." })
+```
+
+The data URL is decoded into `.appData/tmp`, an optional `<base href>` is
+inserted from `baseURLForDataURL`, and the file is loaded through
+`load-export-file`. The temporary file is removed in `destroy`. Non-data/non-
+offscreen `loadURL` remains unsupported. This was verified by changing the
+export probe's window to use `loadURL` instead of `loadFile`; the PDF result
+was the same 3885-byte `%PDF-1.7` A4 page. The pinned Moji build itself uses
+`loadFile`, so this is generic coverage rather than a required Moji path.
+
 ## Evidence
 
 - Probe page using the actual pinned Moji main and captured `exportAs` API:

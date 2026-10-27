@@ -347,6 +347,7 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "release-adapted-ingress") == 0 ||
       strcmp(operation, "trigger-renderer-api") == 0 ||
       strcmp(operation, "trigger-renderer-edit-save") == 0 ||
+      strcmp(operation, "trigger-renderer-export-ui") == 0 ||
       strcmp(operation, "probe-renderer") == 0 ||
       strcmp(operation, "app-reply") == 0 ||
       strcmp(operation, "main-stat") == 0 ||

@@ -617,7 +617,7 @@ fn cli_pump_events(
   attempts? : Int = 80,
   idle_limit? : Int = 10,
 ) -> (Int, Int, Int) {
-  let event_buffer = Bytes::new(65536)
+  let event_buffer = Bytes::new(1048576)
   let reply_buffer = Bytes::new(65536)
   let (identity_window, identity_generation) = cli_host_identity()
   runner.pump_idle()
@@ -755,6 +755,7 @@ fn cli_hold(
   adapted_configured : Bool,
   hold_seconds : Int,
   close_after_ms : Int,
+  trigger_export_ui : Bool,
 ) -> Unit {
   let mut title = ""
   let mut url = ""
@@ -816,10 +817,15 @@ fn cli_hold(
   )
   let limit = if hold_seconds > 0 { hold_seconds * 10 } else { -1 }
   let mut ticks = 0
+  let mut export_ui_sent = false
   let mut reason = "hold-seconds"
   let mut close_sent = false
   while limit < 0 || ticks < limit {
     let _ = cli_pump_events(runner, session, attempts=1, idle_limit=1)
+    if trigger_export_ui && !export_ui_sent && ticks >= 80 {
+      export_ui_sent = true
+      let _ = cli_host_payload("trigger-renderer-export-ui", "{}")
+    }
     if close_after_ms > 0 && !close_sent && ticks >= close_after_ms / 100 {
       close_sent = true
       let _ = cli_host_payload("simulate-window-close", "{}")
@@ -1172,6 +1178,7 @@ fn cli_main(args : Array[String]) -> Unit {
   let moji_edit_save_selftest = args.contains("--moji-edit-save-selftest")
   let moji_reopen_selftest = args.contains("--moji-reopen-selftest")
   let moji_save_failure_selftest = args.contains("--moji-save-failure-selftest")
+  let trigger_export_ui = args.contains("--trigger-export-ui")
   if hold_mode && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold requires --window")
     return
@@ -1566,7 +1573,8 @@ fn cli_main(args : Array[String]) -> Unit {
     }
     let adapted_configured = adapted_adapter.length() > 0
     if hold_mode {
-      cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms)
+      cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
+               trigger_export_ui)
       return
     }
     let mut adapted_observed = false

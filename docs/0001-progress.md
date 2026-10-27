@@ -564,3 +564,13 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   host/main-write caps are now 700 KiB payload / 950 KiB base64.
 - Remaining: very long multi-slice stress, drag-and-drop, actual toolbar
   button automation, macOS. See [docs/0071](0071-pdf-html-export.md).
+
+- Export UI E2E: the actual Export toolbar, format dialog, footer confirm and
+  save dialog now run through to a text-selectable print-layout PDF. The probe
+  (test-only `--trigger-export-ui`, separate open/save autoselect paths) wrote
+  an 18,850-byte Skia/PDF A4 page; `pdftotext` returned `UI E2E` /
+  `HELLO_UI_E2E_SAVE`. Root fixes: the adapted page API sends one JSON `args`
+  field (string) and app-request events can reach 380 KB, so the CLI event
+  buffer and native app payload cap were raised to 1 MiB and the main prelude
+  normalizes string/array/`{args}` payloads before dispatch. Remaining after
+  this: drag-and-drop and macOS. See [docs/0042](0042-nodeless-main-runtime.md).

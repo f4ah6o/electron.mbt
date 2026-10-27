@@ -117,3 +117,29 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
 The reported `nodeProcesses:0` is self-reported by the runtime; the process and
 binary audits are the independent checks. A passing main-runtime fixture is not
 a Node-less app or release acceptance.
+
+### App request transport
+
+The adapted page API invokes a host operation with a JSON-encoded argument
+array (`record.args` is a string). The native host forwards that string as the
+`payload` and the main prelude normalizes it before dispatch:
+
+- JSON string of an argument array
+- an argument array directly
+- `{ args: ... }` where `args` is an array or a JSON string
+
+`payloadArgs` is shared by the `emoon:read-file` special case, IPC listeners and
+IPC handlers. This was required for object-bearing calls such as
+`window.api.exportAs(request)`: without it the handler received no request and
+the Export dialog closed without invoking `doc:export`.
+
+The CLI event buffer is 1 MiB and the native `EBT_MAX_APP_PAYLOAD` is 1 MiB.
+Moji's standalone HTML for the Untitled document is about 380 KB, so the earlier
+64 KiB event buffer silently prevented the app request from reaching main.
+Large app requests are still bounded; oversized payloads fail closed with
+`ELECTRON_MBT_INVALID_ENVELOPE`.
+
+Test-only reproductions use `--trigger-export-ui` (DOM clicks on the actual
+Export toolbar and dialog) plus `ELECTRON_MBT_LINUX_SAVE_AUTOSELECT` to choose a
+different save target from the open target. This is control-thread-only and is
+not exposed to app JavaScript.

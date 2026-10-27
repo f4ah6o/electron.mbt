@@ -45,7 +45,7 @@
 #define EBT_MAX_SNAPSHOT_TOTAL (64ULL * 1024ULL * 1024ULL)
 #define EBT_MAX_SNAPSHOT_FILES 4096
 #define EBT_MAX_ADAPTER 65536
-#define EBT_MAX_APP_PAYLOAD 65536
+#define EBT_MAX_APP_PAYLOAD (1024 * 1024)
 #define EBT_MAX_PENDING 128
 #define EBT_MAX_EVENTS 1024
 #define EBT_MAX_TITLE 4096
@@ -1117,6 +1117,11 @@ static gboolean on_app_message(WebKitUserContentManager *manager,
   if (nonce_value != NULL) g_object_unref(nonce_value);
 
   const char *code = NULL;
+  if (payload_json != NULL && strlen(payload_json) > EBT_MAX_APP_PAYLOAD) {
+    ebt_debug("app-payload oversized len=%zu limit=%d op=%s\n",
+              strlen(payload_json), EBT_MAX_APP_PAYLOAD,
+              operation == NULL ? "(null)" : operation);
+  }
   if (operation == NULL || operation[0] == 0 || strlen(operation) > 128 ||
       payload_json == NULL || strlen(payload_json) > EBT_MAX_APP_PAYLOAD) {
     code = "ELECTRON_MBT_INVALID_ENVELOPE";
@@ -1396,6 +1401,9 @@ static void handle_create_window(Host *host, Request *request) {
   g_object_unref(payload);
 
   WebKitSettings *settings = webkit_web_view_get_settings(host->web);
+  if (g_getenv("ELECTRON_MBT_LINUX_DEBUG") != NULL) {
+    webkit_settings_set_enable_write_console_messages_to_stdout(settings, TRUE);
+  }
   webkit_settings_set_enable_developer_extras(settings, FALSE);
   webkit_settings_set_javascript_can_open_windows_automatically(settings, FALSE);
   host->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -1667,6 +1675,27 @@ static void probe_renderer_finished(GObject *source, GAsyncResult *result,
     request_complete(context->request, "success", payload);
   }
   g_free(context);
+}
+
+static void handle_trigger_renderer_export_ui(Host *host, Request *request) {
+  if (!require_current(host, request)) return;
+  if (!host->content_alive || !host->loaded) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  static const char script[] =
+    "(function(){"
+    "function label(n){return ((n.textContent||'')+' '+(n.getAttribute('aria-label')||'')).trim().toLowerCase();}"
+    "function all(){return Array.prototype.slice.call(document.querySelectorAll('button'));}"
+    "var open=null; all().forEach(function(b){if(!open&&label(b)==='open')open=b;});"
+    "if(open) open.click();"
+    "setTimeout(function(){all().forEach(function(b){if(label(b).indexOf('export')>=0&&!b.closest('.export-dialog'))b.click();});},2500);"
+    "setTimeout(function(){var b=document.querySelector('.export-dialog .export-dialog__footer button');if(b)b.click();},5500);"
+    "setTimeout(function(){var b=document.querySelector('.export-dialog .export-dialog__footer button');if(b)b.click();},9000);"
+    "})()";
+  webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL, NULL, NULL);
+  ebt_debug("trigger-renderer-export-ui\n");
+  request_success_empty(request);
 }
 
 static void handle_probe_renderer(Host *host, Request *request) {
@@ -2981,7 +3010,12 @@ static guint dialog_test_hold_ms(void) {
 
 static void install_dialog_auto_response(GtkWidget *dialog, gboolean save) {
   const char *test_mode = getenv("ELECTRON_MBT_TEST_MODE");
-  const char *selected = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  const char *selected = save
+    ? getenv("ELECTRON_MBT_LINUX_SAVE_AUTOSELECT")
+    : getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  if (selected == NULL && save) {
+    selected = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  }
   if (test_mode == NULL || strcmp(test_mode, "1") != 0 ||
       selected == NULL || selected[0] == 0) return;
   char *canonical = save ? (g_path_is_absolute(selected) ? g_strdup(selected) : NULL)
@@ -3921,6 +3955,10 @@ static void dispatch_request(Request *request, JSCValue *payload) {
   }
   if (strcmp(operation, "load-file") == 0) {
     start_load(host, request, payload, FALSE);
+    return;
+  }
+  if (strcmp(operation, "trigger-renderer-export-ui") == 0) {
+    handle_trigger_renderer_export_ui(host, request);
     return;
   }
   if (strcmp(operation, "probe-renderer") == 0) {

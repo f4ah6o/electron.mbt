@@ -54,14 +54,16 @@ PNG export uses the app's own path:
 - `fs.promises.open(..., "w")` writes positioned chunks through
   `main-write-at` (the previous in-memory-only handle could not implement the
   PNG header rewrite at offset 8, nor large files).
-- `zlib.createDeflate` is a stored-block DEFLATE stream (valid zlib/PNG, but
-  uncompressed) with an async iterator and `destroy`.
+- `zlib.createDeflate` uses the host's zlib `deflate` stream when available,
+  with a stored-block fallback for hostless unit contexts. It exposes an async
+  iterator and `destroy`.
 - Buffer integer accessors and `Buffer.from(ArrayBuffer, offset, length)` cover
   the PNG header/CRC code.
 
 The probes produced valid RGBA PNGs through the actual pinned Moji main:
-794x1123 / 3,571,007 bytes for an A4 page, and 794x4020 / 12,778,245 bytes for
-a long document spanning two capture slices. They are raster images.
+794x1123 / 9,845 bytes for an A4 page, and 794x4020 / 94,430 bytes for a long
+document spanning two capture slices. They are raster images and use real
+zlib compression.
 
 ### Offscreen `loadURL`
 
@@ -87,8 +89,8 @@ was the same 3885-byte `%PDF-1.7` A4 page. The pinned Moji build itself uses
 - Probe PDF: 3885 bytes, `%PDF-1.7`, `pdfinfo`: A4, 1 page, Producer cairo.
 - Probe HTML: 75-byte file with the expected
   `<!doctype html>...HELLO_PDF...` content.
-- Probe PNG: 794x1123 / 3,571,007-byte RGBA PNG and 794x4020 /
-  12,778,245-byte two-slice RGBA PNG, both `file`/`identify`-valid.
+- Probe PNG: 794x1123 / 9,845-byte RGBA PNG and 794x4020 / 94,430-byte
+  two-slice RGBA PNG, both `file`/`identify`-valid.
 - Moji 1.0.7 open/edit/save/settings/drafts and 1.0.5 hold remain PASS.
 - The probes are manual (`_build` artifacts) using the pinned main; the
   behavioral prelude additions are covered by the zlib/Buffer assertions in
@@ -100,10 +102,10 @@ was the same 3885-byte `%PDF-1.7` A4 page. The pinned Moji build itself uses
 
 - PDF is image-only and capped at 700 KiB raw (base64/JSON must stay under the
   1 MiB host frame); larger exports fail with `FILE_LIMIT`.
-- PNG output uses stored DEFLATE (no compression), so files are roughly the
-  raw page size (3.5 MB for one A4 page at 794x1123; 12.8 MB for a 4020 px
-  page). Two slices were verified; very long documents are not stress-tested.
-  Each capture is capped at 16 MiB; output offsets are capped at 256 MiB.
+- PNG uses the host zlib stream (not stored blocks) when the host is present.
+  The probe A4 page is 9,845 bytes and the 4020 px two-slice page is 94,430
+  bytes. Each capture is capped at 16 MiB; output offsets are capped at
+  256 MiB; very long documents are not stress-tested.
 - `DeflateStream` implements `write`/`end`/`destroy` and async iteration, but is
   not a full Node stream/EventEmitter. FileHandle `"w"` creates/truncates on
   open and writes positioned chunks, but `close` has no flush/error surface.

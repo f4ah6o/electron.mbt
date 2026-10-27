@@ -34,6 +34,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <zlib.h>
 #include <stdarg.h>
 #include <webkit2/webkit2.h>
 
@@ -147,6 +148,8 @@ typedef struct Host {
   WebKitWebView *export_web;
   ExportWait *export_load_wait;
   cairo_surface_t *export_capture;
+  z_stream *export_zlib;
+  guint64 export_zlib_token;
   GThread *control_thread;
   GThread *load_thread;
   GThread *event_thread;
@@ -2458,6 +2461,140 @@ static void handle_main_mkdir(Host *host, Request *request, JSCValue *payload) {
   free(canonical);
 }
 
+static void cleanup_export_zlib(Host *host) {
+  if (host == NULL || host->export_zlib == NULL) return;
+  deflateEnd(host->export_zlib);
+  g_free(host->export_zlib);
+  host->export_zlib = NULL;
+  host->export_zlib_token = 0;
+}
+
+static void handle_zlib_deflate_start(Host *host, Request *request,
+                                      JSCValue *payload) {
+  if (!object_has_exact_keys(payload, NULL, 0)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (host->export_zlib != NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_OPTIONS");
+    return;
+  }
+  z_stream *stream = g_new0(z_stream, 1);
+  int result = deflateInit(stream, Z_DEFAULT_COMPRESSION);
+  if (result != Z_OK) {
+    g_free(stream);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  host->export_zlib = stream;
+  /* One zlib stream per host. A small token keeps the JS number exact. */
+  host->export_zlib_token = 1;
+  JSCValue *reply = object_new(host);
+  object_set_number(host, reply, "token", (double)host->export_zlib_token);
+  request_complete(request, "success", reply);
+}
+
+static void handle_zlib_deflate_write(Host *host, Request *request,
+                                      JSCValue *payload) {
+  static const char *const expected[] = {"token", "base64"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 token = 0;
+  char *base64 = object_get_string(payload, "base64");
+  if (base64 == NULL || !object_get_integer(payload, "token", &token) ||
+      host->export_zlib == NULL || (guint64)token != host->export_zlib_token ||
+      strlen(base64) > EBT_MAX_MAIN_BASE64) {
+    g_free(base64);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gsize length = 0;
+  guchar *data = g_base64_decode(base64, &length);
+  g_free(base64);
+  if ((data == NULL && length != 0) || length > EBT_MAX_MAIN_WRITE) {
+    g_free(data);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
+  z_stream *stream = host->export_zlib;
+  stream->next_in = data;
+  stream->avail_in = (uInt)length;
+  GByteArray *out = g_byte_array_new();
+  guchar buffer[65536];
+  do {
+    stream->next_out = buffer;
+    stream->avail_out = sizeof(buffer);
+    int result = deflate(stream, Z_NO_FLUSH);
+    if (result != Z_OK && result != Z_BUF_ERROR) {
+      g_byte_array_free(out, TRUE);
+      g_free(data);
+      cleanup_export_zlib(host);
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
+    gsize produced = sizeof(buffer) - stream->avail_out;
+    if (produced > 0) g_byte_array_append(out, buffer, (guint)produced);
+  } while (stream->avail_in > 0 || stream->avail_out == 0);
+  g_free(data);
+  char *encoded = g_base64_encode(out->data, out->len);
+  g_byte_array_free(out, TRUE);
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "base64", encoded);
+  request_complete(request, "success", reply);
+  g_free(encoded);
+}
+
+static void handle_zlib_deflate_end(Host *host, Request *request,
+                                    JSCValue *payload) {
+  static const char *const expected[] = {"token"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 token = 0;
+  if (!object_get_integer(payload, "token", &token) ||
+      host->export_zlib == NULL || (guint64)token != host->export_zlib_token) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  z_stream *stream = host->export_zlib;
+  GByteArray *out = g_byte_array_new();
+  guchar buffer[65536];
+  int result = Z_OK;
+  do {
+    stream->next_out = buffer;
+    stream->avail_out = sizeof(buffer);
+    result = deflate(stream, Z_FINISH);
+    if (result != Z_OK && result != Z_STREAM_END && result != Z_BUF_ERROR) {
+      g_byte_array_free(out, TRUE);
+      cleanup_export_zlib(host);
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
+    gsize produced = sizeof(buffer) - stream->avail_out;
+    if (produced > 0) g_byte_array_append(out, buffer, (guint)produced);
+  } while (result != Z_STREAM_END);
+  cleanup_export_zlib(host);
+  char *encoded = g_base64_encode(out->data, out->len);
+  g_byte_array_free(out, TRUE);
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "base64", encoded);
+  request_complete(request, "success", reply);
+  g_free(encoded);
+}
+
+static void handle_zlib_deflate_abort(Host *host, Request *request,
+                                      JSCValue *payload) {
+  if (!object_has_exact_keys(payload, NULL, 0)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  cleanup_export_zlib(host);
+  request_success_empty(request);
+}
+
 static void handle_main_write_at(Host *host, Request *request, JSCValue *payload) {
   static const char *const expected[] = {"path", "base64", "offset", "truncate"};
   if (!object_has_exact_keys(payload, expected, 4)) {
@@ -3059,6 +3196,7 @@ static void destroy_export_window(Host *host) {
     cairo_surface_destroy(host->export_capture);
     host->export_capture = NULL;
   }
+  cleanup_export_zlib(host);
   if (window != NULL) {
     /* The window owns the child WebView; destroying the window releases it. */
     gtk_widget_destroy(window);
@@ -3866,6 +4004,22 @@ static void dispatch_request(Request *request, JSCValue *payload) {
   }
   if (strcmp(operation, "main-write-file") == 0) {
     handle_main_write_file(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "zlib-deflate-start") == 0) {
+    handle_zlib_deflate_start(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "zlib-deflate-write") == 0) {
+    handle_zlib_deflate_write(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "zlib-deflate-end") == 0) {
+    handle_zlib_deflate_end(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "zlib-deflate-abort") == 0) {
+    handle_zlib_deflate_abort(host, request, payload);
     return;
   }
   if (strcmp(operation, "main-write-at") == 0) {

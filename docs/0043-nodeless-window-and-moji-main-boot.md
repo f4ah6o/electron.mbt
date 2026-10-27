@@ -60,7 +60,7 @@ The report is stored at
 | --- | --- | --- |
 | `node:fs` | host-backed when `--window`: app-root reads, `.appData`/`.userData` atomic writes, `existsSync`/`readFileSync`/`writeFileSync`; session-scoped exact user-file grants; no host bridge fails with `ELECTRON_MBT_HOST_UNAVAILABLE` | grant persistence, directory/stream APIs, symlink-race hardening |
 | `node:fs/promises` | `readFile`/`writeFile` Promise wrappers over the same bounded host call; not thread-pool async | true async I/O and cancellation |
-| `node:zlib` | import succeeds; `createDeflate` throws `ELECTRON_MBT_UNSUPPORTED_API` | real deflate/stream surface |
+| `node:zlib` | import succeeds; `createDeflate` uses host zlib when available, stored fallback otherwise | full Node stream surface remains partial |
 | `electron-updater` | import resolves to an import-only `autoUpdater` stub; no package resolution, network or update | profile-specific updater ADR or real implementation |
 
 These are **adapted-profile** behaviors. They are not evidence that the original

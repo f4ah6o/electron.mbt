@@ -14,7 +14,7 @@ work.
 | `node:os` | `platform`, `arch`, `release`, `version`, `type`, `cpus`, `totalmem`, `freemem`, `tmpdir`, `homedir`, `hostname`, `uptime`, `loadavg`, `endianness`, `networkInterfaces`, `userInfo` | `cpus`/memory/release are placeholders where the host does not provide them |
 | `electron.protocol` | `registerSchemesAsPrivileged` no-op; `handle` stores the handler; `isProtocolHandled`, `unhandle` | stored handlers are **not executed**; `moji-asset://` requests are not served; the other `register*` APIs fail closed |
 | global `performance` | alias of the `perf_hooks` object | same limits |
-| `node:zlib` | importable (`createDeflate` remains the existing unsupported stub) | PNG/export compression is not implemented |
+| `node:zlib` | importable; `createDeflate` uses host zlib with stored fallback | PNG/export compression works on Linux; hostless unit contexts use stored blocks |
 
 ## Moji 1.0.7 evidence
 

@@ -357,6 +357,10 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "main-rename") == 0 ||
       strcmp(operation, "main-unlink") == 0 ||
       strcmp(operation, "main-write-at") == 0 ||
+      strcmp(operation, "zlib-deflate-start") == 0 ||
+      strcmp(operation, "zlib-deflate-write") == 0 ||
+      strcmp(operation, "zlib-deflate-end") == 0 ||
+      strcmp(operation, "zlib-deflate-abort") == 0 ||
       strcmp(operation, "send-adapted-event") == 0 ||
       strcmp(operation, "create-export-window") == 0 ||
       strcmp(operation, "resize-export-window") == 0 ||
@@ -409,6 +413,10 @@ static int js_host_operation_allowed(const char *operation) {
     "main-rename",
     "main-unlink",
     "main-write-at",
+    "zlib-deflate-start",
+    "zlib-deflate-write",
+    "zlib-deflate-end",
+    "zlib-deflate-abort",
     "main-read-dir",
     "main-mkdir",
     "main-open-dialog",

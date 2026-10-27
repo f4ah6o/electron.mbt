@@ -23,7 +23,7 @@ builds the CJS graph in MoonBit, and evaluates it through
 | module graph | literal `require` scan, relative paths, extension/index, JSON, nested/scoped `node_modules`, package `main` and require-selected `exports`, cache identity, cycles |
 | CJS realm | `module.exports`, `exports` alias, `module.loaded`, `__filename`, `__dirname`, JSON modules, `require.resolve` fail-closed |
 | Node subset | `path`, `url` file helpers, `process` (platform/arch/argv/env allowlist/versions/nextTick), `events.EventEmitter`, `Buffer` (utf8/base64/ascii, alloc/concat/subarray/equals), `setTimeout`/`clearTimeout`/Timeout ref/unref |
-| adapted imports | host-required `fs`/`fs.promises` (app-root reads, `.appData`/`.userData` atomic writes and session-scoped exact user-file grants when `--window`; persistence/streams open); `zlib` import-only with a typed `createDeflate` failure; `electron-updater` is an explicit import-only stub; computed require fails before evaluation |
+| adapted imports | host-required `fs`/`fs.promises` (app-root reads, `.appData`/`.userData` atomic writes and session-scoped exact user-file grants when `--window`; persistence/streams open); `zlib` importable with host-backed `createDeflate` (stored fallback); `electron-updater` is an explicit import-only stub; computed require fails before evaluation |
 | Electron facade | `app`, `ipcMain`, a bounded `BrowserWindow`/`webContents` and a local `Menu`/`screen`/`shell` model; dialog/contextBridge/ipcRenderer remain unsupported |
 | scheduling | MoonBit scheduler owns deadlines; nextTick/Promise jobs are drained and the fixture observes tick → promise → timer; async handler settle uses a bounded 1000-step loop |
 | teardown | live lease count is 0 and no pending job before context/runtime destruction |

@@ -689,11 +689,9 @@ fn AppRunner::run_jobs(self : AppRunner, max_steps : Int) -> Result[Int, AppErro
     }
     count += 1
   }
-  if self.engine.job_pending() {
-    Err(Engine)
-  } else {
-    Ok(count)
-  }
+  // A budget is a yield point, not a failure: a long promise chain may have
+  // more microtasks than one slice. The caller will run another slice.
+  Ok(count)
 }
 
 ///|
@@ -827,7 +825,7 @@ fn AppRunner::run_timers(self : AppRunner, now : Int64, limit : Int32) -> Result
       Ok(_) => ()
       Err(error) => return Err(error)
     }
-    match self.run_jobs(64) {
+    match self.run_jobs(4096) {
       Ok(_) => ()
       Err(error) => return Err(error)
     }
@@ -844,7 +842,16 @@ pub fn AppRunner::pump_idle(self : AppRunner) -> Unit {
   let now = @engine.Engine::now_ms()
   let _ = self.sync_timers()
   let _ = self.run_timers(now, 64)
-  let _ = self.run_jobs(256)
+  // A single IPC turn can settle a long promise chain (for example a
+  // chunked PNG export that performs dozens of synchronous host reads and
+  // writes). 256 jobs was too small and surfaced as a false engine failure.
+  // Re-arm a few times so a deferred chain is not stranded without an event.
+  for _slice = 0; _slice < 16; _slice = _slice + 1 {
+    let _ = self.run_jobs(4096)
+    if !self.engine.job_pending() {
+      break
+    }
+  }
 }
 
 ///|
@@ -876,7 +883,7 @@ pub fn AppRunner::load(self : AppRunner) -> Result[Unit, AppError] {
   if ready_kind != 0 || !ready_text.contains("ok") {
     return Err(MainEval(ready_text))
   }
-  match self.run_jobs(256) {
+  match self.run_jobs(4096) {
     Ok(_) => ()
     Err(error) => return Err(error)
   }
@@ -950,7 +957,7 @@ pub fn AppRunner::dispatch(
             return Err(error)
           }
         }
-        match self.run_jobs(64) {
+        match self.run_jobs(4096) {
           Ok(_) => ()
           Err(error) => {
             take.release()

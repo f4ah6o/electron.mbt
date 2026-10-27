@@ -62,6 +62,5 @@ verified. macOS native remains NOT RUN; no compatibility claim.
   settings and the recent-file welcome screen use the persisted
   `settings.json`.
 - The Export dialog opens and offers PDF/HTML/PNG, page size and orientation.
-  PDF and HTML now export through the offscreen path described in
-  [docs/0071](0071-pdf-html-export.md); PDF is raster and PNG remains
-  unimplemented.
+  PDF, HTML and PNG now export through the offscreen path described in
+  [docs/0071](0071-pdf-html-export.md); PDF and PNG are raster.

@@ -527,3 +527,32 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   0 FAIL / 33 SKIP**; 1.0.5 hold PASS; actual app open regression PASS.
 - Remaining: raster PDF/print CSS, PNG, drag-and-drop, actual toolbar-button
   automation, macOS. No compatibility claim.
+
+## PNG export (resume)
+
+- Added the app's offscreen PNG path: `BrowserWindow.setContentSize`,
+  `webContents.capturePage` (chunked host snapshot reads), `NativeImage`
+  (`getSize`/`toBitmap`), positioned `FileHandle.write` via `main-write-at`,
+  `zlib.createDeflate` (stored blocks), Buffer integer accessors and
+  `Buffer.from(ArrayBuffer, offset, length)`.
+- The PNG writer's `${destination}.tmp` is granted alongside the save-dialog
+  destination; positioned writes allow the IHDR rewrite and files larger than
+  the 256 KiB frame. All write offsets are bounded at 64 MiB and chunks at
+  256 KiB.
+- Increased the AppRunner promise-job budgets from 64/256 to 4096 so long
+  chunked exports do not surface as a false `ELECTRON_MBT_ENGINE` failure.
+- Probe results through the actual pinned Moji main: valid 794x1123 RGBA PNG
+  (3,571,007 bytes) and 794x4020 two-slice PNG (12,778,245 bytes); stored
+  DEFLATE, so large. PNG remains raster. Existing PDF (3885 bytes) and HTML
+  (75 bytes) still pass.
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**; 1.0.5 hold PASS; Moji open regression PASS. No
+  compatibility claim.
+- Addressed both subagent reviews: incremental stored-block deflate, 16 MiB
+  capture/prelude caps and strict size checks, 256 MiB output-offset cap,
+  positioned FileHandle writes with short-write failure, O_NOFOLLOW/CLOEXEC,
+  capture event flush, no-arg capturePage defaults, Buffer offset defaults and
+  shared ArrayBuffer views, and run_jobs yielding rather than failing.
+- Remaining: HiDPI capture (scaleFactor hardcoded), PNG compression, very long
+  multi-slice stress, drag-and-drop, actual toolbar button automation, true PDF
+  print layout, macOS. See [docs/0071](0071-pdf-html-export.md).

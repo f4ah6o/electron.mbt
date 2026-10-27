@@ -356,8 +356,12 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "main-mkdir") == 0 ||
       strcmp(operation, "main-rename") == 0 ||
       strcmp(operation, "main-unlink") == 0 ||
+      strcmp(operation, "main-write-at") == 0 ||
       strcmp(operation, "send-adapted-event") == 0 ||
       strcmp(operation, "create-export-window") == 0 ||
+      strcmp(operation, "resize-export-window") == 0 ||
+      strcmp(operation, "export-capture-page") == 0 ||
+      strcmp(operation, "export-capture-read") == 0 ||
       strcmp(operation, "load-export-file") == 0 ||
       strcmp(operation, "export-execute-js") == 0 ||
       strcmp(operation, "export-print-pdf") == 0 ||
@@ -404,11 +408,15 @@ static int js_host_operation_allowed(const char *operation) {
     "main-write-file",
     "main-rename",
     "main-unlink",
+    "main-write-at",
     "main-read-dir",
     "main-mkdir",
     "main-open-dialog",
     "send-adapted-event",
     "create-export-window",
+    "resize-export-window",
+    "export-capture-page",
+    "export-capture-read",
     "load-export-file",
     "export-execute-js",
     "export-print-pdf",

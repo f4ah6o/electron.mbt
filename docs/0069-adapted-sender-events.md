@@ -66,5 +66,6 @@ defaults; the open dialog never reached the host.
 - The main-to-page event route is implemented on Linux only; macOS remains
   unverified. Send is fire-and-forget with no acknowledgement.
 - Draft autosave, the Settings panel and the Export dialog are verified. PDF
-  and HTML export now run through an offscreen WebView (PDF is raster); PNG,
-  drag-and-drop and macOS remain unverified. No `compatible:true` is produced.
+  and HTML/PNG export now run through an offscreen WebView (PDF and PNG are
+  raster); drag-and-drop and macOS remain unverified. No `compatible:true` is
+  produced.

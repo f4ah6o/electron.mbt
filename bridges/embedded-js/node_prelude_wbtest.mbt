@@ -20,7 +20,11 @@ test "node prelude provides bounded builtins and fail-closed modules" {
       "const readdirCode = (function () { try { fs.readdirSync('/missing'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
       "const mkdirCode = (function () { try { fs.mkdirSync('/missing'); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
       "const existsMissing = require('node:fs').existsSync('/missing');\n" +
-      "const zlibCode = (function () { try { require('node:zlib').createDeflate(); return 'unexpected'; } catch (error) { return error.code; } })();\n" +
+      "const zlib = require('node:zlib'); const deflate = zlib.createDeflate();\n" +
+      "const zlibOk = typeof deflate.write === 'function' && typeof deflate.end === 'function' && typeof deflate[Symbol.asyncIterator] === 'function' && deflate.write(Buffer.from('abc')) === true;\n" +
+      "deflate.end();\n" +
+      "const intBuf = Buffer.alloc(4); intBuf.writeUInt32BE(0x12345678, 0); const intOk = intBuf.readUInt32BE(0) === 0x12345678;\n" +
+      "const sharedAb = new Uint8Array([1, 2, 3]).buffer; const sharedView = Buffer.from(sharedAb); sharedView[0] = 9; const shared = new Uint8Array(sharedAb)[0] === 9;\n" +
       "const updater = require('electron-updater');\n" +
       "const electronMenu = require('electron').Menu;\n" +
       "const emitter = new EventEmitter();\n" +
@@ -41,7 +45,9 @@ test "node prelude provides bounded builtins and fail-closed modules" {
       "  readdirCode: readdirCode,\n" +
       "  mkdirCode: mkdirCode,\n" +
       "  existsMissing: existsMissing,\n" +
-      "  zlibCode: zlibCode,\n" +
+      "  zlibOk: zlibOk,\n" +
+      "  intOk: intOk,\n" +
+      "  shared: shared,\n" +
       "  updaterOk: typeof updater.autoUpdater.checkForUpdates === 'function',\n" +
       "  menuOk: typeof electronMenu.buildFromTemplate === 'function',\n" +
       "};\n",
@@ -64,7 +70,9 @@ test "node prelude provides bounded builtins and fail-closed modules" {
   assert_true(result.exports.contains("\"readdirCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
   assert_true(result.exports.contains("\"mkdirCode\":\"ELECTRON_MBT_HOST_UNAVAILABLE\""))
   assert_true(result.exports.contains("\"existsMissing\":false"))
-  assert_true(result.exports.contains("\"zlibCode\":\"ELECTRON_MBT_UNSUPPORTED_API\""))
+  assert_true(result.exports.contains("\"zlibOk\":true"))
+  assert_true(result.exports.contains("\"intOk\":true"))
+  assert_true(result.exports.contains("\"shared\":true"))
   assert_true(result.exports.contains("\"updaterOk\":true"))
   assert_true(result.exports.contains("\"menuOk\":true"))
   context.destroy()

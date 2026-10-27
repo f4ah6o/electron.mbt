@@ -492,3 +492,23 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   0 FAIL / 33 SKIP**; 1.0.5 adapted hold remains PASS. Remaining: export/PDF,
   drag-and-drop, `update:get-state`, macOS native/publication. No compatibility
   claim.
+
+## Offscreen PDF/HTML export (2026-10-27)
+
+- Added a hidden offscreen BrowserWindow backed by a private WebKitWebView,
+  `load-export-file`, `export-execute-js`, `export-print-pdf` and
+  `destroy-export-window`; `fs.promises.open` FileHandle support for the app's
+  export-source writer; and `BrowserWindow.fromWebContents`/registry fixes.
+- PDF is produced from a full-document WebKit snapshot via Cairo (A4/Letter/
+  Legal, portrait/landscape). It is a real but raster PDF: 3885 bytes,
+  `%PDF-1.7`, A4 1 page in the probe. HTML export writes the exact HTML string
+  (75-byte probe). Both used the actual pinned Moji main through `exportAs`.
+- A subagent review found and we fixed/limited: export callback timeouts and
+  lifetime, directory-list/PDF frame caps, symlinked recursive mkdir, stale
+  window registry, second-export-view sharing and export teardown. Remaining
+  limits: raster PDF/no print CSS/page breaks, no Promise-aware
+  executeJavaScript (font wait is skipped), PNG, drag-and-drop, macOS and the
+  actual toolbar-button path (probe used the same handler).
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**; 1.0.5 hold PASS; Moji open/edit/save regression PASS. No
+  compatibility claim. See [docs/0071](0071-pdf-html-export.md).

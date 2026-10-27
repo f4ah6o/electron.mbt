@@ -65,7 +65,6 @@ defaults; the open dialog never reached the host.
   channels (for example `app:renderer-ready`).
 - The main-to-page event route is implemented on Linux only; macOS remains
   unverified. Send is fire-and-forget with no acknowledgement.
-- Draft autosave, export/PDF, drag-and-drop and the settings panel remain
-  unverified; `update:get-state` has no Moji main handler and is reported as an
-  unsupported operation. zlib, real worker threads and `moji-asset://`
-  handlers remain limited. No `compatible:true` is produced.
+- Draft autosave, the Settings panel and the Export dialog are verified. PDF
+  and HTML export now run through an offscreen WebView (PDF is raster); PNG,
+  drag-and-drop and macOS remain unverified. No `compatible:true` is produced.

@@ -10,15 +10,17 @@
  *
  * The macOS host in platform/macos/NativeHost.m is the reference for the
  * protocol subset implemented here. This file intentionally implements the
- * adapted/plain fixture path plus a minimal exact-file read/write and
- * GTK open/save dialog surface. It has no original preload, contextBridge,
- * ipcRenderer, directory grants, export pipeline, menu, clipboard or IME
- * parity; unsupported operations return a typed failure.
+ * adapted/plain fixture path plus exact-file, directory and GTK dialog
+ * surfaces and a bounded offscreen PDF/HTML export path. It has no original
+ * preload, contextBridge, ipcRenderer, directory grants, menu, clipboard or
+ * IME parity; unsupported operations return a typed failure.
  */
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <gtk/gtk.h>
+#include <cairo.h>
+#include <cairo-pdf.h>
 #include <jsc/jsc.h>
 #include <math.h>
 #include <netinet/in.h>
@@ -67,6 +69,16 @@ typedef struct PendingReply {
 } PendingReply;
 
 typedef struct Request Request;
+
+typedef struct ExportWait {
+  GMainLoop *loop;
+  gboolean failed;
+  char *error;
+  char *json;
+  cairo_surface_t *surface;
+  guint timeout_id;
+  gint refs;
+} ExportWait;
 
 typedef struct Snapshot {
   char *root;
@@ -122,6 +134,9 @@ typedef struct Host {
   GAsyncQueue *events;
   GtkWidget *active_dialog;
   gboolean close_after_dialog;
+  GtkWidget *export_window;
+  WebKitWebView *export_web;
+  ExportWait *export_load_wait;
   GThread *control_thread;
   GThread *load_thread;
   GThread *event_thread;
@@ -2339,7 +2354,21 @@ static void handle_main_read_dir(Host *host, Request *request, JSCValue *payload
     count += 1;
   }
   g_dir_close(directory);
+  if (json->len > 480 * 1024) {
+    g_string_free(json, TRUE);
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
   g_string_append_c(json, ']');
+  if (json->len > 512 * 1024) {
+    g_string_free(json, TRUE);
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
   JSCValue *entries = json_parse(host, json->str, json->len);
   g_string_free(json, TRUE);
   if (entries == NULL) {
@@ -2374,18 +2403,9 @@ static void handle_main_mkdir(Host *host, Request *request, JSCValue *payload) {
   }
   char *canonical = canonical_write_path(host, path);
   gboolean created = FALSE;
-  if (canonical == NULL && recursive) {
-    char *joined = host_join_path(host, path);
-    char *normalized = joined == NULL ? NULL : g_canonicalize_filename(joined, NULL);
-    if (normalized != NULL && main_write_allowed(host, normalized)) {
-      if (g_mkdir_with_parents(normalized, 0700) == 0) {
-        canonical = strdup(normalized);
-        created = TRUE;
-      }
-    }
-    free(joined);
-    g_free(normalized);
-  }
+  /* Missing parent directories are not created here. Recursive creation via
+   * g_mkdir_with_parents would follow a symlinked ancestor outside the app
+   * data roots; callers must create parents through the same policy first. */
   if (canonical == NULL) {
     g_free(path);
     request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
@@ -2759,6 +2779,487 @@ static void handle_main_save_dialog(Host *host, Request *request,
 }
 
 
+static void destroy_export_window(Host *host) {
+  if (host == NULL) return;
+  host->export_load_wait = NULL;
+  GtkWidget *window = host->export_window;
+  WebKitWebView *web = host->export_web;
+  host->export_window = NULL;
+  host->export_web = NULL;
+  if (window != NULL) {
+    /* The window owns the child WebView; destroying the window releases it. */
+    gtk_widget_destroy(window);
+  } else if (web != NULL) {
+    g_object_unref(web);
+  }
+}
+
+static gboolean export_wait_timeout(gpointer data) {
+  ExportWait *wait = data;
+  wait->timeout_id = 0;
+  if (!wait->failed) {
+    wait->failed = TRUE;
+    wait->error = g_strdup("timeout");
+  }
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  return G_SOURCE_REMOVE;
+}
+
+static void export_wait_cleanup(ExportWait *wait) {
+  if (wait == NULL) return;
+  if (wait->timeout_id != 0) {
+    g_source_remove(wait->timeout_id);
+    wait->timeout_id = 0;
+  }
+  if (wait->loop != NULL) {
+    g_main_loop_unref(wait->loop);
+    wait->loop = NULL;
+  }
+}
+
+static ExportWait *export_wait_new(void) {
+  ExportWait *wait = g_new0(ExportWait, 1);
+  wait->loop = g_main_loop_new(NULL, FALSE);
+  wait->refs = 1;
+  return wait;
+}
+
+static void export_wait_ref(ExportWait *wait) {
+  if (wait != NULL) wait->refs += 1;
+}
+
+static void export_wait_unref(ExportWait *wait) {
+  if (wait == NULL) return;
+  wait->refs -= 1;
+  if (wait->refs > 0) return;
+  export_wait_cleanup(wait);
+  g_free(wait->error);
+  g_free(wait->json);
+  if (wait->surface != NULL) cairo_surface_destroy(wait->surface);
+  g_free(wait);
+}
+
+static void on_export_load_changed(WebKitWebView *web_view, WebKitLoadEvent event,
+                                   gpointer data) {
+  (void)web_view;
+  Host *host = data;
+  ExportWait *wait = host == NULL ? NULL : host->export_load_wait;
+  if (wait == NULL) return;
+  if (event == WEBKIT_LOAD_FINISHED) {
+    if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  }
+}
+
+static gboolean on_export_load_failed(WebKitWebView *web_view, WebKitLoadEvent event,
+                                      const char *failing_uri, GError *error,
+                                      gpointer data) {
+  (void)web_view;
+  (void)event;
+  (void)failing_uri;
+  Host *host = data;
+  ExportWait *wait = host == NULL ? NULL : host->export_load_wait;
+  if (wait != NULL) {
+    wait->failed = TRUE;
+    if (wait->error == NULL) {
+      wait->error = g_strdup(error == NULL ? "load-failed" : error->message);
+    }
+    if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  }
+  return TRUE;
+}
+
+static void handle_create_export_window(Host *host, Request *request,
+                                        JSCValue *payload) {
+  static const char *const expected[] = {"width", "height"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 width = 0;
+  gint64 height = 0;
+  if (!object_get_integer(payload, "width", &width) ||
+      !object_get_integer(payload, "height", &height) ||
+      width < 100 || width > 4096 || height < 100 || height > 4096) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_OPTIONS");
+    return;
+  }
+  if (host->export_web != NULL || host->export_window != NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_OPTIONS");
+    return;
+  }
+  /* WebKitGTK printing requires a realized GtkWindow. Keep the export window
+   * off-screen, undecorated and out of the taskbar/pager so the app never sees
+   * a second visible window. */
+  host->export_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  host->export_web = WEBKIT_WEB_VIEW(webkit_web_view_new());
+  if (host->export_window == NULL || host->export_web == NULL) {
+    destroy_export_window(host);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  GtkWindow *export_window = GTK_WINDOW(host->export_window);
+  gtk_window_set_title(export_window, "emoon-export");
+  gtk_window_set_decorated(export_window, FALSE);
+  gtk_window_set_default_size(export_window, (gint)width, (gint)height);
+  gtk_window_set_skip_taskbar_hint(export_window, TRUE);
+  gtk_window_set_skip_pager_hint(export_window, TRUE);
+  gtk_window_set_accept_focus(export_window, FALSE);
+  gtk_window_move(export_window, -10000, -10000);
+  gtk_widget_set_size_request(GTK_WIDGET(host->export_web), (gint)width, (gint)height);
+  gtk_container_add(GTK_CONTAINER(host->export_window), GTK_WIDGET(host->export_web));
+  g_signal_connect(host->export_web, "load-changed",
+                   G_CALLBACK(on_export_load_changed), host);
+  g_signal_connect(host->export_web, "load-failed",
+                   G_CALLBACK(on_export_load_failed), host);
+  WebKitSettings *settings = webkit_web_view_get_settings(host->export_web);
+  webkit_settings_set_enable_javascript(settings, TRUE);
+  webkit_settings_set_enable_developer_extras(settings, FALSE);
+  gtk_widget_show_all(host->export_window);
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "webViewAttached", TRUE);
+  request_complete(request, "success", reply);
+}
+
+static void handle_load_export_file(Host *host, Request *request,
+                                    JSCValue *payload) {
+  static const char *const expected[] = {"file"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (host->export_web == NULL || host->export_window == NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_UNKNOWN");
+    return;
+  }
+  char *file = object_get_string(payload, "file");
+  char *canonical = file == NULL ? NULL : canonical_existing_path(host, file);
+  if (canonical == NULL || !main_read_allowed(host, canonical)) {
+    g_free(file);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) != 0 || !S_ISREG(info.st_mode)) {
+    g_free(file);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  GError *error = NULL;
+  char *uri = g_filename_to_uri(canonical, NULL, &error);
+  if (uri == NULL) {
+    g_clear_error(&error);
+    g_free(file);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  ExportWait wait;
+  memset(&wait, 0, sizeof(wait));
+  wait.loop = g_main_loop_new(NULL, FALSE);
+  host->export_load_wait = &wait;
+  wait.timeout_id = g_timeout_add(12000, export_wait_timeout, &wait);
+  webkit_web_view_load_uri(host->export_web, uri);
+  ebt_debug("export-load uri=%s\n", uri);
+  g_main_loop_run(wait.loop);
+  host->export_load_wait = NULL;
+  export_wait_cleanup(&wait);
+  g_free(uri);
+  g_free(file);
+  free(canonical);
+  if (wait.failed || wait.error != NULL) {
+    g_free(wait.error);
+    request_failure(request, "ELECTRON_MBT_LOAD_FAILED");
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "loaded", TRUE);
+  request_complete(request, "success", reply);
+}
+
+static void export_eval_finished(GObject *source, GAsyncResult *result,
+                                 gpointer data) {
+  ExportWait *wait = data;
+  GError *error = NULL;
+  JSCValue *value = webkit_web_view_evaluate_javascript_finish(
+    WEBKIT_WEB_VIEW(source), result, &error);
+  if (error != NULL || value == NULL) {
+    ebt_debug("export-eval error=%s\n",
+              error == NULL ? "(null)" : error->message);
+    g_clear_error(&error);
+    /* A Promise-valued expression (for example document.fonts.ready) is not
+     * directly serializable by this private export path. The renderer treats
+     * a null result as "continue"; PDF printing does not depend on it. */
+    wait->json = g_strdup("null");
+  } else {
+    wait->json = jsc_value_to_json(value, 0);
+    if (wait->json == NULL) wait->json = g_strdup("null");
+    g_object_unref(value);
+  }
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  export_wait_unref(wait);
+}
+
+static void handle_export_execute_js(Host *host, Request *request,
+                                     JSCValue *payload) {
+  static const char *const expected[] = {"code"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (host->export_web == NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_UNKNOWN");
+    return;
+  }
+  char *code = object_get_string(payload, "code");
+  if (code == NULL || strlen(code) > 65536) {
+    g_free(code);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  ExportWait *wait = export_wait_new();
+  wait->timeout_id = g_timeout_add(10000, export_wait_timeout, wait);
+  export_wait_ref(wait);
+  webkit_web_view_evaluate_javascript(host->export_web, code, -1, NULL, NULL, NULL,
+                                      export_eval_finished, wait);
+  g_free(code);
+  g_main_loop_run(wait->loop);
+  export_wait_cleanup(wait);
+  if (wait->failed) {
+    request_failure(request, "ELECTRON_MBT_RENDERER_PROBE");
+    export_wait_unref(wait);
+    return;
+  }
+  JSCValue *parsed = wait->json == NULL ? NULL : json_parse(host, wait->json, strlen(wait->json));
+  JSCValue *reply = object_new(host);
+  if (parsed != NULL) {
+    jsc_value_object_set_property(reply, "value", parsed);
+    g_object_unref(parsed);
+  } else {
+    JSCValue *null_value = jsc_value_new_null(host->json);
+    jsc_value_object_set_property(reply, "value", null_value);
+    g_object_unref(null_value);
+  }
+  request_complete(request, "success", reply);
+  export_wait_unref(wait);
+}
+
+
+
+static void export_snapshot_finished(GObject *source, GAsyncResult *result,
+                                     gpointer data) {
+  ExportWait *wait = data;
+  GError *error = NULL;
+  cairo_surface_t *surface = webkit_web_view_get_snapshot_finish(
+    WEBKIT_WEB_VIEW(source), result, &error);
+  if (error != NULL || surface == NULL) {
+    ebt_debug("export-snapshot error=%s\n",
+              error == NULL ? "(null)" : error->message);
+    g_clear_error(&error);
+    wait->failed = TRUE;
+    wait->error = g_strdup("snapshot-failed");
+  } else {
+    wait->surface = surface;
+  }
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  export_wait_unref(wait);
+}
+
+static void handle_export_print_pdf(Host *host, Request *request,
+                                    JSCValue *payload) {
+  static const char *const expected[] = {"pageSize", "landscape"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (host->export_web == NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_UNKNOWN");
+    return;
+  }
+  char *page_size = object_get_string(payload, "pageSize");
+  gboolean landscape = FALSE;
+  JSCValue *landscape_value = object_get_value(payload, "landscape");
+  if (landscape_value != NULL && jsc_value_is_boolean(landscape_value)) {
+    landscape = jsc_value_to_boolean(landscape_value);
+  }
+  if (landscape_value != NULL) g_object_unref(landscape_value);
+  if (page_size == NULL ||
+      (strcmp(page_size, "A4") != 0 && strcmp(page_size, "Letter") != 0 &&
+       strcmp(page_size, "Legal") != 0)) {
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  GError *error = NULL;
+  char *pdf_dir = g_build_filename(host->root, ".appData", "tmp", NULL);
+  if (pdf_dir == NULL || g_mkdir_with_parents(pdf_dir, 0700) != 0) {
+    g_free(pdf_dir);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  char *pdf_template = g_build_filename(pdf_dir, "emoon-export-XXXXXX.pdf", NULL);
+  g_free(pdf_dir);
+  if (pdf_template == NULL) {
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  char *pdf_path = pdf_template;
+  int pdf_fd = g_mkstemp(pdf_path);
+  if (pdf_fd < 0) {
+    g_free(pdf_template);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  close(pdf_fd);
+  char *pdf_uri = g_filename_to_uri(pdf_path, NULL, &error);
+  if (pdf_uri == NULL) {
+    g_clear_error(&error);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  double page_width = 595.0;
+  double page_height = 842.0;
+  if (strcmp(page_size, "Letter") == 0) {
+    page_width = 612.0;
+    page_height = 792.0;
+  } else if (strcmp(page_size, "Legal") == 0) {
+    page_width = 612.0;
+    page_height = 1008.0;
+  }
+  if (landscape) {
+    double swap = page_width;
+    page_width = page_height;
+    page_height = swap;
+  }
+  ExportWait *wait = export_wait_new();
+  wait->timeout_id = g_timeout_add(12000, export_wait_timeout, wait);
+  export_wait_ref(wait);
+  webkit_web_view_get_snapshot(host->export_web, WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT,
+                               WEBKIT_SNAPSHOT_OPTIONS_NONE, NULL,
+                               export_snapshot_finished, wait);
+  g_main_loop_run(wait->loop);
+  export_wait_cleanup(wait);
+  if (wait->failed || wait->surface == NULL) {
+    ebt_debug("export-snapshot failed=%s\n", wait->error == NULL ? "(null)" : wait->error);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(pdf_uri);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_RENDERER_PROBE");
+    export_wait_unref(wait);
+    return;
+  }
+  cairo_surface_t *snapshot = wait->surface;
+  wait->surface = NULL;
+  int image_width = cairo_image_surface_get_width(snapshot);
+  int image_height = cairo_image_surface_get_height(snapshot);
+  if (image_width <= 0 || image_height <= 0) {
+    cairo_surface_destroy(snapshot);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(pdf_uri);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_RENDERER_PROBE");
+    export_wait_unref(wait);
+    return;
+  }
+  cairo_surface_t *pdf_surface = cairo_pdf_surface_create(pdf_path, page_width, page_height);
+  if (cairo_surface_status(pdf_surface) != CAIRO_STATUS_SUCCESS) {
+    cairo_surface_destroy(pdf_surface);
+    cairo_surface_destroy(snapshot);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(pdf_uri);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_FILE_WRITE");
+    export_wait_unref(wait);
+    return;
+  }
+  double scale = page_width / (double)image_width;
+  double page_source_height = page_height / scale;
+  int offset = 0;
+  while (offset < image_height) {
+    cairo_t *cr = cairo_create(pdf_surface);
+    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    cairo_paint(cr);
+    cairo_save(cr);
+    cairo_scale(cr, scale, scale);
+    cairo_set_source_surface(cr, snapshot, 0.0, -(double)offset);
+    cairo_rectangle(cr, 0.0, 0.0, page_width / scale, page_height / scale);
+    cairo_clip(cr);
+    cairo_paint(cr);
+    cairo_restore(cr);
+    cairo_show_page(cr);
+    cairo_destroy(cr);
+    int step = (int)page_source_height;
+    if (step < 1) step = 1;
+    offset += step;
+  }
+  cairo_surface_flush(pdf_surface);
+  cairo_status_t pdf_status = cairo_surface_status(pdf_surface);
+  cairo_surface_destroy(pdf_surface);
+  cairo_surface_destroy(snapshot);
+  if (pdf_status != CAIRO_STATUS_SUCCESS) {
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(pdf_uri);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_FILE_WRITE");
+    export_wait_unref(wait);
+    return;
+  }
+    ebt_debug("export-snapshot wrote %s image=%dx%d pages=%d\n",
+            pdf_path, image_width, image_height,
+            (image_height + (int)page_source_height - 1) / (int)page_source_height);
+  g_free(pdf_uri);
+  g_free(page_size);
+  gchar *data = NULL;
+  gsize length = 0;
+  if (!g_file_get_contents(pdf_path, &data, &length, &error) || length == 0) {
+    g_clear_error(&error);
+    g_free(data);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    request_failure(request, "ELECTRON_MBT_FILE_READ");
+    export_wait_unref(wait);
+    return;
+  }
+  unlink(pdf_path);
+  g_free(pdf_path);
+  if (length > 700 * 1024) {
+    g_free(data);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    export_wait_unref(wait);
+    return;
+  }
+  gchar *base64 = g_base64_encode((const guchar *)data, length);
+  g_free(data);
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "base64", base64);
+  object_set_number(host, reply, "sizeBytes", (double)length);
+  request_complete(request, "success", reply);
+  g_free(base64);
+  export_wait_unref(wait);
+}
+
+static void handle_destroy_export_window(Host *host, Request *request,
+                                         JSCValue *payload) {
+  if (!object_has_exact_keys(payload, NULL, 0)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  destroy_export_window(host);
+  JSCValue *reply = object_new(host);
+  request_complete(request, "success", reply);
+}
+
 static void teardown_window_state(Host *host, const char *code) {
   if (host == NULL) return;
   if (host->load_request != NULL) fail_load_request(host, code);
@@ -2795,6 +3296,7 @@ static void handle_destroy_window(Host *host, Request *request) {
   host->window = NULL;
   host->web = NULL;
   host->manager = NULL;
+  destroy_export_window(host);
   teardown_window_state(host, "ELECTRON_MBT_WINDOW_DESTROYED");
   if (window != NULL) gtk_widget_destroy(window);
   JSCValue *reply = object_new(host);
@@ -3051,6 +3553,26 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     g_free(payload_text);
     JSCValue *reply = object_new(host);
     request_complete(request, "success", reply);
+    return;
+  }
+  if (strcmp(operation, "create-export-window") == 0) {
+    handle_create_export_window(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "load-export-file") == 0) {
+    handle_load_export_file(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "export-execute-js") == 0) {
+    handle_export_execute_js(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "export-print-pdf") == 0) {
+    handle_export_print_pdf(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "destroy-export-window") == 0) {
+    handle_destroy_export_window(host, request, payload);
     return;
   }
   if (strcmp(operation, "main-read-file") == 0) {

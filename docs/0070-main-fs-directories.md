@@ -62,6 +62,6 @@ verified. macOS native remains NOT RUN; no compatibility claim.
   settings and the recent-file welcome screen use the persisted
   `settings.json`.
 - The Export dialog opens and offers PDF/HTML/PNG, page size and orientation.
-  The actual export pipeline still needs a hidden export BrowserWindow and
-  `webContents.printToPDF`; those remain unimplemented. No export success is
-  claimed.
+  PDF and HTML now export through the offscreen path described in
+  [docs/0071](0071-pdf-html-export.md); PDF is raster and PNG remains
+  unimplemented.

@@ -10,13 +10,14 @@ import {
 
 options(
   "is-main": true,
-  "native-stub": ["file_io.c", "host_client.c"],
+  "native-stub": ["file_io.c", "host_client.c", "bundle.c"],
   targets: {
     "main.mbt": ["native"],
   },
   link: {
     "native": {
       "stub-cc-flags": "-O2 -D_GNU_SOURCE",
+      "cc-link-flags": "-lz",
     },
   },
 )

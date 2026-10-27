@@ -30,7 +30,8 @@ dist/emoon init fixtures/migrate-source-app
 dist/emoon dev fixtures/migrate-source-app --api adapted-preload.json --no-launch
 ```
 
-`node scripts/build-cli.cjs` builds `cmd/emoon` and the platform host, then copies
+`node scripts/build-cli.cjs` builds `cmd/emoon` in **release+strip** mode (pass
+`--debug` for the old debug binary) and the platform host, then copies
 `dist/emoon` and `dist/emoon-host` so both CLIs can resolve them. The native
 developer commands write the same `.emoon/` stage as the Node reference; the
 parity test compares their bytes and file modes.
@@ -53,6 +54,19 @@ resolves `dist/emoon` (or another native runtime) for doctor/run; the native
 `npm install` to run the app's own build script. `node_modules`, `.git` and
 `.emoon` are ignored by inspect/staging, and a multi-file main output directory
 (e.g. `out/main`) is staged with its siblings.
+
+### Single-file app
+
+```sh
+dist/emoon bundle _build/Moji --output _build/Moji-1.0.7-linux-x86_64
+_build/Moji-1.0.7-linux-x86_64 --bundle-info
+```
+
+The output is one self-extracting ELF containing the release CLI, the native
+host and the app stage. The Moji 1.0.7 example is **6,185,192 bytes (5.9 MiB)**
+with zlib compression, compared with the 317 MB Electron runtime directory in
+the same checkout. GTK 3/WebKitGTK 4.1 remain system dependencies; this is not a
+static GTK/WebKit binary. See [docs/0072](docs/0072-single-executable-bundle.md).
 
 ### Try it manually
 
@@ -78,8 +92,9 @@ rebuild the CLI. See [the manual trial note](docs/0064-manual-trial.md).
 - `moon.mod` is `f4ah6o/electromoon` version `0.1.0`, `preferred_target = "native"`.
 - `moon-binstall.json` maps `cmd/emoon` and `cmd/emoon-host` to release assets, but
   no release has been published and `moon binstall` has not been run.
-- Native `init`/`inspect`/`migrate`/`dev` are implemented. Linux stage/parity and
-  the adapted window E2E pass; macOS native execution is NOT RUN here.
+- Native `init`/`inspect`/`migrate`/`dev`/`bundle` are implemented. Linux
+  stage/parity, adapted window E2E and the single-file Moji 1.0.7 bundle pass;
+  macOS native execution and macOS bundle are NOT RUN here.
 - `package.json` provides the Node CLI bin `emoon`; npm publication is not done.
 
 See [the CLI contract](docs/0062-cli-contract.md) and [the migration note](docs/0061-migrating-from-electron.md).

@@ -16,7 +16,9 @@ developer-tool contract, not a compatibility result.
 | `run` | implemented | delegates to native |
 | `version` / `help` | implemented | implemented |
 
-The native binary is built from `cmd/emoon` and ships with `emoon-host`. The Node
+The native binary is built from `cmd/emoon` and ships with `emoon-host`.
+`node scripts/build-cli.cjs` now builds release+strip by default; pass `--debug`
+for the previous debug binary. The Node
 binary is `cmd/emoon.cjs`; it is a development reference and never reimplements
 the runtime. `emoon version` reports `impl:"native"` or `impl:"node"` and the
 resolved native runtime path for the Node CLI.
@@ -58,6 +60,7 @@ emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force
 emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--config <file>]
 emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ...] [selftests]
 emoon doctor <app-dir> [--profile <id>]
+emoon bundle <app-or-stage> --output <file> [--force] [--host <path>] [--name <name>]
 emoon version
 emoon help
 ```
@@ -66,6 +69,12 @@ emoon help
 adapter without starting the engine, window or app. `run` keeps the existing
 fixture and window modes. If `--entry` is omitted and the manifest entry is the
 page, the runtime uses `package.json`'s `main` as the module entry.
+
+`bundle` packages a prepared stage into one self-extracting native ELF. It
+validates every source-manifest hash before writing, embeds the platform host and
+the stage (excluding app data), and uses zlib compression. The embedded launcher
+accepts `--bundle-info`, `--version`, `--help` and the hold options; other
+developer flags are rejected. See [docs/0072](0072-single-executable-bundle.md).
 
 `--profile` admission: omitting it infers the profile from `nodeless-app.json`.
 `electron-nodeless-adapted-v1` requires that file. `electron-nodeless-v1` exits

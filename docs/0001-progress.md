@@ -574,3 +574,22 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   buffer and native app payload cap were raised to 1 MiB and the main prelude
   normalizes string/array/`{args}` payloads before dispatch. Remaining after
   this: drag-and-drop and macOS. See [docs/0042](0042-nodeless-main-runtime.md).
+
+## Single-executable bundle (2026-10-27)
+
+- Added native `emoon bundle <app-or-stage> --output <file>`: release/stripped
+  CLI prefix + zlib payload + host + app stage + 512-byte footer.
+- The embedded launcher extracts to
+  `$XDG_DATA_HOME/electromoon/apps/<slug>/app` and
+  `$XDG_CACHE_HOME/electromoon/hosts/<host-sha>/emoon-host`, sets `EMOON_HOST`
+  and runs the existing `run --window` path. `.appData`/`.userData` are never
+  embedded or overwritten.
+- `node scripts/build-cli.cjs` now defaults to release+strip; `--debug` keeps the
+  old build.
+- Moji 1.0.7 evidence: **6,185,192 bytes** single ELF; raw payload 13,108,339;
+  stored 3,693,792; app `moji` 1.0.7 / 144 files; `HOLDING`
+  `pageTitle:"Moji v1.0.7"`; ~1.2 s to HOLDING; RSS sum ~554 MiB (measurement
+  only). Electron baseline in the same checkout: 317 MB.
+- Bundle tests cover single-file startup without adjacent host/app, app-data
+  sentinel preservation, existing output/missing stage/corrupt payload and
+  symlink rejection. macOS/signing/DnD are NOT RUN.

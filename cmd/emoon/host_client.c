@@ -501,6 +501,17 @@ static const char *host_binary_path(void) {
   return "dist/emoon-host";
 }
 
+int32_t moonbit_ebt_bundle_default_host(moonbit_bytes_t out, int32_t capacity) {
+  const char *path = host_binary_path();
+  if (path == NULL || out == NULL || capacity <= 0 ||
+      Moonbit_array_length(out) < capacity) return -1;
+  size_t length = strlen(path);
+  if (length + 1 > (size_t)capacity) return -1;
+  memcpy(out, path, length);
+  out[length] = 0;
+  return (int32_t)length;
+}
+
 int32_t moonbit_ebt_nodeless_host_open(moonbit_bytes_t root_bytes) {
   char *root = copy_bytes(root_bytes);
   if (root == NULL) return -1;

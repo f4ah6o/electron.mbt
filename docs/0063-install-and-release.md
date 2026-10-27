@@ -45,7 +45,13 @@ dist/emoon-host --version
 
 `cmd/emoon` is built by MoonBit; `cmd/emoon-host` is built by the platform
 scripts. The CLI resolves the host from `EMOON_HOST`, the same directory, or
-`dist/`.
+`dist/`. `node scripts/build-cli.cjs` builds release+strip by default; use
+`--debug` for the old debug binary.
+
+`emoon bundle` can produce a single self-extracting ELF that embeds the host and
+the app stage. It is an alternative to shipping `emoon` plus `emoon-host` as
+separate files. The preview is unsigned; see
+[docs/0072](0072-single-executable-bundle.md).
 
 ## npm (Node reference CLI)
 

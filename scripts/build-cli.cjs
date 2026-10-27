@@ -7,17 +7,26 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
-const build = spawnSync('moon', ['build', '--target', 'native', 'cmd/emoon'], {
+const debug = process.argv.includes('--debug');
+const buildArgs = ['build', '--target', 'native'];
+if (!debug) buildArgs.push('--release', '--strip');
+buildArgs.push('cmd/emoon');
+const build = spawnSync('moon', buildArgs, {
   cwd: root, encoding: 'utf8', timeout: 300000,
 });
 if (build.status !== 0) {
   process.stderr.write(`${build.stdout || ''}\n${build.stderr || ''}\n`);
   process.exit(1);
 }
-const candidates = [
-  path.join(root, '_build/native/debug/build/cmd/emoon/emoon.exe'),
-  path.join(root, '_build/native/debug/build/cmd/emoon/emoon'),
-];
+const candidates = debug
+  ? [
+      path.join(root, '_build/native/debug/build/cmd/emoon/emoon.exe'),
+      path.join(root, '_build/native/debug/build/cmd/emoon/emoon'),
+    ]
+  : [
+      path.join(root, '_build/native/release/build/cmd/emoon/emoon.exe'),
+      path.join(root, '_build/native/release/build/cmd/emoon/emoon'),
+    ];
 const binary = candidates.find(candidate => fs.existsSync(candidate));
 if (!binary) {
   process.stderr.write('emoon binary was not produced\n');
@@ -49,6 +58,8 @@ const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).d
 process.stdout.write(`${JSON.stringify({
   ok: true,
   cli: path.relative(root, output),
+  profile: debug ? 'debug' : 'release-strip',
+  cliBytes: fs.statSync(output).size,
   cliSHA256: hash(output),
   host: path.relative(root, host),
   hostSHA256: fs.existsSync(host) ? hash(host) : null,

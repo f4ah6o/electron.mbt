@@ -58,6 +58,19 @@ function verifyWindow(report, title) {
   assert.equal(report.nodeProcesses, 0);
   assert.equal(report.compatible, false);
 }
+function verifyHold(reports, title) {
+  const holding = reports.find(item => item.status === 'HOLDING');
+  const exited = reports.find(item => item.status === 'HOLD_EXIT');
+  assert.ok(holding, 'missing HOLDING report');
+  assert.match(holding.pageTitle, title);
+  assert.equal(holding.platform, 'darwin');
+  assert.equal(holding.adapted, true);
+  assert.equal(holding.released, true);
+  assert.equal(holding.compatible, false);
+  assert.ok(exited, 'missing HOLD_EXIT report');
+  assert.equal(exited.reason, 'hold-seconds');
+  assert.equal(exited.compatible, false);
+}
 function copied(name) {
   const dir = path.join(home, name);
   fs.cpSync(path.join(root, 'fixtures', name), dir, { recursive: true });
@@ -111,8 +124,7 @@ test('a fixture bundle reports metadata and launches from an isolated directory'
   const isolatedEnv = { ...env };
   delete isolatedEnv.EMOON_HOST;
   const launch = execute('bundle-fixture-launch', output, ['--hold', '--hold-seconds', '1'], { cwd: home, env: isolatedEnv });
-  assert.ok(launch.reports.some(item => item.status === 'HOLDING'));
-  assert.ok(launch.reports.some(item => item.status === 'HOLD_EXIT'));
+  verifyHold(launch.reports, /^nodeless-adapted-ready-module-dark-idle-(storage|no-storage)-denied-scheme$/);
 });
 
 test('Moji 1.0.7 boots its built renderer and bundled app', {
@@ -139,6 +151,5 @@ test('Moji 1.0.7 boots its built renderer and bundled app', {
   const isolatedEnv = { ...env };
   delete isolatedEnv.EMOON_HOST;
   const launch = execute('moji-bundle-launch', output, ['--hold', '--hold-seconds', '1'], { cwd: home, env: isolatedEnv });
-  assert.ok(launch.reports.some(item => item.status === 'HOLDING' && item.pageTitle === 'Moji v1.0.7'));
-  assert.ok(launch.reports.some(item => item.status === 'HOLD_EXIT'));
+  verifyHold(launch.reports, /^Moji v1\.0\.7$/);
 });

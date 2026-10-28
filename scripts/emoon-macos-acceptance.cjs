@@ -11,7 +11,7 @@ const cli = path.join(root, 'dist/emoon');
 const host = path.join(root, 'dist/emoon-host');
 const evidence = path.resolve(process.env.EMOON_EVIDENCE_DIR || path.join(root, 'evidence/emoon-macos'));
 fs.mkdirSync(evidence, { recursive: true });
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'emoon-macos-acceptance-'));
+const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'emoon-macos-acceptance-')));
 const fakeBin = path.join(home, 'bin');
 fs.mkdirSync(fakeBin);
 fs.writeFileSync(path.join(fakeBin, 'node'), '#!/bin/sh\nprintf invoked >> "$EMOON_NODE_SENTINEL"\nexit 99\n', { mode: 0o755 });
@@ -33,7 +33,7 @@ function execute(name, command, args, options = {}) {
     nodeInvoked: childEnv.EMOON_NODE_SENTINEL ? fs.existsSync(childEnv.EMOON_NODE_SENTINEL) : null,
     stdout: result.stdout || '', stderr: result.stderr || '' };
   fs.writeFileSync(path.join(evidence, `${name}.json`), `${JSON.stringify(record, null, 2)}\n`);
-  assert.equal(result.status, 0, `${name}: ${JSON.stringify(record)}`);
+  assert.equal(result.status, options.expectedStatus ?? 0, `${name}: ${JSON.stringify(record)}`);
   if (childEnv.EMOON_NODE_SENTINEL) assert.equal(record.nodeInvoked, false, `${name}: unexpected Node invocation`);
   const reports = record.stdout.split('\n').flatMap(line => {
     try { return [JSON.parse(line)]; } catch { return []; }
@@ -125,6 +125,18 @@ test('a fixture bundle reports metadata and launches from an isolated directory'
   delete isolatedEnv.EMOON_HOST;
   const launch = execute('bundle-fixture-launch', output, ['--hold', '--hold-seconds', '1'], { cwd: home, env: isolatedEnv });
   verifyHold(launch.reports, /^nodeless-adapted-ready-module-dark-idle-(storage|no-storage)-denied-scheme$/);
+});
+
+test('a bundle rejects a symlink component in its data home', () => {
+  const target = path.join(home, 'data');
+  const link = path.join(home, 'linked-data');
+  fs.mkdirSync(target, { recursive: true });
+  fs.symlinkSync(target, link);
+  const isolatedEnv = { ...env, XDG_DATA_HOME: link };
+  delete isolatedEnv.EMOON_HOST;
+  const report = execute('bundle-symlink-home', path.join(home, 'fixture-bundle'), [],
+    { cwd: home, env: isolatedEnv, expectedStatus: 1 }).report;
+  assert.equal(report.code, 'ELECTRON_MBT_BUNDLE_HOME');
 });
 
 test('Moji 1.0.7 boots its built renderer and bundled app', {

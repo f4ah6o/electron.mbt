@@ -7,7 +7,9 @@ adapted Node-less fixture, and fixture and Moji 1.0.7 single-file bundles. A
 renderer, adapted requests and replies, host shutdown, and `compatible:false`.
 The fixtures set `show:false`; a successful test does not establish human UI
 interaction. The bundle checks metadata and executes the output with no adjacent
-host, in a temporary home. Distribution signing and notarization are not tested.
+host, in a temporary home. The test canonicalizes the temporary directory because
+the bundle directory creator rejects symlink components (including macOS
+`/var`). Distribution signing and notarization are not tested.
 
 CI checks out Moji at `b9753c0f7d3fe41d975a1231517f4f124b0a4408` (v1.0.7),
 installs its locked dependencies with install scripts disabled and builds it.

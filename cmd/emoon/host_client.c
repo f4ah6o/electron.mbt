@@ -483,6 +483,36 @@ static const char *same_directory_host_path(void) {
   return same_directory_host;
 }
 
+// Look for an installed `emoon-host` after the sibling layout. Only absolute
+// PATH entries are accepted so a relative `.` entry cannot silently resolve a
+// host from the current app directory. The host is user-installed tooling, the
+// same trust level as `emoon` itself, and the bundle launcher always sets
+// EMOON_HOST so an app cannot redirect it.
+static char path_host[4096];
+
+static const char *path_host_path(void) {
+  const char *path = getenv("PATH");
+  if (path == NULL) return NULL;
+  const char *cursor = path;
+  int entries = 0;
+  while (entries < 64) {
+    const char *end = strchr(cursor, ':');
+    size_t length = end == NULL ? strlen(cursor) : (size_t)(end - cursor);
+    if (length > 0 && length < sizeof(path_host) - 12 && cursor[0] == '/') {
+      int written = snprintf(path_host, sizeof(path_host),
+                             "%.*s/emoon-host", (int)length, cursor);
+      if (written > 0 && (size_t)written < sizeof(path_host) &&
+          access(path_host, X_OK) == 0) {
+        return path_host;
+      }
+    }
+    if (end == NULL) break;
+    cursor = end + 1;
+    entries++;
+  }
+  return NULL;
+}
+
 // A launch-time override is user-controlled: the app bundle cannot set the
 // environment of the process that spawns the host. The test-only override
 // remains restricted to repository-relative dist/ paths.
@@ -498,6 +528,9 @@ static const char *host_binary_path(void) {
   }
   const char *same = same_directory_host_path();
   if (same != NULL) return same;
+  if (access("dist/emoon-host", X_OK) == 0) return "dist/emoon-host";
+  const char *installed = path_host_path();
+  if (installed != NULL) return installed;
   return "dist/emoon-host";
 }
 

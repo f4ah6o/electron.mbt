@@ -19,9 +19,17 @@ host. It is **one file to distribute**, not a statically linked GTK/WebKit
 binary. System GTK 3 and WebKitGTK 4.1 are still required.
 
 ```sh
-dist/emoon bundle _build/Moji --output _build/Moji-1.0.7-linux-x86_64
-_build/Moji-1.0.7-linux-x86_64
-_build/Moji-1.0.7-linux-x86_64 --bundle-info
+dist/emoon bundle _build/Moji
+_build/Moji/.emoon/dist/moji-1.0.7-linux-x64
+_build/Moji/.emoon/dist/moji-1.0.7-linux-x64 --bundle-info
+```
+
+The one-command staging/default-output UX is documented in
+[docs/0073](0073-one-step-bundle-ux.md). The two-step form with an explicit
+stage remains:
+
+```sh
+dist/emoon bundle _build/Moji/.emoon/app --output _build/Moji-1.0.7-linux-x64
 ```
 
 ## Measured size
@@ -31,8 +39,8 @@ _build/Moji-1.0.7-linux-x86_64 --bundle-info
 | Moji 1.0.7 stage (143 source-manifest files) | 12,959,604 bytes |
 | compressed payload (zlib level 9) | 3,693,792 bytes |
 | `emoon-host` | 140,048 bytes |
-| release/stripped `dist/emoon` (current build) | 2,490,888 bytes |
-| **Moji single executable** | **6,185,192 bytes (5.9 MiB)** |
+| release/stripped `dist/emoon` (2026-10-28 build) | 2,537,464 bytes |
+| **Moji single executable** | **6,231,768 bytes (5.9 MiB)** |
 | app files extracted on first run | ~13 MB |
 | host cache | ~140 KB |
 | Electron runtime directory in the same Moji checkout | 317 MB |
@@ -41,6 +49,10 @@ The single file is about **5.9 MiB**, below the 8 MiB target. First-run extracte
 data is about 19 MiB including the executable. The Electron comparison is the
 `node_modules/electron/dist` directory in this checkout (317 MB); it is a size
 comparison, not a RAM or startup comparison.
+
+The 2026-10-28 artifact is 46,576 bytes larger than the 2026-10-27 artifact
+because the release CLI prefix grew by the same amount for the one-command
+bundle UX; the app and host payload bytes are unchanged.
 
 On this machine, the Moji bundle reached `HOLDING` in **~1.2 s** after launch.
 The RSS sum of the CLI, host, network process and WebKit web process at HOLDING
@@ -98,19 +110,27 @@ unsigned.
 ## Command
 
 ```sh
-emoon bundle <app-or-stage> --output <file> [--force] [--host <path>] [--name <name>]
+emoon bundle [app-dir] [--output <file>] [--force] [--host <path>] [--name <name>]
+             [--build] [--restage] [--reset-data] [--no-stage] [--dry-run]
 ```
 
-- `<arg>/source-manifest.json` means a prepared stage
-- otherwise `<arg>/.emoon/app` is used
+- `[app-dir]` defaults to `.`; `<arg>/source-manifest.json` means a prepared
+  stage and then requires `--output`
+- an app root stages `<arg>/.emoon/app` first: missing/invalid stages are
+  created or replaced automatically, and a stage containing `.appData` /
+  `.userData` requires `--reset-data`
+- `--dry-run` writes nothing and returns the plan; `--no-stage` requires a valid
+  stage and never runs `init`/`migrate`
 - `source-manifest.json` is parsed and every listed file's SHA-256 is checked
-  before the C writer runs
-- a missing stage is `ELECTRON_MBT_BUNDLE_STAGE`; bundle never runs migrate
-- `--host` overrides `EMOON_HOST` / same-directory host / `dist/emoon-host`
-- `--name` overrides the sanitized app slug
+  before the C writer runs; the stage is also compared with the current source
+  so a rebuild is re-staged
+- `--host` overrides `EMOON_HOST` / same-directory host / `dist/emoon-host` /
+  an absolute `PATH` entry
+- `--name` overrides the sanitized app slug and the default file-name base
 
-The Node reference CLI does not implement `bundle`; this is a native-runtime
-feature. The historical M0 `pack` command is unchanged and not this feature.
+The Node reference CLI delegates `bundle` to the native runtime; it does not
+implement staging or bundling itself. The historical M0 `pack` command is
+unchanged and not this feature.
 
 ## Build
 
@@ -126,7 +146,8 @@ larger file; release/strip is required for the measured lightweight result.
 
 ## Verification
 
-`tests/emoon-bundle.test.cjs` covers:
+`tests/emoon-bundle.test.cjs` covers the container and launch behavior;
+`tests/emoon-bundle-ux.test.cjs` covers the one-command flow:
 
 - one ELF + metadata
 - no adjacent host/app; clean XDG launch
@@ -134,16 +155,20 @@ larger file; release/strip is required for the measured lightweight result.
 - existing output / missing stage / corrupt payload
 - stage symlink and output symlink rejection
 - Moji 1.0.7 bundle when the stage exists and the CLI is release-sized
+- `emoon bundle` from an app root: auto-stage, default output, source re-stage,
+  data refusal, `--no-stage`, `--dry-run`, `--build`, host resolution, Node
+  delegation and the discoverability hint
 
-Moji evidence:
+Moji evidence (2026-10-28):
 
 ```text
-bytes=6,185,192
+bytes=6,231,768
 compression=zlib
 rawBytes=13,108,339
 storedBytes=3,693,792
 app=moji 1.0.7 files=144
 pageTitle="Moji v1.0.7"
+stage.mode="reused"
 ```
 
 NOT RUN: macOS bundle launch/signing/notarization, Windows, human UI of the

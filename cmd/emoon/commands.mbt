@@ -259,7 +259,11 @@ fn command_require_file(root : String, relative : String, label : String) -> Int
 }
 
 ///|
-fn command_init_with_args(root : String, args : @cli.CliArgs) -> Unit {
+fn command_init_with_args(
+  root : String,
+  args : @cli.CliArgs,
+  emit? : Bool = true,
+) -> Unit {
   let pkg = command_package(root)
   command_require_main(root, pkg.main)
   let renderer = match args.value("renderer") {
@@ -446,15 +450,17 @@ fn command_init_with_args(root : String, args : @cli.CliArgs) -> Unit {
   } else {
     config_relative
   }
-  println(
-    @cli.init_report({
-      app_dir: root,
-      pkg: pkg,
-      config: config,
-      config_display: display,
-      implementation: "native",
-    }).to_compact(),
-  )
+  if emit {
+    println(
+      @cli.init_report({
+        app_dir: root,
+        pkg: pkg,
+        config: config,
+        config_display: display,
+        implementation: "native",
+      }).to_compact(),
+    )
+  }
 }
 
 ///|
@@ -1395,7 +1401,11 @@ fn command_write_adapter(
 }
 
 ///|
-fn command_migrate_with_args(root : String, args : @cli.CliArgs) -> Int {
+fn command_migrate_with_args(
+  root : String,
+  args : @cli.CliArgs,
+  emit? : Bool = true,
+) -> Int {
   let input = command_inspect_input(root, args)
   if @cli.inspect_tier(input) == "blocked" {
     println(@cli.migrate_blocked_report(input).to_compact())
@@ -1418,9 +1428,11 @@ fn command_migrate_with_args(root : String, args : @cli.CliArgs) -> Int {
     for path in files {
       bytes = bytes + command_size(root, path)
     }
-    println(
-      @cli.migrate_dry_report(input, stage, files.length(), bytes).to_compact(),
-    )
+    if emit {
+      println(
+        @cli.migrate_dry_report(input, stage, files.length(), bytes).to_compact(),
+      )
+    }
     return 0
   }
   command_prepare_stage(root, stage, args)
@@ -1526,7 +1538,9 @@ fn command_migrate_with_args(root : String, args : @cli.CliArgs) -> Int {
   if fs_write_atomic(root, report_relative, report.to_file_text()) != 0 {
     command_fail("ELECTRON_MBT_MIGRATE_IO", "cannot write " + report_relative)
   }
-  println(report.to_compact())
+  if emit {
+    println(report.to_compact())
+  }
   0
 }
 

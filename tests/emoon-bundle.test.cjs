@@ -105,7 +105,7 @@ test('bundle refuses existing output, missing stage and corrupt payload', { skip
     assert.equal(bundle(fixture, output, ['--force']).result.status, 0);
     const missing = bundle(path.join(fixture, 'src'), path.join(home, 'missing'));
     assert.notEqual(missing.result.status, 0);
-    assert.equal(missing.report.code, 'ELECTRON_MBT_BUNDLE_STAGE');
+    assert.equal(missing.report.code, 'ELECTRON_MBT_BUNDLE_INPUT');
     const corrupt = path.join(home, 'corrupt');
     fs.copyFileSync(output, corrupt);
     const payloadOffset = fs.statSync(cli).size + 100;

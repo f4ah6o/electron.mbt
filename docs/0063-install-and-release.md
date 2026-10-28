@@ -44,13 +44,16 @@ dist/emoon-host --version
 ```
 
 `cmd/emoon` is built by MoonBit; `cmd/emoon-host` is built by the platform
-scripts. The CLI resolves the host from `EMOON_HOST`, the same directory, or
-`dist/`. `node scripts/build-cli.cjs` builds release+strip by default; use
-`--debug` for the old debug binary.
+scripts. The CLI resolves the host from `--host`, `EMOON_HOST`, a sibling of the
+CLI, `dist/emoon-host` in the current directory, or an absolute `PATH` entry.
+`node scripts/build-cli.cjs` builds release+strip by default; use `--debug` for
+the old debug binary.
 
 `emoon bundle` can produce a single self-extracting ELF that embeds the host and
-the app stage. It is an alternative to shipping `emoon` plus `emoon-host` as
-separate files. The preview is unsigned; see
+the app stage. When run inside a built Electron app it stages
+`.emoon/app` if needed and writes
+`<app>/.emoon/dist/<name>-<version>-<os>-<arch>`; no `--output` is required. The
+preview is unsigned; see [docs/0073](0073-one-step-bundle-ux.md) and
 [docs/0072](0072-single-executable-bundle.md).
 
 ## npm (Node reference CLI)
@@ -58,8 +61,8 @@ separate files. The preview is unsigned; see
 `package.json` exposes `bin: { "emoon": "cmd/emoon.cjs" }` and a limited `files`
 list. `npm pack --dry-run` is the packaging check. Publishing requires the
 owner's npm token and is not done by this repository's CI. The Node CLI delegates
-`doctor`/`run` to a separately installed native runtime; it never downloads one
-implicitly.
+`doctor`/`run`/`bundle` to a separately installed native runtime; it never
+downloads one implicitly.
 
 ## Not run
 

@@ -569,16 +569,24 @@ static int bundle_write_payload(const unsigned char *raw, size_t raw_size,
 static int bundle_make_payload(const char *stage, const char *host,
                                unsigned char **raw_out, size_t *raw_size,
                                unsigned char host_sha[32], uint32_t *file_count,
-                               size_t *app_bytes, size_t *host_bytes) {
+                               size_t *app_bytes, size_t *host_bytes,
+                               const char **error_code,
+                               const char **error_message) {
+  *error_code = NULL;
+  *error_message = NULL;
   unsigned char *host_data = NULL;
   size_t host_length = 0;
   if (bundle_read_file(host, EBT_BUNDLE_MAX_HOST, &host_data, &host_length) != 0) {
+    *error_code = "ELECTRON_MBT_BUNDLE_HOST";
+    *error_message = "cannot read the native host";
     return -1;
   }
   bundle_sha256(host_data, host_length, host_sha);
   char *canonical_stage = realpath(stage, NULL);
   if (canonical_stage == NULL) {
     free(host_data);
+    *error_code = "ELECTRON_MBT_BUNDLE_STAGE";
+    *error_message = "stage path is invalid";
     return -1;
   }
   BundleWalk walk;
@@ -592,6 +600,8 @@ static int bundle_make_payload(const char *stage, const char *host,
     free(walk.items);
     free(host_data);
     free(canonical_stage);
+    *error_code = "ELECTRON_MBT_BUNDLE_STAGE";
+    *error_message = "stage cannot be read as a bounded bundle";
     return -1;
   }
   qsort(walk.items, walk.count, sizeof(BundlePath), bundle_path_compare);
@@ -609,12 +619,16 @@ static int bundle_make_payload(const char *stage, const char *host,
     free(walk.items);
     free(host_data);
     free(canonical_stage);
+    *error_code = "ELECTRON_MBT_BUNDLE_STAGE";
+    *error_message = "stage exceeds the bundle limits";
     return -1;
   }
   unsigned char *raw = (unsigned char *)malloc((size_t)total);
   if (raw == NULL) {
     for (size_t i = 0; i < walk.count; i++) free(walk.items[i].path);
     free(walk.items); free(host_data); free(canonical_stage);
+    *error_code = "ELECTRON_MBT_BUNDLE_IO";
+    *error_message = "cannot allocate the payload";
     return -1;
   }
   size_t offset = 0;
@@ -645,6 +659,8 @@ static int bundle_make_payload(const char *stage, const char *host,
       free(full); free(data); free(raw);
       for (size_t j = 0; j < walk.count; j++) free(walk.items[j].path);
       free(walk.items); free(host_data); free(canonical_stage);
+      *error_code = "ELECTRON_MBT_BUNDLE_STAGE";
+      *error_message = "stage file changed while bundling";
       return -1;
     }
     free(full);
@@ -765,6 +781,13 @@ int32_t moonbit_ebt_bundle_create(
     }
   }
   char self[EBT_BUNDLE_MAX_PATH];
+  char app_slug[80];
+  if (bundle_slug(name, app_slug) != 0) {
+    free(canonical_output);
+    bundle_error(error_out, error_capacity, "ELECTRON_MBT_BUNDLE_APP",
+                 "app name is not safe");
+    goto fail;
+  }
   if (bundle_self_path(self, sizeof(self)) != 0) {
     free(canonical_output);
     bundle_error(error_out, error_capacity, "ELECTRON_MBT_BUNDLE_SELF",
@@ -785,11 +808,16 @@ int32_t moonbit_ebt_bundle_create(
   unsigned char host_sha[32];
   uint32_t app_files = 0;
   size_t app_bytes = 0, host_size = 0;
+  const char *payload_code = NULL;
+  const char *payload_message = NULL;
   if (bundle_make_payload(stage, host, &raw, &raw_size, host_sha,
-                          &app_files, &app_bytes, &host_size) != 0) {
+                          &app_files, &app_bytes, &host_size,
+                          &payload_code, &payload_message) != 0) {
     free(canonical_output);
-    bundle_error(error_out, error_capacity, "ELECTRON_MBT_BUNDLE_STAGE",
-                 "stage cannot be read as a bounded bundle");
+    bundle_error(error_out, error_capacity,
+                 payload_code == NULL ? "ELECTRON_MBT_BUNDLE_STAGE" : payload_code,
+                 payload_message == NULL ? "stage cannot be read as a bounded bundle"
+                                         : payload_message);
     goto fail;
   }
   unsigned char *stored = NULL;

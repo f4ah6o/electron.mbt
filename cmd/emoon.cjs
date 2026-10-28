@@ -27,14 +27,15 @@ Usage:
   emoon inspect [app-dir] [--renderer <dir>] [--api <file>]
   emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--force] [--reset-data] [--dry-run]
   emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--runtime <path>]
+  emoon bundle [app-dir] [--output <file>] [--build] [--dry-run] [--runtime <path>]
   emoon doctor <stage> [--profile <id>] [--runtime <path>]
   emoon run <stage> [--window] [--entry <file>] [--runtime <path>]
   emoon version | --version
   emoon help | --help
 
 Native runtime:
-  doctor/run/dev delegate to a native emoon binary. Resolve it with --runtime,
-  EMOON_RUNTIME, node_modules/electromoon/dist, dist/, _b/..., or PATH.
+  doctor/run/dev/bundle delegate to a native emoon binary. Resolve it with
+  --runtime, EMOON_RUNTIME, node_modules/electromoon/dist, dist/, _b/..., or PATH.
   Install it with:
     moon binstall f4ah6o/electromoon/cmd/emoon f4ah6o/electromoon/cmd/emoon-host@0.1.0
 
@@ -50,6 +51,7 @@ function run(argv) {
   if (command === 'inspect') return migrate.cliInspect(argv.slice(1));
   if (command === 'migrate') return migrate.cliMigrate(argv.slice(1));
   if (command === 'dev') return flow.dev(argv.slice(1));
+  if (command === 'bundle') return flow.delegateBundle(argv.slice(1));
   if (command === 'doctor' || command === 'run') return flow.delegateCommand(argv);
   printHelp();
   return 1;

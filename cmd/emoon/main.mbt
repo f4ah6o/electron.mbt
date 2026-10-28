@@ -1033,16 +1033,62 @@ fn cli_product_version() -> String { "0.1.0" }
 
 ///|
 fn cli_print_help() -> Unit {
-  println("usage: emoon <init|inspect|migrate|dev|run|doctor|bundle|version|help> [app-dir] [options]")
+  println("usage: emoon <command> [app-dir] [options]")
+  println("")
+  println("package an app:")
+  println("  bundle [app-dir]  stage if needed, then write one native executable")
+  println("                    default output: <app-dir>/.emoon/dist/<name>-<version>-<os>-<arch>")
+  println("")
+  println("develop:")
   println("  init     write .emoon/config.json for an Electron app")
   println("  inspect  report the app tier and blockers without writing a stage")
   println("  migrate  stage the app under .emoon/app and write the migration report")
   println("  dev      init/inspect/migrate, validate with doctor, then run --window (--build runs npm run build)")
   println("  run      run a prepared app (--window, --entry, --profile, --hold, selftests)")
   println("  doctor   validate a prepared app without launching it")
-  println("  bundle   package a prepared stage into one native executable")
+  println("")
+  println("other:")
   println("  version  print the machine-readable version")
   println("  help     print this help")
+  println("")
+  println("run `emoon bundle --help` for packaging options")
+}
+
+///|
+/// A read-only hint for the bare `emoon` invocation. It never writes and never
+/// changes the exit code; it only makes the next command discoverable when the
+/// current directory looks like an Electron app.
+fn cli_print_app_hint() -> Unit {
+  let root = match fs_realpath(".") {
+    Some(value) => value
+    None => return
+  }
+  let text = match cli_read_text(root, "package.json") {
+    Some(value) => value
+    None => return
+  }
+  let parsed = @json.parse(text) catch {
+    _ => return
+  }
+  let main = match cli_text(parsed, "main") {
+    Some(value) => value
+    None => return
+  }
+  if main == "" {
+    return
+  }
+  let name = match cli_text(parsed, "name") {
+    Some(value) => value
+    None => "app"
+  }
+  let version = match cli_text(parsed, "version") {
+    Some(value) => value
+    None => "0.0.0"
+  }
+  eprintln(
+    "[emoon] detected " + name + " " + version + " in " + root +
+    "; next: emoon bundle",
+  )
 }
 
 ///|
@@ -1080,6 +1126,7 @@ fn cli_block(code : String, message : String) -> Unit {
 fn cli_main(args : Array[String]) -> Unit {
   if args.length() < 2 {
     cli_print_help()
+    cli_print_app_hint()
     nodeless_exit(1)
     return
   }
@@ -2387,180 +2434,6 @@ fn cli_bundle_trim_nul(text : String) -> String {
     Some((head, _)) => head.to_string()
     None => text
   }
-}
-
-///|
-fn cli_bundle_stage(input : String) -> String? {
-  if cli_read_text(input, "source-manifest.json") is Some(_) {
-    return Some(input)
-  }
-  let nested = if input.ends_with("/") {
-    input + ".emoon/app"
-  } else {
-    input + "/.emoon/app"
-  }
-  if cli_read_text(nested, "source-manifest.json") is Some(_) {
-    Some(nested)
-  } else {
-    None
-  }
-}
-
-///|
-fn cli_bundle_validate(stage : String) -> Result[(String, String, Int), String] {
-  let manifest = match cli_read_text(stage, "source-manifest.json") {
-    Some(value) => value
-    None => return Err("cannot read source-manifest.json")
-  }
-  let parsed = @json.parse(manifest) catch {
-    _ => return Err("invalid source-manifest.json")
-  }
-  let items = match cli_field(parsed, "files") {
-    Array(values) => values
-    _ => return Err("source-manifest.json has no file list")
-  }
-  let mut seen = 0
-  for item in items {
-    let path = match cli_text(item, "path") {
-      Some(value) => value
-      None => return Err("manifest file path is missing")
-    }
-    let expected = match cli_text(item, "sha256") {
-      Some(value) => value
-      None => return Err("manifest file hash is missing")
-    }
-    let actual = match cli_sha256(stage, path) {
-      Some(value) => value
-      None => return Err("cannot hash " + path)
-    }
-    if actual != expected {
-      return Err("manifest hash mismatch for " + path)
-    }
-    seen = seen + 1
-  }
-  if seen == 0 {
-    return Err("source-manifest.json is empty")
-  }
-  let package_text = match cli_read_text(stage, "package.json") {
-    Some(value) => value
-    None => return Err("package.json is missing")
-  }
-  let package = @json.parse(package_text) catch {
-    _ => return Err("invalid package.json")
-  }
-  let name = match cli_text(package, "name") {
-    Some(value) if value.length() > 0 => value
-    _ => "app"
-  }
-  let version = match cli_text(package, "version") {
-    Some(value) if value.length() > 0 => value
-    _ => "0.0.0"
-  }
-  if cli_read_text(stage, "nodeless-app.json") is None {
-    return Err("nodeless-app.json is missing")
-  }
-  let profile = match cli_read_text(stage, "nodeless-app.json") {
-    Some(value) => value
-    None => ""
-  }
-  if profile.contains("electron-nodeless-adapted-v1") &&
-    cli_read_text(stage, "adapted/page-api.js") is None {
-    return Err("adapted/page-api.js is missing")
-  }
-  Ok((name, version, seen))
-}
-
-///|
-fn cli_bundle_command(raw_args : Array[String]) -> Unit {
-  let positional : Array[String] = []
-  let mut output = ""
-  let mut host = ""
-  let mut name_override = ""
-  let mut force = false
-  let mut index = 0
-  while index < raw_args.length() {
-    let arg = raw_args[index]
-    if arg == "--force" {
-      force = true
-      index = index + 1
-      continue
-    }
-    if arg == "--output" || arg == "--host" || arg == "--name" {
-      if index + 1 >= raw_args.length() || raw_args[index + 1].has_prefix("--") {
-        cli_fail("ELECTRON_MBT_BUNDLE_USAGE", arg + " requires a value")
-        return
-      }
-      let value = raw_args[index + 1]
-      if arg == "--output" {
-        output = value
-      } else if arg == "--host" {
-        host = value
-      } else {
-        name_override = value
-      }
-      index = index + 2
-      continue
-    }
-    if arg.has_prefix("--") {
-      cli_fail("ELECTRON_MBT_BUNDLE_USAGE", "unknown bundle option: " + arg)
-      return
-    }
-    positional.push(arg)
-    index = index + 1
-  }
-  if positional.length() != 1 || output == "" {
-    cli_fail("ELECTRON_MBT_BUNDLE_USAGE",
-      "usage: emoon bundle <app-or-stage> --output <file> [--force] [--host <path>] [--name <name>]")
-    return
-  }
-  let input = positional[0]
-  let stage = match cli_bundle_stage(input) {
-    Some(value) => cli_realpath(value)
-    None => ""
-  }
-  if stage == "" {
-    cli_fail("ELECTRON_MBT_BUNDLE_STAGE",
-      "no source-manifest.json found; pass a prepared .emoon/app stage")
-    return
-  }
-  let (name, version, _files) = match cli_bundle_validate(stage) {
-    Ok(value) => value
-    Err(message) => {
-      cli_fail("ELECTRON_MBT_BUNDLE_STAGE", message)
-      return
-    }
-  }
-  let app_name = if name_override != "" { name_override } else { name }
-  if host == "" {
-    let host_buffer = Bytes::new(4096)
-    let host_length = bundle_default_host(host_buffer, host_buffer.length())
-    if host_length <= 0 {
-      cli_fail("ELECTRON_MBT_BUNDLE_HOST", "cannot resolve emoon-host")
-      return
-    }
-    host = @utf8.decode_lossy(host_buffer[:host_length])
-  }
-  let report_buffer = Bytes::new(16384)
-  let error_buffer = Bytes::new(4096)
-  let code = bundle_create(
-    @utf8.encode(output),
-    @utf8.encode(stage),
-    @utf8.encode(host),
-    @utf8.encode(app_name),
-    @utf8.encode(version),
-    report_buffer,
-    report_buffer.length(),
-    error_buffer,
-    error_buffer.length(),
-    if force { 1 } else { 0 },
-  )
-  if code <= 0 {
-    let text = cli_bundle_trim_nul(@utf8.decode_lossy(error_buffer))
-    println(text)
-    nodeless_exit(1)
-    return
-  }
-  println(@utf8.decode_lossy(report_buffer[:code]))
 }
 
 ///|

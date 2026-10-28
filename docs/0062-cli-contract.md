@@ -14,6 +14,7 @@ developer-tool contract, not a compatibility result.
 | `doctor` | implemented | delegates to native |
 | `dev` | native staging + in-process doctor/run | node staging, then native doctor/run |
 | `run` | implemented | delegates to native |
+| `bundle` | implemented | delegates to native |
 | `version` / `help` | implemented | implemented |
 
 The native binary is built from `cmd/emoon` and ships with `emoon-host`.
@@ -34,12 +35,15 @@ file modes.
 
 `--runtime` → `EMOON_RUNTIME` → `node_modules/electromoon/dist` → repository
 `dist/` → `_build/native/{debug,release}/build/cmd/emoon` → `PATH`. Node scripts
-are skipped. `emoon-host` is resolved from `--host` (not implemented as a flag
-yet), `EMOON_HOST`, the same directory as the native binary, `dist/`, or `PATH`.
+are skipped. For the native runtime, `emoon-host` is resolved from `--host`,
+`EMOON_HOST`, a sibling of the native binary, `dist/emoon-host` in the current
+directory, or an absolute `PATH` entry.
 
 The native `dev` command rejects `--runtime`: the native CLI is the runtime and
-starts doctor/run in the same process. The Node `dev` command keeps `--runtime`
-because it delegates to a resolved native binary.
+starts doctor/run in the same process. The Node `dev` and `bundle` commands keep
+`--runtime` because they delegate to a resolved native binary. For `bundle`, the
+Node CLI forwards a resolved host only when `EMOON_HOST` is unset; the native
+command still owns the fallback chain.
 
 ## Exit codes
 
@@ -60,7 +64,7 @@ emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force
 emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--config <file>]
 emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ...] [selftests]
 emoon doctor <app-dir> [--profile <id>]
-emoon bundle <app-or-stage> --output <file> [--force] [--host <path>] [--name <name>]
+emoon bundle [app-dir] [--output <file>] [--force] [--name <name>] [--host <path>] [--build] [--restage] [--reset-data] [--no-stage] [--dry-run] [--quiet] [staging options]
 emoon version
 emoon help
 ```
@@ -70,11 +74,17 @@ adapter without starting the engine, window or app. `run` keeps the existing
 fixture and window modes. If `--entry` is omitted and the manifest entry is the
 page, the runtime uses `package.json`'s `main` as the module entry.
 
-`bundle` packages a prepared stage into one self-extracting native ELF. It
-validates every source-manifest hash before writing, embeds the platform host and
-the stage (excluding app data), and uses zlib compression. The embedded launcher
-accepts `--bundle-info`, `--version`, `--help` and the hold options; other
-developer flags are rejected. See [docs/0072](0072-single-executable-bundle.md).
+`bundle` packages a prepared stage into one self-extracting native ELF. With an
+app directory it stages `.emoon/app` when missing or stale (including a
+source-versus-stage comparison) and derives
+`<app>/.emoon/dist/<name>-<version>-<os>-<arch>`; a prepared stage needs an
+explicit `--output`. It validates every source-manifest hash before writing,
+embeds the platform host and the stage (excluding app data), and uses zlib
+compression. `--dry-run` writes nothing and returns the plan. The embedded
+launcher accepts `--bundle-info`, `--version`, `--help` and the hold options;
+other developer flags are rejected. See
+[docs/0073](0073-one-step-bundle-ux.md) and
+[docs/0072](0072-single-executable-bundle.md).
 
 `--profile` admission: omitting it infers the profile from `nodeless-app.json`.
 `electron-nodeless-adapted-v1` requires that file. `electron-nodeless-v1` exits

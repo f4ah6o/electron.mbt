@@ -593,3 +593,35 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - Bundle tests cover single-file startup without adjacent host/app, app-data
   sentinel preservation, existing output/missing stage/corrupt payload and
   symlink rejection. macOS/signing/DnD are NOT RUN.
+
+## One-command bundle UX (2026-10-28)
+
+- `emoon bundle [app-dir]` now stages `.emoon/app` when the stage is missing or
+  stale, and writes
+  `<app>/.emoon/dist/<name>-<version>-<os>-<arch>` by default. A prepared stage
+  still requires an explicit `--output`.
+- Source-level staleness: the stage manifest, the current `migrate` file set,
+  each source hash and the regenerated `adapted/page-api.js` are compared before
+  reuse. A changed source re-stages automatically. A stage containing
+  `.appData`/`.userData` is never replaced without `--reset-data`.
+- New flags: `--dry-run` (plan JSON, no writes, no npm), `--no-stage`,
+  `--restage`, `--reset-data`, `--build`, `--quiet`; `--renderer/--page/--api/
+  --include/--config` are forwarded to init/migrate. stdout is one JSON line;
+  progress goes to stderr.
+- `emoon-host` resolution now includes an absolute `PATH` entry after the
+  sibling/`dist` layouts, and the C writer reports a missing host as
+  `ELECTRON_MBT_BUNDLE_HOST` instead of a stage error. `--name` is validated
+  before writing.
+- The Node reference CLI delegates `bundle` to the native runtime; it does not
+  reimplement staging or bundling.
+- Evidence: release-strip CLI **2,537,464 bytes**; bundle/UX tests **17 PASS**;
+  CLI/parity **30 PASS**; MoonBit native **203 PASS**, JS **167 PASS**; npm
+  **551 tests / 518 PASS / 0 FAIL / 33 SKIP**.
+  `dist/emoon bundle _build/Moji` reused the 143-file stage in **0.823 s** and
+  wrote **6,231,768 bytes (5.9 MiB)**; `--bundle-info` reports `moji` 1.0.7 /
+  144 files, and the isolated-XDG hold run reports `pageTitle:"Moji v1.0.7"`.
+  The +46,576 bytes over the 2026-10-27 artifact is the CLI prefix growth; the
+  app payload (raw 13,108,339 / stored 3,693,792) is unchanged.
+- The current bundle profile remains `electron-nodeless-adapted-v1`; a stage
+  without `nodeless-app.json` is refused with a `--api <file>` hint. NOT RUN:
+  macOS bundle launch/signing/notarization, Windows, human UI, DnD.

@@ -193,6 +193,20 @@ function dev(argv) {
   const runArgs = entry ? ['run', stage, '--window', '--entry', entry] : ['run', stage, '--window'];
   return delegate(runtime, runArgs, env);
 }
+function delegateBundle(argv) {
+  let runtimeFlag = null;
+  const pass = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--runtime' && i + 1 < argv.length) { runtimeFlag = argv[i + 1]; i += 1; continue; }
+    pass.push(arg);
+  }
+  const runtime = resolveRuntime({ runtime: runtimeFlag, appDir: process.cwd() });
+  if (!runtime) { printMissingRuntime(); return 1; }
+  const host = resolveHost(runtime);
+  const env = host && !process.env.EMOON_HOST ? { EMOON_HOST: host } : {};
+  return delegate(runtime, ['bundle', ...pass], env);
+}
 function delegateCommand(argv) {
   const command = argv[0];
   const rest = argv.slice(1);
@@ -219,4 +233,4 @@ function delegateCommand(argv) {
   }
   return delegate(runtime, args, host ? { EMOON_HOST: host } : {});
 }
-module.exports = { dev, delegateCommand, resolveRuntime, resolveHost, delegate, parseDev };
+module.exports = { dev, delegateCommand, delegateBundle, resolveRuntime, resolveHost, delegate, parseDev };

@@ -10,8 +10,8 @@ MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/p
 
 | command | implementation | supported commands |
 | --- | --- | --- |
-| native `emoon` | MoonBit, Node-free | `init`, `inspect`, `migrate`, `dev`, `run`, `doctor`, `version`, `help` |
-| Node `emoon` | Node reference CLI | `init`, `inspect`, `migrate`, `dev`; `doctor`/`run` delegate to the native runtime |
+| native `emoon` | MoonBit, Node-free | `init`, `inspect`, `migrate`, `dev`, `run`, `doctor`, `bundle`, `version`, `help` |
+| Node `emoon` | Node reference CLI | `init`, `inspect`, `migrate`, `dev`; `doctor`/`run`/`bundle` delegate to the native runtime |
 
 The native CLI is the shipped runtime path. The Node CLI is the development
 reference and oracle for the shared staging contract; it never reimplements the
@@ -55,18 +55,33 @@ resolves `dist/emoon` (or another native runtime) for doctor/run; the native
 `.emoon` are ignored by inspect/staging, and a multi-file main output directory
 (e.g. `out/main`) is staged with its siblings.
 
-### Single-file app
+### Electron app to one file
 
 ```sh
-dist/emoon bundle _build/Moji --output _build/Moji-1.0.7-linux-x86_64
-_build/Moji-1.0.7-linux-x86_64 --bundle-info
+cd my-electron-app
+npm install && npm run build      # the app's own build; or: emoon bundle --build
+emoon bundle
+./.emoon/dist/my-app-1.0.0-linux-x64
+```
+
+`emoon bundle` stages `.emoon/app` when it is missing or the source changed,
+then writes `<app>/.emoon/dist/<name>-<version>-<os>-<arch>`. Apps that use the
+adapted page API pass `--api adapted-preload.json` (the same flag as `migrate`);
+the current bundle profile is `electron-nodeless-adapted-v1`. A prepared stage
+can still be passed explicitly with `--output`:
+
+```sh
+dist/emoon bundle _build/Moji/.emoon/app --output _build/Moji-1.0.7-linux-x64
+_build/Moji-1.0.7-linux-x64 --bundle-info
 ```
 
 The output is one self-extracting ELF containing the release CLI, the native
-host and the app stage. The Moji 1.0.7 example is **6,185,192 bytes (5.9 MiB)**
+host and the app stage. The Moji 1.0.7 example is **6,231,768 bytes (5.9 MiB)**
 with zlib compression, compared with the 317 MB Electron runtime directory in
 the same checkout. GTK 3/WebKitGTK 4.1 remain system dependencies; this is not a
-static GTK/WebKit binary. See [docs/0072](docs/0072-single-executable-bundle.md).
+static GTK/WebKit binary. `--dry-run` prints the plan without writing anything.
+See [docs/0073](docs/0073-one-step-bundle-ux.md) and
+[docs/0072](docs/0072-single-executable-bundle.md).
 
 ### Try it manually
 

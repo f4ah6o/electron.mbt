@@ -11,8 +11,8 @@ const { buildAdapter } = require('../scripts/adapted-adapter.cjs');
 
 const root = path.resolve(__dirname, '..');
 const nativeHostBinary = path.join(root, process.platform === 'linux'
-  ? 'dist/electron-mbt-native-host-linux'
-  : 'dist/electron-mbt-native-host');
+  ? 'dist/emoon-host'
+  : 'dist/emoon-host');
 const nativeHostAvailable = fs.existsSync(nativeHostBinary);
 const nativeHostSupported = process.platform === 'darwin' || process.platform === 'linux';
 if (process.env.ELECTRON_MBT_REQUIRE_NATIVE_HOST === '1' &&
@@ -21,17 +21,17 @@ if (process.env.ELECTRON_MBT_REQUIRE_NATIVE_HOST === '1' &&
 }
 const fixture = path.join(root, 'fixtures/nodeless-app');
 const binaryCandidates = [
-  path.join(root, '_build/native/debug/build/native/nodeless/nodeless.exe'),
-  path.join(root, '_build/native/debug/build/native/nodeless/nodeless'),
+  path.join(root, '_build/native/debug/build/cmd/emoon/emoon.exe'),
+  path.join(root, '_build/native/debug/build/cmd/emoon/emoon'),
 ];
 
 function buildBinary() {
-  const build = spawnSync('moon', ['build', '--target', 'native', 'native/nodeless'], {
+  const build = spawnSync('moon', ['build', '--target', 'native', 'cmd/emoon'], {
     cwd: root, encoding: 'utf8', timeout: 180000,
   });
   assert.equal(build.status, 0, `moon build failed\n${build.stdout}\n${build.stderr}`);
   const binary = binaryCandidates.find(candidate => fs.existsSync(candidate));
-  assert.ok(binary, 'nodeless binary was not produced');
+  assert.ok(binary, 'emoon binary was not produced');
   return binary;
 }
 
@@ -163,7 +163,7 @@ test('Node-less runtime executes the fixture without Node and fails closed', () 
   assert.equal(resultOf('selftest:unsupported').mkdir, 'ELECTRON_MBT_HOST_UNAVAILABLE');
 });
 
-test('the nodeless binary does not link or import Node/Node-API', () => {
+test('the emoon binary does not link or import Node/Node-API', () => {
   const binary = buildBinary();
   const isMac = process.platform === 'darwin';
   const linked = spawnSync(isMac ? 'otool' : 'ldd', isMac ? ['-L', binary] : [binary], {
@@ -279,7 +279,7 @@ test('the Node-less ingress rejects a stale generation before Main dispatch', {
 });
 
 test('a malformed or frame-originated page message never reaches Node-less Main', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const api = {
@@ -433,7 +433,7 @@ test('an adapted Node-less window reloads with a new generation and a fresh ingr
 });
 
 test('main fs reads app files and atomically writes appData without Node', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-fs-app');
@@ -512,7 +512,7 @@ test('main fs reads app files and atomically writes appData without Node', {
 });
 
 test('main fs denies a symlink that escapes the app root', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-fs-app');
@@ -539,7 +539,7 @@ test('main fs denies a symlink that escapes the app root', {
 });
 
 test('main fs denies directory escape and enforces directory bounds', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const mainSource = `'use strict';
@@ -787,7 +787,13 @@ test('Linux main write falls back when the parent directory is read-only', {
 });
 
 test('Linux main open dialog survives beyond the ordinary 15-second control timeout', {
-  skip: process.platform !== 'linux' || !nativeHostAvailable,
+  // A real modal chooser takes focus on an interactive desktop, and the next
+  // Enter or click from the person at the machine accepts it early. CI's
+  // linux-native job runs this under Xvfb with ELECTRON_MBT_ISOLATED_DISPLAY=1.
+  // The companion control-hold test below covers the same host bound on an
+  // interactive desktop without mapping a chooser.
+  skip: process.platform !== 'linux' || !nativeHostAvailable ||
+    process.env.ELECTRON_MBT_ISOLATED_DISPLAY !== '1',
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-linux-dialog-app');
@@ -817,8 +823,43 @@ test('Linux main open dialog survives beyond the ordinary 15-second control time
   }
 });
 
+test('Linux main open dialog request survives beyond the ordinary 15-second control timeout without a mapped chooser', {
+  skip: process.platform !== 'linux' || !nativeHostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const source = path.join(root, 'fixtures/nodeless-linux-dialog-app');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-hold-dialog-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-linux-hold-dialog-out-'));
+  const selected = path.join(outside, 'selected.md');
+  try {
+    fs.cpSync(source, dir, { recursive: true });
+    fs.writeFileSync(selected, 'dialog-selected\n');
+    const started = Date.now();
+    const { result, report } = run(binary, dir,
+      ['--window', '--entry', 'src/main.js'], {
+        ELECTRON_MBT_TEST_MODE: '1',
+        ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT: selected,
+        // Test-only: hold the open-dialog request pending for 16 seconds with
+        // no GTK chooser. If the host still used the ordinary 15-second control
+        // wait for dialogs it would _exit(2) before the hold completes. The
+        // mapped-chooser variant above runs in CI's isolated Xvfb session.
+        ELECTRON_MBT_LINUX_DIALOG_HOLD_MS: '16000',
+      });
+    const elapsed = Date.now() - started;
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(report, 'missing JSON report');
+    assert.equal(report.status, 'PASS');
+    assert.equal(report.mainError, '');
+    assert.ok(elapsed >= 15000, `dialog hold finished too early: ${elapsed}ms`);
+    assert.equal(fs.readFileSync(selected, 'utf8'), 'dialog-updated\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('main fs reads and writes user files granted by the test scenario', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-user-file-app');
@@ -886,7 +927,7 @@ test('main fs reads and writes user files granted by the test scenario', {
 });
 
 test('grant persistence loads across runs and revocation denies access', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-user-file-app');
@@ -956,7 +997,7 @@ test('grant persistence loads across runs and revocation denies access', {
 });
 
 test('a persisted readwrite grant reopens and saves the same file after restart', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-user-file-app');
@@ -1006,7 +1047,7 @@ test('a persisted readwrite grant reopens and saves the same file after restart'
 });
 
 test('a corrupt or non-canonical grant store fails closed', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-user-file-app');
@@ -1057,7 +1098,7 @@ test('a corrupt or non-canonical grant store fails closed', {
 });
 
 test('invalid user-file scenarios fail closed', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-user-file-app');
@@ -1102,7 +1143,7 @@ test('invalid user-file scenarios fail closed', {
 });
 
 test('main fs reads and writes inside session directory grants', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-directory-app');
@@ -1225,7 +1266,7 @@ test('main fs reads and writes inside session directory grants', {
 });
 
 test('invalid directory grant scenarios fail closed', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-directory-app');
@@ -1355,7 +1396,7 @@ ${result.stderr || ''}`.split('\n')
 
 test('the pinned Moji main boots without Node against a probe page', {
   skip: process.platform !== 'darwin' ||
-    !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')) ||
+    !fs.existsSync(path.join(root, 'dist/emoon-host')) ||
     !fs.existsSync(process.env.ELECTRON_MBT_MOJI_ROOT || '/tmp/electron-mbt-apps/moji'),
 }, () => {
   const result = spawnSync(process.execPath, ['scripts/nodeless-moji-boot.cjs'], {
@@ -1379,7 +1420,7 @@ test('the pinned Moji main boots without Node against a probe page', {
 
 test('the pinned Moji renderer boots without Node under the adapted page API', {
   skip: process.platform !== 'darwin' ||
-    !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')) ||
+    !fs.existsSync(path.join(root, 'dist/emoon-host')) ||
     !fs.existsSync(process.env.ELECTRON_MBT_MOJI_ROOT || '/tmp/electron-mbt-apps/moji'),
 }, () => {
   const result = spawnSync(process.execPath, ['scripts/nodeless-moji-app.cjs'], {
@@ -1427,7 +1468,7 @@ test('the pinned Moji renderer boots without Node under the adapted page API', {
 
 test('the pinned Moji edits, saves and reopens after restart under the adapted API', {
   skip: process.platform !== 'darwin' ||
-    !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')) ||
+    !fs.existsSync(path.join(root, 'dist/emoon-host')) ||
     !fs.existsSync(process.env.ELECTRON_MBT_MOJI_ROOT || '/tmp/electron-mbt-apps/moji'),
 }, () => {
   const result = spawnSync(process.execPath, ['scripts/nodeless-moji-edit-save.cjs'], {
@@ -1569,7 +1610,7 @@ test('an invalid adapted profile fails closed before main evaluation', () => {
 });
 
 test('broker selftest stays disabled without the explicit flag', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-nodeless-broker-gate-'));
@@ -1640,7 +1681,7 @@ test('a computed require is rejected before evaluation', () => {
 });
 
 test('main dialog grants read-only selections and fails closed', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-dialog-app');
@@ -1741,7 +1782,7 @@ test('main dialog grants read-only selections and fails closed', {
 });
 
 test('invalid main dialog scenarios fail closed before app dispatch', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-dialog-app');
@@ -1827,7 +1868,7 @@ test('main dialog selftests require a window and reject conflicting modes', () =
 });
 
 test('main save dialog grants write consent and fails closed', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-dialog-app');
@@ -1947,7 +1988,7 @@ test('main save dialog grants write consent and fails closed', {
 });
 
 test('main save dialog fails closed at the grant cap', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-dialog-app');
@@ -2013,7 +2054,7 @@ test('main save dialog fails closed at the grant cap', {
 });
 
 test('invalid main save dialog scenarios fail closed before app dispatch', {
-  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/electron-mbt-native-host')),
+  skip: process.platform !== 'darwin' || !fs.existsSync(path.join(root, 'dist/emoon-host')),
 }, () => {
   const binary = buildBinary();
   const source = path.join(root, 'fixtures/nodeless-dialog-app');

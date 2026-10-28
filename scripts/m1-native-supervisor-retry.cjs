@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-supervisor-retry-'));
 const counter = path.join(temp, 'counter');
 const wrapper = path.join(temp, 'flaky-host.sh');
-const host = path.join(root, 'dist/electron-mbt-native-host');
+const host = path.join(root, 'dist/emoon-host');
 fs.writeFileSync(wrapper, `#!/bin/sh
 n=$(cat "$ELECTRON_MBT_SUPERVISOR_TEST_COUNTER" 2>/dev/null || echo 0)
 n=$((n+1))

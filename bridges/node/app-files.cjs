@@ -36,7 +36,7 @@ function packageAt(file) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) throw runtimeError('ELECTRON_MBT_INVALID_APP', 'package.json must contain an object');
   return result;
 }
-function snapshot(appDir) {
+function snapshot(appDir, skipNames = null) {
   const root = fs.realpathSync(appDir);
   if (!fs.statSync(root).isDirectory()) throw runtimeError('ELECTRON_MBT_INVALID_APP', 'App root must be a directory');
   const files = [], links = [];
@@ -58,7 +58,10 @@ function snapshot(appDir) {
           names.push(entry.name);
         }
       } finally { directory.closeSync(); }
-      for (const name of names.sort()) walk(path.join(logical, name), next, depth + 1);
+      for (const name of names.sort()) {
+        if (skipNames && skipNames.includes(name)) continue;
+        walk(path.join(logical, name), next, depth + 1);
+      }
     } else if (info.isFile()) {
       if (info.size > LIMITS.fileBytes || total + info.size > LIMITS.bytes) throw runtimeError('ELECTRON_MBT_LIMIT', 'App inventory exceeds byte limits');
       const data = readBounded(real, Math.min(LIMITS.fileBytes, LIMITS.bytes - total));
@@ -76,8 +79,8 @@ function snapshot(appDir) {
   links.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   return { schema: 1, root, files, links, totalBytes: total, sha256: crypto.createHash('sha256').update(JSON.stringify({ files, links })).digest('hex') };
 }
-function inspectApp(appDir) {
-  const inventory = snapshot(appDir);
+function inspectApp(appDir, skipNames = null) {
+  const inventory = snapshot(appDir, skipNames);
   const root = inventory.root;
   const manifest = packageAt(path.join(root, 'package.json'));
   const main = manifest.main === undefined ? 'index.js' : manifest.main;

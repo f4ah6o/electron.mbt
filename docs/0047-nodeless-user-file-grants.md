@@ -46,7 +46,7 @@ success.
 
 | Item | Value |
 | --- | --- |
-| grant scope | one canonical file path (an existing regular file, or a new write target with an existing parent); no directory subtree |
+| grant scope | one canonical file path (an existing regular file, or a new write target with an existing parent); no directory subtree. A save-dialog write target also grants its exact `<target>.tmp` sibling for atomic app writers; both are write-only and session-long |
 | grant bits | read `1`, write `2`, readwrite `3`; duplicate grants merge |
 | grants per host session | 64 distinct paths |
 | path limit | 4,096 UTF-16 code units, no NUL |

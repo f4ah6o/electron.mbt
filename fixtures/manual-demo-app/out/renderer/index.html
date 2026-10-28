@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Electromoon manual demo</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 32px;
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #e8edf5; background: radial-gradient(1200px 600px at 20% -10%, #1b3550, #0b1018 60%);
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: 0.2px; }
+  p.lede { margin: 0 0 22px; color: #9fb0c7; }
+  .card {
+    background: rgba(18, 28, 42, 0.82); border: 1px solid #263a52;
+    border-radius: 14px; padding: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.28);
+  }
+  .status { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; color: #cfe1f7; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #3ddc97; box-shadow: 0 0 12px #3ddc97; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+  button {
+    appearance: none; border: 1px solid #3b5a7a; border-radius: 9px; padding: 9px 14px;
+    color: #e8f2ff; background: #1d2d42; font: inherit; cursor: pointer;
+  }
+  button:hover { background: #27405e; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  pre {
+    margin: 10px 0 0; min-height: 190px; max-height: 300px; overflow: auto;
+    padding: 14px; border-radius: 10px; border: 1px solid #22354c;
+    background: #09111b; color: #b9d3f0; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+  }
+  footer { margin-top: 16px; color: #7f93ab; font-size: 12.5px; }
+  code { color: #b9d3f0; }
+</style>
+</head>
+<body>
+<main id="root">
+  <h1>Electromoon manual demo</h1>
+  <p class="lede">A migrated Electron-style app running on the native MoonBit runtime and the system WebView.</p>
+  <section class="card">
+    <div class="status"><span class="dot"></span><span id="status">starting…</span></div>
+    <div class="buttons">
+      <button id="settings" disabled>Call main: getSettings</button>
+      <button id="ping" disabled>Call main: ping</button>
+      <button id="clear">Clear log</button>
+    </div>
+    <pre id="log" aria-live="polite"></pre>
+  </section>
+  <footer>
+    This page is a real renderer loaded from <code>out/renderer/index.html</code>.
+    The buttons call <code>window.api</code>, generated from
+    <code>adapted-preload.json</code>; the replies come from
+    <code>ipcMain.handle</code> in <code>out/main/index.js</code>.
+  </footer>
+</main>
+<script>
+  window.onerror = function (message, source, line) {
+    var status = document.getElementById('status');
+    if (status) status.textContent = 'script error: ' + message + ' @' + line;
+    return false;
+  };
+</script>
+<script src="app.js"></script>
+</body>
+</html>

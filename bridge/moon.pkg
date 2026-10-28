@@ -1,6 +1,6 @@
 import {
-  "f4ah6o/electron/core" @core,
-  "f4ah6o/electron/transport" @transport,
+  "f4ah6o/electromoon/core" @core,
+  "f4ah6o/electromoon/transport" @transport,
   "moonbitlang/core/json" @json,
 }
 

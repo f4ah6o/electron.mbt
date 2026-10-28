@@ -27,12 +27,12 @@ if (process.argv.length > 3 ||
   process.exit(1);
 }
 const output = path.join(root, 'dist',
-  simulateTermination ? 'electron-mbt-native-host-termination-sim' :
-  simulateNativeClose ? 'electron-mbt-native-host-close-sim' :
-  killRealWebKitProcess ? 'electron-mbt-native-host-webkit-kill-test' :
-  simulateStaleNavigationCallback ? 'electron-mbt-native-host-stale-navigation-test' :
-  simulateMainDialogCancel ? 'electron-mbt-native-host-main-dialog-cancel-sim' :
-  'electron-mbt-native-host');
+  simulateTermination ? 'emoon-host-termination-sim' :
+  simulateNativeClose ? 'emoon-host-close-sim' :
+  killRealWebKitProcess ? 'emoon-host-webkit-kill-test' :
+  simulateStaleNavigationCallback ? 'emoon-host-stale-navigation-test' :
+  simulateMainDialogCancel ? 'emoon-host-main-dialog-cancel-sim' :
+  'emoon-host');
 fs.mkdirSync(path.dirname(output), { recursive: true });
 const args = [
   '-fobjc-arc', '-fblocks', '-O2', '-Wall', '-Wextra', '-Werror',

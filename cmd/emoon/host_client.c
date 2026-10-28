@@ -6,6 +6,10 @@
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
+#include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -343,13 +347,30 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "release-adapted-ingress") == 0 ||
       strcmp(operation, "trigger-renderer-api") == 0 ||
       strcmp(operation, "trigger-renderer-edit-save") == 0 ||
+      strcmp(operation, "trigger-renderer-export-ui") == 0 ||
       strcmp(operation, "probe-renderer") == 0 ||
       strcmp(operation, "app-reply") == 0 ||
       strcmp(operation, "main-stat") == 0 ||
       strcmp(operation, "main-read-file") == 0 ||
       strcmp(operation, "main-write-file") == 0 ||
       strcmp(operation, "main-read-dir") == 0 ||
-      strcmp(operation, "main-mkdir") == 0) {
+      strcmp(operation, "main-mkdir") == 0 ||
+      strcmp(operation, "main-rename") == 0 ||
+      strcmp(operation, "main-unlink") == 0 ||
+      strcmp(operation, "main-write-at") == 0 ||
+      strcmp(operation, "zlib-deflate-start") == 0 ||
+      strcmp(operation, "zlib-deflate-write") == 0 ||
+      strcmp(operation, "zlib-deflate-end") == 0 ||
+      strcmp(operation, "zlib-deflate-abort") == 0 ||
+      strcmp(operation, "send-adapted-event") == 0 ||
+      strcmp(operation, "create-export-window") == 0 ||
+      strcmp(operation, "resize-export-window") == 0 ||
+      strcmp(operation, "export-capture-page") == 0 ||
+      strcmp(operation, "export-capture-read") == 0 ||
+      strcmp(operation, "load-export-file") == 0 ||
+      strcmp(operation, "export-execute-js") == 0 ||
+      strcmp(operation, "export-print-pdf") == 0 ||
+      strcmp(operation, "destroy-export-window") == 0) {
     return send_control_frame(operation, payload, active_window, active_generation,
                               out, capacity);
   }
@@ -390,9 +411,25 @@ static int js_host_operation_allowed(const char *operation) {
     "main-stat",
     "main-read-file",
     "main-write-file",
+    "main-rename",
+    "main-unlink",
+    "main-write-at",
+    "zlib-deflate-start",
+    "zlib-deflate-write",
+    "zlib-deflate-end",
+    "zlib-deflate-abort",
     "main-read-dir",
     "main-mkdir",
     "main-open-dialog",
+    "send-adapted-event",
+    "create-export-window",
+    "resize-export-window",
+    "export-capture-page",
+    "export-capture-read",
+    "load-export-file",
+    "export-execute-js",
+    "export-print-pdf",
+    "destroy-export-window",
     "main-save-dialog",
     NULL
   };
@@ -420,19 +457,92 @@ static int ebt_js_host_request(const char *operation, const char *payload,
 // A CI-only override lets the UI smoke select the auto-cancel host build.
 // Accept only a repository-relative dist/ path under an explicit test mode, so
 // an ordinary app launch cannot point the runtime at an arbitrary executable.
+static char same_directory_host[4096];
+
+static const char *same_directory_host_path(void) {
+  same_directory_host[0] = 0;
+#if defined(__APPLE__)
+  uint32_t size = (uint32_t)sizeof(same_directory_host);
+  if (_NSGetExecutablePath(same_directory_host, &size) != 0) return NULL;
+#elif defined(__linux__)
+  ssize_t length = readlink("/proc/self/exe", same_directory_host,
+                            sizeof(same_directory_host) - 1);
+  if (length <= 0 || (size_t)length >= sizeof(same_directory_host)) return NULL;
+  same_directory_host[length] = 0;
+#else
+  return NULL;
+#endif
+  char *slash = strrchr(same_directory_host, '/');
+  if (slash == NULL) return NULL;
+  *slash = 0;
+  size_t used = strlen(same_directory_host);
+  const char suffix[] = "/emoon-host";
+  if (used + sizeof(suffix) > sizeof(same_directory_host)) return NULL;
+  memcpy(same_directory_host + used, suffix, sizeof(suffix));
+  if (access(same_directory_host, X_OK) != 0) return NULL;
+  return same_directory_host;
+}
+
+// Look for an installed `emoon-host` after the sibling layout. Only absolute
+// PATH entries are accepted so a relative `.` entry cannot silently resolve a
+// host from the current app directory. The host is user-installed tooling, the
+// same trust level as `emoon` itself, and the bundle launcher always sets
+// EMOON_HOST so an app cannot redirect it.
+static char path_host[4096];
+
+static const char *path_host_path(void) {
+  const char *path = getenv("PATH");
+  if (path == NULL) return NULL;
+  const char *cursor = path;
+  int entries = 0;
+  while (entries < 64) {
+    const char *end = strchr(cursor, ':');
+    size_t length = end == NULL ? strlen(cursor) : (size_t)(end - cursor);
+    if (length > 0 && length < sizeof(path_host) - 12 && cursor[0] == '/') {
+      int written = snprintf(path_host, sizeof(path_host),
+                             "%.*s/emoon-host", (int)length, cursor);
+      if (written > 0 && (size_t)written < sizeof(path_host) &&
+          access(path_host, X_OK) == 0) {
+        return path_host;
+      }
+    }
+    if (end == NULL) break;
+    cursor = end + 1;
+    entries++;
+  }
+  return NULL;
+}
+
+// A launch-time override is user-controlled: the app bundle cannot set the
+// environment of the process that spawns the host. The test-only override
+// remains restricted to repository-relative dist/ paths.
 static const char *host_binary_path(void) {
+  const char *explicit = getenv("EMOON_HOST");
+  if (explicit != NULL && explicit[0] != 0 && strlen(explicit) < 4096) return explicit;
   const char *test = getenv("ELECTRON_MBT_TEST_NATIVE_HOST");
   const char *mode = getenv("ELECTRON_MBT_TEST_MODE");
-  if (test == NULL || mode == NULL || strcmp(mode, "1") != 0 ||
-      test[0] == 0 || strlen(test) > 256 ||
-      strncmp(test, "dist/", 5) != 0 || strstr(test, "..") != NULL) {
-#if defined(__linux__)
-    return "dist/electron-mbt-native-host-linux";
-#else
-    return "dist/electron-mbt-native-host";
-#endif
+  if (test != NULL && mode != NULL && strcmp(mode, "1") == 0 &&
+      test[0] != 0 && strlen(test) <= 256 &&
+      strncmp(test, "dist/", 5) == 0 && strstr(test, "..") == NULL) {
+    return test;
   }
-  return test;
+  const char *same = same_directory_host_path();
+  if (same != NULL) return same;
+  if (access("dist/emoon-host", X_OK) == 0) return "dist/emoon-host";
+  const char *installed = path_host_path();
+  if (installed != NULL) return installed;
+  return "dist/emoon-host";
+}
+
+int32_t moonbit_ebt_bundle_default_host(moonbit_bytes_t out, int32_t capacity) {
+  const char *path = host_binary_path();
+  if (path == NULL || out == NULL || capacity <= 0 ||
+      Moonbit_array_length(out) < capacity) return -1;
+  size_t length = strlen(path);
+  if (length + 1 > (size_t)capacity) return -1;
+  memcpy(out, path, length);
+  out[length] = 0;
+  return (int32_t)length;
 }
 
 int32_t moonbit_ebt_nodeless_host_open(moonbit_bytes_t root_bytes) {

@@ -36,10 +36,10 @@ const sourceMain = path.join(sourceRoot, 'out/main/main.js');
 const sourcePreload = path.join(sourceRoot, 'out/preload/preload.js');
 const sourceRenderer = path.join(sourceRoot, 'out/renderer');
 const sourceSample = path.join(sourceRoot, 'samples/markdown-guide.en.md');
-const hostBinary = path.join(root, 'dist/electron-mbt-native-host-linux');
+const hostBinary = path.join(root, 'dist/emoon-host');
 const binaryCandidates = [
-  path.join(root, '_build/native/debug/build/native/nodeless/nodeless.exe'),
-  path.join(root, '_build/native/debug/build/native/nodeless/nodeless'),
+  path.join(root, '_build/native/debug/build/cmd/emoon/emoon.exe'),
+  path.join(root, '_build/native/debug/build/cmd/emoon/emoon'),
 ];
 const reportPath = path.join(root, 'compatibility/reports/moji-linux-boot.json');
 const provenance = JSON.parse(fs.readFileSync(
@@ -80,7 +80,7 @@ function notRun(reason) {
   process.exit(0);
 }
 function buildBinary() {
-  const build = spawnSync('moon', ['build', '--target', 'native', 'native/nodeless'], {
+  const build = spawnSync('moon', ['build', '--target', 'native', 'cmd/emoon'], {
     cwd: root, encoding: 'utf8', timeout: 180000,
   });
   if (build.status !== 0) return null;
@@ -88,7 +88,7 @@ function buildBinary() {
 }
 
 if (process.platform !== 'linux') notRun('the Linux native host requires Linux');
-if (!fs.existsSync(hostBinary)) notRun('dist/electron-mbt-native-host-linux is missing');
+if (!fs.existsSync(hostBinary)) notRun('dist/emoon-host is missing');
 if (!fs.existsSync(sourceMain) || !fs.existsSync(sourcePreload) ||
     !fs.existsSync(sourceRenderer) || !fs.existsSync(sourceSample) ||
     !fs.existsSync(adapterPath)) {
@@ -118,7 +118,7 @@ if (binary == null) {
     probe: 'moji-linux-boot',
     status: 'FAIL',
     code: 'ELECTRON_MBT_NODELESS_BUILD',
-    reason: 'native/nodeless did not build',
+    reason: 'cmd/emoon did not build',
     compatible: false,
   });
   process.exit(1);

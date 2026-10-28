@@ -9,7 +9,7 @@ async function main() {
   const app = inspectApp(path.resolve(__dirname, '../fixtures/m1-app'));
   const runtime = new ExperimentalRuntime(app, {
     nativeHostOptions: {
-      testingExecutable: path.resolve(__dirname, '../dist/electron-mbt-native-host-termination-sim'),
+      testingExecutable: path.resolve(__dirname, '../dist/emoon-host-termination-sim'),
     },
   });
   let timeout;

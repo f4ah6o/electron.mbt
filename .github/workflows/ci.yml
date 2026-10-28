@@ -123,7 +123,7 @@ jobs:
         shell: bash
         run: node scripts/build-linux-host.cjs 2>&1 | tee evidence/linux-host-build.log
       - name: Build the Node-less runtime
-        run: moon build --target native native/nodeless
+        run: moon build --target native cmd/emoon
       - name: Reject non-canonical control frames
         shell: bash
         run: node --test tests/linux-host-frame.test.cjs 2>&1 | tee evidence/linux-host-frame.log
@@ -131,12 +131,24 @@ jobs:
         shell: bash
         env:
           ELECTRON_MBT_REQUIRE_NATIVE_HOST: '1'
+          ELECTRON_MBT_ISOLATED_DISPLAY: '1'
           WEBKIT_DISABLE_COMPOSITING_MODE: '1'
           LIBGL_ALWAYS_SOFTWARE: '1'
           GDK_BACKEND: 'x11'
         run: |
           dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" \
             node --test tests/nodeless-runtime.test.cjs 2>&1 | tee evidence/linux-native.log
+      - name: Run native emoon CLI parity on Linux
+        shell: bash
+        env:
+          ELECTRON_MBT_REQUIRE_NATIVE_HOST: '1'
+          ELECTRON_MBT_ISOLATED_DISPLAY: '1'
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GDK_BACKEND: 'x11'
+        run: |
+          dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" \
+            node --test tests/emoon-cli-parity.test.cjs 2>&1 | tee evidence/emoon-parity.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -161,7 +173,7 @@ jobs:
       - name: Bootstrap and validate the pinned toolchain
         shell: bash
         env:
-          # The Node boundary builds native/nodeless with `moon build`, so this
+          # The Node boundary builds cmd/emoon with `moon build`, so this
           # job needs the toolchain too. The installer resolves platform-specific
           # artifacts, so the linux-x86_64 hashes in the moonbit job do not apply
           # here; these were recorded from the darwin-aarch64 artifact of the

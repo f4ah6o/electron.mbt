@@ -1,0 +1,13 @@
+{
+  "schema": 3,
+  "name": "api",
+  "version": "1.0.0",
+  "topics": [
+    { "topic": "demo:changed", "method": "onChanged" }
+  ],
+  "calls": [
+    { "name": "getSettings", "operation": "app:get-settings", "args": "none" },
+    { "name": "ping", "operation": "demo:ping", "args": "none" }
+  ],
+  "queue": { "maxCalls": 4, "maxBytes": 16384, "readyTimeoutMs": 5000 }
+}

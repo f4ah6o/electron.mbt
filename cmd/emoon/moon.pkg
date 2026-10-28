@@ -1,7 +1,8 @@
 supported_targets = "native"
 
 import {
-  "f4ah6o/electron/runtime/app_runner" @app,
+  "f4ah6o/electromoon/cli/emoon_contract" @cli,
+  "f4ah6o/electromoon/runtime/app_runner" @app,
   "moonbitlang/core/encoding/utf8" @utf8,
   "moonbitlang/core/env" @env,
   "moonbitlang/core/json" @json,
@@ -9,13 +10,14 @@ import {
 
 options(
   "is-main": true,
-  "native-stub": ["file_io.c", "host_client.c"],
+  "native-stub": ["file_io.c", "host_client.c", "bundle.c"],
   targets: {
     "main.mbt": ["native"],
   },
   link: {
     "native": {
       "stub-cc-flags": "-O2 -D_GNU_SOURCE",
+      "cc-link-flags": "-lz",
     },
   },
 )

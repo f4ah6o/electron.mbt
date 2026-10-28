@@ -9,7 +9,7 @@ const { ExperimentalRuntime } = require('../bridges/node/runtime-session.cjs');
 async function main() {
   if (process.platform !== 'darwin') throw new Error('Real WebKit subprocess termination requires macOS');
   // The normal host must be compiled without the private test selector.
-  const production = fs.readFileSync(path.resolve(__dirname, '../dist/electron-mbt-native-host'));
+  const production = fs.readFileSync(path.resolve(__dirname, '../dist/emoon-host'));
   assert.equal(production.includes(Buffer.from('ELECTRON_MBT_TEST_WEBKIT_KILL_REQUESTED')), false,
     'Production native host unexpectedly includes the WebKit test-only kill path');
   const root = path.resolve(__dirname, '../fixtures/m1-app');
@@ -17,7 +17,7 @@ async function main() {
   let stderr = '';
   const runtime = new ExperimentalRuntime(inspectApp(root), {
     nativeHostOptions: {
-      testingExecutable: path.resolve(__dirname, '../dist/electron-mbt-native-host-webkit-kill-test'),
+      testingExecutable: path.resolve(__dirname, '../dist/emoon-host-webkit-kill-test'),
       testingOnSpawn(child) {
         child.stderr.on('data', chunk => {
           stderr = (stderr + chunk.toString('utf8')).slice(-4096);

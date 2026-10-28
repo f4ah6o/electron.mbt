@@ -23,7 +23,7 @@ builds the CJS graph in MoonBit, and evaluates it through
 | module graph | literal `require` scan, relative paths, extension/index, JSON, nested/scoped `node_modules`, package `main` and require-selected `exports`, cache identity, cycles |
 | CJS realm | `module.exports`, `exports` alias, `module.loaded`, `__filename`, `__dirname`, JSON modules, `require.resolve` fail-closed |
 | Node subset | `path`, `url` file helpers, `process` (platform/arch/argv/env allowlist/versions/nextTick), `events.EventEmitter`, `Buffer` (utf8/base64/ascii, alloc/concat/subarray/equals), `setTimeout`/`clearTimeout`/Timeout ref/unref |
-| adapted imports | host-required `fs`/`fs.promises` (app-root reads, `.appData`/`.userData` atomic writes and session-scoped exact user-file grants when `--window`; persistence/streams open); `zlib` import-only with a typed `createDeflate` failure; `electron-updater` is an explicit import-only stub; computed require fails before evaluation |
+| adapted imports | host-required `fs`/`fs.promises` (app-root reads, `.appData`/`.userData` atomic writes and session-scoped exact user-file grants when `--window`; persistence/streams open); `zlib` importable with host-backed `createDeflate` (stored fallback); `electron-updater` is an explicit import-only stub; computed require fails before evaluation |
 | Electron facade | `app`, `ipcMain`, a bounded `BrowserWindow`/`webContents` and a local `Menu`/`screen`/`shell` model; dialog/contextBridge/ipcRenderer remain unsupported |
 | scheduling | MoonBit scheduler owns deadlines; nextTick/Promise jobs are drained and the fixture observes tick → promise → timer; async handler settle uses a bounded 1000-step loop |
 | teardown | live lease count is 0 and no pending job before context/runtime destruction |
@@ -117,3 +117,29 @@ timer/nextTick ordering, `app.whenReady`, async Main handlers, env allowlisting
 The reported `nodeProcesses:0` is self-reported by the runtime; the process and
 binary audits are the independent checks. A passing main-runtime fixture is not
 a Node-less app or release acceptance.
+
+### App request transport
+
+The adapted page API invokes a host operation with a JSON-encoded argument
+array (`record.args` is a string). The native host forwards that string as the
+`payload` and the main prelude normalizes it before dispatch:
+
+- JSON string of an argument array
+- an argument array directly
+- `{ args: ... }` where `args` is an array or a JSON string
+
+`payloadArgs` is shared by the `emoon:read-file` special case, IPC listeners and
+IPC handlers. This was required for object-bearing calls such as
+`window.api.exportAs(request)`: without it the handler received no request and
+the Export dialog closed without invoking `doc:export`.
+
+The CLI event buffer is 1 MiB and the native `EBT_MAX_APP_PAYLOAD` is 1 MiB.
+Moji's standalone HTML for the Untitled document is about 380 KB, so the earlier
+64 KiB event buffer silently prevented the app request from reaching main.
+Large app requests are still bounded; oversized payloads fail closed with
+`ELECTRON_MBT_INVALID_ENVELOPE`.
+
+Test-only reproductions use `--trigger-export-ui` (DOM clicks on the actual
+Export toolbar and dialog) plus `ELECTRON_MBT_LINUX_SAVE_AUTOSELECT` to choose a
+different save target from the open target. This is control-thread-only and is
+not exposed to app JavaScript.

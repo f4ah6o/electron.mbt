@@ -1,6 +1,118 @@
-# electron.mbt
+# Electromoon (formerly electron.mbt)
 
 MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/polished/0001-electron-compatible-lightweight-runtime.md).
+
+**Status: experimental. `compatible:false`; strict contextBridge remains blocked. This is not an Electron-compatible runtime release.**
+
+> Working name: the GitHub repository rename from `f4ah6o/electron.mbt` to `f4ah6o/electromoon` is pending. The MoonBit module, npm package and CLI already use `electromoon` / `emoon`.
+
+## Two `emoon` CLIs
+
+| command | implementation | supported commands |
+| --- | --- | --- |
+| native `emoon` | MoonBit, Node-free | `init`, `inspect`, `migrate`, `dev`, `run`, `doctor`, `bundle`, `version`, `help` |
+| Node `emoon` | Node reference CLI | `init`, `inspect`, `migrate`, `dev`; `doctor`/`run`/`bundle` delegate to the native runtime |
+
+The native CLI is the shipped runtime path. The Node CLI is the development
+reference and oracle for the shared staging contract; it never reimplements the
+runtime. Linux parity is automated by `tests/emoon-cli-parity.test.cjs`. The
+Mooncakes publication, the `moon binstall` release and macOS native execution of
+the developer commands are still pending and are **not** part of this increment.
+
+### Build and smoke the native runtime
+
+```sh
+node scripts/build-cli.cjs
+dist/emoon --version
+dist/emoon doctor fixtures/nodeless-app
+dist/emoon run fixtures/nodeless-app
+dist/emoon init fixtures/migrate-source-app
+dist/emoon dev fixtures/migrate-source-app --api adapted-preload.json --no-launch
+```
+
+`node scripts/build-cli.cjs` builds `cmd/emoon` in **release+strip** mode (pass
+`--debug` for the old debug binary) and the platform host, then copies
+`dist/emoon` and `dist/emoon-host` so both CLIs can resolve them. The native
+developer commands write the same `.emoon/` stage as the Node reference; the
+parity test compares their bytes and file modes.
+
+### Develop and migrate with either CLI
+
+```sh
+dist/emoon dev fixtures/migrate-source-app --api adapted-preload.json --no-launch
+node cmd/emoon.cjs dev fixtures/migrate-source-app --api adapted-preload.json --no-launch
+```
+
+`emoon dev` writes only `.emoon/` inside the app; the app source is not modified.
+The stage is `.emoon/app` and the report is `.emoon/migration-report.json`.
+`emoon dev` without `--no-launch` starts the native window. The Node `dev`
+resolves `dist/emoon` (or another native runtime) for doctor/run; the native
+`dev` runs doctor/run in the same process.
+
+`dev` consumes an **already-built** app. If `package.json` main is missing,
+`dev` fails with `ELECTRON_MBT_MIGRATE_BUILD_MISSING`; use `dev --build` after
+`npm install` to run the app's own build script. `node_modules`, `.git` and
+`.emoon` are ignored by inspect/staging, and a multi-file main output directory
+(e.g. `out/main`) is staged with its siblings.
+
+### Electron app to one file
+
+```sh
+cd my-electron-app
+npm install && npm run build      # the app's own build; or: emoon bundle --build
+emoon bundle
+./.emoon/dist/my-app-1.0.0-linux-x64
+```
+
+`emoon bundle` stages `.emoon/app` when it is missing or the source changed,
+then writes `<app>/.emoon/dist/<name>-<version>-<os>-<arch>`. Apps that use the
+adapted page API pass `--api adapted-preload.json` (the same flag as `migrate`);
+the current bundle profile is `electron-nodeless-adapted-v1`. A prepared stage
+can still be passed explicitly with `--output`:
+
+```sh
+dist/emoon bundle _build/Moji/.emoon/app --output _build/Moji-1.0.7-linux-x64
+_build/Moji-1.0.7-linux-x64 --bundle-info
+```
+
+The output is one self-extracting ELF containing the release CLI, the native
+host and the app stage. The Moji 1.0.7 example is **6,231,768 bytes (5.9 MiB)**
+with zlib compression, compared with the 317 MB Electron runtime directory in
+the same checkout. GTK 3/WebKitGTK 4.1 remain system dependencies; this is not a
+static GTK/WebKit binary. `--dry-run` prints the plan without writing anything.
+See [docs/0073](docs/0073-one-step-bundle-ux.md) and
+[docs/0072](docs/0072-single-executable-bundle.md).
+
+### Try it manually
+
+```sh
+npm run demo:emoon
+```
+
+This builds the native CLI if needed, stages
+[`fixtures/manual-demo-app`](fixtures/manual-demo-app/), prints the
+`init`/`inspect`/`migrate`/`doctor` reports, and opens a real GTK/WebKitGTK
+window that stays until you close it. To try the prepared Moji 1.0.5 stage:
+
+```sh
+dist/emoon run _build/moji-linux-app --window --hold --entry out/main/main.js
+``` The page's buttons call the generated
+`window.api`, which reaches `ipcMain.handle` in the demo main. Use `--no-launch`
+to stop after doctor, `--reset` to copy the demo app again, or `--rebuild` to
+rebuild the CLI. See [the manual trial note](docs/0064-manual-trial.md).
+
+### Package status
+
+- `LICENSE` is MIT.
+- `moon.mod` is `f4ah6o/electromoon` version `0.1.0`, `preferred_target = "native"`.
+- `moon-binstall.json` maps `cmd/emoon` and `cmd/emoon-host` to release assets, but
+  no release has been published and `moon binstall` has not been run.
+- Native `init`/`inspect`/`migrate`/`dev`/`bundle` are implemented. Linux
+  stage/parity, adapted window E2E and the single-file Moji 1.0.7 bundle pass;
+  macOS native execution and macOS bundle are NOT RUN here.
+- `package.json` provides the Node CLI bin `emoon`; npm publication is not done.
+
+See [the CLI contract](docs/0062-cli-contract.md) and [the migration note](docs/0061-migrating-from-electron.md).
 
 **Status: M0 gates open; experimental macOS M1 native-window path runs an unchanged CommonJS fixture. NOT an Electron-compatible runtime release.** The implementation contains executable core contracts, admission inputs, feasibility probes and a constrained native host. Production isolated synchronous `contextBridge` remains unimplemented; a test-only B5 repaired-primitive spike recorded `go` on one macOS/WebKit build, B6-A added the MoonBit-owned exposure authority contract, B6-B an opt-in experimental preload bridge environment, B6-C an opt-in experimental synchronous transport E2E, B6-D an experimental semantics matrix and B6-E an evidence/review packet accepted by the project owner for B7 design work; B7 has started with a preload key/descriptor preview, pre-registered page admission and host expected-descriptor verification for a single arbitrary API key in the experimental M1 transport. The host reply is asynchronous and the M1 host is main-frame-only; the page shim now binds the actual descriptor to the preview metadata (bytes, function count, SHA-256) before materializing, so same-key descriptor mismatches fail closed for deterministic preloads; dynamic/non-deterministic preloads fail closed, and Electron-compatible child frames, the full fault matrix, the strict nodeless runtime and the profile remain blocked. A 2026-10-20 public-API frame/origin PoC measured that a same-origin child can reach the parent's page-world test API while an opaque sandboxed child is denied; the production host remains main-frame-only, so Electron child-frame parity and the child-realm Error contract stay open ([docs/0056](docs/0056-sync-contextbridge-public-wkwebview.md)). An experimental Node-less main runtime now executes the pinned `fixtures/nodeless-app` CJS main on QuickJS with a bounded Node subset and `electron.app`/`ipcMain` facade. A separate `--window` mode creates a real AppKit/WKWebView window through the native host, advances a document generation on reload, rejects stale window/generation ingress events before Main dispatch, and denies malformed page messages; the adapter queue is released automatically when the load completes, while the explicit release control remains test-only. The pinned Moji bundled main now boots the real Vite renderer Node-lessly through a snapshot-scoped custom scheme and the generated page API; a main-realm `dialog.showOpenDialog` now opens a real NSOpenPanel with test-injected read grants, and `dialog.showSaveDialog` opens a real NSSavePanel and grants test-injected exact-file readwrite access for new or existing targets. Human save selection, overwrite confirmation and sheet-modal parenting remain NOT RUN; main grant persistence/revocation now work for the trusted main path with an atomic 0600 store, and a deterministic restart/normal-save fixture passes. The adapted renderer open now grants exact-file read+replace for the session, and a pinned Moji edit→normal save→restart→reopen scenario passes with zero injected grants, a test-injected dialog and a synthetic DOM edit; atomic save now preserves mode and xattrs and rejects hardlinked targets; human picker, IME/real input and overwrite confirmation remain NOT RUN ([docs/0055](docs/0055-moji-edit-save-restart.md)). The original preload, main user-file human consent, production directory consent, production renderer dialog/consent, print-accurate export, update/zlib behavior and strict profile remain unexecuted/blocked. A host-backed main `fs`/`fs.promises` now reads app sources, atomically writes `.appData`/`.userData`, and uses session-scoped exact user-file grants from native panel completion or the explicit test scenario, and Moji settings persistence is verified. A bounded main-side directory/metadata surface now provides partial `fs.statSync`/`readdirSync`/`mkdirSync` and their `fs.promises` wrappers under the same host policy, and an explicit test scenario can grant a canonical directory subtree for bounded read/readwrite/write access. Those are not an Electron engine proxy, production profile or compatibility and M0 stays OPEN. An experimental Linux GTK3/WebKitGTK 4.1 host now replays the plain and adapted Node-less fixtures on X11, including reload generation and stale-ingress rejection; it also has a partial exact-file main read/write/stat, real GTK open/save dialogs and a working GTK window close, but no directory grants, export/print, grant persistence, native frame sender authority, `app.quit`/menu/tray or compatibility claim, and macOS remains the reference ([docs/0057](docs/0057-linux-native-host.md), [docs/0059](docs/0059-linux-file-and-close.md)). Standard `run` and `pack` still reject; an explicit `run --experimental-m1` profile can load static HTML in a real WKWebView with no preload or renderer IPC. The design issues are organized under `issues/polished`; their runtime acceptance criteria remain unmet.
 
@@ -21,7 +133,7 @@ MoonBit-first lightweight Electron runtime work, following [issue 0001](issues/p
 | `runtime/runner/` | One QuickJS engine/context plus timer scheduler, job batches and pre-resolved CJS entry points | Native supervisor, host event loop, production process topology or app execution |
 | `runtime/app_runner/` | Source-manifest admission, native SHA-256 verification, literal require graph, package `main`/`exports`, prelude dispatch, nextTick/jobs/timers, host-bridge install, app-root/`appData` main fs, partial directory/metadata fs, session user-file and test-injected directory grants, main open/save-dialog grants and explicit teardown | Native full event routing, human save selection/overwrite confirmation, production directory consent, original preload, ESM, dynamic require or app compatibility |
 | `native/supervisor/` | MoonBit-native executable that spawns the real native host, creates/loads/destroys a window, reads one event notice, injects the generated adapted page API, resolves package.json main, runs a file-loaded linked-QuickJS fixture main with a local CJS graph and a node_modules/exports fixture, validates bootstrap status, applies its title and performs hello/ready/shutdown over inherited socketpairs | Random session/root validation, restart/faults, event/load routing, QuickJS ownership or app boot |
-| `native/nodeless/` | Node-free CLI: pinned source manifest (text and binary assets), CJS main on QuickJS, bounded Node/Electron prelude, host-backed app-local `fs`/`fs.promises`, bounded directory/metadata fs, session user-file and test-injected directory grants, main `dialog.showOpenDialog` read grants and `dialog.showSaveDialog` readwrite grants with test-injected selections and a native open/save cancel smoke, main fixture selftest, real host-window mode (`BrowserWindow`/`loadFile`), snapshot-scoped custom app scheme, generated adapted page API, host-event pump, a pinned Moji real-renderer boot, a test-injected file/dialog/export broker E2E, and a Moji open-for-edit edit/save/restart scenario with test-injected dialogs, synthetic DOM editing, metadata-preserving atomic save and hardlink rejection | Human save selection/overwrite confirmation, human picker/IME input, grant revocation UX, production directory consent, production `webContents`/dialogs/assets, real update/zlib behavior, original preload, strict profile or Electron compatibility |
+| `cmd/emoon/` | Node-free CLI: pinned source manifest (text and binary assets), CJS main on QuickJS, bounded Node/Electron prelude, host-backed app-local `fs`/`fs.promises`, bounded directory/metadata fs, session user-file and test-injected directory grants, main `dialog.showOpenDialog` read grants and `dialog.showSaveDialog` readwrite grants with test-injected selections and a native open/save cancel smoke, main fixture selftest, real host-window mode (`BrowserWindow`/`loadFile`), snapshot-scoped custom app scheme, generated adapted page API, host-event pump, a pinned Moji real-renderer boot, a test-injected file/dialog/export broker E2E, and a Moji open-for-edit edit/save/restart scenario with test-injected dialogs, synthetic DOM editing, metadata-preserving atomic save and hardlink rejection | Human save selection/overwrite confirmation, human picker/IME input, grant revocation UX, production directory consent, production `webContents`/dialogs/assets, real update/zlib behavior, original preload, strict profile or Electron compatibility |
 | `fixtures/oracle/` | Unchanged main/preload/renderer fixture for a separately installed pinned Electron oracle | A matching electron.mbt execution or size improvement |
 | `cmd/` | `snapshot`, MoonBit-backed `doctor` and static `compat-check` diagnostics | General Electron-compatible `run` or `pack`; explicit experimental M1 macOS run is separate |
 
@@ -50,10 +162,10 @@ Linux is used for contract/transport tests and now has an experimental GTK3/WebK
    `moon test --target native` also compiles the vendored QuickJS core in `bridges/embedded-js/`; the pin and license are recorded in [vendor/quickjs/lock.json](vendor/quickjs/lock.json) and checked by `tests/quickjs-lock.test.cjs`. See [the QuickJS ABI note](docs/0009-quickjs-abi.md). The Node-less main runtime is built and run separately:
 
    ```sh
-   moon build --target native native/nodeless
-   ./_build/native/debug/build/native/nodeless/nodeless.exe run fixtures/nodeless-app
-   ./_build/native/debug/build/native/nodeless/nodeless.exe run fixtures/nodeless-window-app --window --entry src/main.js
-   ./_build/native/debug/build/native/nodeless/nodeless.exe run fixtures/nodeless-adapted-app --window --entry src/main.js
+   moon build --target native cmd/emoon
+   ./_build/native/debug/build/cmd/emoon/emoon.exe run fixtures/nodeless-app
+   ./_build/native/debug/build/cmd/emoon/emoon.exe run fixtures/nodeless-window-app --window --entry src/main.js
+   ./_build/native/debug/build/cmd/emoon/emoon.exe run fixtures/nodeless-adapted-app --window --entry src/main.js
    node scripts/nodeless-moji-boot.cjs
    node scripts/nodeless-moji-app.cjs
    node scripts/nodeless-dialog-ui.cjs
@@ -102,7 +214,7 @@ Linux is used for contract/transport tests and now has an experimental GTK3/WebK
    node scripts/m1-native-close-race.cjs
    node scripts/build-macos-host.cjs --simulate-webkit-termination
    node scripts/m1-renderer-delegate-sim.cjs
-   node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1
+   node cmd/legacy-node.cjs run fixtures/m1-app --experimental-m1
    ```
 
    See [experimental M1 native runner](docs/0002-native-host.md) for its exact supported and unsupported APIs, OS-close limitations, secure boundaries and evidence. This is a deliberately partial profile. The separate `node scripts/m0-bridge-probe.cjs` diagnostic measures isolated-world native Promise replies and a deliberately **untrusted** DOM-event synchronous candidate over two real WKWebView documents. The B5 `node scripts/m0-context-bridge-probe.cjs` spike runs the unchanged oracle preload through a test-only synchronous shared-DOM/HMAC candidate and records a bounded go/no-go; it does not enable production `contextBridge` or the original preload. See [B5 spike results](docs/0038-m0-context-bridge-spike.md) and [M0 feasibility evidence](docs/0003-m0-contextbridge-feasibility.md).
@@ -118,10 +230,10 @@ Linux is used for contract/transport tests and now has an experimental GTK3/WebK
 ## CLI
 
 ```sh
-node cmd/electron-mbt.cjs snapshot fixtures/cjs
-node cmd/electron-mbt.cjs doctor fixtures/cjs
-node cmd/electron-mbt.cjs compat-check fixtures/cjs
-node cmd/electron-mbt.cjs doctor fixtures/cjs --profile desktop-core-v1 --input-mode original-cjs --preload-mode original --runtime node-backed
+node cmd/legacy-node.cjs snapshot fixtures/cjs
+node cmd/legacy-node.cjs doctor fixtures/cjs
+node cmd/legacy-node.cjs compat-check fixtures/cjs
+node cmd/legacy-node.cjs doctor fixtures/cjs --profile desktop-core-v1 --input-mode original-cjs --preload-mode original --runtime node-backed
 ```
 
 `snapshot` exits 0 on a successful inventory. `doctor` and `compat-check` currently exit 2 with `compatible:false` and `ELECTRON_MBT_M0_INCOMPLETE`; they inspect but never evaluate the app. They accept an optional `--profile <id>` with `--input-mode`, `--preload-mode` and `--runtime`; unknown or mismatched profile tuples are rejected before app evaluation with a typed diagnostic. Usage, I/O and missing-build failures exit 1. Unflagged `run` and `pack` exit 1 with the open M0 gate. Explicit `run <app-dir> --experimental-m1` is macOS-only and launches a limited native-host test profile without claiming Electron compatibility.
@@ -146,7 +258,7 @@ The constrained native host is opt-in and macOS-only:
 
 ```sh
 node scripts/build-macos-host.cjs
-node cmd/electron-mbt.cjs run fixtures/m1-app --experimental-m1
+node cmd/legacy-node.cjs run fixtures/m1-app --experimental-m1
 ```
 
 It creates a real AppKit window and WKWebView, loads a static page and exposes a bounded CJS `app`/`BrowserWindow`/main-local `ipcMain` subset plus a main-local Menu template model. BrowserWindow position, minimum size and background colour are applied natively; `icon`/`autoHideMenuBar` are accepted but not applied. App paths and the single-instance lock are isolated under `ELECTRON_MBT_M1_USER_DATA_ROOT`; async app failures are reported as structured JSON. The Menu model does not install an NSMenu. The preload realm records unsupported APIs such as `contextBridge.exposeInMainWorld`; it has no renderer IPC, functional preload `contextBridge`/`ipcRenderer`, native menu identity or general Electron compatibility. Normal `run`/`pack` still reject. The host smoke, unchanged-CJS, invalid-wire, load-deadline, host-loss and load-event tests pass on the current macOS integration environment; Electron oracle bounds, renderer-crash/close simulators, interactive IME/AX and real-app acceptance remain NOT RUN.

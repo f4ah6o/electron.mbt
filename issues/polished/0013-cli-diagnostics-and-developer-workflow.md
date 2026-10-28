@@ -194,6 +194,12 @@ static inventoryでunknown APIが見つからないことは、動的分岐・re
 - 2026-10-17: native CLIのcommand/input/schema/exit、source modes、dev loop、admission設計を追加。
 - 2026-10-17: `polish-issue`で実CLI/テストを読取確認し、現行commandと新規command、最初のschema/doctor slice、observable negative、migrationと変更対象を具体化。必須metadata/構成へ再配置し旧節anchorを保持。runtimeや公開CLIは未変更。
 
+- 2026-10-23: native `emoon` に `init` / `inspect` / `migrate` / `dev` を実装した。共有契約は `cli/emoon_contract` に置き、引数・config merge・path/entry 分類・静的 scan・schema 2 manifest・schema 3 adapter 生成を Node reference と共通化した。stage の FS 操作は `cmd/emoon/file_io.c` の bounded primitive（symlink/escape/limit を fail closed）を使う。`dev` は init→inspect→migrate→doctor→`run --window` を同一 process で実行し、runtime を再実装しない。
+- 2026-10-23: Node reference を契約に合わせて修正した。`--config` は app root 基準かつ root 内に制限、inspect は symlink を拒否、`.git`/`.emoon` と `node_modules/.cache` を path で skip、package.json は 64 KiB、I/O error を文書化済み code に正規化した。Linux の parity suite は report/exit/stage bytes/mode/manifest/adapter を比較し 12 PASS。native `dev` の adapted window E2E は `status:"PASS"`、`pageTitle:"migrate-fixture-ready"`、`compatible:false` を記録した。
+- 2026-10-23: slow-dialog 回帰は、対話デスクトップで実 chooser が focus を奪う入力を test-only hold と分離した。CI の Xvfb では `ELECTRON_MBT_ISOLATED_DISPLAY=1` で実 chooser を実行し、ローカルでは unmapped の control hold が同じ 15 秒 bound を検証する。`moon test --target js` 163 PASS、`--target native` 196 PASS、`tests/emoon-cli.test.cjs` 10 PASS、parity 13 PASS、`npm test` 526 tests / 493 PASS / 0 FAIL / 33 SKIP。macOS native 実行、`moon publish`、GitHub Release、`moon binstall`、`npm publish` は NOT RUN。runtime の互換受入や row の昇格はない。
+
+- 2026-10-26: `dev` の実アプリ preflight を修正した。`package.json` main を renderer より先に検証し、未ビルドの source tree は `ELECTRON_MBT_MIGRATE_BUILD_MISSING`（main パスと `npm run build` / `--build` の案内）で停止する。`inspect`/stage は `.git`/`.emoon`/`node_modules` を任意階層で除外し、`node_modules/.bin` の symlink や 19k files の上限で落ちないようにした。main が app root 直下でなければ main 出力ディレクトリ全体を stage する。明示的な `dev --build` は `scripts.build` と `node_modules` を確認して `npm run build` を実行し（stdout は stderr へ）、`npm install` は決して行わない。Node は `dev --page` も転送する。`_build/moji-check`（1.0.5、node_modules あり）の `dev --no-launch --force` は 109 files の stage と doctor ready に到達し、`_build/moji-linux-app` の hold window は `Moji v1.0.5` を表示して WM close で `HOLD_EXIT reason:"window-closed"`・exit 0。`npm test` 532 tests / 499 PASS / 0 FAIL / 33 SKIP。`_build/Moji` 1.0.7 の npm install/build は NOT RUN。
+
 ## 注記
 
 - 2026-10-17: ユーザー指示「mv to issues/polished」に従い、整備済みの計画を open から polished へ移動。未解決事項・依存条件・runtime の未受入は本文に保持する。

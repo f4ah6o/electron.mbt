@@ -12,7 +12,7 @@ const { createSessionGate, encodeEnvelope, MAX_BYTES } = require('./host-protoco
 
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const addonFile = path.resolve(__dirname, '../../dist/sync_channel.node');
-const nativeBinary = path.resolve(__dirname, '../../dist/electron-mbt-native-host');
+const nativeBinary = path.resolve(__dirname, '../../dist/emoon-host');
 
 class NativeHost extends EventEmitter {
   constructor(appDir, options = {}) {

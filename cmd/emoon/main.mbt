@@ -35,6 +35,41 @@ extern "C" fn nodeless_exit(code : Int) = "moonbit_ebt_nodeless_exit"
 extern "C" fn nodeless_host_open(root : Bytes) -> Int = "moonbit_ebt_nodeless_host_open"
 
 ///|
+#borrow(out)
+extern "C" fn bundle_default_host(out : Bytes, capacity : Int) -> Int = "moonbit_ebt_bundle_default_host"
+
+///|
+#borrow(output, stage, host, name, version, report, error)
+extern "C" fn bundle_create(
+  output : Bytes,
+  stage : Bytes,
+  host : Bytes,
+  name : Bytes,
+  version : Bytes,
+  report : Bytes,
+  report_capacity : Int,
+  error : Bytes,
+  error_capacity : Int,
+  force : Int,
+) -> Int = "moonbit_ebt_bundle_create"
+
+///|
+extern "C" fn bundle_embedded() -> Int = "moonbit_ebt_bundle_embedded"
+
+///|
+#borrow(root, error)
+extern "C" fn bundle_prepare(
+  root : Bytes,
+  root_capacity : Int,
+  error : Bytes,
+  error_capacity : Int,
+) -> Int = "moonbit_ebt_bundle_prepare"
+
+///|
+#borrow(out)
+extern "C" fn bundle_info(out : Bytes, capacity : Int) -> Int = "moonbit_ebt_bundle_info"
+
+///|
 #borrow(operation, payload, out)
 extern "C" fn nodeless_host_query(
   operation : Bytes,
@@ -617,9 +652,10 @@ fn cli_pump_events(
   attempts? : Int = 80,
   idle_limit? : Int = 10,
 ) -> (Int, Int, Int) {
-  let event_buffer = Bytes::new(65536)
+  let event_buffer = Bytes::new(1048576)
   let reply_buffer = Bytes::new(65536)
   let (identity_window, identity_generation) = cli_host_identity()
+  runner.pump_idle()
   let mut handled = 0
   let mut errors = 0
   let mut rejected = 0
@@ -698,6 +734,7 @@ fn cli_pump_events(
     if sent <= 0 {
       errors += 1
     }
+    runner.pump_idle()
     handled += 1
   }
   (handled, errors, rejected)
@@ -753,6 +790,7 @@ fn cli_hold(
   adapted_configured : Bool,
   hold_seconds : Int,
   close_after_ms : Int,
+  trigger_export_ui : Bool,
 ) -> Unit {
   let mut title = ""
   let mut url = ""
@@ -814,10 +852,15 @@ fn cli_hold(
   )
   let limit = if hold_seconds > 0 { hold_seconds * 10 } else { -1 }
   let mut ticks = 0
+  let mut export_ui_sent = false
   let mut reason = "hold-seconds"
   let mut close_sent = false
   while limit < 0 || ticks < limit {
     let _ = cli_pump_events(runner, session, attempts=1, idle_limit=1)
+    if trigger_export_ui && !export_ui_sent && ticks >= 80 {
+      export_ui_sent = true
+      let _ = cli_host_payload("trigger-renderer-export-ui", "{}")
+    }
     if close_after_ms > 0 && !close_sent && ticks >= close_after_ms / 100 {
       close_sent = true
       let _ = cli_host_payload("simulate-window-close", "{}")
@@ -979,13 +1022,213 @@ fn cli_dispatch_results(
 }
 
 ///|
-fn main {
-  let args = @env.args()
-  if args.length() < 3 || args[1] != "run" {
-    println("usage: nodeless run <app-dir> [--window] [--hold [--hold-seconds <1..3600>] [--hold-close-after-ms <1..60000>]] [--entry <file>] [--broker-selftest] [--fs-selftest] [--user-file-selftest] [--directory-selftest] [--dialog-selftest] [--save-dialog-selftest] [--dialog-ui-selftest] [--ingress-selftest] [--grant-persist-selftest] [--grant-revoke-selftest] [--moji-edit-save-selftest] [--moji-reopen-selftest] [--moji-save-failure-selftest]")
-    nodeless_exit(2)
+///|
+fn cli_product_name() -> String { "electromoon" }
+
+///|
+fn cli_command_name() -> String { "emoon" }
+
+///|
+fn cli_product_version() -> String { "0.1.0" }
+
+///|
+fn cli_print_help() -> Unit {
+  println("usage: emoon <command> [app-dir] [options]")
+  println("")
+  println("package an app:")
+  println("  bundle [app-dir]  stage if needed, then write one native executable")
+  println("                    default output: <app-dir>/.emoon/dist/<name>-<version>-<os>-<arch>")
+  println("")
+  println("develop:")
+  println("  init     write .emoon/config.json for an Electron app")
+  println("  inspect  report the app tier and blockers without writing a stage")
+  println("  migrate  stage the app under .emoon/app and write the migration report")
+  println("  dev      init/inspect/migrate, validate with doctor, then run --window (--build runs npm run build)")
+  println("  run      run a prepared app (--window, --entry, --profile, --hold, selftests)")
+  println("  doctor   validate a prepared app without launching it")
+  println("")
+  println("other:")
+  println("  version  print the machine-readable version")
+  println("  help     print this help")
+  println("")
+  println("run `emoon bundle --help` for packaging options")
+}
+
+///|
+/// A read-only hint for the bare `emoon` invocation. It never writes and never
+/// changes the exit code; it only makes the next command discoverable when the
+/// current directory looks like an Electron app.
+fn cli_print_app_hint() -> Unit {
+  let root = match fs_realpath(".") {
+    Some(value) => value
+    None => return
+  }
+  let text = match cli_read_text(root, "package.json") {
+    Some(value) => value
+    None => return
+  }
+  let parsed = @json.parse(text) catch {
+    _ => return
+  }
+  let main = match cli_text(parsed, "main") {
+    Some(value) => value
+    None => return
+  }
+  if main == "" {
     return
   }
+  let name = match cli_text(parsed, "name") {
+    Some(value) => value
+    None => "app"
+  }
+  let version = match cli_text(parsed, "version") {
+    Some(value) => value
+    None => "0.0.0"
+  }
+  eprintln(
+    "[emoon] detected " + name + " " + version + " in " + root +
+    "; next: emoon bundle",
+  )
+}
+
+///|
+fn cli_print_version_json() -> Unit {
+  println(
+    Json({
+      "schema": Json(1),
+      "product": Json(cli_product_name()),
+      "cli": Json(cli_command_name()),
+      "impl": Json("native"),
+      "version": Json(cli_product_version()),
+      "engine": Json("quickjs-2026-06-04"),
+      "compatible": Json(false),
+    }).stringify(),
+  )
+}
+
+///|
+fn cli_block(code : String, message : String) -> Unit {
+  println(
+    Json({
+      "schema": Json(1),
+      "product": Json(cli_product_name()),
+      "status": Json("BLOCKED"),
+      "code": Json(code),
+      "message": Json(message),
+      "compatible": Json(false),
+    }).stringify(),
+  )
+  nodeless_exit(2)
+}
+
+///|
+///|
+fn cli_main(args : Array[String]) -> Unit {
+  if args.length() < 2 {
+    cli_print_help()
+    cli_print_app_hint()
+    nodeless_exit(1)
+    return
+  }
+  let command = args[1]
+  if command == "help" || command == "--help" {
+    cli_print_help()
+    return
+  }
+  if command == "version" {
+    cli_print_version_json()
+    return
+  }
+  if command == "--version" {
+    println(cli_command_name() + " " + cli_product_version())
+    return
+  }
+  if command == "bundle" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    cli_bundle_command(raw)
+    return
+  }
+  if command == "init" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    let parsed = match @cli.parse_args(raw) {
+      Ok(value) => value
+      Err(error) => {
+        command_error(error)
+        return
+      }
+    }
+    let root = command_app_dir(parsed.app_dir)
+    command_init_with_args(root, parsed)
+    return
+  }
+  if command == "inspect" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    let parsed = match @cli.parse_args(raw) {
+      Ok(value) => value
+      Err(error) => {
+        command_error(error)
+        return
+      }
+    }
+    let root = command_app_dir(parsed.app_dir)
+    let code = command_inspect_with_args(root, parsed)
+    nodeless_exit(code)
+    return
+  }
+  if command == "migrate" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    let parsed = match @cli.parse_args(raw) {
+      Ok(value) => value
+      Err(error) => {
+        command_error(error)
+        return
+      }
+    }
+    let root = command_app_dir(parsed.app_dir)
+    let code = command_migrate_with_args(root, parsed)
+    nodeless_exit(code)
+    return
+  }
+  if command == "dev" {
+    let raw : Array[String] = []
+    for i = 2; i < args.length(); i = i + 1 {
+      raw.push(args[i])
+    }
+    let parsed = match @cli.parse_args(raw) {
+      Ok(value) => value
+      Err(error) => {
+        command_error(error)
+        return
+      }
+    }
+    let root = command_app_dir(parsed.app_dir)
+    let code = command_dev_with_args(root, parsed)
+    nodeless_exit(code)
+    return
+  }
+  if command != "run" && command != "doctor" {
+    cli_print_help()
+    nodeless_exit(1)
+    return
+  }
+  if args.length() < 3 {
+    cli_print_help()
+    nodeless_exit(1)
+    return
+  }
+  let doctor_mode = command == "doctor"
   let app_dir_buffer = Bytes::new(4096)
   let app_dir_length = nodeless_realpath(
     @utf8.encode(args[2]),
@@ -1026,6 +1269,7 @@ fn main {
   let moji_edit_save_selftest = args.contains("--moji-edit-save-selftest")
   let moji_reopen_selftest = args.contains("--moji-reopen-selftest")
   let moji_save_failure_selftest = args.contains("--moji-save-failure-selftest")
+  let trigger_export_ui = args.contains("--trigger-export-ui")
   if hold_mode && !window_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold requires --window")
     return
@@ -1194,6 +1438,30 @@ fn main {
     }
     hashes[path] = hash
   }
+  let empty_package : Map[String, Json] = {}
+  let package_json = match sources.get("package.json") {
+    Some(value) => @json.parse(value) catch { _ => Json(empty_package) }
+    None => Json(empty_package)
+  }
+  let name = match cli_text(package_json, "name") {
+    Some(value) => value
+    None => "nodeless-app"
+  }
+  let version = match cli_text(package_json, "version") {
+    Some(value) => value
+    None => "0.0.0"
+  }
+  let manifest_entry = match cli_text(manifest_json, "entry") {
+    Some(value) => value
+    None => ""
+  }
+  let package_main = match cli_text(package_json, "main") {
+    Some(value) => value
+    None => ""
+  }
+  if module_entry == "" && package_main != "" && package_main != manifest_entry {
+    module_entry = package_main
+  }
   let snapshot = match @app.SourceSnapshot::from_manifest(
     manifest,
     sources,
@@ -1214,25 +1482,84 @@ fn main {
       return
     }
   }
-  let empty_package : Map[String, Json] = {}
-  let package_json = match sources.get("package.json") {
-    Some(value) => @json.parse(value) catch { _ => Json(empty_package) }
-    None => Json(empty_package)
-  }
-  let name = match cli_text(package_json, "name") {
-    Some(value) => value
-    None => "nodeless-app"
-  }
-  let version = match cli_text(package_json, "version") {
-    Some(value) => value
-    None => "0.0.0"
-  }
   let adapted_adapter = match cli_profile_adapter(sources) {
     Ok(value) => value
     Err(message) => {
       cli_fail("ELECTRON_MBT_NODELESS_PROFILE", message)
       return
     }
+  }
+  let mut requested_profile = ""
+  for i = 0; i < args.length(); i = i + 1 {
+    if args[i] == "--profile" && i + 1 < args.length() {
+      requested_profile = args[i + 1]
+    }
+  }
+  if requested_profile != "" {
+    if requested_profile == "electron-nodeless-v1" {
+      cli_block(
+        "ELECTRON_MBT_PROFILE_BLOCKED",
+        "the strict electron-nodeless-v1 profile is blocked",
+      )
+      return
+    }
+    if requested_profile == "desktop-core-v1" ||
+      requested_profile == "moonbit-native-v1" {
+      cli_block(
+        "ELECTRON_MBT_PROFILE_ENGINE_MISMATCH",
+        "the requested profile uses a different engine",
+      )
+      return
+    }
+    if requested_profile != "electron-nodeless-adapted-v1" {
+      cli_block("ELECTRON_MBT_UNKNOWN_PROFILE", "unknown runtime profile")
+      return
+    }
+    if adapted_adapter == "" {
+      cli_fail(
+        "ELECTRON_MBT_NODELESS_PROFILE",
+        "electron-nodeless-adapted-v1 requires nodeless-app.json",
+      )
+      return
+    }
+  }
+  if doctor_mode {
+    let manifest_hash = match cli_sha256(app_dir, "source-manifest.json") {
+      Some(value) => value
+      None => ""
+    }
+    let adapted_json = if adapted_adapter != "" {
+      Json({ "adapter": Json(adapted_adapter) })
+    } else {
+      Json(null)
+    }
+    println(
+      Json({
+        "schema": Json(1),
+        "product": Json(cli_product_name()),
+        "version": Json(cli_product_version()),
+        "command": Json("doctor"),
+        "status": Json("ready"),
+        "compatible": Json(false),
+        "engine": Json("quickjs-2026-06-04"),
+        "profile": if adapted_adapter != "" {
+          Json("electron-nodeless-adapted-v1")
+        } else {
+          Json(null)
+        },
+        "source": Json({
+          "manifest": Json("source-manifest.json"),
+          "manifestSha256": Json(manifest_hash),
+          "entry": Json(snapshot.entry),
+          "files": Json(snapshot.files.length()),
+          "app": Json({ "name": Json(name), "version": Json(version) }),
+        }),
+        "adapted": adapted_json,
+        "blockers": Json([]),
+        "note": Json("static admission only; no window, engine execution, or compatibility result"),
+      }).stringify(),
+    )
+    return
   }
   let mut user_file_read_path = ""
   let mut user_file_write_path = ""
@@ -1337,7 +1664,8 @@ fn main {
     }
     let adapted_configured = adapted_adapter.length() > 0
     if hold_mode {
-      cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms)
+      cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
+               trigger_export_ui)
       return
     }
     let mut adapted_observed = false
@@ -2098,4 +2426,89 @@ fn main {
   if !ok || live != 0 {
     nodeless_exit(1)
   }
+}
+
+///|
+fn cli_bundle_trim_nul(text : String) -> String {
+  match text.split_once("\u{0}") {
+    Some((head, _)) => head.to_string()
+    None => text
+  }
+}
+
+///|
+fn cli_bundle_help() -> Unit {
+  println("usage: emoon bundle [--hold] [--hold-seconds N] [--hold-close-after-ms N]")
+  println("  no arguments        launch the embedded application")
+  println("  --bundle-info      print embedded app/host metadata")
+  println("  --version          print the emoon version")
+}
+
+///|
+fn cli_bundle_embedded(args : Array[String]) -> Bool {
+  if bundle_embedded() != 1 {
+    return false
+  }
+  if args.length() >= 2 && args[1] == "--bundle-info" {
+    let buffer = Bytes::new(8192)
+    let length = bundle_info(buffer, buffer.length())
+    if length > 0 {
+      println(@utf8.decode_lossy(buffer[:length]))
+    } else {
+      println(cli_bundle_trim_nul(@utf8.decode_lossy(buffer)))
+      nodeless_exit(1)
+    }
+    return true
+  }
+  if args.length() >= 2 && args[1] == "--version" {
+    cli_print_version_json()
+    return true
+  }
+  if args.length() >= 2 && (args[1] == "--help" || args[1] == "help") {
+    cli_bundle_help()
+    return true
+  }
+  let run_args : Array[String] = ["emoon", "run"]
+  let root_buffer = Bytes::new(4096)
+  let error_buffer = Bytes::new(4096)
+  if bundle_prepare(root_buffer, root_buffer.length(), error_buffer, error_buffer.length()) != 0 {
+    println(cli_bundle_trim_nul(@utf8.decode_lossy(error_buffer)))
+    nodeless_exit(1)
+    return true
+  }
+  let root = cli_bundle_trim_nul(@utf8.decode_lossy(root_buffer))
+  run_args.push(root)
+  run_args.push("--window")
+  let mut index = 1
+  while index < args.length() {
+    let arg = args[index]
+    if arg == "--hold" {
+      run_args.push("--hold")
+      index = index + 1
+    } else if arg == "--hold-close-after-ms" || arg == "--hold-seconds" {
+      if index + 1 >= args.length() {
+        cli_bundle_help()
+        nodeless_exit(1)
+        return true
+      }
+      run_args.push(arg)
+      run_args.push(args[index + 1])
+      index = index + 2
+    } else {
+      cli_bundle_help()
+      nodeless_exit(1)
+      return true
+    }
+  }
+  cli_main(run_args)
+  true
+}
+
+///|
+fn main {
+  let args = @env.args()
+  if cli_bundle_embedded(args) {
+    return
+  }
+  cli_main(args)
 }

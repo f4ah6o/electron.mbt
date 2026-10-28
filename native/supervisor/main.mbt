@@ -269,7 +269,7 @@ fn start_ready(root : String, buffer : Bytes) -> (Int, String, Int)? {
     }
     let session = @utf8.decode_lossy(session_buffer)
     let fd = supervisor_start(
-      @utf8.encode("dist/electron-mbt-native-host"),
+      @utf8.encode("dist/emoon-host"),
       @utf8.encode(root),
       @utf8.encode(session),
     )
@@ -1301,7 +1301,7 @@ fn main {
   }
   let second_session = @utf8.decode_lossy(second_session_buffer)
   let second_fd = supervisor_start(
-    @utf8.encode("dist/electron-mbt-native-host"),
+    @utf8.encode("dist/emoon-host"),
     @utf8.encode("fixtures/native-app"),
     @utf8.encode(second_session),
   )

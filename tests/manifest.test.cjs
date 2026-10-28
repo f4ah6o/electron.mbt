@@ -20,7 +20,7 @@ test('unmet acceptance gates cannot be reported as verified', () => {
 });
 test('unimplemented run and pack reject without executing app code', () => {
   for (const command of ['run', 'pack']) {
-    const result = spawnSync(process.execPath, ['cmd/electron-mbt.cjs', command, 'a-nonexistent-app'], { cwd: root, encoding: 'utf8' });
+    const result = spawnSync(process.execPath, ['cmd/legacy-node.cjs', command, 'a-nonexistent-app'], { cwd: root, encoding: 'utf8' });
     assert.equal(result.status, 1);
     const output = JSON.parse(result.stdout);
     assert.equal(output.compatible, false);
@@ -28,7 +28,7 @@ test('unimplemented run and pack reject without executing app code', () => {
   }
 });
 test('snapshot CLI records the same unchanged files across invocations', () => {
-  const run = () => spawnSync(process.execPath, ['cmd/electron-mbt.cjs', 'snapshot', 'fixtures/cjs'], { cwd: root, encoding: 'utf8' });
+  const run = () => spawnSync(process.execPath, ['cmd/legacy-node.cjs', 'snapshot', 'fixtures/cjs'], { cwd: root, encoding: 'utf8' });
   const first = run(); const second = run();
   assert.equal(first.status, 0); assert.equal(second.status, 0);
   assert.equal(JSON.parse(first.stdout).sha256, JSON.parse(second.stdout).sha256);

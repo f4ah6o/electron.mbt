@@ -2,7 +2,7 @@
  * Experimental Linux GTK/WebKitGTK host for the Node-less adapted profile.
  *
  * This is a native leaf, not a second policy engine. MoonBit in
- * native/nodeless and runtime/app_runner owns lifecycle, identifiers, limits,
+ * cmd/emoon and runtime/app_runner owns lifecycle, identifiers, limits,
  * grants, document generations and request terminal state. This process owns
  * the actual GTK window, WebKitWebView, snapshot files and the private
  * control/load/event socketpairs. It must never accept renderer-claimed
@@ -10,15 +10,17 @@
  *
  * The macOS host in platform/macos/NativeHost.m is the reference for the
  * protocol subset implemented here. This file intentionally implements the
- * adapted/plain fixture path plus a minimal exact-file read/write and
- * GTK open/save dialog surface. It has no original preload, contextBridge,
- * ipcRenderer, directory grants, export pipeline, menu, clipboard or IME
- * parity; unsupported operations return a typed failure.
+ * adapted/plain fixture path plus exact-file, directory and GTK dialog
+ * surfaces and bounded offscreen PDF/HTML/PNG export paths. It has no original
+ * preload, contextBridge, ipcRenderer, directory grants, menu, clipboard or
+ * IME parity; unsupported operations return a typed failure.
  */
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <gtk/gtk.h>
+#include <cairo.h>
+#include <cairo-pdf.h>
 #include <jsc/jsc.h>
 #include <math.h>
 #include <netinet/in.h>
@@ -32,6 +34,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <zlib.h>
 #include <stdarg.h>
 #include <webkit2/webkit2.h>
 
@@ -42,15 +45,18 @@
 #define EBT_MAX_SNAPSHOT_TOTAL (64ULL * 1024ULL * 1024ULL)
 #define EBT_MAX_SNAPSHOT_FILES 4096
 #define EBT_MAX_ADAPTER 65536
-#define EBT_MAX_APP_PAYLOAD 65536
+#define EBT_MAX_APP_PAYLOAD (1024 * 1024)
 #define EBT_MAX_PENDING 128
 #define EBT_MAX_EVENTS 1024
 #define EBT_MAX_TITLE 4096
 #define EBT_MAX_URL 8192
 #define EBT_MAX_SAFE_INTEGER 9007199254740991.0
 #define EBT_MAX_MAIN_READ (256 * 1024)
-#define EBT_MAX_MAIN_WRITE (256 * 1024)
-#define EBT_MAX_MAIN_BASE64 (400 * 1024)
+#define EBT_MAX_MAIN_WRITE (700 * 1024)
+#define EBT_MAX_MAIN_OFFSET (256 * 1024 * 1024)
+#define EBT_MAX_CAPTURE_BYTES (16 * 1024 * 1024)
+#define EBT_MAX_MAIN_BASE64 (950 * 1024)
+#define EBT_MAX_APP_WRITE (256 * 1024)
 #define EBT_MAX_MAIN_PATH 4096
 #define EBT_MAX_DIALOG_PATHS 16
 #define EBT_GRANT_READ 1
@@ -67,6 +73,23 @@ typedef struct PendingReply {
 } PendingReply;
 
 typedef struct Request Request;
+
+typedef struct ExportWait {
+  GMainLoop *loop;
+  gboolean failed;
+  char *error;
+  char *json;
+  cairo_surface_t *surface;
+  guint timeout_id;
+  gint refs;
+  gboolean timed_out;
+} ExportWait;
+
+static ExportWait *export_wait_new(void);
+static void export_wait_ref(ExportWait *wait);
+static void export_wait_unref(ExportWait *wait);
+static void export_wait_cleanup(ExportWait *wait);
+static gboolean export_wait_timeout(gpointer data);
 
 typedef struct Snapshot {
   char *root;
@@ -122,6 +145,12 @@ typedef struct Host {
   GAsyncQueue *events;
   GtkWidget *active_dialog;
   gboolean close_after_dialog;
+  GtkWidget *export_window;
+  WebKitWebView *export_web;
+  ExportWait *export_load_wait;
+  cairo_surface_t *export_capture;
+  z_stream *export_zlib;
+  guint64 export_zlib_token;
   GThread *control_thread;
   GThread *load_thread;
   GThread *event_thread;
@@ -1088,6 +1117,11 @@ static gboolean on_app_message(WebKitUserContentManager *manager,
   if (nonce_value != NULL) g_object_unref(nonce_value);
 
   const char *code = NULL;
+  if (payload_json != NULL && strlen(payload_json) > EBT_MAX_APP_PAYLOAD) {
+    ebt_debug("app-payload oversized len=%zu limit=%d op=%s\n",
+              strlen(payload_json), EBT_MAX_APP_PAYLOAD,
+              operation == NULL ? "(null)" : operation);
+  }
   if (operation == NULL || operation[0] == 0 || strlen(operation) > 128 ||
       payload_json == NULL || strlen(payload_json) > EBT_MAX_APP_PAYLOAD) {
     code = "ELECTRON_MBT_INVALID_ENVELOPE";
@@ -1111,6 +1145,7 @@ static gboolean on_app_message(WebKitUserContentManager *manager,
     return TRUE;
   }
 
+  ebt_debug("app-request op=%s\n", operation);
   char *request_id = g_strdup_printf("r%" G_GUINT64_FORMAT, ++host->next_request);
   PendingReply *pending = g_new0(PendingReply, 1);
   pending->reply = webkit_script_message_reply_ref(reply);
@@ -1366,6 +1401,9 @@ static void handle_create_window(Host *host, Request *request) {
   g_object_unref(payload);
 
   WebKitSettings *settings = webkit_web_view_get_settings(host->web);
+  if (g_getenv("ELECTRON_MBT_LINUX_DEBUG") != NULL) {
+    webkit_settings_set_enable_write_console_messages_to_stdout(settings, TRUE);
+  }
   webkit_settings_set_enable_developer_extras(settings, FALSE);
   webkit_settings_set_javascript_can_open_windows_automatically(settings, FALSE);
   host->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -1639,6 +1677,27 @@ static void probe_renderer_finished(GObject *source, GAsyncResult *result,
   g_free(context);
 }
 
+static void handle_trigger_renderer_export_ui(Host *host, Request *request) {
+  if (!require_current(host, request)) return;
+  if (!host->content_alive || !host->loaded) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  static const char script[] =
+    "(function(){"
+    "function label(n){return ((n.textContent||'')+' '+(n.getAttribute('aria-label')||'')).trim().toLowerCase();}"
+    "function all(){return Array.prototype.slice.call(document.querySelectorAll('button'));}"
+    "var open=null; all().forEach(function(b){if(!open&&label(b)==='open')open=b;});"
+    "if(open) open.click();"
+    "setTimeout(function(){all().forEach(function(b){if(label(b).indexOf('export')>=0&&!b.closest('.export-dialog'))b.click();});},2500);"
+    "setTimeout(function(){var b=document.querySelector('.export-dialog .export-dialog__footer button');if(b)b.click();},5500);"
+    "setTimeout(function(){var b=document.querySelector('.export-dialog .export-dialog__footer button');if(b)b.click();},9000);"
+    "})()";
+  webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL, NULL, NULL);
+  ebt_debug("trigger-renderer-export-ui\n");
+  request_success_empty(request);
+}
+
 static void handle_probe_renderer(Host *host, Request *request) {
   if (!require_current(host, request)) return;
   if (!host->content_alive || !host->loaded) {
@@ -1745,6 +1804,7 @@ static void handle_app_reply(Host *host, Request *request, JSCValue *payload) {
   g_free(request_id);
   g_free(json);
   if (parsed == NULL || !jsc_value_is_object(parsed)) {
+    ebt_debug("app-reply invalid json=%s\n", json == NULL ? "(null)" : json);
     webkit_script_message_reply_return_error_message(pending->reply,
                                                      "ELECTRON_MBT_MAIN_ERROR");
   } else {
@@ -1764,8 +1824,19 @@ static void handle_app_reply(Host *host, Request *request, JSCValue *payload) {
       }
     } else {
       char *code = object_get_string(parsed, "code");
-      webkit_script_message_reply_return_error_message(
-        pending->reply, code == NULL ? "ELECTRON_MBT_MAIN_ERROR" : code);
+      char *message = object_get_string(parsed, "message");
+      char *short_message = message == NULL ? NULL : g_strndup(message, 1024);
+      char *error_text = g_strdup_printf("%s%s%s",
+        code == NULL ? "ELECTRON_MBT_MAIN_ERROR" : code,
+        short_message == NULL || short_message[0] == 0 ? "" : ": ",
+        short_message == NULL ? "" : short_message);
+      ebt_debug("app-reply error code=%s message=%s\n",
+                code == NULL ? "(null)" : code,
+                short_message == NULL ? "(null)" : short_message);
+      webkit_script_message_reply_return_error_message(pending->reply, error_text);
+      g_free(error_text);
+      g_free(short_message);
+      g_free(message);
       g_free(code);
     }
   }
@@ -1846,8 +1917,14 @@ static gboolean path_is_under(const char *path, const char *root) {
 static char *host_join_path(Host *host, const char *path) {
   if (host == NULL || path == NULL || path[0] == 0 ||
       strlen(path) > EBT_MAX_MAIN_PATH) return NULL;
-  if (g_path_is_absolute(path)) return g_strdup(path);
-  return g_build_filename(host->root, path, NULL);
+  if (g_path_is_absolute(path)) return strdup(path);
+  size_t root_length = strlen(host->root);
+  size_t path_length = strlen(path);
+  size_t needed = root_length + 1 + path_length + 1;
+  char *joined = (char *)malloc(needed);
+  if (joined == NULL) return NULL;
+  snprintf(joined, needed, "%s/%s", host->root, path);
+  return joined;
 }
 
 static char *canonical_existing_path(Host *host, const char *path) {
@@ -1889,7 +1966,9 @@ static char *canonical_write_path(Host *host, const char *path) {
     free(joined);
     return NULL;
   }
-  canonical = g_build_filename(parent, base, NULL);
+  size_t needed = strlen(parent) + 1 + strlen(base) + 1;
+  canonical = (char *)malloc(needed);
+  if (canonical != NULL) snprintf(canonical, needed, "%s/%s", parent, base);
   free(parent);
   g_free(directory);
   g_free(base);
@@ -2036,12 +2115,11 @@ static void handle_main_write_file(Host *host, Request *request, JSCValue *paylo
   }
   gsize length = 0;
   guchar *data = g_base64_decode(base64, &length);
-  if ((data == NULL && length != 0) || length > EBT_MAX_MAIN_WRITE) {
+  if (data == NULL && length != 0) {
     g_free(data);
     g_free(path);
     g_free(base64);
-    request_failure(request, length > EBT_MAX_MAIN_WRITE ? "ELECTRON_MBT_FILE_LIMIT"
-                                                         : "ELECTRON_MBT_INVALID_ENVELOPE");
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
     return;
   }
   char *canonical = canonical_write_path(host, path);
@@ -2054,6 +2132,16 @@ static void handle_main_write_file(Host *host, Request *request, JSCValue *paylo
     g_free(base64);
     free(canonical);
     request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  gsize write_limit = (file_grant_mode(host, canonical) & EBT_GRANT_WRITE) != 0
+    ? EBT_MAX_MAIN_WRITE : EBT_MAX_APP_WRITE;
+  if (length > write_limit) {
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
     return;
   }
   struct stat info;
@@ -2126,6 +2214,690 @@ static void handle_main_write_file(Host *host, Request *request, JSCValue *paylo
   g_free(path);
   g_free(base64);
   free(canonical);
+}
+
+static const char *main_fs_error_code(int error) {
+  switch (error) {
+    case ENOENT: return "ELECTRON_MBT_FILE_NOT_FOUND";
+    case EACCES:
+    case EPERM: return "ELECTRON_MBT_FILE_DENIED";
+    case EROFS: return "ELECTRON_MBT_FILE_READ_ONLY";
+    case EEXIST: return "ELECTRON_MBT_FILE_EXISTS";
+    case EISDIR:
+    case ENOTDIR: return "ELECTRON_MBT_FILE_TYPE";
+    case EFBIG:
+    case ENOSPC:
+    case EDQUOT: return "ELECTRON_MBT_FILE_LIMIT";
+    default: return "ELECTRON_MBT_FILE_WRITE";
+  }
+}
+
+static void handle_main_rename(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path", "destination"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *destination = object_get_string(payload, "destination");
+  if (path == NULL || destination == NULL) {
+    g_free(path);
+    g_free(destination);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *source = canonical_existing_path(host, path);
+  char *target = canonical_write_path(host, destination);
+  if (source == NULL) {
+    g_free(path);
+    g_free(destination);
+    free(target);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (target == NULL || !main_write_allowed(host, source) ||
+      !main_write_allowed(host, target)) {
+    g_free(path);
+    g_free(destination);
+    free(source);
+    free(target);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(source, &info) != 0) {
+    g_free(path);
+    g_free(destination);
+    free(source);
+    free(target);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (!S_ISREG(info.st_mode)) {
+    g_free(path);
+    g_free(destination);
+    free(source);
+    free(target);
+    request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+    return;
+  }
+  if (rename(source, target) != 0) {
+    int error = errno;
+    g_free(path);
+    g_free(destination);
+    free(source);
+    free(target);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", target);
+  request_complete(request, "success", reply);
+  g_free(path);
+  g_free(destination);
+  free(source);
+  free(target);
+}
+
+static void handle_main_unlink(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *canonical = path == NULL ? NULL : canonical_existing_path(host, path);
+  if (canonical == NULL || !main_write_allowed(host, canonical)) {
+    const char *code = canonical == NULL ? "ELECTRON_MBT_FILE_NOT_FOUND"
+                                          : "ELECTRON_MBT_FILE_DENIED";
+    g_free(path);
+    free(canonical);
+    request_failure(request, code);
+    return;
+  }
+  struct stat info;
+  if (lstat(canonical, &info) != 0) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (S_ISDIR(info.st_mode)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+    return;
+  }
+  if (unlink(canonical) != 0) {
+    int error = errno;
+    g_free(path);
+    free(canonical);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  request_complete(request, "success", reply);
+  g_free(path);
+  free(canonical);
+}
+
+static void handle_main_read_dir(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *canonical = path == NULL ? NULL : canonical_existing_path(host, path);
+  if (canonical == NULL || !main_read_allowed(host, canonical)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) != 0) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (!S_ISDIR(info.st_mode)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+    return;
+  }
+  GError *error = NULL;
+  GDir *directory = g_dir_open(canonical, 0, &error);
+  if (directory == NULL) {
+    g_clear_error(&error);
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_READ");
+    return;
+  }
+  GString *json = g_string_new("[");
+  guint count = 0;
+  const char *name = NULL;
+  while ((name = g_dir_read_name(directory)) != NULL && count < 4096) {
+    if (name[0] == 0 || strlen(name) > 255 ||
+        strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+      continue;
+    }
+    char *full = g_build_filename(canonical, name, NULL);
+    if (full == NULL) continue;
+    struct stat entry_info;
+    const char *kind = "other";
+    if (lstat(full, &entry_info) == 0) {
+      if (S_ISREG(entry_info.st_mode)) kind = "file";
+      else if (S_ISDIR(entry_info.st_mode)) kind = "directory";
+      else if (S_ISLNK(entry_info.st_mode)) kind = "symlink";
+    }
+    g_free(full);
+    JSCValue *name_value = jsc_value_new_string(host->json, name);
+    char *quoted_name = name_value == NULL ? NULL : jsc_value_to_json(name_value, 0);
+    if (name_value != NULL) g_object_unref(name_value);
+    if (quoted_name == NULL) continue;
+    if (count > 0) g_string_append_c(json, ',');
+    g_string_append_printf(json, "{\"name\":%s,\"kind\":\"%s\"}", quoted_name, kind);
+    g_free(quoted_name);
+    count += 1;
+  }
+  g_dir_close(directory);
+  if (json->len > 480 * 1024) {
+    g_string_free(json, TRUE);
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
+  g_string_append_c(json, ']');
+  if (json->len > 512 * 1024) {
+    g_string_free(json, TRUE);
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
+  JSCValue *entries = json_parse(host, json->str, json->len);
+  g_string_free(json, TRUE);
+  if (entries == NULL) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_MAIN_ERROR");
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  jsc_value_object_set_property(reply, "entries", entries);
+  g_object_unref(entries);
+  request_complete(request, "success", reply);
+  g_free(path);
+  free(canonical);
+}
+
+static void handle_main_mkdir(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path", "recursive"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  JSCValue *recursive_value = object_get_value(payload, "recursive");
+  gboolean recursive = recursive_value != NULL && jsc_value_is_boolean(recursive_value) &&
+    jsc_value_to_boolean(recursive_value);
+  if (recursive_value != NULL) g_object_unref(recursive_value);
+  if (path == NULL) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *canonical = canonical_write_path(host, path);
+  gboolean created = FALSE;
+  /* Missing parent directories are not created here. Recursive creation via
+   * g_mkdir_with_parents would follow a symlinked ancestor outside the app
+   * data roots; callers must create parents through the same policy first. */
+  if (canonical == NULL) {
+    g_free(path);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  if (!main_write_allowed(host, canonical)) {
+    g_free(path);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) == 0) {
+    if (!S_ISDIR(info.st_mode)) {
+      g_free(path);
+      free(canonical);
+      request_failure(request, "ELECTRON_MBT_FILE_TYPE");
+      return;
+    }
+    if (!recursive) {
+      g_free(path);
+      free(canonical);
+      request_failure(request, "ELECTRON_MBT_FILE_EXISTS");
+      return;
+    }
+  } else if (!created && mkdir(canonical, 0700) != 0) {
+    int error = errno;
+    g_free(path);
+    free(canonical);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  } else {
+    created = TRUE;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  object_set_string(host, reply, "firstCreated", created ? canonical : "");
+  request_complete(request, "success", reply);
+  g_free(path);
+  free(canonical);
+}
+
+static void cleanup_export_zlib(Host *host) {
+  if (host == NULL || host->export_zlib == NULL) return;
+  deflateEnd(host->export_zlib);
+  g_free(host->export_zlib);
+  host->export_zlib = NULL;
+  host->export_zlib_token = 0;
+}
+
+static void handle_zlib_deflate_start(Host *host, Request *request,
+                                      JSCValue *payload) {
+  if (!object_has_exact_keys(payload, NULL, 0)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (host->export_zlib != NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_OPTIONS");
+    return;
+  }
+  z_stream *stream = g_new0(z_stream, 1);
+  int result = deflateInit(stream, Z_DEFAULT_COMPRESSION);
+  if (result != Z_OK) {
+    g_free(stream);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  host->export_zlib = stream;
+  /* One zlib stream per host. A small token keeps the JS number exact. */
+  host->export_zlib_token = 1;
+  JSCValue *reply = object_new(host);
+  object_set_number(host, reply, "token", (double)host->export_zlib_token);
+  request_complete(request, "success", reply);
+}
+
+static void handle_zlib_deflate_write(Host *host, Request *request,
+                                      JSCValue *payload) {
+  static const char *const expected[] = {"token", "base64"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 token = 0;
+  char *base64 = object_get_string(payload, "base64");
+  if (base64 == NULL || !object_get_integer(payload, "token", &token) ||
+      host->export_zlib == NULL || (guint64)token != host->export_zlib_token ||
+      strlen(base64) > EBT_MAX_MAIN_BASE64) {
+    g_free(base64);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gsize length = 0;
+  guchar *data = g_base64_decode(base64, &length);
+  g_free(base64);
+  if ((data == NULL && length != 0) || length > EBT_MAX_MAIN_WRITE) {
+    g_free(data);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
+  z_stream *stream = host->export_zlib;
+  stream->next_in = data;
+  stream->avail_in = (uInt)length;
+  GByteArray *out = g_byte_array_new();
+  guchar buffer[65536];
+  do {
+    stream->next_out = buffer;
+    stream->avail_out = sizeof(buffer);
+    int result = deflate(stream, Z_NO_FLUSH);
+    if (result != Z_OK && result != Z_BUF_ERROR) {
+      g_byte_array_free(out, TRUE);
+      g_free(data);
+      cleanup_export_zlib(host);
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
+    gsize produced = sizeof(buffer) - stream->avail_out;
+    if (produced > 0) g_byte_array_append(out, buffer, (guint)produced);
+  } while (stream->avail_in > 0 || stream->avail_out == 0);
+  g_free(data);
+  char *encoded = g_base64_encode(out->data, out->len);
+  g_byte_array_free(out, TRUE);
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "base64", encoded);
+  request_complete(request, "success", reply);
+  g_free(encoded);
+}
+
+static void handle_zlib_deflate_end(Host *host, Request *request,
+                                    JSCValue *payload) {
+  static const char *const expected[] = {"token"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 token = 0;
+  if (!object_get_integer(payload, "token", &token) ||
+      host->export_zlib == NULL || (guint64)token != host->export_zlib_token) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  z_stream *stream = host->export_zlib;
+  GByteArray *out = g_byte_array_new();
+  guchar buffer[65536];
+  int result = Z_OK;
+  do {
+    stream->next_out = buffer;
+    stream->avail_out = sizeof(buffer);
+    result = deflate(stream, Z_FINISH);
+    if (result != Z_OK && result != Z_STREAM_END && result != Z_BUF_ERROR) {
+      g_byte_array_free(out, TRUE);
+      cleanup_export_zlib(host);
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
+    gsize produced = sizeof(buffer) - stream->avail_out;
+    if (produced > 0) g_byte_array_append(out, buffer, (guint)produced);
+  } while (result != Z_STREAM_END);
+  cleanup_export_zlib(host);
+  char *encoded = g_base64_encode(out->data, out->len);
+  g_byte_array_free(out, TRUE);
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "base64", encoded);
+  request_complete(request, "success", reply);
+  g_free(encoded);
+}
+
+static void handle_zlib_deflate_abort(Host *host, Request *request,
+                                      JSCValue *payload) {
+  if (!object_has_exact_keys(payload, NULL, 0)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  cleanup_export_zlib(host);
+  request_success_empty(request);
+}
+
+static void handle_main_write_at(Host *host, Request *request, JSCValue *payload) {
+  static const char *const expected[] = {"path", "base64", "offset", "truncate"};
+  if (!object_has_exact_keys(payload, expected, 4)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *path = object_get_string(payload, "path");
+  char *base64 = object_get_string(payload, "base64");
+  gint64 offset = 0;
+  gboolean truncate = FALSE;
+  if (path == NULL || base64 == NULL || strlen(base64) > EBT_MAX_MAIN_BASE64 ||
+      !object_get_integer(payload, "offset", &offset) || offset < 0 ||
+      !object_get_boolean(payload, "truncate", &truncate)) {
+    g_free(path);
+    g_free(base64);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (offset > EBT_MAX_MAIN_OFFSET) {
+    g_free(path);
+    g_free(base64);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    return;
+  }
+  gsize length = 0;
+  guchar *data = g_base64_decode(base64, &length);
+  if ((data == NULL && length != 0) || length > EBT_MAX_MAIN_WRITE) {
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    request_failure(request, length > EBT_MAX_MAIN_WRITE ? "ELECTRON_MBT_FILE_LIMIT"
+                                                         : "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *canonical = canonical_write_path(host, path);
+  if (canonical == NULL || !main_write_allowed(host, canonical)) {
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  int fd = open(canonical, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0666);
+  if (fd < 0) {
+    int error = errno;
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  }
+  if (truncate && ftruncate(fd, 0) != 0) {
+    int error = errno;
+    close(fd);
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  }
+  const guchar *bytes = data == NULL ? (const guchar *)"" : data;
+  size_t written = 0;
+  while (written < length) {
+    ssize_t got = pwrite(fd, bytes + written, length - written, (off_t)(offset + (gint64)written));
+    if (got < 0) {
+      if (errno == EINTR) continue;
+      int error = errno;
+      close(fd);
+      g_free(data);
+      g_free(path);
+      g_free(base64);
+      free(canonical);
+      request_failure(request, main_fs_error_code(error));
+      return;
+    }
+    if (got == 0) break;
+    written += (size_t)got;
+  }
+  if (written != length) {
+    close(fd);
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_WRITE");
+    return;
+  }
+  if (close(fd) != 0) {
+    int error = errno;
+    g_free(data);
+    g_free(path);
+    g_free(base64);
+    free(canonical);
+    request_failure(request, main_fs_error_code(error));
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "path", canonical);
+  object_set_number(host, reply, "bytesWritten", (double)written);
+  object_set_number(host, reply, "offset", (double)offset);
+  request_complete(request, "success", reply);
+  g_free(data);
+  g_free(path);
+  g_free(base64);
+  free(canonical);
+}
+
+static void handle_resize_export_window(Host *host, Request *request,
+                                        JSCValue *payload) {
+  static const char *const expected[] = {"width", "height"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 width = 0;
+  gint64 height = 0;
+  if (!object_get_integer(payload, "width", &width) ||
+      !object_get_integer(payload, "height", &height) ||
+      width < 100 || width > 4096 || height < 100 || height > 8192 ||
+      host->export_window == NULL || host->export_web == NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_OPTIONS");
+    return;
+  }
+  gtk_window_resize(GTK_WINDOW(host->export_window), (gint)width, (gint)height);
+  gtk_widget_set_size_request(GTK_WIDGET(host->export_web), (gint)width, (gint)height);
+  gtk_widget_queue_resize(host->export_window);
+  /* The GTK resize is asynchronous. Let the export WebView allocate the new
+   * viewport before the next capture request; otherwise capturePage would see
+   * the old height. */
+  for (int i = 0; i < 100 && gtk_events_pending(); i++) gtk_main_iteration_do(FALSE);
+  g_usleep(10000);
+  for (int i = 0; i < 100 && gtk_events_pending(); i++) gtk_main_iteration_do(FALSE);
+  JSCValue *reply = object_new(host);
+  object_set_number(host, reply, "width", (double)width);
+  object_set_number(host, reply, "height", (double)height);
+  request_complete(request, "success", reply);
+}
+
+static void export_capture_snapshot_finished(GObject *source, GAsyncResult *result,
+                                             gpointer data) {
+  ExportWait *wait = data;
+  GError *error = NULL;
+  cairo_surface_t *surface = webkit_web_view_get_snapshot_finish(
+    WEBKIT_WEB_VIEW(source), result, &error);
+  if (error != NULL || surface == NULL) {
+    g_clear_error(&error);
+    wait->failed = TRUE;
+    g_free(wait->error);
+    wait->error = g_strdup("snapshot-failed");
+  } else {
+    wait->surface = surface;
+  }
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  export_wait_unref(wait);
+}
+
+static void handle_export_capture_page(Host *host, Request *request,
+                                       JSCValue *payload) {
+  static const char *const expected[] = {"x", "y", "width", "height"};
+  if (!object_has_exact_keys(payload, expected, 4)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 x = 0, y = 0, width = 0, height = 0;
+  if (host->export_web == NULL ||
+      !object_get_integer(payload, "x", &x) ||
+      !object_get_integer(payload, "y", &y) ||
+      !object_get_integer(payload, "width", &width) ||
+      !object_get_integer(payload, "height", &height) ||
+      x < 0 || y < 0 || width < 1 || width > 4096 || height < 1 || height > 8192 ||
+      (gint64)width * height * 4 > EBT_MAX_CAPTURE_BYTES) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  for (int i = 0; i < 100 && gtk_events_pending(); i++) gtk_main_iteration_do(FALSE);
+  ExportWait *wait = export_wait_new();
+  wait->timeout_id = g_timeout_add(12000, export_wait_timeout, wait);
+  export_wait_ref(wait);
+  webkit_web_view_get_snapshot(host->export_web, WEBKIT_SNAPSHOT_REGION_VISIBLE,
+                               WEBKIT_SNAPSHOT_OPTIONS_NONE, NULL,
+                               export_capture_snapshot_finished, wait);
+  g_main_loop_run(wait->loop);
+  export_wait_cleanup(wait);
+  if (wait->failed || wait->surface == NULL) {
+    request_failure(request, wait->timed_out ? "ELECTRON_MBT_TIMEOUT"
+                                             : "ELECTRON_MBT_RENDERER_PROBE");
+    export_wait_unref(wait);
+    return;
+  }
+  cairo_surface_t *visible = wait->surface;
+  wait->surface = NULL;
+  /* WebKitGTK may return a CSS-sized snapshot even when the widget reports a
+   * device scale factor. Derive the real ratio from the allocated CSS width;
+   * when the surface is device-sized, downscale it to CSS for capturePage. */
+  int surface_width = cairo_image_surface_get_width(visible);
+  int surface_height = cairo_image_surface_get_height(visible);
+  int allocated_width = gtk_widget_get_allocated_width(GTK_WIDGET(host->export_web));
+  int scale = 1;
+  if (allocated_width > 0 && surface_width > allocated_width &&
+      surface_width % allocated_width == 0) {
+    scale = surface_width / allocated_width;
+  }
+  if (scale < 1) scale = 1;
+  int visible_width = surface_width / scale;
+  int visible_height = surface_height / scale;
+  if (x >= visible_width || y >= visible_height ||
+      x + width > visible_width || y + height > visible_height) {
+    cairo_surface_destroy(visible);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    export_wait_unref(wait);
+    return;
+  }
+  int crop_width = (int)width;
+  int crop_height = (int)height;
+  cairo_surface_t *crop = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, crop_width, crop_height);
+  cairo_t *cr = cairo_create(crop);
+  cairo_scale(cr, 1.0 / (double)scale, 1.0 / (double)scale);
+  cairo_set_source_surface(cr, visible, -(double)x * scale, -(double)y * scale);
+  cairo_paint(cr);
+  cairo_destroy(cr);
+  cairo_surface_destroy(visible);
+  if (host->export_capture != NULL) cairo_surface_destroy(host->export_capture);
+  host->export_capture = crop;
+  JSCValue *reply = object_new(host);
+  object_set_number(host, reply, "width", (double)crop_width);
+  object_set_number(host, reply, "height", (double)crop_height);
+  request_complete(request, "success", reply);
+  export_wait_unref(wait);
+}
+
+static void handle_export_capture_read(Host *host, Request *request,
+                                       JSCValue *payload) {
+  static const char *const expected[] = {"offset", "length"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 offset = 0;
+  gint64 length = 0;
+  if (host->export_capture == NULL ||
+      !object_get_integer(payload, "offset", &offset) ||
+      !object_get_integer(payload, "length", &length) ||
+      offset < 0 || length < 1 || length > 65536) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  cairo_surface_flush(host->export_capture);
+  int stride = cairo_image_surface_get_stride(host->export_capture);
+  int total = stride * cairo_image_surface_get_height(host->export_capture);
+  if (offset >= total) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (length > total - offset) length = total - offset;
+  const unsigned char *data = cairo_image_surface_get_data(host->export_capture);
+  char *base64 = g_base64_encode(data + offset, (gsize)length);
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "base64", base64);
+  object_set_number(host, reply, "bytes", (double)length);
+  request_complete(request, "success", reply);
+  g_free(base64);
 }
 
 static void handle_main_stat(Host *host, Request *request, JSCValue *payload) {
@@ -2216,9 +2988,34 @@ static gboolean dialog_auto_accept(gpointer data) {
   return G_SOURCE_REMOVE;
 }
 
+/* Test-only control-thread hold for the dialog-wait regression. A real modal
+ * chooser on an interactive desktop takes focus, and the next Enter or click
+ * from the person at the machine accepts it long before the requested delay.
+ * This hold keeps the open-dialog request pending for a bounded interval so the
+ * control thread's dialog-specific wait can be exercised without mapping any
+ * window. It is gated on ELECTRON_MBT_TEST_MODE=1, a valid AUTOSELECT target and
+ * an explicit env var; production dialogs and the normal dialog tests still use
+ * the real GTK chooser. */
+static guint dialog_test_hold_ms(void) {
+  const char *mode = getenv("ELECTRON_MBT_TEST_MODE");
+  const char *selected = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  const char *hold = getenv("ELECTRON_MBT_LINUX_DIALOG_HOLD_MS");
+  if (mode == NULL || strcmp(mode, "1") != 0 ||
+      selected == NULL || selected[0] == 0 ||
+      hold == NULL || hold[0] == 0) return 0;
+  long parsed = strtol(hold, NULL, 10);
+  if (parsed < 1 || parsed > 60000) return 0;
+  return (guint)parsed;
+}
+
 static void install_dialog_auto_response(GtkWidget *dialog, gboolean save) {
   const char *test_mode = getenv("ELECTRON_MBT_TEST_MODE");
-  const char *selected = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  const char *selected = save
+    ? getenv("ELECTRON_MBT_LINUX_SAVE_AUTOSELECT")
+    : getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  if (selected == NULL && save) {
+    selected = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+  }
   if (test_mode == NULL || strcmp(test_mode, "1") != 0 ||
       selected == NULL || selected[0] == 0) return;
   char *canonical = save ? (g_path_is_absolute(selected) ? g_strdup(selected) : NULL)
@@ -2267,6 +3064,28 @@ static void handle_main_open_dialog(Host *host, Request *request,
     g_free(title);
     g_free(button);
     request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  guint hold_ms = dialog_test_hold_ms();
+  if (hold_ms > 0) {
+    const char *held = getenv("ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT");
+    ebt_debug("main-open-dialog test-hold ms=%u\n", hold_ms);
+    g_usleep((gulong)hold_ms * 1000);
+    GPtrArray *held_paths = g_ptr_array_new_with_free_func(g_free);
+    char *canonical = held == NULL ? NULL : realpath(held, NULL);
+    if (canonical != NULL) {
+      grant_file(host, canonical, EBT_GRANT_READ | EBT_GRANT_WRITE);
+      g_ptr_array_add(held_paths, canonical);
+    }
+    g_free(default_path);
+    g_free(title);
+    g_free(button);
+    if (held_paths->len == 0) {
+      reply_open_dialog(host, request, TRUE, NULL);
+    } else {
+      reply_open_dialog(host, request, FALSE, held_paths);
+    }
+    g_ptr_array_free(held_paths, TRUE);
     return;
   }
   GtkWindow *parent = NULL;
@@ -2408,6 +3227,11 @@ static void handle_main_save_dialog(Host *host, Request *request,
     return;
   }
   grant_file(host, canonical, EBT_GRANT_WRITE);
+  char *temporary_sibling = g_strdup_printf("%s.tmp", canonical);
+  if (temporary_sibling != NULL) {
+    grant_file(host, temporary_sibling, EBT_GRANT_WRITE);
+    g_free(temporary_sibling);
+  }
   JSCValue *reply = object_new(host);
   object_set_boolean(host, reply, "canceled", FALSE);
   object_set_string(host, reply, "filePath", canonical);
@@ -2416,6 +3240,602 @@ static void handle_main_save_dialog(Host *host, Request *request,
   free(canonical);
 }
 
+
+static void destroy_export_window(Host *host) {
+  if (host == NULL) return;
+  host->export_load_wait = NULL;
+  GtkWidget *window = host->export_window;
+  WebKitWebView *web = host->export_web;
+  host->export_window = NULL;
+  host->export_web = NULL;
+  if (host->export_capture != NULL) {
+    cairo_surface_destroy(host->export_capture);
+    host->export_capture = NULL;
+  }
+  cleanup_export_zlib(host);
+  if (window != NULL) {
+    /* The window owns the child WebView; destroying the window releases it. */
+    gtk_widget_destroy(window);
+  } else if (web != NULL) {
+    g_object_unref(web);
+  }
+}
+
+static gboolean export_wait_timeout(gpointer data) {
+  ExportWait *wait = data;
+  wait->timeout_id = 0;
+  if (!wait->failed) {
+    wait->failed = TRUE;
+    wait->error = g_strdup("timeout");
+  }
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  return G_SOURCE_REMOVE;
+}
+
+static void export_wait_cleanup(ExportWait *wait) {
+  if (wait == NULL) return;
+  if (wait->timeout_id != 0) {
+    g_source_remove(wait->timeout_id);
+    wait->timeout_id = 0;
+  }
+  if (wait->loop != NULL) {
+    g_main_loop_unref(wait->loop);
+    wait->loop = NULL;
+  }
+}
+
+static ExportWait *export_wait_new(void) {
+  ExportWait *wait = g_new0(ExportWait, 1);
+  wait->loop = g_main_loop_new(NULL, FALSE);
+  wait->refs = 1;
+  return wait;
+}
+
+static void export_wait_ref(ExportWait *wait) {
+  if (wait != NULL) wait->refs += 1;
+}
+
+static void export_wait_unref(ExportWait *wait) {
+  if (wait == NULL) return;
+  wait->refs -= 1;
+  if (wait->refs > 0) return;
+  export_wait_cleanup(wait);
+  g_free(wait->error);
+  g_free(wait->json);
+  if (wait->surface != NULL) cairo_surface_destroy(wait->surface);
+  g_free(wait);
+}
+
+static void on_export_load_changed(WebKitWebView *web_view, WebKitLoadEvent event,
+                                   gpointer data) {
+  (void)web_view;
+  Host *host = data;
+  ExportWait *wait = host == NULL ? NULL : host->export_load_wait;
+  if (wait == NULL) return;
+  if (event == WEBKIT_LOAD_FINISHED) {
+    if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  }
+}
+
+static gboolean on_export_load_failed(WebKitWebView *web_view, WebKitLoadEvent event,
+                                      const char *failing_uri, GError *error,
+                                      gpointer data) {
+  (void)web_view;
+  (void)event;
+  (void)failing_uri;
+  Host *host = data;
+  ExportWait *wait = host == NULL ? NULL : host->export_load_wait;
+  if (wait != NULL) {
+    wait->failed = TRUE;
+    if (wait->error == NULL) {
+      wait->error = g_strdup(error == NULL ? "load-failed" : error->message);
+    }
+    if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  }
+  return TRUE;
+}
+
+static void handle_create_export_window(Host *host, Request *request,
+                                        JSCValue *payload) {
+  static const char *const expected[] = {"width", "height"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 width = 0;
+  gint64 height = 0;
+  if (!object_get_integer(payload, "width", &width) ||
+      !object_get_integer(payload, "height", &height) ||
+      width < 100 || width > 4096 || height < 100 || height > 4096) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_OPTIONS");
+    return;
+  }
+  if (host->export_web != NULL || host->export_window != NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_OPTIONS");
+    return;
+  }
+  /* WebKitGTK printing requires a realized GtkWindow. Keep the export window
+   * off-screen, undecorated and out of the taskbar/pager so the app never sees
+   * a second visible window. */
+  host->export_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  host->export_web = WEBKIT_WEB_VIEW(webkit_web_view_new());
+  if (host->export_window == NULL || host->export_web == NULL) {
+    destroy_export_window(host);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  GtkWindow *export_window = GTK_WINDOW(host->export_window);
+  gtk_window_set_title(export_window, "emoon-export");
+  gtk_window_set_decorated(export_window, FALSE);
+  gtk_window_set_default_size(export_window, (gint)width, (gint)height);
+  gtk_window_set_skip_taskbar_hint(export_window, TRUE);
+  gtk_window_set_skip_pager_hint(export_window, TRUE);
+  gtk_window_set_accept_focus(export_window, FALSE);
+  gtk_window_move(export_window, -10000, -10000);
+  gtk_widget_set_size_request(GTK_WIDGET(host->export_web), (gint)width, (gint)height);
+  gtk_container_add(GTK_CONTAINER(host->export_window), GTK_WIDGET(host->export_web));
+  g_signal_connect(host->export_web, "load-changed",
+                   G_CALLBACK(on_export_load_changed), host);
+  g_signal_connect(host->export_web, "load-failed",
+                   G_CALLBACK(on_export_load_failed), host);
+  WebKitSettings *settings = webkit_web_view_get_settings(host->export_web);
+  webkit_settings_set_enable_javascript(settings, TRUE);
+  webkit_settings_set_enable_developer_extras(settings, FALSE);
+  gtk_widget_show_all(host->export_window);
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "webViewAttached", TRUE);
+  request_complete(request, "success", reply);
+}
+
+static void handle_load_export_file(Host *host, Request *request,
+                                    JSCValue *payload) {
+  static const char *const expected[] = {"file"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (host->export_web == NULL || host->export_window == NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_UNKNOWN");
+    return;
+  }
+  char *file = object_get_string(payload, "file");
+  char *canonical = file == NULL ? NULL : canonical_existing_path(host, file);
+  if (canonical == NULL || !main_read_allowed(host, canonical)) {
+    g_free(file);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_DENIED");
+    return;
+  }
+  struct stat info;
+  if (stat(canonical, &info) != 0 || !S_ISREG(info.st_mode)) {
+    g_free(file);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_FILE_NOT_FOUND");
+    return;
+  }
+  GError *error = NULL;
+  char *uri = g_filename_to_uri(canonical, NULL, &error);
+  if (uri == NULL) {
+    g_clear_error(&error);
+    g_free(file);
+    free(canonical);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  ExportWait wait;
+  memset(&wait, 0, sizeof(wait));
+  wait.loop = g_main_loop_new(NULL, FALSE);
+  host->export_load_wait = &wait;
+  wait.timeout_id = g_timeout_add(12000, export_wait_timeout, &wait);
+  webkit_web_view_load_uri(host->export_web, uri);
+  ebt_debug("export-load uri=%s\n", uri);
+  g_main_loop_run(wait.loop);
+  host->export_load_wait = NULL;
+  export_wait_cleanup(&wait);
+  g_free(uri);
+  g_free(file);
+  free(canonical);
+  if (wait.failed || wait.error != NULL) {
+    g_free(wait.error);
+    request_failure(request, "ELECTRON_MBT_LOAD_FAILED");
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "loaded", TRUE);
+  request_complete(request, "success", reply);
+}
+
+static void export_eval_finished(GObject *source, GAsyncResult *result,
+                                 gpointer data) {
+  ExportWait *wait = data;
+  GError *error = NULL;
+  JSCValue *value = webkit_web_view_evaluate_javascript_finish(
+    WEBKIT_WEB_VIEW(source), result, &error);
+  if (error != NULL || value == NULL) {
+    ebt_debug("export-eval error=%s\n",
+              error == NULL ? "(null)" : error->message);
+    g_clear_error(&error);
+    /* A Promise-valued expression (for example document.fonts.ready) is not
+     * directly serializable by this private export path. The renderer treats
+     * a null result as "continue"; PDF printing does not depend on it. */
+    wait->json = g_strdup("null");
+  } else {
+    wait->json = jsc_value_to_json(value, 0);
+    if (wait->json == NULL) wait->json = g_strdup("null");
+    g_object_unref(value);
+  }
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  export_wait_unref(wait);
+}
+
+static void handle_export_execute_js(Host *host, Request *request,
+                                     JSCValue *payload) {
+  static const char *const expected[] = {"code"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (host->export_web == NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_UNKNOWN");
+    return;
+  }
+  char *code = object_get_string(payload, "code");
+  if (code == NULL || strlen(code) > 65536) {
+    g_free(code);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  ExportWait *wait = export_wait_new();
+  wait->timeout_id = g_timeout_add(10000, export_wait_timeout, wait);
+  export_wait_ref(wait);
+  webkit_web_view_evaluate_javascript(host->export_web, code, -1, NULL, NULL, NULL,
+                                      export_eval_finished, wait);
+  g_free(code);
+  g_main_loop_run(wait->loop);
+  export_wait_cleanup(wait);
+  if (wait->failed) {
+    request_failure(request, "ELECTRON_MBT_RENDERER_PROBE");
+    export_wait_unref(wait);
+    return;
+  }
+  JSCValue *parsed = wait->json == NULL ? NULL : json_parse(host, wait->json, strlen(wait->json));
+  JSCValue *reply = object_new(host);
+  if (parsed != NULL) {
+    jsc_value_object_set_property(reply, "value", parsed);
+    g_object_unref(parsed);
+  } else {
+    JSCValue *null_value = jsc_value_new_null(host->json);
+    jsc_value_object_set_property(reply, "value", null_value);
+    g_object_unref(null_value);
+  }
+  request_complete(request, "success", reply);
+  export_wait_unref(wait);
+}
+
+
+
+static void export_snapshot_finished(GObject *source, GAsyncResult *result,
+                                     gpointer data) {
+  ExportWait *wait = data;
+  GError *error = NULL;
+  cairo_surface_t *surface = webkit_web_view_get_snapshot_finish(
+    WEBKIT_WEB_VIEW(source), result, &error);
+  if (error != NULL || surface == NULL) {
+    ebt_debug("export-snapshot error=%s\n",
+              error == NULL ? "(null)" : error->message);
+    g_clear_error(&error);
+    wait->failed = TRUE;
+    wait->error = g_strdup("snapshot-failed");
+  } else {
+    wait->surface = surface;
+  }
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  export_wait_unref(wait);
+}
+
+typedef struct PrintWait {
+  GMainLoop *loop;
+  gboolean done;
+  gboolean failed;
+} PrintWait;
+
+static void on_print_finished(WebKitPrintOperation *operation, gpointer data) {
+  (void)operation;
+  PrintWait *wait = data;
+  wait->done = TRUE;
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+}
+
+static void on_print_failed(WebKitPrintOperation *operation, GError *error,
+                            gpointer data) {
+  (void)operation; (void)error;
+  PrintWait *wait = data;
+  wait->done = TRUE;
+  wait->failed = TRUE;
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+}
+
+static gboolean on_print_timeout(gpointer data) {
+  PrintWait *wait = data;
+  wait->failed = TRUE;
+  if (wait->loop != NULL) g_main_loop_quit(wait->loop);
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean try_print_layout_pdf(Host *host, const char *path,
+                                     const char *page_size,
+                                     gboolean landscape) {
+  if (host == NULL || host->export_web == NULL || path == NULL) return FALSE;
+  GtkPrintSettings *settings = gtk_print_settings_new();
+  GtkPageSetup *page_setup = gtk_page_setup_new();
+  GtkPaperSize *paper = NULL;
+  if (strcmp(page_size, "Letter") == 0) paper = gtk_paper_size_new("na_letter");
+  else if (strcmp(page_size, "Legal") == 0) paper = gtk_paper_size_new("na_legal");
+  else paper = gtk_paper_size_new("iso_a4");
+  if (settings == NULL || page_setup == NULL || paper == NULL) {
+    if (paper != NULL) gtk_paper_size_free(paper);
+    if (page_setup != NULL) g_object_unref(page_setup);
+    if (settings != NULL) g_object_unref(settings);
+    return FALSE;
+  }
+  gtk_print_settings_set_printer(settings, "Print to File");
+  gtk_print_settings_set(settings, GTK_PRINT_SETTINGS_OUTPUT_FILE_FORMAT, "pdf");
+  char *uri = g_filename_to_uri(path, NULL, NULL);
+  if (uri != NULL) {
+    gtk_print_settings_set(settings, GTK_PRINT_SETTINGS_OUTPUT_URI, uri);
+    g_free(uri);
+  }
+  gtk_page_setup_set_paper_size(page_setup, paper);
+  gtk_page_setup_set_orientation(page_setup, landscape ? GTK_PAGE_ORIENTATION_LANDSCAPE
+                                                        : GTK_PAGE_ORIENTATION_PORTRAIT);
+  gtk_paper_size_free(paper);
+  WebKitPrintOperation *operation = webkit_print_operation_new(host->export_web);
+  if (operation == NULL) {
+    g_object_unref(page_setup);
+    g_object_unref(settings);
+    return FALSE;
+  }
+  webkit_print_operation_set_print_settings(operation, settings);
+  webkit_print_operation_set_page_setup(operation, page_setup);
+  PrintWait wait;
+  memset(&wait, 0, sizeof(wait));
+  wait.loop = g_main_loop_new(NULL, FALSE);
+  g_signal_connect(operation, "finished", G_CALLBACK(on_print_finished), &wait);
+  g_signal_connect(operation, "failed", G_CALLBACK(on_print_failed), &wait);
+  guint timeout = g_timeout_add(5000, on_print_timeout, &wait);
+  webkit_print_operation_print(operation);
+  g_main_loop_run(wait.loop);
+  if (timeout != 0) g_source_remove(timeout);
+  g_main_loop_unref(wait.loop);
+  g_object_unref(operation);
+  g_object_unref(page_setup);
+  g_object_unref(settings);
+  struct stat info;
+  return wait.done && !wait.failed && stat(path, &info) == 0 &&
+    S_ISREG(info.st_mode) && info.st_size > 1024;
+}
+
+static void handle_export_print_pdf(Host *host, Request *request,
+                                    JSCValue *payload) {
+  static const char *const expected[] = {"pageSize", "landscape"};
+  if (!object_has_exact_keys(payload, expected, 2)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (host->export_web == NULL) {
+    request_failure(request, "ELECTRON_MBT_WINDOW_UNKNOWN");
+    return;
+  }
+  char *page_size = object_get_string(payload, "pageSize");
+  gboolean landscape = FALSE;
+  JSCValue *landscape_value = object_get_value(payload, "landscape");
+  if (landscape_value != NULL && jsc_value_is_boolean(landscape_value)) {
+    landscape = jsc_value_to_boolean(landscape_value);
+  }
+  if (landscape_value != NULL) g_object_unref(landscape_value);
+  if (page_size == NULL ||
+      (strcmp(page_size, "A4") != 0 && strcmp(page_size, "Letter") != 0 &&
+       strcmp(page_size, "Legal") != 0)) {
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  GError *error = NULL;
+  char *pdf_dir = g_build_filename(host->root, ".appData", "tmp", NULL);
+  if (pdf_dir == NULL || g_mkdir_with_parents(pdf_dir, 0700) != 0) {
+    g_free(pdf_dir);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  char *pdf_template = g_build_filename(pdf_dir, "emoon-export-XXXXXX.pdf", NULL);
+  g_free(pdf_dir);
+  if (pdf_template == NULL) {
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  char *pdf_path = pdf_template;
+  int pdf_fd = g_mkstemp(pdf_path);
+  if (pdf_fd < 0) {
+    g_free(pdf_template);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  close(pdf_fd);
+  if (try_print_layout_pdf(host, pdf_path, page_size, landscape)) {
+    ebt_debug("export-print-layout wrote %s\n", pdf_path);
+    gchar *layout_data = NULL;
+    gsize layout_length = 0;
+    GError *layout_error = NULL;
+    gboolean layout_read = g_file_get_contents(pdf_path, &layout_data, &layout_length, &layout_error);
+    ebt_debug("export-print-layout read=%d length=%zu error=%s\n", layout_read,
+              (size_t)layout_length,
+              layout_error == NULL ? "(null)" : layout_error->message);
+    if (layout_read && layout_length > 0 && layout_length <= EBT_MAX_MAIN_WRITE) {
+      gchar *layout_base64 = g_base64_encode((const guchar *)layout_data, layout_length);
+      JSCValue *layout_reply = object_new(host);
+      object_set_string(host, layout_reply, "base64", layout_base64);
+      object_set_number(host, layout_reply, "sizeBytes", (double)layout_length);
+      request_complete(request, "success", layout_reply);
+      g_free(layout_base64);
+      g_free(layout_data);
+      unlink(pdf_path);
+      g_free(pdf_path);
+      g_free(page_size);
+      return;
+    }
+    g_clear_error(&layout_error);
+    g_free(layout_data);
+    unlink(pdf_path);
+    /* Fall through to the bitmap snapshot path when the print-layout PDF is
+     * unreadable or too large for one host response frame. */
+  }
+  char *pdf_uri = g_filename_to_uri(pdf_path, NULL, &error);
+  if (pdf_uri == NULL) {
+    g_clear_error(&error);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+    return;
+  }
+  double page_width = 595.0;
+  double page_height = 842.0;
+  if (strcmp(page_size, "Letter") == 0) {
+    page_width = 612.0;
+    page_height = 792.0;
+  } else if (strcmp(page_size, "Legal") == 0) {
+    page_width = 612.0;
+    page_height = 1008.0;
+  }
+  if (landscape) {
+    double swap = page_width;
+    page_width = page_height;
+    page_height = swap;
+  }
+  ExportWait *wait = export_wait_new();
+  wait->timeout_id = g_timeout_add(12000, export_wait_timeout, wait);
+  export_wait_ref(wait);
+  webkit_web_view_get_snapshot(host->export_web, WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT,
+                               WEBKIT_SNAPSHOT_OPTIONS_NONE, NULL,
+                               export_snapshot_finished, wait);
+  g_main_loop_run(wait->loop);
+  export_wait_cleanup(wait);
+  if (wait->failed || wait->surface == NULL) {
+    ebt_debug("export-snapshot failed=%s\n", wait->error == NULL ? "(null)" : wait->error);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(pdf_uri);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_RENDERER_PROBE");
+    export_wait_unref(wait);
+    return;
+  }
+  cairo_surface_t *snapshot = wait->surface;
+  wait->surface = NULL;
+  int image_width = cairo_image_surface_get_width(snapshot);
+  int image_height = cairo_image_surface_get_height(snapshot);
+  if (image_width <= 0 || image_height <= 0) {
+    cairo_surface_destroy(snapshot);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(pdf_uri);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_RENDERER_PROBE");
+    export_wait_unref(wait);
+    return;
+  }
+  cairo_surface_t *pdf_surface = cairo_pdf_surface_create(pdf_path, page_width, page_height);
+  if (cairo_surface_status(pdf_surface) != CAIRO_STATUS_SUCCESS) {
+    cairo_surface_destroy(pdf_surface);
+    cairo_surface_destroy(snapshot);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(pdf_uri);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_FILE_WRITE");
+    export_wait_unref(wait);
+    return;
+  }
+  double scale = page_width / (double)image_width;
+  double page_source_height = page_height / scale;
+  int offset = 0;
+  while (offset < image_height) {
+    cairo_t *cr = cairo_create(pdf_surface);
+    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    cairo_paint(cr);
+    cairo_save(cr);
+    cairo_scale(cr, scale, scale);
+    cairo_set_source_surface(cr, snapshot, 0.0, -(double)offset);
+    cairo_rectangle(cr, 0.0, 0.0, page_width / scale, page_height / scale);
+    cairo_clip(cr);
+    cairo_paint(cr);
+    cairo_restore(cr);
+    cairo_show_page(cr);
+    cairo_destroy(cr);
+    int step = (int)page_source_height;
+    if (step < 1) step = 1;
+    offset += step;
+  }
+  cairo_surface_flush(pdf_surface);
+  cairo_status_t pdf_status = cairo_surface_status(pdf_surface);
+  cairo_surface_destroy(pdf_surface);
+  cairo_surface_destroy(snapshot);
+  if (pdf_status != CAIRO_STATUS_SUCCESS) {
+    unlink(pdf_path);
+    g_free(pdf_path);
+    g_free(pdf_uri);
+    g_free(page_size);
+    request_failure(request, "ELECTRON_MBT_FILE_WRITE");
+    export_wait_unref(wait);
+    return;
+  }
+    ebt_debug("export-snapshot wrote %s image=%dx%d pages=%d\n",
+            pdf_path, image_width, image_height,
+            (image_height + (int)page_source_height - 1) / (int)page_source_height);
+  g_free(pdf_uri);
+  g_free(page_size);
+  gchar *data = NULL;
+  gsize length = 0;
+  if (!g_file_get_contents(pdf_path, &data, &length, &error) || length == 0) {
+    g_clear_error(&error);
+    g_free(data);
+    unlink(pdf_path);
+    g_free(pdf_path);
+    request_failure(request, "ELECTRON_MBT_FILE_READ");
+    export_wait_unref(wait);
+    return;
+  }
+  unlink(pdf_path);
+  g_free(pdf_path);
+  if (length > 700 * 1024) {
+    g_free(data);
+    request_failure(request, "ELECTRON_MBT_FILE_LIMIT");
+    export_wait_unref(wait);
+    return;
+  }
+  gchar *base64 = g_base64_encode((const guchar *)data, length);
+  g_free(data);
+  JSCValue *reply = object_new(host);
+  object_set_string(host, reply, "base64", base64);
+  object_set_number(host, reply, "sizeBytes", (double)length);
+  request_complete(request, "success", reply);
+  g_free(base64);
+  export_wait_unref(wait);
+}
+
+static void handle_destroy_export_window(Host *host, Request *request,
+                                         JSCValue *payload) {
+  if (!object_has_exact_keys(payload, NULL, 0)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  destroy_export_window(host);
+  JSCValue *reply = object_new(host);
+  request_complete(request, "success", reply);
+}
 
 static void teardown_window_state(Host *host, const char *code) {
   if (host == NULL) return;
@@ -2453,6 +3873,7 @@ static void handle_destroy_window(Host *host, Request *request) {
   host->window = NULL;
   host->web = NULL;
   host->manager = NULL;
+  destroy_export_window(host);
   teardown_window_state(host, "ELECTRON_MBT_WINDOW_DESTROYED");
   if (window != NULL) gtk_widget_destroy(window);
   JSCValue *reply = object_new(host);
@@ -2534,6 +3955,10 @@ static void dispatch_request(Request *request, JSCValue *payload) {
   }
   if (strcmp(operation, "load-file") == 0) {
     start_load(host, request, payload, FALSE);
+    return;
+  }
+  if (strcmp(operation, "trigger-renderer-export-ui") == 0) {
+    handle_trigger_renderer_export_ui(host, request);
     return;
   }
   if (strcmp(operation, "probe-renderer") == 0) {
@@ -2658,12 +4083,133 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     handle_destroy_window(host, request);
     return;
   }
+  if (strcmp(operation, "send-adapted-event") == 0) {
+    static const char *const expected[] = {"topic", "payload"};
+    if (!object_has_exact_keys(payload, expected, 2)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    char *topic = object_get_string(payload, "topic");
+    char *payload_text = object_get_string(payload, "payload");
+    if (topic == NULL || strlen(topic) > 128 ||
+        payload_text == NULL || strlen(payload_text) > EBT_MAX_APP_PAYLOAD) {
+      g_free(topic);
+      g_free(payload_text);
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    if (host->web == NULL || host->json == NULL || host->adapter_nonce == NULL ||
+        !host->content_alive || !host->loaded) {
+      g_free(topic);
+      g_free(payload_text);
+      request_failure(request, "ELECTRON_MBT_STALE_DOCUMENT");
+      return;
+    }
+    JSCValue *topic_value = jsc_value_new_string(host->json, topic);
+    JSCValue *payload_value = jsc_value_new_string(host->json, payload_text);
+    char *quoted_topic = topic_value == NULL ? NULL : jsc_value_to_json(topic_value, 0);
+    char *quoted_payload = payload_value == NULL ? NULL : jsc_value_to_json(payload_value, 0);
+    if (topic_value != NULL) g_object_unref(topic_value);
+    if (payload_value != NULL) g_object_unref(payload_value);
+    if (quoted_topic == NULL || quoted_payload == NULL) {
+      g_free(quoted_topic);
+      g_free(quoted_payload);
+      g_free(topic);
+      g_free(payload_text);
+      request_failure(request, "ELECTRON_MBT_MAIN_ERROR");
+      return;
+    }
+    char *script = g_strdup_printf(
+      "if (typeof window.__electronMbtDispatch === 'function') { window.__electronMbtDispatch(\"%s\", %s, JSON.parse(%s)); }",
+      host->adapter_nonce, quoted_topic, quoted_payload);
+    ebt_debug("send-adapted-event topic=%s\n", topic);
+    if (script != NULL) {
+      webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL,
+                                          NULL, NULL);
+    }
+    g_free(script);
+    g_free(quoted_topic);
+    g_free(quoted_payload);
+    g_free(topic);
+    g_free(payload_text);
+    JSCValue *reply = object_new(host);
+    request_complete(request, "success", reply);
+    return;
+  }
+  if (strcmp(operation, "resize-export-window") == 0) {
+    handle_resize_export_window(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "export-capture-page") == 0) {
+    handle_export_capture_page(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "export-capture-read") == 0) {
+    handle_export_capture_read(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "create-export-window") == 0) {
+    handle_create_export_window(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "load-export-file") == 0) {
+    handle_load_export_file(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "export-execute-js") == 0) {
+    handle_export_execute_js(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "export-print-pdf") == 0) {
+    handle_export_print_pdf(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "destroy-export-window") == 0) {
+    handle_destroy_export_window(host, request, payload);
+    return;
+  }
   if (strcmp(operation, "main-read-file") == 0) {
     handle_main_read_file(host, request, payload);
     return;
   }
   if (strcmp(operation, "main-write-file") == 0) {
     handle_main_write_file(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "zlib-deflate-start") == 0) {
+    handle_zlib_deflate_start(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "zlib-deflate-write") == 0) {
+    handle_zlib_deflate_write(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "zlib-deflate-end") == 0) {
+    handle_zlib_deflate_end(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "zlib-deflate-abort") == 0) {
+    handle_zlib_deflate_abort(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-write-at") == 0) {
+    handle_main_write_at(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-rename") == 0) {
+    handle_main_rename(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-unlink") == 0) {
+    handle_main_unlink(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-read-dir") == 0) {
+    handle_main_read_dir(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "main-mkdir") == 0) {
+    handle_main_mkdir(host, request, payload);
     return;
   }
   if (strcmp(operation, "main-stat") == 0) {
@@ -2817,6 +4363,10 @@ static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event,
 }
 
 int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+    printf("emoon-host 0.1.0\n");
+    return 0;
+  }
   if (argc != 2 || fcntl(EBT_CONTROL_CHANNEL, F_GETFD) < 0 ||
       fcntl(EBT_LOAD_CHANNEL, F_GETFD) < 0 ||
       fcntl(EBT_EVENT_CHANNEL, F_GETFD) < 0) {

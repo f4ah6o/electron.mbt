@@ -183,3 +183,445 @@ On this integration SHA (macOS arm64 / SDK 26.5), the following were executed an
 ## Delegation status
 
 Implementation delegation through the GitHub Codex integration was attempted on PR #1. The bot replied that a repository environment must first be created, so no delegated implementation execution was confirmed. The implementation was written by the coordinating agent. Independent code review is requested on the implementation PR and its actual response belongs in the PR record; an implementation-environment error is not a review result.
+
+## Electromoon rename and dual CLI (2026-10-23)
+
+- Renamed the MoonBit module target to `f4ah6o/electromoon`, moved the native
+  CLI package from `native/nodeless` to `cmd/emoon`, and renamed the legacy Node
+  CLI to `cmd/legacy-node.cjs`. The GitHub repository rename is still an owner
+  action; the README states that it is pending.
+- Added the Node reference CLI `cmd/emoon.cjs` with `init`, `inspect`, `migrate`
+  and `dev`. `doctor` and `run` delegate to a resolved native runtime; the Node
+  CLI never reimplements the runtime. The shared workspace is `.emoon/` and the
+  migration report is `.emoon/migration-report.json` with `compatible:false`.
+- Added the native `emoon` `help`, `version`, `doctor` and `--profile` admission
+  paths while preserving the existing `run` behavior. `doctor` validates the
+  manifest, hashes, graph, profile and adapter without launching the app. The
+  native `init`/`inspect`/`migrate`/`dev` ports are not implemented yet.
+- Added `scripts/migrate-app.cjs`, `scripts/dev-flow.cjs`,
+  `scripts/build-cli.cjs`, `moon-binstall.json`, the MIT `LICENSE`, `SECURITY.md`
+  and docs 0060–0063. `moon-binstall.json` maps `cmd/emoon` and `cmd/emoon-host`
+  to release assets, but no GitHub Release or Mooncakes publication exists.
+- Verification on this Linux host: `moon test --target js` 145 PASS;
+  `moon test --target native` 178 PASS; the new `tests/emoon-cli.test.cjs` 10
+  PASS; `npm test` 479 PASS / 1 FAIL / 32 SKIP. The failure is the Linux
+  slow-dialog timing test (`open dialog survives beyond the ordinary 15-second
+  control timeout`), which passed on an isolated manual rerun at 17.9 s with the
+  selected file updated; the suite run recorded a shorter duration. The native
+  adapted fixture and the Node `emoon dev` flow reach `status:"PASS"` with
+  `pageTitle:"migrate-fixture-ready"` and `compatible:false`.
+- Not run: `moon publish`, GitHub Release creation, `moon binstall`,
+  `npm publish`, macOS native execution/signing, and clean-machine install.
+  No compatibility row is promoted.
+
+## Dialog timeout test isolation (2026-10-23)
+
+- Root cause of the local slow-dialog failure: the X display used for development
+  (`:10.0`) is an interactive xrdp/xfce session. The modal GTK chooser takes
+  focus, and the next Enter or click from the person at the machine accepts it
+  before the 16-second delay. This is test-environment isolation, not a host
+  timeout regression; the same test is stable under CI's Xvfb display.
+- The regression is now split. The real 16-second chooser test runs only when
+  `ELECTRON_MBT_ISOLATED_DISPLAY=1` is set (the CI `linux-native` job does this
+  inside Xvfb). A new test-only `ELECTRON_MBT_LINUX_DIALOG_HOLD_MS` path keeps
+  the open-dialog request pending for 16 seconds without mapping a chooser, so
+  the host's dialog-specific wait is also exercised on interactive desktops
+  without stealing focus. The hold is gated on `ELECTRON_MBT_TEST_MODE=1`, a
+  valid `AUTOSELECT` target and the explicit hold variable; production dialogs
+  still use the real GTK chooser.
+- Local `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test
+  tests/nodeless-runtime.test.cjs`: 22 PASS / 0 FAIL / 21 SKIP. The real-chooser
+  test SKIPs locally, the new hold test PASSes in 17.8 s, and the open/save
+  dialog tests PASS. The full `npm test` result is recorded with the native CLI
+  work so the counts are not split across two runs.
+
+## Native `emoon` developer commands (2026-10-23)
+
+- Native `emoon` now implements `init`, `inspect`, `migrate` and `dev` in
+  addition to `run`/`doctor`/`version`/`help`. `dev` stages and then invokes
+  doctor/run in the same process; the runtime is not reimplemented.
+- The shared contract lives in `cli/emoon_contract`: argument parsing, config
+  merge, path rules, entry-type classification, the static scanner, the schema-2
+  manifest writer and the schema-3 adapted adapter generator. The Node reference
+  remains the oracle.
+- The native staging FS primitives are bounded in `cmd/emoon/file_io.c`: app-root
+  containment, symlink and `..` rejection, 4096 files / 64 MiB / 16 MiB, atomic
+  JSON writes and mode-preserving copies. Inspect uses 16384 entries / 8192
+  files / 256 MiB / 32 MiB / depth 64. Any symlink under the app tree, a
+  symlinked stage, config or `package.json` fails closed.
+- The Node reference was aligned with the same contract: `--config` is
+  app-relative and root-constrained, inspect rejects symlinks, `.git`/`.emoon`
+  and `node_modules/.cache` are skipped by path, `package.json` is bounded to
+  64 KiB, and common FS errors map to documented `ELECTRON_MBT_*` codes.
+- The builtin classification table now covers the Node 24.21/24.22
+  `builtinModules` set (unsupported entries stay unsupported). The native and
+  Node scanner outputs match on the parity fixtures and corpus forms.
+- Linux parity (`tests/emoon-cli-parity.test.cjs`): 13 PASS. Stage trees,
+  file modes, `source-manifest.json`, `nodeless-app.json` and
+  `adapted/page-api.js` are byte-identical on the fixtures; reports differ only
+  in `tool.impl` and the absolute `appDir`. The adapted native `dev` window
+  reaches `status:"PASS"`, `pageTitle:"migrate-fixture-ready"`, adapter requests
+  1 and `compatible:false`.
+- Validation on this Linux host:
+  - `moon test --target js`: **163 PASS / 0 FAIL**.
+  - `moon test --target native`: **196 PASS / 0 FAIL**.
+  - `node --test tests/emoon-cli.test.cjs`: **10 PASS / 0 FAIL**.
+  - `node --test tests/emoon-cli-parity.test.cjs`: **13 PASS / 0 FAIL** (the
+    window E2E was included).
+  - `ELECTRON_MBT_REQUIRE_NATIVE_HOST=1 node --test
+    tests/nodeless-runtime.test.cjs`: **22 PASS / 0 FAIL / 21 SKIP**. The real
+    16-second chooser test is skipped locally (it needs
+    `ELECTRON_MBT_ISOLATED_DISPLAY=1`); the unmapped control-hold test passes in
+    17.77 s.
+  - `npm test`: **526 tests / 493 PASS / 0 FAIL / 33 SKIP**.
+- Not run: macOS native execution of the developer commands, `moon publish`,
+  GitHub Release creation, `moon binstall`, `npm publish`, signing/notarization,
+  human dialog UI and a clean-machine install. No compatibility row is promoted.
+
+## Manual demo window (2026-10-26)
+
+- Added [`fixtures/manual-demo-app`](../fixtures/manual-demo-app/) and
+  [`scripts/try-emoon.cjs`](../scripts/try-emoon.cjs) (`npm run demo:emoon`):
+  copy the demo app, run native `init`/`inspect`/`migrate`/`doctor`, then open a
+  real GTK/WebKitGTK window with `run --window --hold`. The window stays until
+  the human closes it (`--no-launch`, `--reset`, `--rebuild` are available).
+- Verified the adapted demo on this Linux host: the report is `status:"PASS"`,
+  the page title is `Electromoon manual demo`, the page shows
+  `ready: theme=dark`, the initial `window.api.getSettings()` request reaches
+  `ipcMain.handle` (`requests:1`, zero reply errors), and a window-manager close
+  exits with `HOLD_EXIT reason:"window-closed"` and status 0.
+- Documented the trial flow in [`docs/0064-manual-trial.md`](0064-manual-trial.md).
+  The demo is a developer convenience, not a compatibility result.
+- Page-script finding: the generated adapter defines the exposed name as a
+  non-configurable `window` property. A classic script with a top-level
+  `const api = window.api` fails in JavaScriptCore with `Can't create dup` and
+  never runs. The demo wraps its script in an IIFE and the manual note tells
+  users to read `window.api` directly or wrap the script. The original preload
+  is still not executed.
+- Scope: Linux only; macOS native execution, human dialog UI, publication and
+  `moon binstall` remain NOT RUN.
+
+## Unbuilt source trees, dependency skips and `dev --build` (2026-10-26)
+
+- Diagnosed `dist/emoon dev ./_build/Moji --no-launch`: `_build/Moji` is a 1.0.7
+  source checkout without `out/` or `node_modules/`. The preflight used to check
+  the renderer first and reported "could not detect a renderer directory"; it
+  now validates `package.json` main first and returns
+  `ELECTRON_MBT_MIGRATE_BUILD_MISSING` with the missing path and the
+  `npm run build` / `dev --build` hint. The Node reference matches.
+- Inspect and staging now skip `.git`, `.emoon` and `node_modules` at any depth.
+  This removes the `node_modules/.bin/*` symlink failure and the 8,192-file
+  inspect limit failure on real app repositories; `node_modules` never enters a
+  stage. Symlinks in the remaining tree still fail closed.
+- When `dirname(main)` is not the app root, the whole main output directory is
+  staged. This covers electron-vite multi-entry builds such as Moji 1.0.7's
+  `out/main/main.js` plus `pngWorker.js`; the worker is present in the manifest
+  and the doctor graph resolves it.
+- Added opt-in `emoon dev --build` (native and Node). It checks `scripts.build`
+  and `node_modules/`, runs `npm run build` in the app root (stdout redirected to
+  stderr so JSON stdout stays clean), then continues with init/inspect/migrate/
+  doctor. It never runs `npm install`. Missing output, missing dependencies and a
+  failing build report `ELECTRON_MBT_MIGRATE_BUILD_MISSING`,
+  `..._BUILD_DEPS` and `..._BUILD`. The Node `dev` also forwards `--page`.
+- Real-app checks on this Linux host:
+  - `dist/emoon dev ./_build/Moji --no-launch` now reports BUILD_MISSING naming
+    `out/main/main.js`; the Node CLI reports the same code/message.
+  - `dist/emoon dev ./_build/moji-check --no-launch --force` (built Moji 1.0.5
+    with 19k-file `node_modules`) reaches inspect/migrate/doctor with a 109-file
+    stage and doctor `ready`; no node_modules in the stage.
+  - `dist/emoon run _build/moji-linux-app --window --hold --entry
+    out/main/main.js` shows `Moji v1.0.5`; WM close gives
+    `HOLD_EXIT reason:"window-closed"` and exit 0.
+- `--force` fallback: when an existing stage cannot be removed (for example a
+  stage owned by another UID), both CLIs rename it to `.emoon/app.stale` (or
+  `.stale-N`), warn on stderr, and create a fresh stage. The real `_build/Moji`
+  run hit this: the old stage was owned by `nobody`, and `dist/emoon dev
+  _build/Moji --force --no-launch` now moves it aside, stages 1.0.7 (141 files)
+  and reaches doctor `ready`.
+- Validation: `moon test --target js` **163 PASS**, `--target native` **196
+  PASS**, `tests/emoon-cli.test.cjs` **10 PASS**, parity **20 PASS**, `npm test`
+  **533 tests / 500 PASS / 0 FAIL / 33 SKIP**.
+- Not run: `_build/Moji` 1.0.7 `npm install`/`npm run build` and its
+  `dev --build` (the user selected the prepared 1.0.5 stage); macOS native,
+  publication, `moon binstall`, signing and human dialog UI remain NOT RUN.
+
+## `node:crypto` subset (2026-10-26)
+
+- Implemented `node:crypto` / `crypto` in the embedded Node prelude:
+  `createHash('sha256'|'sha-256')` with `update` over strings, Buffer,
+  ArrayBuffer and number arrays and `digest` in hex/base64/Buffer;
+  `randomUUID` (v4), `randomBytes` and `getRandomValues`. Unsupported
+  algorithms, encodings and WebCrypto surfaces fail closed.
+- Host entropy is `getrandom` on Linux, `arc4random_buf` on macOS (compiled, not
+  run here) and `/dev/urandom` elsewhere; there is no `Math.random` fallback. The
+  random length is capped at 65,536 bytes and hash input at 64 MiB.
+- Registered `crypto` in the builtin surface as a planned/implemented subset;
+  the original preload is still not executed.
+- Evidence: native prelude crypto test (empty/abc SHA-256 vectors, base64, UUID
+  v4 shape/variant/distinctness, random bytes, `getRandomValues`, unsupported
+  algorithm), `moon test --target native` **197 PASS**, `--target js` **163
+  PASS**, `npm test` **533 tests / 500 PASS / 0 FAIL / 33 SKIP**, parity **20
+  PASS**. The Moji 1.0.5 adapted hold still reaches `HOLDING`/`HOLD_EXIT` and
+  exits 0.
+- Moji 1.0.7 now advances past `node:crypto`; the next main-eval failure is
+  `ELECTRON_MBT_MODULE_DEPENDENCY:node:v8`. `node:worker_threads`,
+  `node:perf_hooks`, zlib, the 1.0.7 adapted manifest and a normal window mode
+  remain. macOS entropy and a full 1.0.7 window are NOT RUN. See
+  [docs/0065](0065-node-crypto.md).
+
+## Moji 1.0.7 main/window boot (2026-10-26)
+
+- Added minimal import/boot surfaces for `node:v8` (`getHeapStatistics` with a
+  fixed 256 MiB limit), `node:worker_threads` (import-only, fail-closed
+  `Worker`), `node:perf_hooks` (local mark/measure), `node:os` (host
+  placeholders) and `electron.protocol` (`registerSchemesAsPrivileged` no-op;
+  `handle` stores but does not execute; `moji-asset://` is not served). The
+  global `performance` object is exposed.
+- The plain Moji 1.0.7 stage now reports `status:"PASS"` for the main/window
+  runtime: `windowLoaded:true`, `pageTitle:"Moji v1.0.7"`, `mainError:""`,
+  `compatible:false`. It is **not** a working app: `rendererLoaded:false`,
+  `rootChildren:0`, `apiPresent:false`, `adapted.requests:0`; a plain stage has
+  no adapted API and protocol handlers are not executed.
+- Moji 1.0.5 adapted hold remains `HOLDING` → `HOLD_EXIT reason:"window-closed"`,
+  exit 0.
+- Tests: `moon test --target native` **198 PASS**, `--target js` **163 PASS**,
+  `npm test` **533 tests / 500 PASS / 0 FAIL / 33 SKIP**, parity **20 PASS**.
+- Limits: `worker_threads` is not implemented, `zlib.createDeflate` is still
+  unsupported, `os`/`v8` values are placeholders, and the 1.0.7 adapted API
+  (drafts, openMany, readPath stream) is NOT RUN. See [docs/0066](0066-node-runtime-surfaces.md).
+
+## Moji 1.0.7 adapted renderer and preload capture (2026-10-26)
+
+- Added `scripts/capture-preload-api.cjs`, a generic dev-time capture tool for
+  built contextBridge preloads. It evaluates the preload once with a fake
+  `electron`, records the first IPC call/event per exposed function, supports
+  explicit `--operation method=operation` overrides, and writes a schema-3
+  adapted manifest. It does not execute the preload in the app.
+- Added the generic reserved operation `emoon:read-file` for granted files
+  (host `main-read-file`, 256 KiB cap), returning
+  `{ok,path,content,sizeBytes,sizeProfile}` for adapted manifests that map a
+  streamed read to a simple read.
+- Captured the built Moji 1.0.7 preload (23 calls, 6 topics, 1 unsupported
+  `getDroppedPath`) with `readPath=emoon:read-file`, staged it with
+  `init --api`/`dev` (143 files, doctor `ready`), and ran it on Linux:
+  `rendererLoaded:true`, `apiPresent:true`, initial UI text `New / Open / Save /
+  Preview / Editor / Export` and `A LIGHTWEIGHT, SIMPLE MARKDOWN READER`,
+  adapted 4 requests / 0 reply errors / 0 rejected, `HOLDING` then
+  `HOLD_EXIT reason:"window-closed"`, exit 0.
+- Added a generic preload-capture test fixture/test. Validation: native **198
+  PASS**, JS **163 PASS**, npm **534 tests / 501 PASS / 0 FAIL / 33 SKIP**,
+  parity **20 PASS**.
+- Limits: file open/edit/save/drag/export/human dialogs are NOT verified;
+  `getDroppedPath`, `moji-asset://`, zlib compression and real worker threads
+  remain limited. No compatibility claim.
+
+## Main fs rename/unlink (2026-10-26)
+
+- Added generic `main-rename` / `main-unlink` host operations and
+  `fs.renameSync` / `fs.unlinkSync` plus `fs.promises.rename`/`unlink` in the
+  Node prelude. They use the existing write policy (app `.appData`/`.userData`
+  or a write-granted exact file), canonical paths, directory rejection and
+  `ELECTRON_MBT_FILE_*` error mapping.
+- This fixes Moji 1.0.7's atomic settings/draft persistence path: the initial
+  `Could not restore recovery drafts: ELECTRON_MBT_MAIN_ERROR` toast is gone.
+  The adapted 1.0.7 initial UI still reports `rendererLoaded:true`,
+  `apiPresent:true`, 4 requests / 0 reply errors; the 1.0.5 adapted hold remains
+  PASS.
+- Validation: native **198 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**, parity **20 PASS**. File open/save, export and human
+  dialogs remain NOT verified; no compatibility claim. See
+  [docs/0068](0068-main-fs-rename.md).
+
+## Adapted sender authority, events and AbortController (2026-10-26)
+
+- Fixed the adapted main bridge to pass the real `BrowserWindow.webContents`
+  object as `event.sender` (`senderFrame:null`, `mainFrame` alias,
+  `id`, `isDestroyed`). This satisfies Electron apps' trusted-sender checks;
+  Moji 1.0.7's `isTrustedSender` had rejected every handler with `forbidden`.
+- Implemented `webContents.send` through a new generic Linux host
+  `send-adapted-event` operation that evaluates the page adapter's
+  `__electronMbtDispatch` for a manifest topic. Added `AbortController` /
+  `AbortSignal`, and propagated main handler error messages to the page error.
+- A probe page with the captured 1.0.7 API now receives
+  `openDialog() = {ok:true, sessionId, total:1}` after the host dialog and
+  auto-select, where it previously failed with `MAIN_ERROR`.
+- Validation: native **198 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**, parity **20 PASS**. Moji 1.0.7 initial renderer and Moji
+  1.0.5 hold remain PASS. Open-many progress/file open/render, macOS event
+  delivery, zlib, worker threads and human dialogs remain NOT verified. See
+  [docs/0069](0069-adapted-sender-events.md).
+
+## Moji 1.0.7 open, edit and save (2026-10-26)
+
+- Trusted-sender fix: adapted main handlers receive the real
+  `BrowserWindow.webContents` as `event.sender` and `senderFrame:null`, so
+  Moji's `isTrustedSender` no longer rejects every IPC call with `forbidden`.
+- Added Linux main-to-page event delivery (`send-adapted-event`), app-code host
+  operation allowlisting/dispatch for `main-rename`, `main-unlink` and
+  `send-adapted-event`, `AbortController`, detached-work pumping, and
+  `ipcMain.on` listener dispatch.
+- Added generic `main-mkdir` / `main-read-dir` and ensured `app.getPath`
+  app-data directories exist. Fixed new-file path allocation/free mismatches
+  that crashed the host at draft/settings startup.
+- Verified Moji 1.0.7 end to end for the core reader workflow: Ctrl+O native
+  dialog → open-many progress/done → `emoon:read-file` → rendered preview
+  (`Emoon open test` / `UNIQUE_OPEN_MARKER_12345`); Editor + Ctrl+S wrote
+  `EDITED_BY_EMOON` to the selected file; `.appData/<app>/settings.json`
+  persisted `recentFiles` / `lastDialogDirectory` and the next launch shows the
+  recent file. Initial UI has no draft-recovery toast and host stays alive.
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**, parity **20 PASS**; 1.0.5 adapted hold remains PASS.
+- Remaining: draft autosave, export/PDF, drag-and-drop, settings panel,
+  `update:get-state`, macOS native and publication items. No compatibility
+  claim. See [docs/0069](0069-adapted-sender-events.md) and
+  [docs/0070](0070-main-fs-directories.md).
+
+## Moji 1.0.7 drafts and settings UI (round 4)
+
+- Verified draft autosave: `drafts:save` → `main-write-file` → `main-rename`
+  created `.appData/<app>/drafts/manifest.json` and a `.md` draft; the next
+  launch restored the Untitled document.
+- Verified the Settings panel (General/Preview/Editor/Shortcuts) and the
+  persisted recent-file welcome screen.
+- Verified the Export dialog UI (PDF/HTML/PNG, page size, orientation); the
+  export pipeline itself still requires a hidden export BrowserWindow and
+  `webContents.printToPDF`.
+- Added a native regression assertion that `ipcMain.on` (send-style) listeners
+  are dispatched alongside `ipcMain.handle`.
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**; 1.0.5 adapted hold remains PASS. Remaining: export/PDF,
+  drag-and-drop, `update:get-state`, macOS native/publication. No compatibility
+  claim.
+
+## Offscreen PDF/HTML export (2026-10-27)
+
+- Added a hidden offscreen BrowserWindow backed by a private WebKitWebView,
+  `load-export-file`, `export-execute-js`, `export-print-pdf` and
+  `destroy-export-window`; `fs.promises.open` FileHandle support for the app's
+  export-source writer; and `BrowserWindow.fromWebContents`/registry fixes.
+- PDF is produced from a full-document WebKit snapshot via Cairo (A4/Letter/
+  Legal, portrait/landscape). It is a real but raster PDF: 3885 bytes,
+  `%PDF-1.7`, A4 1 page in the probe. HTML export writes the exact HTML string
+  (75-byte probe). Both used the actual pinned Moji main through `exportAs`.
+- A subagent review found and we fixed/limited: export callback timeouts and
+  lifetime, directory-list/PDF frame caps, symlinked recursive mkdir, stale
+  window registry, second-export-view sharing and export teardown. Remaining
+  limits: raster PDF/no print CSS/page breaks, no Promise-aware
+  executeJavaScript (font wait is skipped), PNG, drag-and-drop, macOS and the
+  actual toolbar-button path (probe used the same handler).
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**; 1.0.5 hold PASS; Moji open/edit/save regression PASS. No
+  compatibility claim. See [docs/0071](0071-pdf-html-export.md).
+
+## Offscreen data-URL loadURL (resume)
+
+- Added `BrowserWindow.loadURL` support for offscreen `data:text/html` URLs,
+  including optional `baseURLForDataURL` insertion. It decodes to an app-local
+  temp file, loads via `load-export-file`, and removes the temp file in
+  `destroy`; non-data/non-offscreen loadURL still fails closed.
+- Verified by switching the export probe main from `loadFile` to `loadURL`:
+  PDF `%PDF-1.7`, A4 1 page, 3885 bytes; temp files cleaned up.
+- This addresses the export review's `loadURL` gap generically. The pinned
+  Moji 1.0.7 build still uses `loadFile`.
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**; 1.0.5 hold PASS; actual app open regression PASS.
+- Remaining: raster PDF/print CSS, PNG, drag-and-drop, actual toolbar-button
+  automation, macOS. No compatibility claim.
+
+## PNG export (resume)
+
+- Added the app's offscreen PNG path: `BrowserWindow.setContentSize`,
+  `webContents.capturePage` (chunked host snapshot reads), `NativeImage`
+  (`getSize`/`toBitmap`), positioned `FileHandle.write` via `main-write-at`,
+  `zlib.createDeflate` (stored blocks), Buffer integer accessors and
+  `Buffer.from(ArrayBuffer, offset, length)`.
+- The PNG writer's `${destination}.tmp` is granted alongside the save-dialog
+  destination; positioned writes allow the IHDR rewrite and files larger than
+  the 256 KiB frame. All write offsets are bounded at 64 MiB and chunks at
+  256 KiB.
+- Increased the AppRunner promise-job budgets from 64/256 to 4096 so long
+  chunked exports do not surface as a false `ELECTRON_MBT_ENGINE` failure.
+- Probe results through the actual pinned Moji main: valid 794x1123 RGBA PNG
+  (9,845 bytes) and 794x4020 two-slice PNG (94,430 bytes) with host zlib
+  compression. PNG remains raster. Existing PDF (3885 bytes) and HTML
+  (75 bytes) still pass.
+- Validation: native **199 PASS**, JS **163 PASS**, npm **534 tests / 501 PASS /
+  0 FAIL / 33 SKIP**; 1.0.5 hold PASS; Moji open regression PASS. No
+  compatibility claim.
+- Addressed both subagent reviews: incremental stored-block deflate, 16 MiB
+  capture/prelude caps and strict size checks, 256 MiB output-offset cap,
+  positioned FileHandle writes with short-write failure, O_NOFOLLOW/CLOEXEC,
+  capture event flush, no-arg capturePage defaults, Buffer offset defaults and
+  shared ArrayBuffer views, and run_jobs yielding rather than failing.
+- HiDPI: WebKitGTK snapshots can be CSS- or device-sized. The host now derives
+  the ratio from the allocated CSS width and downscales device snapshots to
+  CSS. GDK_SCALE=2 probe: 794x4020 / 94,425-byte PNG with all 20 bands. This is
+  CSS-resolution output, not 2x native pixels.
+- True print-layout PDF: `WebKitPrintOperation` with the "Print to File" PDF
+  backend produces a text-selectable A4 PDF (520,046 bytes, Skia/PDF m145;
+  `pdftotext` returns PRINT LAYOUT / SELECTABLE_TEXT_MARKER). A failed, timed-out
+  or oversized print falls back to the existing Cairo raster snapshot. The
+  host/main-write caps are now 700 KiB payload / 950 KiB base64.
+- Remaining: very long multi-slice stress, drag-and-drop, actual toolbar
+  button automation, macOS. See [docs/0071](0071-pdf-html-export.md).
+
+- Export UI E2E: the actual Export toolbar, format dialog, footer confirm and
+  save dialog now run through to a text-selectable print-layout PDF. The probe
+  (test-only `--trigger-export-ui`, separate open/save autoselect paths) wrote
+  an 18,850-byte Skia/PDF A4 page; `pdftotext` returned `UI E2E` /
+  `HELLO_UI_E2E_SAVE`. Root fixes: the adapted page API sends one JSON `args`
+  field (string) and app-request events can reach 380 KB, so the CLI event
+  buffer and native app payload cap were raised to 1 MiB and the main prelude
+  normalizes string/array/`{args}` payloads before dispatch. Remaining after
+  this: drag-and-drop and macOS. See [docs/0042](0042-nodeless-main-runtime.md).
+
+## Single-executable bundle (2026-10-27)
+
+- Added native `emoon bundle <app-or-stage> --output <file>`: release/stripped
+  CLI prefix + zlib payload + host + app stage + 512-byte footer.
+- The embedded launcher extracts to
+  `$XDG_DATA_HOME/electromoon/apps/<slug>/app` and
+  `$XDG_CACHE_HOME/electromoon/hosts/<host-sha>/emoon-host`, sets `EMOON_HOST`
+  and runs the existing `run --window` path. `.appData`/`.userData` are never
+  embedded or overwritten.
+- `node scripts/build-cli.cjs` now defaults to release+strip; `--debug` keeps the
+  old build.
+- Moji 1.0.7 evidence: **6,185,192 bytes** single ELF; raw payload 13,108,339;
+  stored 3,693,792; app `moji` 1.0.7 / 144 files; `HOLDING`
+  `pageTitle:"Moji v1.0.7"`; ~1.2 s to HOLDING; RSS sum ~554 MiB (measurement
+  only). Electron baseline in the same checkout: 317 MB.
+- Bundle tests cover single-file startup without adjacent host/app, app-data
+  sentinel preservation, existing output/missing stage/corrupt payload and
+  symlink rejection. macOS/signing/DnD are NOT RUN.
+
+## One-command bundle UX (2026-10-28)
+
+- `emoon bundle [app-dir]` now stages `.emoon/app` when the stage is missing or
+  stale, and writes
+  `<app>/.emoon/dist/<name>-<version>-<os>-<arch>` by default. A prepared stage
+  still requires an explicit `--output`.
+- Source-level staleness: the stage manifest, the current `migrate` file set,
+  each source hash and the regenerated `adapted/page-api.js` are compared before
+  reuse. A changed source re-stages automatically. A stage containing
+  `.appData`/`.userData` is never replaced without `--reset-data`.
+- New flags: `--dry-run` (plan JSON, no writes, no npm), `--no-stage`,
+  `--restage`, `--reset-data`, `--build`, `--quiet`; `--renderer/--page/--api/
+  --include/--config` are forwarded to init/migrate. stdout is one JSON line;
+  progress goes to stderr.
+- `emoon-host` resolution now includes an absolute `PATH` entry after the
+  sibling/`dist` layouts, and the C writer reports a missing host as
+  `ELECTRON_MBT_BUNDLE_HOST` instead of a stage error. `--name` is validated
+  before writing.
+- The Node reference CLI delegates `bundle` to the native runtime; it does not
+  reimplement staging or bundling.
+- Evidence: release-strip CLI **2,537,464 bytes**; bundle/UX tests **17 PASS**;
+  CLI/parity **30 PASS**; MoonBit native **203 PASS**, JS **167 PASS**; npm
+  **551 tests / 518 PASS / 0 FAIL / 33 SKIP**.
+  `dist/emoon bundle _build/Moji` reused the 143-file stage in **0.823 s** and
+  wrote **6,231,768 bytes (5.9 MiB)**; `--bundle-info` reports `moji` 1.0.7 /
+  144 files, and the isolated-XDG hold run reports `pageTitle:"Moji v1.0.7"`.
+  The +46,576 bytes over the 2026-10-27 artifact is the CLI prefix growth; the
+  app payload (raw 13,108,339 / stored 3,693,792) is unchanged.
+- The current bundle profile remains `electron-nodeless-adapted-v1`; a stage
+  without `nodeless-app.json` is refused with a `--api <file>` hint. NOT RUN:
+  macOS bundle launch/signing/notarization, Windows, human UI, DnD.

@@ -1,0 +1,8 @@
+{
+  "name": "unbuilt-app",
+  "version": "1.0.0",
+  "main": "out/main/index.js",
+  "scripts": {
+    "build": "node build.cjs"
+  }
+}

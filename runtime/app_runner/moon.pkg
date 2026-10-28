@@ -1,9 +1,9 @@
 supported_targets = "native"
 
 import {
-  "f4ah6o/electron/bridges/embedded-js" @engine,
-  "f4ah6o/electron/runtime/embedded" @scheduler,
-  "f4ah6o/electron/runtime/modules" @modules,
+  "f4ah6o/electromoon/bridges/embedded-js" @engine,
+  "f4ah6o/electromoon/runtime/embedded" @scheduler,
+  "f4ah6o/electromoon/runtime/modules" @modules,
   "moonbitlang/core/json" @json,
   "moonbitlang/core/encoding/utf8" @utf8,
 }

@@ -16,7 +16,7 @@ async function main() {
   const runtime = new ExperimentalRuntime(app, {
     nativeHostOptions: {
       testingExecutable: path.resolve(__dirname,
-        '../dist/electron-mbt-native-host-close-sim'),
+        '../dist/emoon-host-close-sim'),
     },
   });
   try {

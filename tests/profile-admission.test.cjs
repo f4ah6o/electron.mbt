@@ -14,7 +14,7 @@ function validate(profile, inputMode = '', preloadMode = '', runtime = '') {
 }
 
 function run(args) {
-  return spawnSync(process.execPath, ['cmd/electron-mbt.cjs', ...args], { cwd: root, encoding: 'utf8' });
+  return spawnSync(process.execPath, ['cmd/legacy-node.cjs', ...args], { cwd: root, encoding: 'utf8' });
 }
 
 test('the compiled boundary admits a known open profile without claiming compatibility', () => {

@@ -35,7 +35,7 @@ state machine.
   Node wrapper rather than shadowing module-level declarations.
 - `require('node:...')` builtins are resolved from a single prelude object;
   `fs`/`fs/promises` import-only with ENOENT/EACCES, `zlib` import-only with a
-  typed `createDeflate` failure, and `electron-updater` an import-only adapted
+  host-backed `createDeflate` (stored fallback), and `electron-updater` an import-only adapted
   stub; real file/update/stream behavior is not implemented.
 - Require-selected package `exports` and package `main` are resolved by MoonBit;
   an `exports` package never falls back to an unexported subpath or `main`.

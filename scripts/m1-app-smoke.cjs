@@ -8,7 +8,7 @@ if (process.platform !== 'darwin') throw new Error('M1 native app smoke requires
 const root = path.resolve(__dirname, '../fixtures/m1-app');
 const before = snapshot(root).sha256;
 const result = spawnSync(process.execPath, [
-  path.resolve(__dirname, '../cmd/electron-mbt.cjs'),
+  path.resolve(__dirname, '../cmd/legacy-node.cjs'),
   'run', root, '--experimental-m1',
 ], { encoding: 'utf8', timeout: 40000, maxBuffer: 1024 * 1024 });
 if (result.error) throw result.error;

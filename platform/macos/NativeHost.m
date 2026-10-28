@@ -11,6 +11,7 @@
 #import <unistd.h>
 #import <stdint.h>
 #import <stdlib.h>
+#import <stdio.h>
 #import <string.h>
 #import <errno.h>
 #import <math.h>
@@ -5247,6 +5248,10 @@ static BOOL checkRequest(NSDictionary *request, NSString *session) {
 
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+      printf("emoon-host 0.1.0\n");
+      return 0;
+    }
     if (argc != 2 || fcntl(kControlChannel, F_GETFD) < 0 ||
         fcntl(kLoadChannel, F_GETFD) < 0 ||
         fcntl(kEventChannel, F_GETFD) < 0) return 64;

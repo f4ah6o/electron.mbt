@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/f4ah6o/electromoon",
+  "packages": [
+    {
+      "package": "cmd/emoon",
+      "binary": "emoon",
+      "pkg-url": "{repo}/releases/download/v{version}/{bin}-{target}",
+      "pkg-fmt": "bin"
+    },
+    {
+      "package": "cmd/emoon-host",
+      "binary": "emoon-host",
+      "pkg-url": "{repo}/releases/download/v{version}/{bin}-{target}",
+      "pkg-fmt": "bin"
+    }
+  ]
+}

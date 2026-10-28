@@ -76,7 +76,7 @@ test('the compiled diagnostic never upgrades incomplete M0 to compatible', () =>
 });
 test('doctor and compat-check return structured non-success without evaluating main', () => {
   for (const command of ['doctor', 'compat-check']) {
-    const result = spawnSync(process.execPath, ['cmd/electron-mbt.cjs', command, 'fixtures/cjs'], { cwd: root, encoding: 'utf8' });
+    const result = spawnSync(process.execPath, ['cmd/legacy-node.cjs', command, 'fixtures/cjs'], { cwd: root, encoding: 'utf8' });
     assert.equal(result.status, 2, result.stderr || result.stdout);
     const report = JSON.parse(result.stdout);
     assert.equal(report.compatible, false);

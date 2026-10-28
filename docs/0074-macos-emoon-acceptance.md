@@ -9,7 +9,10 @@ The fixtures set `show:false`; a successful test does not establish human UI
 interaction. The bundle checks metadata and executes the output with no adjacent
 host, in a temporary home. The test canonicalizes the temporary directory because
 the bundle directory creator rejects symlink components (including macOS
-`/var`). Distribution signing and notarization are not tested.
+`/var`). The same restriction applies to user-supplied `XDG_DATA_HOME`,
+`XDG_CACHE_HOME`, and the `$HOME` fallback; use absolute canonical paths without
+symlink components if bundle launch reports `ELECTRON_MBT_BUNDLE_HOME` or
+`ELECTRON_MBT_BUNDLE_HOST`. Distribution signing and notarization are not tested.
 
 CI checks out Moji at `b9753c0f7d3fe41d975a1231517f4f124b0a4408` (v1.0.7),
 installs its locked dependencies with install scripts disabled and builds it.

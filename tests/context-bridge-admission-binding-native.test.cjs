@@ -48,7 +48,11 @@ test('What: a same-key descriptor mismatch blocks the page before it can materia
     assert.equal(mismatch.preview.functionCount, 1);
     assert.equal(mismatch.actual.functionCount, 2);
     assert.notEqual(mismatch.preview.descriptorSha256, mismatch.actual.descriptorSha256);
-    const title = runtime.host.request('get-web-contents-title', window.id, window._generation).title;
+    let title = '';
+    await waitFor(() => {
+      title = runtime.host.request('get-web-contents-title', window.id, window._generation).title;
+      return title.startsWith('admission:');
+    }, 'page admission outcome');
     assert.equal(title, 'admission:blocked:ELECTRON_MBT_BRIDGE_ADMISSION_MISMATCH',
       'the page must fail closed before materializing the actual API');
     assert.equal(runtime.core.context_bridge_exposure_count(runtime.runtime), 1,

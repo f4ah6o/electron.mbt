@@ -109,7 +109,8 @@ function runHold(binary, appDir, env = {}, holdMs = 1800, holdSeconds = null) {
   fs.chmodSync(fakeNode, 0o700);
   const result = spawnSync(binary, [
     'run', appDir, '--window', '--hold',
-    ...(holdSeconds === null ? ['--hold-close-after-ms', String(holdMs)] : ['--hold-seconds', String(holdSeconds)]),
+    ...(holdSeconds !== null ? ['--hold-seconds', String(holdSeconds)] :
+      holdMs >= 4000 ? ['--hold-seconds', String(Math.ceil(holdMs / 1000))] : ['--hold-close-after-ms', String(holdMs)]),
   ], {
     cwd: root,
     encoding: 'utf8',

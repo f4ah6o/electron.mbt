@@ -643,7 +643,7 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   `set_http_headers` takes ownership of.
 - Test evidence:
   - `node --test tests/asset-protocol.test.cjs`: **9 PASS**. Dialog-granted
-    image title `asset-ok-1`, `served:1`, `bytes:68`, `denied:0`; ungranted
+    image title `asset-ok-16`, `served:1`, `bytes:116`, `denied:0`; ungranted
     image `asset-error`, `denied:1`, `lastCode:ELECTRON_MBT_ASSET_DENIED`;
     unadmitted scheme stops at main evaluation, no window; traversal
     (`ESCAPE`), symlink escape (`DENIED`), non-image (`TYPE`) and >4 MiB
@@ -655,10 +655,10 @@ Implementation delegation through the GitHub Codex integration was attempted on 
     error (NOT RUN). A ninth fixture verifies `loadFile` query serialization
     reaches `location.search`; it is not part of the asset protocol.
   - `node scripts/nodeless-moji-assets.cjs`: **PASS**. Pinned Moji 1.0.7 real
-    renderer requested a relative PNG; host `served:1`, `bytes:68`,
+    renderer requested a relative PNG; host `served:1`, `bytes:116`,
     `schemes:["moji-asset"]`, `handlerExecuted:false`. The page probe did not
     expose a plain preview `<img>` (`NOT_EXPOSED`); the controlled asset
-    fixture verifies WebKit decoding and `naturalWidth:1`. A separate manual
+    fixture verifies WebKit decoding and `naturalWidth:16`. A separate manual
     run with a 96x96 PNG visibly rendered the preview image
     ([screenshot](images/moji-assets-20261029.png)). Report:
     `compatibility/reports/moji-assets.json`.
@@ -715,7 +715,7 @@ open dialog.
   `jmd-edit-marker-20261029` through CodeMirror's DOM, sends `menu:save`,
   externally rewrites the document at 10 s, and asserts: adapted boot/release,
   page URL, window title, initial UI, open dispatch, preview marker,
-  `jmd-file` admission, image served, `naturalWidth:1`, exact edited bytes,
+  `jmd-file` admission, image served, `naturalWidth:16`, exact edited bytes,
   clean title, watcher reload, GDK display bounds, message-box response 2 and
   `handlerExecuted:false`. `compatible:false`.
 - Evidence: `compatibility/reports/jmd-positive.json` and

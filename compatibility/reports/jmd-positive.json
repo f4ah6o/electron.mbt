@@ -111,7 +111,7 @@
       "requests": 1,
       "served": 1,
       "denied": 0,
-      "bytes": 68,
+      "bytes": 116,
       "lastCode": "OK",
       "mode": "asset-broker",
       "handlerExecuted": false

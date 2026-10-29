@@ -135,7 +135,7 @@ const documentPath = path.join(documentDir, 'note.md');
 const marker = 'jmd-positive-marker-20261029';
 fs.writeFileSync(documentPath, `# jmd positive\n\n${marker}\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n![pixel](pixel.png)\n`);
 fs.writeFileSync(path.join(documentDir, 'pixel.png'), Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAO0lEQVR4nGO8o6Hxn4ECwMLAwMCgfP06WZrvampCDIBxSAEwS5nIshoJjBowasDgMACeF8jNUIyUZmcAzYUMTODIg2AAAAAASUVORK5CYII=',
   'base64'));
 
 const files = [];

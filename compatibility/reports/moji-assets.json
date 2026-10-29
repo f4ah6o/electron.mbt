@@ -17,7 +17,7 @@
   },
   "document": {
     "path": "note.md",
-    "imageBytes": 68
+    "imageBytes": 116
   },
   "command": {
     "exitCode": 0,
@@ -50,7 +50,7 @@
         "requests": 1,
         "served": 1,
         "denied": 0,
-        "bytes": 68,
+        "bytes": 116,
         "lastCode": "OK",
         "mode": "asset-broker",
         "handlerExecuted": false
@@ -89,7 +89,7 @@
     "requests": 1,
     "served": 1,
     "denied": 0,
-    "bytes": 68,
+    "bytes": 116,
     "lastCode": "OK",
     "mode": "asset-broker",
     "handlerExecuted": false

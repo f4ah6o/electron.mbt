@@ -55,8 +55,8 @@ macOS is **NOT RUN**. This is not Electron protocol compatibility.
 
 - `node --test tests/asset-protocol.test.cjs` (Linux, real GTK/WebKitGTK
   window): **9 PASS** (8 asset cases + a `loadFile` query fixture).
-  - dialog-granted image: page title `asset-ok-1`, host `served:1`,
-    `bytes:68`, `denied:0`, `handlerExecuted:false`;
+  - dialog-granted image: page title `asset-ok-16`, host `served:1`,
+    `bytes:116`, `denied:0`, `handlerExecuted:false`;
   - ungranted image: page title `asset-error`, `denied:1`,
     `lastCode:"ELECTRON_MBT_ASSET_DENIED"`, `served:0`;
   - unadmitted scheme: main evaluation fails with
@@ -69,10 +69,10 @@ macOS is **NOT RUN**. This is not Electron protocol compatibility.
     succeeds (`canvas-ok-*`), so the CORS header path works for images.
 - `node scripts/nodeless-moji-assets.cjs`: **PASS**. The pinned Moji 1.0.7
   main and renderer open a test document with a relative PNG; the host serves
-  it (`served:1`, `bytes:68`, `schemes:["moji-asset"]`,
+  it (`served:1`, `bytes:116`, `schemes:["moji-asset"]`,
   `handlerExecuted:false`). The page probe did not expose the preview image as
   a plain DOM `<img>` (`rendererProbe.status:"NOT_EXPOSED"`); the controlled
-  asset fixture verifies WebKit decoding and `naturalWidth:1`. A separate
+  asset fixture verifies WebKit decoding and `naturalWidth:16`. A separate
   manual run with a 96x96 PNG through the same stage/broker path visibly
   rendered the preview image (not a pixel assertion from the script):
   ![Moji preview rendering a relative PNG](images/moji-assets-20261029.png)

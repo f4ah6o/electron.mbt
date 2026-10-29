@@ -21,7 +21,7 @@ const binary = binaryCandidates.find(candidate => fs.existsSync(candidate)) || b
 const host = path.join(root, 'dist/emoon-host');
 const reportPath = path.join(root, 'compatibility/reports/moji-assets.json');
 const PIXEL = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAO0lEQVR4nGO8o6Hxn4ECwMLAwMCgfP06WZrvampCDIBxSAEwS5nIshoJjBowasDgMACeF8jNUIyUZmcAzYUMTODIg2AAAAAASUVORK5CYII=',
   'base64');
 
 function hashFile(file) {

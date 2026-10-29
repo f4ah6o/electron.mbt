@@ -36,7 +36,7 @@ This is not an Electron-compatibility result and does not unblock the strict
 - The document includes `![pixel](pixel.png)`. The bespoke page shim's
   `resolveAsset` produces `jmd-file://local/<encoded path>`; the stage admits
   `jmd-file` and the asset broker serves the dialog-granted document-directory
-  image. The probe sees `naturalWidth:1`.
+  image. The probe sees `naturalWidth:16`.
 
 ## Staged adaptations
 
@@ -65,7 +65,7 @@ The original `electron/preload.js` is copied for provenance but is
     `editCleanTitle:true`, `watcherReloaded:true`, `saveDispatched:true`,
     `displayBounds:true`, `messageBox:true`.
   - Assets: `schemes:["jmd-file"]`, `requests:1`, `served:1`,
-    `bytes:68`, `denied:0`, `handlerExecuted:false`.
+    `bytes:116`, `denied:0`, `handlerExecuted:false`.
   - Preview text:
     ```
     jmd positive

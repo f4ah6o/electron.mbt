@@ -20,7 +20,7 @@ if (process.env.ELECTRON_MBT_REQUIRE_NATIVE_HOST === '1' && supported && !hostAv
 
 // A valid 1x1 RGBA PNG.
 const PIXEL = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAO0lEQVR4nGO8o6Hxn4ECwMLAwMCgfP06WZrvampCDIBxSAEwS5nIshoJjBowasDgMACeF8jNUIyUZmcAzYUMTODIg2AAAAAASUVORK5CYII=',
   'base64');
 
 const simpleApi = {
@@ -170,7 +170,7 @@ test('an admitted asset scheme serves a dialog-granted image without running the
     });
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const title = (exit && exit.pageTitle) || (holding && holding.pageTitle);
-    assert.equal(title, 'asset-ok-1', `image did not load: ${JSON.stringify(holding)}`);
+    assert.equal(title, 'asset-ok-16', `image did not load: ${JSON.stringify(holding)}`);
     const assetsReport = (exit && exit.assets) || (holding && holding.assets);
     assert.ok(assetsReport, 'missing asset status');
     assert.equal(assetsReport.mode, 'asset-broker');

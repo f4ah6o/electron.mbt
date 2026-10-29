@@ -59,10 +59,10 @@
         "apiProbe": "",
         "rootChildren": 1,
         "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nOUTLINE\n\nImage\nImage\n\n\n\nMoji v1.0.7\nMarkdown Guide\nLines: 4\nTokens: 7\nWords: 3",
+        "title": "note.md - Moji v1.0.7",
         "image": null,
-        "editSave": "",
         "api": true,
-        "title": "note.md - Moji v1.0.7"
+        "editSave": ""
       }
     }
   },
@@ -72,10 +72,10 @@
       "apiProbe": "",
       "rootChildren": 1,
       "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nOUTLINE\n\nImage\nImage\n\n\n\nMoji v1.0.7\nMarkdown Guide\nLines: 4\nTokens: 7\nWords: 3",
+      "title": "note.md - Moji v1.0.7",
       "image": null,
-      "editSave": "",
       "api": true,
-      "title": "note.md - Moji v1.0.7"
+      "editSave": ""
     }
   },
   "assets": {
@@ -91,6 +91,10 @@
     "lastCode": "OK",
     "mode": "asset-broker",
     "handlerExecuted": false
+  },
+  "visual": {
+    "path": "docs/images/moji-assets-20261029.png",
+    "note": "Separate manual run with a 96x96 PNG through the same stage and broker path; the red preview image is visibly rendered. The DOM probe still reports NOT_EXPOSED."
   },
   "note": "The pinned Moji renderer requested the relative image and the host broker served the exact bytes. The app protocol handler was not executed. The page probe did not expose a plain preview image element (NOT_EXPOSED); the controlled asset fixture covers WebKit decoding. This is not Electron protocol compatibility."
 }

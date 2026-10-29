@@ -651,7 +651,9 @@ Implementation delegation through the GitHub Codex integration was attempted on 
     renderer requested a relative PNG; host `served:1`, `bytes:68`,
     `schemes:["moji-asset"]`, `handlerExecuted:false`. The page probe did not
     expose a plain preview `<img>` (`NOT_EXPOSED`); the controlled asset
-    fixture verifies WebKit decoding and `naturalWidth:1`. Report:
+    fixture verifies WebKit decoding and `naturalWidth:1`. A separate manual
+    run with a 96x96 PNG visibly rendered the preview image
+    ([screenshot](images/moji-assets-20261029.png)). Report:
     `compatibility/reports/moji-assets.json`.
   - `node --test tests/apps/jmd-j1.test.cjs`: **2 PASS** synthetic J1.
     `bypassCSP` -> `ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE`; safe but

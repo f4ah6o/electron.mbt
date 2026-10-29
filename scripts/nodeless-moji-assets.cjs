@@ -179,6 +179,13 @@ try {
     process.exit(1);
   }
   report.status = 'PASS';
+  const screenshot = path.join(root, 'docs/images/moji-assets-20261029.png');
+  if (fs.existsSync(screenshot)) {
+    report.visual = {
+      path: 'docs/images/moji-assets-20261029.png',
+      note: 'Separate manual run with a 96x96 PNG through the same stage and broker path; the red preview image is visibly rendered. The DOM probe still reports NOT_EXPOSED.',
+    };
+  }
   report.note = 'The pinned Moji renderer requested the relative image and the host broker served the exact bytes. The app protocol handler was not executed. The page probe did not expose a plain preview image element (NOT_EXPOSED); the controlled asset fixture covers WebKit decoding. This is not Electron protocol compatibility.';
   writeReport(report);
   console.log(JSON.stringify({

@@ -62,8 +62,11 @@ also rejected before any window, but earlier: the CJS loader refuses the
   it (`served:1`, `bytes:68`, `schemes:["moji-asset"]`,
   `handlerExecuted:false`). The page probe did not expose the preview image as
   a plain DOM `<img>` (`rendererProbe.status:"NOT_EXPOSED"`); the controlled
-  asset fixture verifies WebKit decoding and `naturalWidth:1`. Report:
-  `compatibility/reports/moji-assets.json`.
+  asset fixture verifies WebKit decoding and `naturalWidth:1`. A separate
+  manual run with a 96x96 PNG through the same stage/broker path visibly
+  rendered the preview image (not a pixel assertion from the script):
+  ![Moji preview rendering a relative PNG](images/moji-assets-20261029.png)
+  Report: `compatibility/reports/moji-assets.json`.
 - `node --test tests/apps/jmd-j1.test.cjs`: **2 PASS** (synthetic).
   `bypassCSP` stops at main evaluation with
   `ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE`; an unadmitted safe scheme

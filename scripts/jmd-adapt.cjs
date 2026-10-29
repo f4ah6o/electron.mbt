@@ -97,6 +97,8 @@ const hookAfter = `  if (canceled || !filePaths.length) return;
 ipcMain.handle('test:open-dialog', async () => {
   await openFileDialog();
   const display = screen.getDisplayNearestPoint({ x: 10, y: 10 });
+  const all = screen.getAllDisplays();
+  const matching = screen.getDisplayMatching({ x: 0, y: 0, width: 10, height: 10 });
   const box = await dialog.showMessageBox({
     type: 'question',
     buttons: ['Save', "Don't Save", 'Cancel'],
@@ -104,7 +106,7 @@ ipcMain.handle('test:open-dialog', async () => {
     cancelId: 2,
     message: 'jmd adapted facade probe',
   });
-  return { open: true, display: display, box: box };
+  return { open: true, display: display, all: all.length, matching: matching.bounds, box: box };
 });
 
 // Adapted-profile test hook: deliver the same menu:save topic the native Save

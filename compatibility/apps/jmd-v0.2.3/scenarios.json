@@ -9,7 +9,7 @@
     "J1",
     "APP-N09"
   ],
-  "note": "J-P1 passes on the adapted Linux profile, including edit/save and an external-rewrite watcher reload. The pinned raw source still stops at the JMD_SMOKE computed require (J1 expected-rejection); the adapted copy is separate. Human input/IME, native menu, net and macOS are NOT_RUN/out of scope.",
+  "note": "J-P1 passes on the adapted Linux profile with synthetic and real X11 edit/save paths. The pinned raw source still stops at the JMD_SMOKE computed require (J1 expected-rejection); the adapted copy is separate. IME, native menu, net and macOS are NOT_RUN/out of scope.",
   "preflight": {
     "id": "J1-synthetic",
     "verdict": "expected-rejection",
@@ -38,12 +38,16 @@
       "test-injected open dialog",
       "preview marker",
       "jmd-file image served",
-      "edit + menu:save bytes",
-      "external rewrite reload",
-      "GDK display bounds",
-      "test-injected message box"
+      "synthetic edit/save",
+      "real X11 keyboard edit + Ctrl+S save",
+      "external fs.watch reload",
+      "GDK display bounds/count/matching",
+      "test-injected message box response"
     ],
-    "saveEdit": "PASS (test-injected edit + menu:save)",
-    "watcher": "PASS (external rewrite, polling facade)"
+    "saveEdit": "PASS (synthetic + real xdotool Ctrl+S)",
+    "watcher": "PASS (external rewrite, polling facade)",
+    "keyboard": "PASS (ASCII; IME disabled for the test; IME NOT RUN)",
+    "watchers": "PASS (fs.watch; fs.watchFile/unwatchFile/recursive in asset suite)",
+    "multiDisplay": "PASS (one Xvfb monitor; hardware multi-monitor NOT RUN)"
   }
 }

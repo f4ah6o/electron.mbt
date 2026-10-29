@@ -33,8 +33,8 @@
       "id": "jmd-page-shim",
       "kind": "page-adapter",
       "path": "adapted/page-api.js",
-      "sha256": "b460698625b271f1e6f7428f606f8b72c70ed96b01b2d1fc42f9abd3eb90368f",
-      "reason": "Linux has no original-preload execution; implements window.jmd IPC calls, pure basename/resolveAsset, and event listeners. IPC dispatch stays runtime/MoonBit-owned.",
+      "sha256": "9a01935f4629ee3ac2f9fb0824e78a2488047a8bd4d3f33172fcae7942bdf035",
+      "reason": "Linux has no original-preload execution; implements window.jmd IPC calls, pure basename/resolveAsset, event listeners, and an adapted Ctrl+S binding to jmd save(). IPC dispatch stays runtime/MoonBit-owned.",
       "originalPreload": "NOT_EXECUTED"
     },
     {
@@ -47,7 +47,7 @@
       "id": "fs-watch-polling",
       "kind": "runtime-facade",
       "path": "bridges/embedded-js/node_prelude.mbt",
-      "reason": "jmd watches open files; a bounded 250 ms stat poller provides change events until close. No inotify/native watcher claim."
+      "reason": "Bounded polling for fs.watch (250 ms), fs.watchFile/unwatchFile (250..60000 ms), and recursive fs.watch (4096-entry snapshot, change/rename event types). No native inotify claim."
     },
     {
       "id": "loadFile-query",
@@ -65,13 +65,20 @@
       "id": "screen-primary-display",
       "kind": "runtime-facade",
       "path": "bridges/embedded-js/node_prelude.mbt + platform/linux/NativeHost.c",
-      "reason": "getDisplayNearestPoint/getPrimaryDisplay read GDK primary-monitor geometry; a documented 1280x800 fallback covers hosts without the op."
+      "reason": "Linux host get-primary-display/get-all-displays use GDK monitor geometry; prelude getAllDisplays/getDisplayNearestPoint/getDisplayMatching select by containment/intersection with a documented fallback."
     },
     {
       "id": "jmd-edit-save-hook",
       "kind": "test-only-staged-source-patch",
       "path": "electron/main.js",
       "reason": "CLI-only test:menu-save hook sends the same menu:save topic the native Save item sends; the native menu remains store-only."
+    },
+    {
+      "id": "jmd-ctrl-s-page-shortcut",
+      "kind": "page-adapter",
+      "path": "adapted/page-api.js",
+      "reason": "The native application menu is store-only in the adapted profile, so Ctrl+S is bound in the adapted page to jmd's own save(). This is not native menu installation.",
+      "nativeMenu": "NOT_RUN"
     }
   ],
   "declaredUnsupported": [
@@ -80,9 +87,11 @@
     "native menu installation",
     "net",
     "showMessageBox without the test env",
-    "human input/IME"
+    "human input/IME",
+    "hardware multi-monitor selection",
+    "macOS"
   ],
-  "note": "Pinned jmd 0.2.3 boots the real renderer, opens a markdown document through the test-injected native dialog, edits and saves it through the app menu:save path, reloads after an external rewrite through a bounded polling watcher, and reports GDK display geometry. The edits and page shim are staged-copy adaptations; the original preload is NOT_EXECUTED. compatible:false; human input, native menu, net and macOS are out of scope.",
+  "note": "Pinned jmd 0.2.3 boots the real renderer, opens a markdown document through the test-injected native dialog, edits via the host hook and via real X11/xdotool input, saves via Ctrl+S through the adapted page shortcut, reloads after an external rewrite through the polling watcher, and reads GDK display geometry. The native menu remains store-only. compatible:false; IME and macOS are NOT_RUN/out of scope.",
   "protocol": {
     "mode": "asset-broker",
     "synthetic": "PASS",
@@ -99,29 +108,35 @@
     "profile": "electron-nodeless-adapted-v1",
     "platform": "linux",
     "evidence": "compatibility/reports/jmd-positive.json",
-    "checks": {
-      "exitZero": true,
-      "holdExit": true,
-      "adaptedBoot": true,
-      "pageUrl": true,
-      "windowTitle": true,
-      "initialUi": true,
-      "openDialog": true,
-      "previewMarker": true,
-      "schemeRegistered": true,
-      "assetServed": true,
-      "imageLoaded": true,
-      "noMainError": true,
-      "displayBounds": true,
-      "messageBox": true,
-      "editSaved": true,
-      "editCleanTitle": true,
-      "watcherReloaded": true,
-      "saveDispatched": true
-    },
-    "saveEdit": "PASS (test-injected edit + menu:save; exact bytes verified)",
+    "checks": [
+      "exitZero",
+      "holdExit",
+      "adaptedBoot",
+      "pageUrl",
+      "windowTitle",
+      "initialUi",
+      "openDialog",
+      "previewMarker",
+      "schemeRegistered",
+      "assetServed",
+      "imageLoaded",
+      "noMainError",
+      "displayBounds",
+      "displayCount",
+      "matchingBounds",
+      "messageBox",
+      "editSaved",
+      "keyboardSaved",
+      "editCleanTitle",
+      "watcherReloaded",
+      "saveDispatched"
+    ],
+    "saveEdit": "PASS (synthetic host edit + real xdotool X11 input + Ctrl+S)",
     "macOS": "out of scope",
     "watcher": "PASS (external rewrite -> file:changed reload; polling facade)",
-    "facades": "screen GDK bounds PASS; showMessageBox response 2 PASS; query loadFile fixture PASS"
+    "facades": "screen GDK bounds PASS; showMessageBox response 2 PASS; query loadFile fixture PASS",
+    "keyboard": "PASS (xdotool ASCII; IME disabled in test env, IME NOT RUN)",
+    "watchers": "PASS (fs.watch polling; fs.watchFile/unwatchFile/recursive in asset suite)",
+    "multiDisplay": "PASS (one Xvfb monitor; multi-monitor selection NOT RUN)"
   }
 }

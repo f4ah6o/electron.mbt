@@ -1784,6 +1784,31 @@ static void handle_trigger_jmd_edit(Host *host, Request *request) {
   request_success_empty(request);
 }
 
+static void handle_focus_jmd_editor(Host *host, Request *request) {
+  if (!require_current(host, request)) return;
+  if (!host->content_alive || !host->loaded) {
+    request_failure(request, "ELECTRON_MBT_STALE_DOCUMENT");
+    return;
+  }
+  static const char script[] =
+    "(function(){"
+    "var el=document.querySelector('.cm-content');"
+    "if(!el) return false;"
+    "el.focus();"
+    "var sel=window.getSelection();"
+    "var range=document.createRange();"
+    "range.selectNodeContents(el);"
+    "range.collapse(false);"
+    "sel.removeAllRanges();"
+    "sel.addRange(range);"
+    "return document.activeElement===el || el.contains(document.activeElement);"
+    "})()";
+  webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL,
+                                      NULL, NULL);
+  ebt_debug("focus-jmd-editor\n");
+  request_success_empty(request);
+}
+
 static void handle_probe_renderer(Host *host, Request *request) {
   if (!require_current(host, request)) return;
   if (!host->content_alive || !host->loaded) {
@@ -4440,6 +4465,14 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     handle_trigger_jmd_edit(host, request);
     return;
   }
+  if (strcmp(operation, "focus-jmd-editor") == 0) {
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    handle_focus_jmd_editor(host, request);
+    return;
+  }
   if (strcmp(operation, "probe-renderer") == 0) {
     if (!object_has_exact_keys(payload, NULL, 0)) {
       request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
@@ -4566,6 +4599,46 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     object_set_number(host, reply, "workHeight", (double)workarea.height);
     object_set_number(host, reply, "scaleFactor",
                       (double)gdk_monitor_get_scale_factor(monitor));
+    request_complete(request, "success", reply);
+    return;
+  }
+  if (strcmp(operation, "get-all-displays") == 0) {
+    if (!require_current(host, request)) return;
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    GdkDisplay *display = gdk_display_get_default();
+    int count = display == NULL ? 0 : gdk_display_get_n_monitors(display);
+    if (count <= 0) {
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
+    if (count > 16) count = 16;
+    GString *json = g_string_new("{\"displays\":[");
+    for (int index = 0; index < count; index++) {
+      GdkMonitor *monitor = gdk_display_get_monitor(display, index);
+      if (monitor == NULL) continue;
+      GdkRectangle geometry;
+      GdkRectangle workarea;
+      gdk_monitor_get_geometry(monitor, &geometry);
+      gdk_monitor_get_workarea(monitor, &workarea);
+      g_string_append_printf(json,
+        "%s{\"id\":%d,\"bounds\":{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d},"
+        "\"workArea\":{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d},"
+        "\"scaleFactor\":%d}",
+        index == 0 ? "" : ",", index,
+        geometry.x, geometry.y, geometry.width, geometry.height,
+        workarea.x, workarea.y, workarea.width, workarea.height,
+        gdk_monitor_get_scale_factor(monitor));
+    }
+    g_string_append(json, "]}");
+    JSCValue *reply = jsc_value_new_from_json(host->json, json->str);
+    g_string_free(json, TRUE);
+    if (reply == NULL) {
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
     request_complete(request, "success", reply);
     return;
   }

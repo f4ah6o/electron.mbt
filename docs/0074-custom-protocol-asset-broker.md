@@ -54,7 +54,9 @@ macOS is **NOT RUN**. This is not Electron protocol compatibility.
 ## Evidence
 
 - `node --test tests/asset-protocol.test.cjs` (Linux, real GTK/WebKitGTK
-  window): **9 PASS** (8 asset cases + a `loadFile` query fixture).
+  window): **12 PASS** (8 asset cases, a `loadFile` query fixture, a bounded
+  `watchFile`/recursive-watch fixture, a GDK display fixture, and a
+  messageBox/net negative fixture).
   - dialog-granted image: page title `asset-ok-16`, host `served:1`,
     `bytes:116`, `denied:0`, `handlerExecuted:false`;
   - ungranted image: page title `asset-error`, `denied:1`,
@@ -66,7 +68,12 @@ macOS is **NOT RUN**. This is not Electron protocol compatibility.
     over-cap -> `ELECTRON_MBT_ASSET_LIMIT`; all `asset-error`, no served
     bytes;
   - `crossorigin="anonymous"` image -> `drawImage` + `canvas.toDataURL`
-    succeeds (`canvas-ok-*`), so the CORS header path works for images.
+    succeeds (`canvas-ok-*`), so the CORS header path works for images;
+  - `fs.watchFile`/`unwatchFile`/recursive `fs.watch` deliver bounded events
+    and stop after `close()`; the fixture runs in the app's `.appData`;
+  - `screen.getAllDisplays`/`getDisplayNearestPoint`/`getDisplayMatching`
+    return the Xvfb monitor; `dialog.showMessageBox` and `net` fail closed
+    without the test injection.
 - `node scripts/nodeless-moji-assets.cjs`: **PASS**. The pinned Moji 1.0.7
   main and renderer open a test document with a relative PNG; the host serves
   it (`served:1`, `bytes:116`, `schemes:["moji-asset"]`,

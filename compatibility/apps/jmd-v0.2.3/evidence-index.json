@@ -44,7 +44,7 @@
       "kind": "adapted-positive",
       "path": "../../reports/jmd-positive.json",
       "status": "PASS",
-      "note": "Linux GTK/WebKitGTK; test-injected open dialog; preview marker and jmd-file image. Original preload NOT_EXECUTED; macOS out of scope."
+      "note": "Linux GTK/WebKitGTK; test-injected open dialog; synthetic and real X11/xdotool edit + Ctrl+S; preview, image, watcher reload, GDK display selection. Original preload NOT_EXECUTED; IME, native menu, net and macOS out of scope."
     }
   ],
   "note": "Build/source/production-closure evidence, the pinned raw J1 expected-rejection, and the adapted Linux J-P1 positive with edit/save, watcher reload, query loadFile, GDK display bounds and a test-injected message box. No strict-profile, original-preload, human-input, native-menu or macOS result is recorded."

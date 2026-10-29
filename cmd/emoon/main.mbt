@@ -817,6 +817,7 @@ fn cli_hold(
   trigger_export_ui : Bool,
   dispatch_main : String,
   jmd_edit_save : Bool,
+  focus_jmd_editor : Bool,
 ) -> Unit {
   let mut title = ""
   let mut window_title = ""
@@ -904,6 +905,7 @@ fn cli_hold(
   let mut jmd_save_sent = false
   let mut jmd_edit : Json = null
   let mut jmd_save : Json = null
+  let mut jmd_focus : Json = null
   let mut reason = "hold-seconds"
   let mut close_sent = false
   while limit < 0 || ticks < limit {
@@ -926,6 +928,9 @@ fn cli_hold(
     if jmd_edit_save && !jmd_edit_sent && ticks >= 60 {
       jmd_edit_sent = true
       jmd_edit = cli_host_payload("trigger-jmd-edit", "{}").unwrap_or(Json({ "ok": Json(false) }))
+    }
+    if focus_jmd_editor && (ticks == 100 || ticks == 160) {
+      jmd_focus = cli_host_payload("focus-jmd-editor", "{}").unwrap_or(Json({ "ok": Json(false) }))
     }
     if jmd_edit_save && jmd_edit_sent && !jmd_save_sent && ticks >= 70 {
       jmd_save_sent = true
@@ -972,6 +977,7 @@ fn cli_hold(
       break
     }
     nodeless_sleep_ms(50)
+    runner.pump_idle()
     ticks = ticks + 1
   }
   match cli_host_payload("get-web-contents-title", "{}") {
@@ -1014,6 +1020,7 @@ fn cli_hold(
       "mainDispatch": Json(main_dispatch),
       "jmdEdit": Json(jmd_edit),
       "jmdSave": Json(jmd_save),
+      "jmdFocus": Json(jmd_focus),
       "compatible": Json(false),
     }).stringify(),
   )
@@ -1373,6 +1380,7 @@ fn cli_main(args : Array[String]) -> Unit {
   let mut hold_close_after_set = false
   let mut dispatch_main = ""
   let jmd_edit_save = args.contains("--jmd-edit-save")
+  let focus_jmd_editor = args.contains("--jmd-focus-editor")
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--hold-seconds" && i + 1 < args.length() {
       hold_seconds_set = true
@@ -1430,6 +1438,10 @@ fn cli_main(args : Array[String]) -> Unit {
   }
   if jmd_edit_save && !hold_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--jmd-edit-save requires --hold")
+    return
+  }
+  if focus_jmd_editor && !hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--jmd-focus-editor requires --hold")
     return
   }
   if hold_mode && (broker_selftest || fs_selftest || user_file_selftest ||
@@ -1834,7 +1846,7 @@ fn cli_main(args : Array[String]) -> Unit {
     let adapted_configured = adapted_adapter.length() > 0
     if hold_mode {
       cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
-               trigger_export_ui, dispatch_main, jmd_edit_save)
+               trigger_export_ui, dispatch_main, jmd_edit_save, focus_jmd_editor)
       return
     }
     let mut adapted_observed = false

@@ -446,15 +446,20 @@ test('watchFile, unwatchFile, recursive watch and close deliver bounded events',
     "    publish();",
     "  });",
     "  fs.writeFileSync(path.join(dir, 'a.txt'), 'a');",
+    "  win.setTitle('watch-start');",
+    "  setTimeout(function () { if (state.event === '') win.setTitle('watch-timeout'); }, 3000);",
+    "}).catch(function (error) {",
+    "  const win = BrowserWindow.getAllWindows()[0];",
+    "  if (win) win.setTitle('watch-error:' + String(error && (error.code || error.message) || error));",
     "});",
     '',
   ].join('\n'), assets.image, {}, '<!doctype html><title>watch</title>');
   try {
-    const { result, exit } = runHold(binary, app, {}, 5000, 10);
+    const { result, holding, exit } = runHold(binary, app, {}, 5000, 10);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.ok(exit, 'missing hold exit report');
     assert.equal(exit.reason, 'hold-seconds');
-    assert.equal(exit.windowTitle, 'wf:1:2|rec:1:rename:a.txt', `watch title: ${exit.windowTitle}`);
+    assert.equal(exit.windowTitle, 'wf:1:2|rec:1:rename:a.txt', `watch title: ${exit.windowTitle}; holding=${JSON.stringify(holding)} exit=${JSON.stringify(exit)}`);
   } finally {
     fs.rmSync(app, { recursive: true, force: true });
     fs.rmSync(assets.dir, { recursive: true, force: true });

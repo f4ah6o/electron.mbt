@@ -30,6 +30,12 @@ also rejected before any window, but earlier: the CJS loader refuses the
   selected document's canonical parent directory as an image-only asset
   directory; it does not widen the exact-file write grant or the main fs
   directory grants.
+- Responses carry a status (`200`/`400`/`403`/`404`/`405`/`413`/`415`),
+  `Content-Type`, `Content-Length`, `Cache-Control: no-store`,
+  `X-Content-Type-Options: nosniff`, `Access-Control-Allow-Origin: *`, and a
+  restrictive CSP for SVG. The header-bearing WebKitGTK API takes ownership of
+  the `SoupMessageHeaders`; unreffing them was the host abort seen in the
+  first attempt.
 
 ## URL and path policy
 
@@ -46,7 +52,7 @@ also rejected before any window, but earlier: the CJS loader refuses the
 ## Evidence
 
 - `node --test tests/asset-protocol.test.cjs` (Linux, real GTK/WebKitGTK
-  window): **7 PASS**.
+  window): **8 PASS**.
   - dialog-granted image: page title `asset-ok-1`, host `served:1`,
     `bytes:68`, `denied:0`, `handlerExecuted:false`;
   - ungranted image: page title `asset-error`, `denied:1`,
@@ -56,7 +62,9 @@ also rejected before any window, but earlier: the CJS loader refuses the
   - traversal -> `ELECTRON_MBT_ASSET_ESCAPE`; symlink escape ->
     `ELECTRON_MBT_ASSET_DENIED`; non-image -> `ELECTRON_MBT_ASSET_TYPE`;
     over-cap -> `ELECTRON_MBT_ASSET_LIMIT`; all `asset-error`, no served
-    bytes.
+    bytes;
+  - `crossorigin="anonymous"` image -> `drawImage` + `canvas.toDataURL`
+    succeeds (`canvas-ok-*`), so the CORS header path works for images.
 - `node scripts/nodeless-moji-assets.cjs`: **PASS**. The pinned Moji 1.0.7
   main and renderer open a test document with a relative PNG; the host serves
   it (`served:1`, `bytes:68`, `schemes:["moji-asset"]`,
@@ -86,13 +94,13 @@ also rejected before any window, but earlier: the CJS loader refuses the
   redirects, custom status/headers and app-side authorization are replaced by
   the broker policy. This is an adapted-profile behavior, not Electron
   protocol compatibility.
-- WebKitGTK's header-bearing `finish_with_response` path caused the host to
-  exit in this build; the broker uses the stable stream/`finish_error` APIs.
-  Denials therefore appear to the page as a failed resource, while the host
-  records a typed code and counters. HTTP status codes are not exposed to the
-  page.
-- CORS/canvas taint, SVG direct-navigation behavior, range requests and
+- `fetch()` to the custom scheme still reports a network error in this
+  WebKitGTK build, so the status code is not verified through Fetch. The host
+  counters (403/413/415 and typed codes) and `<img>`/canvas behavior are the
+  evidence. No-cors canvas taint, SVG direct-navigation, range requests and
   conditional requests are **NOT RUN**.
+- The CORS/canvas result uses `crossorigin="anonymous"`; whether Moji's own
+  diagram export sets that attribute is not verified.
 - Asset directories are session-scoped. A persisted exact-file grant alone
   does not authorize images after a restart.
 - Single window only. `protocol.unhandle` does not stop the host broker.

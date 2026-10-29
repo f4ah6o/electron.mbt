@@ -32,7 +32,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 | Moji open-for-edit edit/save/restart | `moji-nodeless-edit-save`: real renderer Open/Editor/Save, 0 injected grants, exact 47→74→103 bytes, restart re-open and re-save, 0640+xattr preserved, hardlink denied | PASS (test-injected dialog; synthetic DOM edit; human input NOT RUN) |
 | Node-less document identity / reload | `nodeless-runtime`: plain and adapted reload to generation 2; stale-generation event rejected before Main; forged page claims ignored; malformed page message denied; adapter ingress auto-released at load; `--ingress-selftest` test-only | PASS (test-only; single window; dedicated subframe-handler proof still open) |
 | Linux Node-less native host (experimental) | `nodeless-runtime` on Linux X11: plain/adapted load, custom app scheme, generated adapter, document generation, stale-ingress rejection, hold/close, exact-file main fs and GTK open/save dialogs; canonical-frame negative test | PASS (five shared fixtures + hold/close/fs/open-save + host-loss SIGPIPE and read-only-dir fallback hardening; one manual workspace Open/Save/reopen session; broader human selection, overwrite UI, directory grants, export/print, grant persistence, `app.quit`/menu, native frame authority, IME/AX, packaging and product compatibility NOT RUN/IMPLEMENTED; macOS remains the reference; [docs/0057](0057-linux-native-host.md), [docs/0059](0059-linux-file-and-close.md)) |
-| Custom protocol asset broker (Linux) | `nodeless-moji-assets`: real Moji 1.0.7 renderer requests a relative PNG; host serves it; `tests/asset-protocol.test.cjs` positive/negative/unadmitted | PASS (Linux; test-injected dialog; app `protocol.handle` NOT_EXECUTED; macOS NOT RUN; CORS/canvas NOT RUN) |
+| Custom protocol asset broker (Linux) | `nodeless-moji-assets`: real Moji 1.0.7 renderer requests a relative PNG; host serves it; `tests/asset-protocol.test.cjs` positive/negative/unadmitted/CORS-canvas | PASS (Linux; test-injected dialog; app `protocol.handle` NOT_EXECUTED; macOS NOT RUN; `fetch()` and no-cors canvas NOT RUN) |
 | jmd J1 expected rejection (synthetic) | `tests/apps/jmd-j1.test.cjs`: `jmd-file` + `bypassCSP` stops at main evaluation; no window/scheme | PASS (synthetic expected-rejection; pinned jmd run NOT RUN) |
 | Moji boot on Linux (experimental) | `moji-linux-boot`: real pinned main + Vite renderer, `Moji v1.0.5`, 2 adapted calls, no main error | PASS (boot only; file/dialog/export/main fs/broker/human input NOT RUN; [docs/0058](0058-moji-linux-boot.md)) |
 | Main-side fs (app root / data roots) | `nodeless-fs-app`: sync/async read, 200 KiB round-trip, atomic `.appData` write, symlink-escape denial; Moji `settingsPersisted:true` | PASS (partial; host-required) |
@@ -57,7 +57,7 @@ renderer through a snapshot-scoped custom scheme and the generated page API.
 - `verify-state`: 19/19 PASS, `NOT_READY`
 - readiness: 35 checks, 28 PASS, 2 FAIL (`moji-preload-runtime`,
   `moji-m1-boot`), 5 NOT RUN
-- `npm test`: 562 tests / 529 pass / 0 fail / 33 skip
+- `npm test`: 563 tests / 530 pass / 0 fail / 33 skip
 - `moon test --target js`: 174 pass
 - `moon test --target native`: 211 pass
 - `node --test tests/nodeless-runtime.test.cjs`: 22 pass / 0 fail / 21 skip (Linux host available)

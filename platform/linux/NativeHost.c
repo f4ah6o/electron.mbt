@@ -37,6 +37,7 @@
 #include <zlib.h>
 #include <stdarg.h>
 #include <webkit2/webkit2.h>
+#include <libsoup/soup.h>
 
 #include "control_frame.h"
 
@@ -2032,17 +2033,30 @@ static gboolean asset_path_has_parent(const char *path) {
   return g_str_has_suffix(path, "/..");
 }
 
+static gboolean asset_is_svg(const char *path) {
+  const char *extension = strrchr(path, '.');
+  return extension != NULL && g_ascii_strcasecmp(extension, ".svg") == 0;
+}
+
 static void asset_reply_status(WebKitURISchemeRequest *request, guint status,
                                const char *reason, const char *code) {
-  (void)status;
-  (void)reason;
-  /* WebKitGTK's header-bearing response path aborted this host on the pinned
-   * 2.52.6 build. Keep the stable error path; the typed code and counters are
-   * the machine-readable evidence, while the page sees a failed resource. */
-  GError *error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_FAILED,
-                                      code == NULL ? "asset denied" : code);
-  webkit_uri_scheme_request_finish_error(request, error);
-  g_error_free(error);
+  (void)code;
+  char *body = g_strdup("denied");
+  GInputStream *stream =
+    g_memory_input_stream_new_from_data(body, 6, g_free);
+  WebKitURISchemeResponse *response =
+    webkit_uri_scheme_response_new(stream, 6);
+  webkit_uri_scheme_response_set_status(response, status, reason);
+  webkit_uri_scheme_response_set_content_type(response, "text/plain");
+  SoupMessageHeaders *headers =
+    soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
+  soup_message_headers_append(headers, "Cache-Control", "no-store");
+  soup_message_headers_append(headers, "X-Content-Type-Options", "nosniff");
+  /* set_http_headers takes ownership of the headers. Do not unref them. */
+  webkit_uri_scheme_response_set_http_headers(response, headers);
+  webkit_uri_scheme_request_finish_with_response(request, response);
+  g_object_unref(response);
+  g_object_unref(stream);
 }
 
 static void asset_deny(Host *host, WebKitURISchemeRequest *request,
@@ -2173,13 +2187,28 @@ static void on_asset_scheme_request(WebKitURISchemeRequest *request,
     ? g_memory_input_stream_new_from_data(g_strdup(""), 0, g_free)
     : g_memory_input_stream_new_from_data(bytes, (gssize)length, g_free);
   if (head) {
-    /* A HEAD response carries no bytes; the Content-Type is still useful for
-     * diagnostics. WebKitGTK's header-bearing response API is not used here:
-     * the stream form is the stable path on this build. */
     g_free(bytes);
   }
-  webkit_uri_scheme_request_finish(request, stream,
-                                   head ? 0 : (gssize)length, mime);
+  WebKitURISchemeResponse *response =
+    webkit_uri_scheme_response_new(stream, head ? 0 : (gint64)length);
+  webkit_uri_scheme_response_set_status(response, 200, "OK");
+  webkit_uri_scheme_response_set_content_type(response, mime);
+  SoupMessageHeaders *headers =
+    soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
+  char content_length[64];
+  snprintf(content_length, sizeof(content_length), "%" G_GSIZE_FORMAT, length);
+  soup_message_headers_append(headers, "Content-Length", content_length);
+  soup_message_headers_append(headers, "Cache-Control", "no-store");
+  soup_message_headers_append(headers, "X-Content-Type-Options", "nosniff");
+  soup_message_headers_append(headers, "Access-Control-Allow-Origin", "*");
+  if (asset_is_svg(canonical)) {
+    soup_message_headers_append(headers, "Content-Security-Policy",
+                                 "default-src 'none'; style-src 'unsafe-inline'");
+  }
+  /* set_http_headers takes ownership of the headers. Do not unref them. */
+  webkit_uri_scheme_response_set_http_headers(response, headers);
+  webkit_uri_scheme_request_finish_with_response(request, response);
+  g_object_unref(response);
   g_object_unref(stream);
   host->asset_served += 1;
   host->asset_bytes += (guint64)length;

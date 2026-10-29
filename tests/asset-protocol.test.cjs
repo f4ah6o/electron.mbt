@@ -72,7 +72,7 @@ function assetHtml(imagePath) {
   ].join('\n');
 }
 
-function makeApp(mainSource, imagePath, extraFiles = {}) {
+function makeApp(mainSource, imagePath, extraFiles = {}, html = null) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-asset-app-'));
   const adapter = buildAdapter(simpleApi).source;
   fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
@@ -83,7 +83,7 @@ function makeApp(mainSource, imagePath, extraFiles = {}) {
     '{"name":"asset-test","version":"1.0.0","main":"src/main.js"}\n');
   fs.writeFileSync(path.join(dir, 'adapted/api.json'), `${JSON.stringify(simpleApi)}\n`);
   fs.writeFileSync(path.join(dir, 'adapted/page-api.js'), adapter);
-  fs.writeFileSync(path.join(dir, 'renderer/index.html'), assetHtml(imagePath));
+  fs.writeFileSync(path.join(dir, 'renderer/index.html'), html || assetHtml(imagePath));
   fs.writeFileSync(path.join(dir, 'nodeless-app.json'), `${JSON.stringify({
     schema: 1,
     profile: 'electron-nodeless-adapted-v1',
@@ -313,4 +313,64 @@ test('an image above the 4 MiB cap is denied', {
     fs.writeFileSync(big, Buffer.alloc(4 * 1024 * 1024 + 1));
     return big;
   }, 'ELECTRON_MBT_ASSET_LIMIT');
+});
+
+function canvasHtml(imagePath) {
+  return [
+    '<!doctype html>',
+    '<title></title>',
+    `<img id="img" crossorigin="anonymous" src="asset-test://local/${encodePath(imagePath)}">`,
+    '<canvas id="canvas" width="2" height="2"></canvas>',
+    '<script>',
+    'const img = document.getElementById("img");',
+    'const canvas = document.getElementById("canvas");',
+    'const context = canvas.getContext("2d");',
+    'img.addEventListener("load", function () {',
+    '  try {',
+    '    context.drawImage(img, 0, 0);',
+    '    const data = canvas.toDataURL("image/png");',
+    '    document.title = "canvas-ok-" + data.length;',
+    '  } catch (error) {',
+    '    document.title = "canvas-tainted-" + String(error && error.name || error);',
+    '  }',
+    '});',
+    'img.addEventListener("error", function () { document.title = "canvas-image-error"; });',
+    'setTimeout(function () { if (document.title === "") document.title = "canvas-timeout"; }, 1200);',
+    '</script>',
+    '',
+  ].join('\n');
+}
+
+test('a granted asset image can be drawn to a canvas', {
+  skip: !supported || !hostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const assets = makeAssetsDir('canvas');
+  const app = makeApp([
+    "'use strict';",
+    "const { app, BrowserWindow, dialog, protocol } = require('electron');",
+    "protocol.registerSchemesAsPrivileged([{ scheme: 'asset-test', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);",
+    "app.whenReady().then(async function () {",
+    "  const selected = await dialog.showOpenDialog({ properties: ['openFile'] });",
+    "  if (selected.canceled || selected.filePaths.length === 0) throw new Error('no selection');",
+    "  protocol.handle('asset-test', function () { return null; });",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'asset-test', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "});",
+    '',
+  ].join('\n'), assets.image, {}, canvasHtml(assets.image));
+  try {
+    const { result, holding, exit } = runHold(binary, app, {
+      ELECTRON_MBT_LINUX_DIALOG_AUTOSELECT: assets.doc,
+    });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const title = (exit && exit.pageTitle) || (holding && holding.pageTitle);
+    const assetsReport = (exit && exit.assets) || (holding && holding.assets);
+    assert.ok(assetsReport, 'missing asset status');
+    assert.equal(assetsReport.served, 1, JSON.stringify(assetsReport));
+    assert.match(String(title), /^canvas-ok-/, `canvas result: ${title}; ${JSON.stringify(assetsReport)}`);
+  } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
 });

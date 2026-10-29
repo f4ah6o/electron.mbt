@@ -641,12 +641,17 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   Denials return a failed resource plus a typed host code/counter; the
   header-bearing WebKitGTK response API was not stable in this build.
 - Test evidence:
-  - `node --test tests/asset-protocol.test.cjs`: **7 PASS**. Dialog-granted
+  - `node --test tests/asset-protocol.test.cjs`: **8 PASS**. Dialog-granted
     image title `asset-ok-1`, `served:1`, `bytes:68`, `denied:0`; ungranted
     image `asset-error`, `denied:1`, `lastCode:ELECTRON_MBT_ASSET_DENIED`;
     unadmitted scheme stops at main evaluation, no window; traversal
     (`ESCAPE`), symlink escape (`DENIED`), non-image (`TYPE`) and >4 MiB
-    (`LIMIT`) are denied with no served bytes.
+    (`LIMIT`) are denied with no served bytes; a `crossorigin` image draws to
+    canvas and `toDataURL` succeeds, so the CORS header path works.
+    WebKitGTK's `set_http_headers` owns the `SoupMessageHeaders`; the earlier
+    host abort was an extra unref. Responses now carry status, CORS, nosniff
+    and cache headers; `fetch()` to the custom scheme still reports a network
+    error (NOT RUN).
   - `node scripts/nodeless-moji-assets.cjs`: **PASS**. Pinned Moji 1.0.7 real
     renderer requested a relative PNG; host `served:1`, `bytes:68`,
     `schemes:["moji-asset"]`, `handlerExecuted:false`. The page probe did not
@@ -672,11 +677,12 @@ Implementation delegation through the GitHub Codex integration was attempted on 
     `.emoon/config.json` and the staged `nodeless-app.json`; invalid names,
     duplicates and >4 schemes fail before staging. Node/native stage bytes are
     identical (`tests/emoon-cli-parity.test.cjs`).
-  - `npm test`: **562 tests / 529 PASS / 0 FAIL / 33 SKIP**;
+  - `npm test`: **563 tests / 530 PASS / 0 FAIL / 33 SKIP**;
     `moon test --target js`: **174 PASS**; `--target native`: **211 PASS**.
-- Not run / not implemented: macOS WKURLSchemeHandler, CORS/canvas, the Moji
-  preview `<img>` probe (NOT_EXPOSED; controlled fixture PASS), persistent
-  asset directories, multi-window, `unhandle` broker shutdown. The pinned jmd run is expected-rejection but
+- Not run / not implemented: macOS WKURLSchemeHandler, `fetch()` status,
+  no-cors canvas taint, SVG direct-navigation, the Moji preview `<img>` probe
+  (NOT_EXPOSED; controlled fixture and screenshot PASS), persistent asset
+  directories, multi-window, `unhandle` broker shutdown. The pinned jmd run is expected-rejection but
   does not reach the protocol gate because of the JMD_SMOKE computed require.
   `compatible:false`, strict blocked, original preload NOT_EXECUTED.
 - See [docs/0074](0074-custom-protocol-asset-broker.md).

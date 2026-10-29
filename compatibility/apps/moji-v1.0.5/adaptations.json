@@ -18,7 +18,8 @@
       "handlerExecuted": false,
       "grants": "app root plus session document directories; image-only, read-only",
       "evidence": "compatibility/reports/moji-assets.json",
-      "limits": "Linux GTK/WebKitGTK test dialog only; macOS NOT RUN; page naturalWidth not independently probed; CORS/canvas NOT RUN"
+      "limits": "Linux GTK/WebKitGTK test dialog only; macOS NOT RUN; page naturalWidth NOT_EXPOSED (manual screenshot PASS); controlled crossorigin canvas PASS; Moji diagram export NOT RUN",
+      "canvas": "PASS (controlled crossorigin image; Moji export path NOT RUN)"
     }
   ],
   "declaredUnsupported": [

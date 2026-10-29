@@ -13,6 +13,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <zlib.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 #define EBT_BUNDLE_FOOTER 512
 #define EBT_BUNDLE_MAX_RAW (64u * 1024u * 1024u)

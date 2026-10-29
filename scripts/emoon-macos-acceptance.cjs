@@ -147,11 +147,13 @@ test('Moji 1.0.7 boots its built renderer and bundled app', {
   assert.equal(pkg.name.toLowerCase(), 'moji');
   assert.equal(pkg.version, '1.0.7');
   execute('moji-capture', process.execPath, [path.join(root, 'scripts/capture-preload-api.cjs'), path.join(app, 'out/preload/preload.js'), '--name', 'api', '--out', path.join(app, 'adapted-preload.json'), '--operation', 'readPath=emoon:read-file'], { env: process.env });
-  execute('moji-init', cli, ['init', app, '--api', 'adapted-preload.json', '--force']);
+  execute('moji-init', cli, ['init', app, '--api', 'adapted-preload.json', '--asset-scheme', 'moji-asset', '--force']);
   const ready = execute('moji-dev', cli, ['dev', app, '--force', '--no-launch']).report;
   assert.equal(ready.status, 'ready');
   assert.equal(ready.compatible, false);
   const stage = path.join(app, '.emoon/app');
+  const manifest = JSON.parse(fs.readFileSync(path.join(stage, 'nodeless-app.json'), 'utf8'));
+  assert.deepEqual(manifest.assetSchemes, ['moji-asset']);
   const run = execute('moji-run', cli, ['run', stage, '--window', '--entry', 'out/main/main.js']).report;
   verifyWindow(run, /^Moji v1\.0\.7$/);
   const output = path.join(home, 'moji-bundle');

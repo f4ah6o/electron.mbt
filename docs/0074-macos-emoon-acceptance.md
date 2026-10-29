@@ -17,7 +17,9 @@ symlink components if bundle launch reports `ELECTRON_MBT_BUNDLE_HOME` or
 CI checks out Moji at `b9753c0f7d3fe41d975a1231517f4f124b0a4408` (v1.0.7),
 installs its locked dependencies with install scripts disabled and builds it.
 Its captured adapted preload is a test-time translation; the original preload
-is not executed. Logs, command arguments, stdout, stderr, exit codes, signal,
+is not executed. The staged Moji app explicitly admits `moji-asset` for main
+startup; macOS custom-scheme asset delivery remains unimplemented and is not
+tested by this lane. Logs, command arguments, stdout, stderr, exit codes, signal,
 source revision and binary hashes are uploaded in `macos-evidence`, including
 on failure. A missing optional local Moji input is reported as NOT RUN; CI
 supplies the input and treats a missing or broken input as failure.

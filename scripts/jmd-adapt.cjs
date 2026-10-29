@@ -92,9 +92,25 @@ const hookAfter = `  if (canceled || !filePaths.length) return;
   openPath(filePaths[0]);
 }
 
-// Adapted-profile test hook: let the CLI drive the real open dialog.
+// Adapted-profile test hook: let the CLI drive the real open dialog and probe
+// the screen/message-box facades from the trusted main realm.
 ipcMain.handle('test:open-dialog', async () => {
   await openFileDialog();
+  const display = screen.getDisplayNearestPoint({ x: 10, y: 10 });
+  const box = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Save', "Don't Save", 'Cancel'],
+    defaultId: 0,
+    cancelId: 2,
+    message: 'jmd adapted facade probe',
+  });
+  return { open: true, display: display, box: box };
+});
+
+// Adapted-profile test hook: deliver the same menu:save topic the native Save
+// menu item would send. The native menu itself remains store-only.
+ipcMain.handle('test:menu-save', () => {
+  send('menu:save');
   return true;
 });
 
@@ -175,7 +191,7 @@ const report = {
     },
     {
       id: 'test-open-dialog-hook',
-      reason: 'CLI-only hook to drive the real open dialog in the adapted smoke test',
+      reason: 'CLI-only hook to drive the real open dialog and probe the screen/message-box facades in the adapted smoke test',
       beforeSHA256: hashText(hookBefore),
       afterSHA256: hashText(hookAfter),
       before: hookBefore,

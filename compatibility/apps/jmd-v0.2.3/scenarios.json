@@ -9,7 +9,7 @@
     "J1",
     "APP-N09"
   ],
-  "note": "J-P1 passes on the adapted Linux profile. The pinned raw source still stops at the JMD_SMOKE computed require (J1 expected-rejection); the adapted copy is separate. save/edit and macOS are NOT_RUN/out of scope.",
+  "note": "J-P1 passes on the adapted Linux profile, including edit/save and an external-rewrite watcher reload. The pinned raw source still stops at the JMD_SMOKE computed require (J1 expected-rejection); the adapted copy is separate. Human input/IME, native menu, net and macOS are NOT_RUN/out of scope.",
   "preflight": {
     "id": "J1-synthetic",
     "verdict": "expected-rejection",
@@ -37,8 +37,13 @@
       "initial UI",
       "test-injected open dialog",
       "preview marker",
-      "jmd-file image served"
+      "jmd-file image served",
+      "edit + menu:save bytes",
+      "external rewrite reload",
+      "GDK display bounds",
+      "test-injected message box"
     ],
-    "saveEdit": "NOT_RUN"
+    "saveEdit": "PASS (test-injected edit + menu:save)",
+    "watcher": "PASS (external rewrite, polling facade)"
   }
 }

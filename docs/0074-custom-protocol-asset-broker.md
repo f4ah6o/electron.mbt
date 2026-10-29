@@ -7,7 +7,7 @@ rejected at main evaluation in a synthetic J1 fixture. The pinned jmd main is
 also rejected before any window, but earlier: the CJS loader refuses the
 `JMD_SMOKE` computed require, so the protocol gate is not reached. A separate
 adapted staged copy removes that dev hook and `bypassCSP` and now reaches a
-positive jmd boot/open/preview ([docs/0075](0075-jmd-positive-adapted.md)).
+positive jmd boot/open/preview/edit/save ([docs/0075](0075-jmd-positive-adapted.md)).
 macOS is **NOT RUN**. This is not Electron protocol compatibility.
 
 ## What changed
@@ -54,7 +54,7 @@ macOS is **NOT RUN**. This is not Electron protocol compatibility.
 ## Evidence
 
 - `node --test tests/asset-protocol.test.cjs` (Linux, real GTK/WebKitGTK
-  window): **8 PASS**.
+  window): **9 PASS** (8 asset cases + a `loadFile` query fixture).
   - dialog-granted image: page title `asset-ok-1`, host `served:1`,
     `bytes:68`, `denied:0`, `handlerExecuted:false`;
   - ungranted image: page title `asset-error`, `denied:1`,
@@ -114,9 +114,10 @@ macOS is **NOT RUN**. This is not Electron protocol compatibility.
   the protocol declaration; the `JMD_SMOKE` computed require is rejected by
   the static graph builder. The synthetic fixture covers the `bypassCSP`
   path. The adapted staged copy (docs/0075) removes that hook and
-  `bypassCSP`, adds a jmd page shim, and passes boot/open/preview. Save/edit,
-  `fs.watch` events, `dialog.showMessageBox`, `screen`, multiple windows,
-  menu installation, `shell`, `loadFile` query and `net` remain NOT RUN.
+  `bypassCSP`, adds a jmd page shim, and passes boot/open/preview plus
+  CodeMirror edit + `menu:save`, a polling `fs.watch` reload, a test-injected
+  `showMessageBox`, GDK display bounds and `loadFile` query. Multiple windows,
+  native menu installation, `shell` and `net` remain NOT RUN.
 - `emoon init/migrate/dev/bundle --asset-scheme <scheme[,scheme]>` writes the
   list to `.emoon/config.json` and the staged `nodeless-app.json`. Both the
   native and Node CLIs reject invalid/reserved/duplicate names and more than

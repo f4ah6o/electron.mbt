@@ -15,9 +15,9 @@
     "source": "dist/index.html from the pinned Vite build"
   },
   "adapted": {
-    "mainSHA256": "5a45e20c1dfa6818b22898821adc0469afc335d7857d44e7fc96715507bed614",
+    "mainSHA256": "b973b25b565c658f6d128507dd3aa1624d78c16754adc57fe786f9e8e379c388",
     "pageApiSHA256": "b460698625b271f1e6f7428f606f8b72c70ed96b01b2d1fc42f9abd3eb90368f",
-    "manifestSHA256": "a0675920c8d2e84a232435ff1a8f96372d4f49e82da770adcd33fe50d9b02397",
+    "manifestSHA256": "1e74dd45b2e59ce0c2e4517ea4f3463f5b212971774cfc7f988b5f1220be327a",
     "files": 183,
     "stage": "_build/jmd-positive-stage"
   },
@@ -40,11 +40,11 @@
     },
     {
       "id": "test-open-dialog-hook",
-      "reason": "CLI-only hook to drive the real open dialog in the adapted smoke test",
+      "reason": "CLI-only hook to drive the real open dialog and probe the screen/message-box facades in the adapted smoke test",
       "beforeSHA256": "41fe34c17cfc630394391748bd8fb9641865b99acdbcdfa57bfd7ae1ced00f4e",
-      "afterSHA256": "26ab8a501bc641331acb75f2057576acf7f2444e316e3914ae9460c3b6e200b7",
+      "afterSHA256": "74d6af7cca5a65338ef4bcd2db63521238faad444ad87b7830e9c645ecf48e03",
       "before": "  if (canceled || !filePaths.length) return;\n  openPath(filePaths[0]);\n}\n\nasync function openPath(filePath) {",
-      "after": "  if (canceled || !filePaths.length) return;\n  openPath(filePaths[0]);\n}\n\n// Adapted-profile test hook: let the CLI drive the real open dialog.\nipcMain.handle('test:open-dialog', async () => {\n  await openFileDialog();\n  return true;\n});\n\nasync function openPath(filePath) {"
+      "after": "  if (canceled || !filePaths.length) return;\n  openPath(filePaths[0]);\n}\n\n// Adapted-profile test hook: let the CLI drive the real open dialog and probe\n// the screen/message-box facades from the trusted main realm.\nipcMain.handle('test:open-dialog', async () => {\n  await openFileDialog();\n  const display = screen.getDisplayNearestPoint({ x: 10, y: 10 });\n  const box = await dialog.showMessageBox({\n    type: 'question',\n    buttons: ['Save', \"Don't Save\", 'Cancel'],\n    defaultId: 0,\n    cancelId: 2,\n    message: 'jmd adapted facade probe',\n  });\n  return { open: true, display: display, box: box };\n});\n\n// Adapted-profile test hook: deliver the same menu:save topic the native Save\n// menu item would send. The native menu itself remains store-only.\nipcMain.handle('test:menu-save', () => {\n  send('menu:save');\n  return true;\n});\n\nasync function openPath(filePath) {"
     }
   ],
   "document": {

@@ -1263,7 +1263,7 @@ static void on_uri_scheme_request(WebKitURISchemeRequest *request,
   }
   const char *uri = webkit_uri_scheme_request_get_uri(request);
   ebt_debug("scheme request uri=%s\n", uri == NULL ? "(null)" : uri);
-  if (uri == NULL || strchr(uri, '?') != NULL || strchr(uri, '#') != NULL) {
+  if (uri == NULL || strchr(uri, '#') != NULL) {
     GError *error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "uri");
     webkit_uri_scheme_request_finish_error(request, error);
     g_error_free(error);
@@ -1601,7 +1601,7 @@ static void handle_begin_load(Host *host, Request *request) {
 
 static void start_load(Host *host, Request *request, JSCValue *payload,
                        gboolean snapshot_load) {
-  static const char *const expected[] = {"file"};
+  static const char *const expected[] = {"file", "query"};
   if (!require_current(host, request)) return;
   if (!host->content_alive) {
     request_failure(request, "ELECTRON_MBT_WEB_PROCESS_TERMINATED");
@@ -1611,7 +1611,8 @@ static void start_load(Host *host, Request *request, JSCValue *payload,
     request_failure(request, "ELECTRON_MBT_FILE_OR_GENERATION_DENIED");
     return;
   }
-  if (!object_has_exact_keys(payload, expected, 1)) {
+  gboolean has_query = object_has_exact_keys(payload, expected, 2);
+  if (!has_query && !object_has_exact_keys(payload, expected, 1)) {
     request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
     return;
   }
@@ -1619,6 +1620,21 @@ static void start_load(Host *host, Request *request, JSCValue *payload,
   if (file == NULL) {
     request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
     return;
+  }
+  char *query = has_query ? object_get_string(payload, "query") : NULL;
+  if (has_query) {
+    gboolean query_ok = query != NULL && strlen(query) <= 2048;
+    for (const char *cursor = query; query_ok && *cursor != 0; cursor++) {
+      if ((unsigned char)*cursor < 0x20 || *cursor == 0x7f || *cursor == '#') {
+        query_ok = FALSE;
+      }
+    }
+    if (!query_ok) {
+      g_free(query);
+      g_free(file);
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
   }
   char *url = NULL;
   char *loaded_file = NULL;
@@ -1651,6 +1667,12 @@ static void start_load(Host *host, Request *request, JSCValue *payload,
     free(canonical);
   }
   g_free(file);
+  if (url != NULL && query != NULL && query[0] != 0) {
+    char *with_query = g_strdup_printf("%s?%s", url, query);
+    g_free(url);
+    url = with_query;
+  }
+  g_free(query);
   if (url == NULL || loaded_file == NULL) {
     g_free(url);
     g_free(loaded_file);
@@ -1725,6 +1747,40 @@ static void handle_trigger_renderer_export_ui(Host *host, Request *request) {
     "})()";
   webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL, NULL, NULL);
   ebt_debug("trigger-renderer-export-ui\n");
+  request_success_empty(request);
+}
+
+static void handle_trigger_jmd_edit(Host *host, Request *request) {
+  if (!require_current(host, request)) return;
+  if (!host->content_alive || !host->loaded) {
+    request_failure(request, "ELECTRON_MBT_STALE_DOCUMENT");
+    return;
+  }
+  static const char script[] =
+    "(function(){"
+    "var el=document.querySelector('.cm-content');"
+    "if(!el) return false;"
+    "el.focus();"
+    "var sel=window.getSelection();"
+    "var range=document.createRange();"
+    "var walker=document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);"
+    "var last=null; while(walker.nextNode()) last=walker.currentNode;"
+    "if(last){ range.setStart(last, last.data.length); range.collapse(true); }"
+    "else { range.selectNodeContents(el); range.collapse(false); }"
+    "sel.removeAllRanges();"
+    "sel.addRange(range);"
+    "try {"
+    "  var text=String.fromCharCode(10,10)+'jmd-edit-marker-20261029';"
+    "  var ok=document.execCommand('insertText', false, text);"
+    "  if(!ok){"
+    "    el.dispatchEvent(new InputEvent('beforeinput', {bubbles:true, cancelable:true, inputType:'insertText', data:text}));"
+    "  }"
+    "  return ok;"
+    "} catch(e) { return false; }"
+    "})()";
+  webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL,
+                                      NULL, NULL);
+  ebt_debug("trigger-jmd-edit\n");
   request_success_empty(request);
 }
 
@@ -4376,6 +4432,14 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     handle_trigger_renderer_export_ui(host, request);
     return;
   }
+  if (strcmp(operation, "trigger-jmd-edit") == 0) {
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    handle_trigger_jmd_edit(host, request);
+    return;
+  }
   if (strcmp(operation, "probe-renderer") == 0) {
     if (!object_has_exact_keys(payload, NULL, 0)) {
       request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
@@ -4467,6 +4531,41 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     const char *title = gtk_window_get_title(GTK_WINDOW(host->window));
     JSCValue *reply = object_new(host);
     object_set_string(host, reply, "title", title == NULL ? "" : title);
+    request_complete(request, "success", reply);
+    return;
+  }
+  if (strcmp(operation, "get-primary-display") == 0) {
+    if (!require_current(host, request)) return;
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    GdkDisplay *display = gdk_display_get_default();
+    GdkMonitor *monitor = display == NULL
+      ? NULL : gdk_display_get_primary_monitor(display);
+    if (monitor == NULL && display != NULL &&
+        gdk_display_get_n_monitors(display) > 0) {
+      monitor = gdk_display_get_monitor(display, 0);
+    }
+    if (monitor == NULL) {
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
+    GdkRectangle geometry;
+    GdkRectangle workarea;
+    gdk_monitor_get_geometry(monitor, &geometry);
+    gdk_monitor_get_workarea(monitor, &workarea);
+    JSCValue *reply = object_new(host);
+    object_set_number(host, reply, "x", (double)geometry.x);
+    object_set_number(host, reply, "y", (double)geometry.y);
+    object_set_number(host, reply, "width", (double)geometry.width);
+    object_set_number(host, reply, "height", (double)geometry.height);
+    object_set_number(host, reply, "workX", (double)workarea.x);
+    object_set_number(host, reply, "workY", (double)workarea.y);
+    object_set_number(host, reply, "workWidth", (double)workarea.width);
+    object_set_number(host, reply, "workHeight", (double)workarea.height);
+    object_set_number(host, reply, "scaleFactor",
+                      (double)gdk_monitor_get_scale_factor(monitor));
     request_complete(request, "success", reply);
     return;
   }

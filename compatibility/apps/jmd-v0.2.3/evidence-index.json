@@ -47,5 +47,5 @@
       "note": "Linux GTK/WebKitGTK; test-injected open dialog; preview marker and jmd-file image. Original preload NOT_EXECUTED; macOS out of scope."
     }
   ],
-  "note": "Build/source/production-closure evidence, the pinned raw J1 expected-rejection, and the adapted Linux J-P1 positive. No strict-profile, original-preload, save/edit or macOS result is recorded."
+  "note": "Build/source/production-closure evidence, the pinned raw J1 expected-rejection, and the adapted Linux J-P1 positive with edit/save, watcher reload, query loadFile, GDK display bounds and a test-injected message box. No strict-profile, original-preload, human-input, native-menu or macOS result is recorded."
 }

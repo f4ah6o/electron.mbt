@@ -6,8 +6,8 @@
   "environment": {
     "platform": "linux",
     "node": "v26.13.0",
-    "hostSHA256": "00a4f2e8b7d46b160d42c3ec129ef39b5ef88dedc32bb2eeb4c0874b1831e56c",
-    "cliSHA256": "0a5e35b5ebe8cd0ce906631703929a8b88bdcd806223efffa5d9c1dae5f1fa18"
+    "hostSHA256": "f90471ccf5f367b82f7ff5c904d2c8b074c4d233153353547fdb17635a891c9c",
+    "cliSHA256": "69dadf0f59894bde8abdeb0700724f77eb416b22f3347915371d773e4a22e19f"
   },
   "stage": {
     "files": 143,
@@ -58,12 +58,12 @@
       "rendererProbe": {
         "image": null,
         "api": true,
-        "title": "note.md - Moji v1.0.7",
         "apiProbe": "",
         "preview": "",
-        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nOUTLINE\n\nImage\nImage\n\n\n\nMoji v1.0.7\nMarkdown Guide\nLines: 4\nTokens: 7\nWords: 3",
         "rootChildren": 1,
-        "editSave": ""
+        "editSave": "",
+        "title": "note.md - Moji v1.0.7",
+        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes"
       }
     }
   },
@@ -72,12 +72,12 @@
     "probe": {
       "image": null,
       "api": true,
-      "title": "note.md - Moji v1.0.7",
       "apiProbe": "",
       "preview": "",
-      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nOUTLINE\n\nImage\nImage\n\n\n\nMoji v1.0.7\nMarkdown Guide\nLines: 4\nTokens: 7\nWords: 3",
       "rootChildren": 1,
-      "editSave": ""
+      "editSave": "",
+      "title": "note.md - Moji v1.0.7",
+      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes"
     }
   },
   "assets": {

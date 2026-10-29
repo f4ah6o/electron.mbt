@@ -9,10 +9,10 @@
     "scriptNode": "v26.13.0",
     "npmOnPath": "11.20.0",
     "cli": "dist/emoon",
-    "cliSHA256": "8addd1b900536dee04ade2a29ac24913e933cd186c016c18a52f50c974fb31d9",
+    "cliSHA256": "ae7ac4b6fb8ab13b6a1e384069609f12f6e1ca3ab91ecc77e77a110fe0fe5988",
     "host": "dist/emoon-host",
-    "hostSHA256": "00a4f2e8b7d46b160d42c3ec129ef39b5ef88dedc32bb2eeb4c0874b1831e56c",
-    "testMode": "test-injected open dialog"
+    "hostSHA256": "f90471ccf5f367b82f7ff5c904d2c8b074c4d233153353547fdb17635a891c9c",
+    "testMode": "test-injected open dialog, message box response 2/Cancel, external rewrite"
   },
   "source": {
     "mainSHA256": "fd959bead9b8f05cab0f943676824f628d323b563508a0af9c03dc5765c9e737",
@@ -25,19 +25,21 @@
     "source": "dist/index.html from the pinned Vite build"
   },
   "adapted": {
-    "mainSHA256": "5a45e20c1dfa6818b22898821adc0469afc335d7857d44e7fc96715507bed614",
+    "mainSHA256": "b973b25b565c658f6d128507dd3aa1624d78c16754adc57fe786f9e8e379c388",
     "pageApiSHA256": "b460698625b271f1e6f7428f606f8b72c70ed96b01b2d1fc42f9abd3eb90368f",
-    "manifestSHA256": "a0675920c8d2e84a232435ff1a8f96372d4f49e82da770adcd33fe50d9b02397",
+    "manifestSHA256": "1e74dd45b2e59ce0c2e4517ea4f3463f5b212971774cfc7f988b5f1220be327a",
     "files": 183,
     "stage": "_build/jmd-positive-stage"
   },
   "document": {
     "path": "_build/jmd-positive-doc/note.md",
-    "marker": "jmd-positive-marker-20261029"
+    "marker": "jmd-positive-marker-20261029",
+    "editMarker": "jmd-edit-marker-20261029",
+    "watchMarker": "jmd-watch-marker-20261029"
   },
   "commands": [
     "node scripts/jmd-adapt.cjs",
-    "dist/emoon run _build/jmd-positive-stage --window --hold --hold-seconds 15 --dispatch-main test:open-dialog"
+    "dist/emoon run /home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-stage --window --hold --hold-seconds 30 --dispatch-main test:open-dialog --jmd-edit-save"
   ],
   "checks": {
     "exitZero": true,
@@ -51,16 +53,54 @@
     "schemeRegistered": true,
     "assetServed": true,
     "imageLoaded": true,
-    "noMainError": true
+    "noMainError": true,
+    "displayBounds": true,
+    "messageBox": true,
+    "editSaved": true,
+    "editCleanTitle": true,
+    "watcherReloaded": true,
+    "saveDispatched": true
   },
   "result": {
     "pageTitle": "jmd",
     "windowTitle": "note.md — jmd",
     "pageURL": "electron-mbt-app://app/dist/index.html",
-    "preview": "jmd positive\n\njmd-positive-marker-20261029\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n\n",
+    "preview": "jmd positive\n\njmd-positive-marker-20261029\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n\n\njmd-edit-marker-20261029\n\njmd-watch-marker-20261029\n",
+    "pageText": "\n/home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-doc/note.md\n⚙\nnote.md\n×\n+\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n# jmd positive\n\njmd-positive-marker-20261029",
     "dispatch": {
       "ok": true,
-      "result": "{\"ok\":true,\"result\":true}"
+      "result": "{\"ok\":true,\"result\":{\"open\":true,\"display\":{\"id\":1,\"bounds\":{\"x\":0,\"y\":0,\"width\":1920,\"height\":1080},\"workArea\":{\"x\":49,\"y\":27,\"width\":1871,\"height\":1053},\"workAreaSize\":{\"width\":1871,\"height\":1053},\"size\":{\"width\":1920,\"height\":1080},\"scaleFactor\":1},\"box\":{\"response\":2,\"checkboxChecked\":false}}}"
+    },
+    "facades": {
+      "open": true,
+      "display": {
+        "id": 1,
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1920,
+          "height": 1080
+        },
+        "workArea": {
+          "x": 49,
+          "y": 27,
+          "width": 1871,
+          "height": 1053
+        },
+        "workAreaSize": {
+          "width": 1871,
+          "height": 1053
+        },
+        "size": {
+          "width": 1920,
+          "height": 1080
+        },
+        "scaleFactor": 1
+      },
+      "box": {
+        "response": 2,
+        "checkboxChecked": false
+      }
     },
     "assets": {
       "schemes": [
@@ -75,16 +115,26 @@
       "lastCode": "OK",
       "mode": "asset-broker",
       "handlerExecuted": false
+    },
+    "save": {
+      "ok": true,
+      "result": "{\"ok\":true,\"result\":true}"
+    },
+    "file": {
+      "bytes": 197,
+      "editMarker": true,
+      "watchMarker": true
     }
   },
   "limitations": [
     "app protocol.handle is recorded, not executed",
-    "the open dialog is test-injected; no human input",
-    "save/edit is NOT RUN in this increment",
+    "the open dialog and message box are test-injected; no human input",
+    "the native menu is store-only; test:menu-save delivers the same menu:save topic",
+    "fs.watch is a bounded polling facade; no native inotify claim",
     "macOS is out of scope"
   ],
   "originalPreload": "NOT_EXECUTED",
-  "note": "The real pinned jmd renderer boots, opens a document through the adapted dialog path, and renders the marker text. This is an adapted-profile result, not Electron compatibility.",
+  "note": "The real pinned jmd renderer boots, opens a document, edits and saves it through the app menu:save path, reloads it after an external rewrite through the polling watcher, and reports GDK display geometry. This is an adapted-profile result, not Electron compatibility.",
   "visual": {
     "path": "docs/images/jmd-positive-20261029.png",
     "note": "Manual run of the same stage: the jmd window shows note.md, the editor text and the preview marker."

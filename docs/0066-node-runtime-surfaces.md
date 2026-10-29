@@ -16,6 +16,16 @@ work.
 | global `performance` | alias of the `perf_hooks` object | same limits |
 | `node:zlib` | importable; `createDeflate` uses host zlib with stored fallback | PNG/export compression works on Linux; hostless unit contexts use stored blocks |
 
+## jmd 0.2.3 added surfaces
+
+| surface | behavior | limits |
+| --- | --- | --- |
+| `fs.watch` | bounded 250 ms `fs.stat` poller; `FSWatcher` with `on('change')`, `close()`, `persistent`; emits on mtime/size change | polling, not inotify; no `fs.watchFile`, recursive watch or native event fidelity |
+| `BrowserWindow.loadFile(file, { query })` | string/number/boolean values percent-encoded in key insertion order; entry URL accepts a query; empty/absent query unchanged | only the entry document query is verified; `loadURL` query and unusual types are not covered |
+| `dialog.showMessageBox`/`Sync` | deterministic response 0..2 only when `ELECTRON_MBT_TEST_MESSAGE_BOX` is set; otherwise typed unsupported | no native GTK message box, no human input, no destructive default |
+| `screen.getDisplayNearestPoint`/`getPrimaryDisplay` | GDK primary-monitor `bounds`, `workArea`, `size`, `scaleFactor`; `getDisplayMatching` returns the primary | multi-monitor selection is approximated by the primary; 1280x800 fallback if the host op is unavailable |
+| `electron.net` | `fetch`/`request` throw `ELECTRON_MBT_UNSUPPORTED_API`; `isOnline` returns `false` | no network implementation; the app's recorded protocol handler is not executed |
+
 ## Moji 1.0.7 evidence
 
 A plain stage from the built 1.0.7 source now reaches:

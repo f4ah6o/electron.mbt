@@ -374,3 +374,34 @@ test('a granted asset image can be drawn to a canvas', {
     fs.rmSync(assets.dir, { recursive: true, force: true });
   }
 });
+
+test('loadFile query reaches the page location.search', {
+  skip: !supported || !hostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const assets = makeAssetsDir('query');
+  const html = [
+    '<!doctype html>',
+    '<title></title>',
+    '<script>document.title = "query-" + location.search;</script>',
+    '',
+  ].join('\n');
+  const app = makeApp([
+    "'use strict';",
+    "const { app, BrowserWindow } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'query', show: false });",
+    "  win.loadFile('renderer/index.html', { query: { marker: 'q1', count: 2, flag: true } });",
+    "});",
+    '',
+  ].join('\n'), assets.image, {}, html);
+  try {
+    const { result, holding, exit } = runHold(binary, app);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const title = (exit && exit.pageTitle) || (holding && holding.pageTitle);
+    assert.equal(title, 'query-?marker=q1&count=2&flag=true');
+  } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
+});

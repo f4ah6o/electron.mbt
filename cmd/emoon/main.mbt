@@ -816,6 +816,7 @@ fn cli_hold(
   close_after_ms : Int,
   trigger_export_ui : Bool,
   dispatch_main : String,
+  jmd_edit_save : Bool,
 ) -> Unit {
   let mut title = ""
   let mut window_title = ""
@@ -899,6 +900,10 @@ fn cli_hold(
   let mut dispatch_main_sent = false
   let mut main_dispatch : Json = null
   let mut renderer_probe : Json = null
+  let mut jmd_edit_sent = false
+  let mut jmd_save_sent = false
+  let mut jmd_edit : Json = null
+  let mut jmd_save : Json = null
   let mut reason = "hold-seconds"
   let mut close_sent = false
   while limit < 0 || ticks < limit {
@@ -918,9 +923,26 @@ fn cli_hold(
         })
       }
     }
-    if cli_platform() == "linux" && renderer_probe is Null && ticks >= 95 &&
-      ticks % 5 == 0 {
-      renderer_probe = cli_host_payload("probe-renderer", "{}").unwrap_or(null)
+    if jmd_edit_save && !jmd_edit_sent && ticks >= 60 {
+      jmd_edit_sent = true
+      jmd_edit = cli_host_payload("trigger-jmd-edit", "{}").unwrap_or(Json({ "ok": Json(false) }))
+    }
+    if jmd_edit_save && jmd_edit_sent && !jmd_save_sent && ticks >= 70 {
+      jmd_save_sent = true
+      jmd_save = match runner.dispatch("test:menu-save", "{}") {
+        Ok(text) => Json({ "ok": Json(true), "result": Json(text) })
+        Err(error) => Json({
+          "ok": Json(false),
+          "code": Json(error.code()),
+          "message": Json(error.message()),
+        })
+      }
+    }
+    if cli_platform() == "linux" && ticks >= 95 && ticks % 5 == 0 {
+      match cli_host_payload("probe-renderer", "{}") {
+        Some(value) => renderer_probe = value
+        None => ()
+      }
     }
     if close_after_ms > 0 && !close_sent && ticks >= close_after_ms / 100 {
       close_sent = true
@@ -990,6 +1012,8 @@ fn cli_hold(
       "assets": Json(asset_status_exit),
       "rendererProbe": Json(renderer_probe),
       "mainDispatch": Json(main_dispatch),
+      "jmdEdit": Json(jmd_edit),
+      "jmdSave": Json(jmd_save),
       "compatible": Json(false),
     }).stringify(),
   )
@@ -1065,6 +1089,15 @@ fn cli_fixture_env() -> Map[String, String] {
   )
   if length > 0 {
     out["NODELESS_FIXTURE_ENV"] = @utf8.decode_lossy(buffer[:length])
+  }
+  let test_box = Bytes::new(8)
+  let test_box_length = nodeless_env(
+    @utf8.encode("ELECTRON_MBT_TEST_MESSAGE_BOX"),
+    test_box,
+    test_box.length(),
+  )
+  if test_box_length > 0 {
+    out["ELECTRON_MBT_TEST_MESSAGE_BOX"] = @utf8.decode_lossy(test_box[:test_box_length])
   }
   out
 }
@@ -1339,6 +1372,7 @@ fn cli_main(args : Array[String]) -> Unit {
   let mut hold_close_after_ms = 0
   let mut hold_close_after_set = false
   let mut dispatch_main = ""
+  let jmd_edit_save = args.contains("--jmd-edit-save")
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--hold-seconds" && i + 1 < args.length() {
       hold_seconds_set = true
@@ -1392,6 +1426,10 @@ fn cli_main(args : Array[String]) -> Unit {
   }
   if dispatch_main.length() > 0 && !hold_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--dispatch-main requires --hold")
+    return
+  }
+  if jmd_edit_save && !hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--jmd-edit-save requires --hold")
     return
   }
   if hold_mode && (broker_selftest || fs_selftest || user_file_selftest ||
@@ -1796,7 +1834,7 @@ fn cli_main(args : Array[String]) -> Unit {
     let adapted_configured = adapted_adapter.length() > 0
     if hold_mode {
       cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
-               trigger_export_ui, dispatch_main)
+               trigger_export_ui, dispatch_main, jmd_edit_save)
       return
     }
     let mut adapted_observed = false

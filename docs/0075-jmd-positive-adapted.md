@@ -3,8 +3,11 @@
 Status: **adapted-profile PASS on Linux; `compatible:false`.** Pinned jmd 0.2.3
 (`f875fc6`) boots its real Vite renderer in GTK/WebKitGTK, opens a markdown
 document through a test-injected native open dialog, renders the marker in the
-preview, and loads a relative PNG through the `jmd-file` broker. The original
-preload is not executed. Save/edit and macOS are **NOT RUN**.
+preview, and loads a relative PNG through the `jmd-file` broker. It then edits
+the real CodeMirror editor, saves through the app's `menu:save` action, verifies
+the exact file bytes, and reloads after an external rewrite via the bounded
+polling `fs.watch` facade. The original preload is not executed. Human input,
+native menu installation, `net` and macOS are **NOT RUN/out of scope**.
 
 This is not an Electron-compatibility result and does not unblock the strict
 `electron-nodeless-v1` profile.
@@ -23,6 +26,13 @@ This is not an Electron-compatibility result and does not unblock the strict
 - `openPath()` reads the file through the main `fs` facade and sends
   `file:opened`; the renderer opens a tab, sets the window title to
   `note.md — jmd`, and renders the preview.
+- A fixed test hook appends `jmd-edit-marker-20261029` through the focused
+  `.cm-content` and CodeMirror's DOM path, then `test:menu-save` sends the same
+  `menu:save` topic the native Save item would send. The app's own `save()`
+  writes the file; the test checks the bytes, the preview and the dirty title.
+- A second process appends `jmd-watch-marker-20261029` while the app is open.
+  The prelude's bounded `fs.watch` stat poller emits a change; jmd's
+  `file:changed` path reloads the tab and the preview updates.
 - The document includes `![pixel](pixel.png)`. The bespoke page shim's
   `resolveAsset` produces `jmd-file://local/<encoded path>`; the stage admits
   `jmd-file` and the asset broker serves the dialog-granted document-directory
@@ -51,7 +61,9 @@ The original `electron/preload.js` is copied for provenance but is
   - `compatibility/reports/jmd-positive.json`:
     `adaptedBoot:true`, `windowTitle:"note.md — jmd"`,
     `openDialog:true`, `previewMarker:true`, `assetServed:true`,
-    `imageLoaded:true`, `handlerExecuted:false`.
+    `imageLoaded:true`, `handlerExecuted:false`, `editSaved:true`,
+    `editCleanTitle:true`, `watcherReloaded:true`, `saveDispatched:true`,
+    `displayBounds:true`, `messageBox:true`.
   - Assets: `schemes:["jmd-file"]`, `requests:1`, `served:1`,
     `bytes:68`, `denied:0`, `handlerExecuted:false`.
   - Preview text:
@@ -61,6 +73,9 @@ The original `electron/preload.js` is copied for provenance but is
     jmd-positive-marker-20261029
 
     A pinned jmd renderer opened this document through the adapted open dialog.
+
+    jmd-edit-marker-20261029
+    jmd-watch-marker-20261029
     ```
 - The same stage in a manual run:
 
@@ -69,8 +84,9 @@ The original `electron/preload.js` is copied for provenance but is
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
-  GitHub Actions run 279 (`e543164`, `linux-native`) completed successfully,
-  including the jmd checkout/build and positive smoke steps.
+  GitHub Actions run 279 (`e543164`, `linux-native`) completed successfully
+  for the prior boot/open smoke. The edit/watcher version in this increment
+  awaits the next push; it is covered by the same CI step.
 
 ## Reproduction
 
@@ -89,14 +105,23 @@ writes `compatibility/reports/jmd-positive.json`.
 
 ## Limits
 
-- The open dialog is test-injected; no human picker or IME.
-- Save/edit is **NOT RUN**. The open dialog grants exact-file readwrite, and
-  `file:save` exists, but no edit was injected into CodeMirror and no save was
-  verified.
-- `fs.watch` is a typed `ELECTRON_MBT_UNSUPPORTED_API`; jmd catches the throw
-  on this path and no file-change delivery is claimed. `dialog.showMessageBox`,
-  `screen.getDisplayNearestPoint`, `net`, menu installation and `loadFile`
-  query are not exercised.
+- The open dialog, message box response and edit injection are test-injected;
+  no human picker, IME or real keystrokes.
+- Save goes through the app's `menu:save` renderer action, but the native menu
+  is **store-only**; the test hook delivers the same topic the menu item would.
+  Native menu installation is not claimed.
+- `fs.watch` is a bounded polling facade, not inotify. It delivers the jmd
+  reload path but not native event fidelity; `fs.watchFile` and recursive
+  watching are not implemented.
+- `loadFile` query supports string/number/boolean values only; the app scheme
+  now accepts a query on the entry document. `loadURL` query and unusual value
+  types are not covered.
+- `dialog.showMessageBox` only works with the test env; without it the API is
+  typed unsupported. `showMessageBoxSync` follows the same injection.
+- `screen` falls back to 1280x800 if the host op is unavailable; multi-monitor
+  selection is approximated by the primary display.
+- `net` remains unsupported/out of scope; native menu installation is not
+  claimed; `droppedFilePath` stays fail-closed.
 - jmd's `protocol.handle` is recorded, not executed; the broker owns the
   response. This is an adapted-profile substitution.
 - macOS is out of scope.

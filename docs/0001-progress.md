@@ -642,7 +642,7 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   earlier host abort was an extra unref of the `SoupMessageHeaders` that
   `set_http_headers` takes ownership of.
 - Test evidence:
-  - `node --test tests/asset-protocol.test.cjs`: **8 PASS**. Dialog-granted
+  - `node --test tests/asset-protocol.test.cjs`: **9 PASS**. Dialog-granted
     image title `asset-ok-1`, `served:1`, `bytes:68`, `denied:0`; ungranted
     image `asset-error`, `denied:1`, `lastCode:ELECTRON_MBT_ASSET_DENIED`;
     unadmitted scheme stops at main evaluation, no window; traversal
@@ -652,7 +652,8 @@ Implementation delegation through the GitHub Codex integration was attempted on 
     WebKitGTK's `set_http_headers` owns the `SoupMessageHeaders`; the earlier
     host abort was an extra unref. Responses now carry status, CORS, nosniff
     and cache headers; `fetch()` to the custom scheme still reports a network
-    error (NOT RUN).
+    error (NOT RUN). A ninth fixture verifies `loadFile` query serialization
+    reaches `location.search`; it is not part of the asset protocol.
   - `node scripts/nodeless-moji-assets.cjs`: **PASS**. Pinned Moji 1.0.7 real
     renderer requested a relative PNG; host `served:1`, `bytes:68`,
     `schemes:["moji-asset"]`, `handlerExecuted:false`. The page probe did not
@@ -678,7 +679,7 @@ Implementation delegation through the GitHub Codex integration was attempted on 
     `.emoon/config.json` and the staged `nodeless-app.json`; invalid names,
     duplicates and >4 schemes fail before staging. Node/native stage bytes are
     identical (`tests/emoon-cli-parity.test.cjs`).
-  - `npm test`: **563 tests / 530 PASS / 0 FAIL / 33 SKIP**;
+  - `npm test`: **564 tests / 531 PASS / 0 FAIL / 33 SKIP**;
     `moon test --target js`: **174 PASS**; `--target native`: **211 PASS**.
 - Not run / not implemented: macOS WKURLSchemeHandler, `fetch()` status,
   no-cors canvas taint, SVG direct-navigation, the Moji preview `<img>` probe
@@ -696,21 +697,27 @@ GTK/WebKitGTK host and opens a markdown document through a test-injected native
 open dialog.
 
 - The upstream checkout is unchanged. `scripts/jmd-adapt.cjs` creates a staged
-  copy and records three source edits with before/after SHA-256:
+  copy and records source edits with before/after SHA-256:
   remove the `JMD_SMOKE` computed require, remove `bypassCSP` from the
-  `jmd-file` scheme, and add a CLI-only `test:open-dialog` hook. The bespoke
-  `fixtures/jmd-adapted/page-api.js` implements `window.jmd` (IPC calls, pure
-  `basename`/`resolveAsset`, event listeners); IPC dispatch stays
-  runtime/MoonBit-owned. The original preload is NOT_EXECUTED.
-- `nativeTheme` is added to the prelude facade (`shouldUseDarkColors:false`,
-  inert listener methods). jmd's `fs.watch`, `dialog.showMessageBox`,
-  `screen.getDisplayNearestPoint`, `net`, menu installation and `loadFile`
-  query are not exercised; no file-change delivery is claimed.
-- `scripts/jmd-positive.cjs` builds the stage, dispatches the real open
-  dialog, and asserts: adapted boot/release, page URL, window title
-  `note.md — jmd`, initial UI, open dispatch, preview marker, `jmd-file`
-  admission, image served (`served:1`, `bytes:68`) and `naturalWidth:1`.
-  `handlerExecuted:false`; `compatible:false`.
+  `jmd-file` scheme, and add CLI-only `test:open-dialog`/`test:menu-save`
+  hooks. The bespoke `fixtures/jmd-adapted/page-api.js` implements
+  `window.jmd` (IPC calls, pure `basename`/`resolveAsset`, event listeners);
+  IPC dispatch stays runtime/MoonBit-owned. The original preload is
+  NOT_EXECUTED.
+- Runtime facades added: `nativeTheme`; a bounded 250 ms `fs.watch` stat
+  poller (one timer per watcher, emits on mtime/size change, close stops it);
+  deterministic `loadFile` query encoding with a query-accepting entry URL;
+  test-injected `dialog.showMessageBox` (`ELECTRON_MBT_TEST_MESSAGE_BOX=0..2`,
+  typed unsupported otherwise); and GDK primary-display geometry for
+  `screen.getDisplayNearestPoint` with a 1280x800 fallback. Native menus stay
+  store-only; `net` stays unsupported; `droppedFilePath` stays fail-closed.
+- `scripts/jmd-positive.cjs` boots the stage, opens the document, appends
+  `jmd-edit-marker-20261029` through CodeMirror's DOM, sends `menu:save`,
+  externally rewrites the document at 10 s, and asserts: adapted boot/release,
+  page URL, window title, initial UI, open dispatch, preview marker,
+  `jmd-file` admission, image served, `naturalWidth:1`, exact edited bytes,
+  clean title, watcher reload, GDK display bounds, message-box response 2 and
+  `handlerExecuted:false`. `compatible:false`.
 - Evidence: `compatibility/reports/jmd-positive.json` and
   `jmd-positive-adaptation.json`; screenshot
   [jmd-positive-20261029.png](images/jmd-positive-20261029.png);
@@ -718,7 +725,9 @@ open dialog.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
   `CI=true` (missing source/build fails rather than skips). GitHub Actions run
-  279 (`e543164`, `linux-native`) passed the checkout/build and smoke steps;
-  local evidence is above.
-- Save/edit, human input, IME, watcher events, `showMessageBox`, detach/screen,
-  and macOS are NOT RUN/out of scope. No strict-profile or compatibility claim.
+  279 (`e543164`, `linux-native`) passed the prior boot/open smoke; the
+  edit/watcher version in this increment awaits the next push before its CI
+  run. Local evidence is above.
+- Human input/IME, native menu installation, `net`, `screen` multi-monitor
+  selection, recursive `fs.watch`, `fs.watchFile`, and macOS remain
+  NOT RUN/out of scope. No strict-profile or compatibility claim.

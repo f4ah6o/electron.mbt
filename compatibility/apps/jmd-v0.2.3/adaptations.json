@@ -26,7 +26,7 @@
       "path": "electron/main.js",
       "beforeSHA256": "41fe34c17cfc630394391748bd8fb9641865b99acdbcdfa57bfd7ae1ced00f4e",
       "afterSHA256": "26ab8a501bc641331acb75f2057576acf7f2444e316e3914ae9460c3b6e200b7",
-      "reason": "CLI-only hook to drive the real open dialog in the adapted smoke test",
+      "reason": "CLI-only hook to drive the real open dialog and probe the screen/message-box facades in the adapted smoke test",
       "scope": "CLI dispatch only; renderer never calls it"
     },
     {
@@ -42,17 +42,47 @@
       "kind": "runtime-facade",
       "path": "bridges/embedded-js/node_prelude.mbt",
       "reason": "jmd reads nativeTheme.shouldUseDarkColors at window creation; the adapted facade returns false and exposes inert listener methods."
+    },
+    {
+      "id": "fs-watch-polling",
+      "kind": "runtime-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt",
+      "reason": "jmd watches open files; a bounded 250 ms stat poller provides change events until close. No inotify/native watcher claim."
+    },
+    {
+      "id": "loadFile-query",
+      "kind": "runtime-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt + platform/linux/NativeHost.c",
+      "reason": "jmd can open a path through loadFile options.query; values are encoded deterministically and the app scheme accepts a query."
+    },
+    {
+      "id": "message-box-test-injection",
+      "kind": "test-only-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt",
+      "reason": "ELECTRON_MBT_TEST_MESSAGE_BOX=0..2 returns a deterministic response. Without it showMessageBox stays typed unsupported; there is no destructive default."
+    },
+    {
+      "id": "screen-primary-display",
+      "kind": "runtime-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt + platform/linux/NativeHost.c",
+      "reason": "getDisplayNearestPoint/getPrimaryDisplay read GDK primary-monitor geometry; a documented 1280x800 fallback covers hosts without the op."
+    },
+    {
+      "id": "jmd-edit-save-hook",
+      "kind": "test-only-staged-source-patch",
+      "path": "electron/main.js",
+      "reason": "CLI-only test:menu-save hook sends the same menu:save topic the native Save item sends; the native menu remains store-only."
     }
   ],
   "declaredUnsupported": [
     "webUtils.getPathForFile",
     "autoUpdater",
-    "dialog.showMessageBox",
-    "fs.watch (typed unsupported; no events)",
-    "screen.getDisplayNearestPoint",
-    "loadFile query"
+    "native menu installation",
+    "net",
+    "showMessageBox without the test env",
+    "human input/IME"
   ],
-  "note": "Pinned jmd 0.2.3 boots the real renderer, opens a markdown document through the test-injected native dialog, renders the marker and a relative image, and reports note.md \u2014 jmd. The two source edits and the page shim are staged-copy adaptations; the original preload is NOT_EXECUTED. compatible:false; save/edit and macOS are NOT_RUN/out of scope.",
+  "note": "Pinned jmd 0.2.3 boots the real renderer, opens a markdown document through the test-injected native dialog, edits and saves it through the app menu:save path, reloads after an external rewrite through a bounded polling watcher, and reports GDK display geometry. The edits and page shim are staged-copy adaptations; the original preload is NOT_EXECUTED. compatible:false; human input, native menu, net and macOS are out of scope.",
   "protocol": {
     "mode": "asset-broker",
     "synthetic": "PASS",
@@ -81,9 +111,17 @@
       "schemeRegistered": true,
       "assetServed": true,
       "imageLoaded": true,
-      "noMainError": true
+      "noMainError": true,
+      "displayBounds": true,
+      "messageBox": true,
+      "editSaved": true,
+      "editCleanTitle": true,
+      "watcherReloaded": true,
+      "saveDispatched": true
     },
-    "saveEdit": "NOT_RUN",
-    "macOS": "out of scope"
+    "saveEdit": "PASS (test-injected edit + menu:save; exact bytes verified)",
+    "macOS": "out of scope",
+    "watcher": "PASS (external rewrite -> file:changed reload; polling facade)",
+    "facades": "screen GDK bounds PASS; showMessageBox response 2 PASS; query loadFile fixture PASS"
   }
 }

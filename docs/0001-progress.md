@@ -725,9 +725,8 @@ open dialog.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
   `CI=true` (missing source/build fails rather than skips). GitHub Actions run
-  279 (`e543164`, `linux-native`) passed the prior boot/open smoke; the
-  edit/watcher version in this increment awaits the next push before its CI
-  run. Local evidence is above.
+  281 (`05f3a74`, `linux-native`) passed the edit/save and external-rewrite
+  watcher checks. Local evidence is above.
 - Human input/IME, native menu installation, `net`, `screen` multi-monitor
   selection, recursive `fs.watch`, `fs.watchFile`, and macOS remain
   NOT RUN/out of scope. No strict-profile or compatibility claim.

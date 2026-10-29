@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "probe": "jmd-positive",
+  "status": "PASS",
+  "compatible": false,
+  "revision": "f875fc616feb89ea803a0fc140ec770a2ade041e",
+  "environment": {
+    "platform": "linux",
+    "scriptNode": "v26.13.0",
+    "npmOnPath": "11.20.0",
+    "cli": "dist/emoon",
+    "cliSHA256": "8addd1b900536dee04ade2a29ac24913e933cd186c016c18a52f50c974fb31d9",
+    "host": "dist/emoon-host",
+    "hostSHA256": "00a4f2e8b7d46b160d42c3ec129ef39b5ef88dedc32bb2eeb4c0874b1831e56c",
+    "testMode": "test-injected open dialog"
+  },
+  "source": {
+    "mainSHA256": "fd959bead9b8f05cab0f943676824f628d323b563508a0af9c03dc5765c9e737",
+    "preloadSHA256": "2c1ea55d13a4d663603b14f33488143e296c37f88feb2fc6d4c2122a768cfd6e",
+    "updaterSHA256": "cbcf0a8099a617a2f0f71dba3bb32141d07c0ea449d290f44b80b7741928f948",
+    "packageSHA256": "9e152e040693571c222b13f56b466a254b9578074de2afb49f3aa0986f5433eb"
+  },
+  "build": {
+    "rendererIndexSHA256": "aa20dcdfb3d99bc7f514e9519611db2c2c058db8aa63651646e83cf29dce0fa6",
+    "source": "dist/index.html from the pinned Vite build"
+  },
+  "adapted": {
+    "mainSHA256": "5a45e20c1dfa6818b22898821adc0469afc335d7857d44e7fc96715507bed614",
+    "pageApiSHA256": "b460698625b271f1e6f7428f606f8b72c70ed96b01b2d1fc42f9abd3eb90368f",
+    "manifestSHA256": "a0675920c8d2e84a232435ff1a8f96372d4f49e82da770adcd33fe50d9b02397",
+    "files": 183,
+    "stage": "_build/jmd-positive-stage"
+  },
+  "document": {
+    "path": "_build/jmd-positive-doc/note.md",
+    "marker": "jmd-positive-marker-20261029"
+  },
+  "commands": [
+    "node scripts/jmd-adapt.cjs",
+    "dist/emoon run _build/jmd-positive-stage --window --hold --hold-seconds 15 --dispatch-main test:open-dialog"
+  ],
+  "checks": {
+    "exitZero": true,
+    "holdExit": true,
+    "adaptedBoot": true,
+    "pageUrl": true,
+    "windowTitle": true,
+    "initialUi": true,
+    "openDialog": true,
+    "previewMarker": true,
+    "schemeRegistered": true,
+    "assetServed": true,
+    "imageLoaded": true,
+    "noMainError": true
+  },
+  "result": {
+    "pageTitle": "jmd",
+    "windowTitle": "note.md — jmd",
+    "pageURL": "electron-mbt-app://app/dist/index.html",
+    "preview": "jmd positive\n\njmd-positive-marker-20261029\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n\n",
+    "dispatch": {
+      "ok": true,
+      "result": "{\"ok\":true,\"result\":true}"
+    },
+    "assets": {
+      "schemes": [
+        "jmd-file"
+      ],
+      "schemeCount": 1,
+      "directories": 2,
+      "requests": 1,
+      "served": 1,
+      "denied": 0,
+      "bytes": 68,
+      "lastCode": "OK",
+      "mode": "asset-broker",
+      "handlerExecuted": false
+    }
+  },
+  "limitations": [
+    "app protocol.handle is recorded, not executed",
+    "the open dialog is test-injected; no human input",
+    "save/edit is NOT RUN in this increment",
+    "macOS is out of scope"
+  ],
+  "originalPreload": "NOT_EXECUTED",
+  "note": "The real pinned jmd renderer boots, opens a document through the adapted dialog path, and renders the marker text. This is an adapted-profile result, not Electron compatibility.",
+  "visual": {
+    "path": "docs/images/jmd-positive-20261029.png",
+    "note": "Manual run of the same stage: the jmd window shows note.md, the editor text and the preview marker."
+  }
+}

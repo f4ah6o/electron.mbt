@@ -1739,6 +1739,7 @@ static void handle_probe_renderer(Host *host, Request *request) {
     "return {api: !!(window.api && typeof window.api.getSettings === 'function'), "
     "rootChildren: root ? root.childElementCount : 0, title: document.title, "
     "text: (document.body && document.body.innerText || '').slice(0, 160), "
+    "preview: (function(){ var p=document.getElementById('preview'); return p ? p.innerText.slice(0, 4096) : ''; })(), "
     "image: (function(){ var img=document.querySelector('#preview img') || document.querySelector('article img'); "
     "return img ? {src: img.currentSrc || img.src, complete: !!img.complete, "
     "naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight} : null; })(), "

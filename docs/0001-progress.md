@@ -638,8 +638,9 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   WebView and serves `scheme://local/<encoded absolute path>` from the app root
   and session document directories. The broker enforces realpath containment,
   image extensions, regular files, `O_NOFOLLOW`, a 4 MiB cap and GET/HEAD.
-  Denials return a failed resource plus a typed host code/counter; the
-  header-bearing WebKitGTK response API was not stable in this build.
+  Responses carry status, CORS, nosniff, cache and SVG CSP headers; the
+  earlier host abort was an extra unref of the `SoupMessageHeaders` that
+  `set_http_headers` takes ownership of.
 - Test evidence:
   - `node --test tests/asset-protocol.test.cjs`: **8 PASS**. Dialog-granted
     image title `asset-ok-1`, `served:1`, `bytes:68`, `denied:0`; ungranted
@@ -682,7 +683,41 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - Not run / not implemented: macOS WKURLSchemeHandler, `fetch()` status,
   no-cors canvas taint, SVG direct-navigation, the Moji preview `<img>` probe
   (NOT_EXPOSED; controlled fixture and screenshot PASS), persistent asset
-  directories, multi-window, `unhandle` broker shutdown. The pinned jmd run is expected-rejection but
-  does not reach the protocol gate because of the JMD_SMOKE computed require.
-  `compatible:false`, strict blocked, original preload NOT_EXECUTED.
+  directories, multi-window, `unhandle` broker shutdown. The pinned raw jmd
+  J1 is expected-rejection at the JMD_SMOKE computed require; the separate
+  adapted stage reaches a positive (section 69). `compatible:false`, strict
+  blocked, original preload NOT_EXECUTED.
 - See [docs/0074](0074-custom-protocol-asset-broker.md).
+
+## jmd positive on the adapted Linux profile (2026-10-29)
+
+Pinned jmd 0.2.3 (`f875fc6`) now boots its real Vite renderer in the Linux
+GTK/WebKitGTK host and opens a markdown document through a test-injected native
+open dialog.
+
+- The upstream checkout is unchanged. `scripts/jmd-adapt.cjs` creates a staged
+  copy and records three source edits with before/after SHA-256:
+  remove the `JMD_SMOKE` computed require, remove `bypassCSP` from the
+  `jmd-file` scheme, and add a CLI-only `test:open-dialog` hook. The bespoke
+  `fixtures/jmd-adapted/page-api.js` implements `window.jmd` (IPC calls, pure
+  `basename`/`resolveAsset`, event listeners); IPC dispatch stays
+  runtime/MoonBit-owned. The original preload is NOT_EXECUTED.
+- `nativeTheme` is added to the prelude facade (`shouldUseDarkColors:false`,
+  inert listener methods). jmd's `fs.watch`, `dialog.showMessageBox`,
+  `screen.getDisplayNearestPoint`, `net`, menu installation and `loadFile`
+  query are not exercised; no file-change delivery is claimed.
+- `scripts/jmd-positive.cjs` builds the stage, dispatches the real open
+  dialog, and asserts: adapted boot/release, page URL, window title
+  `note.md — jmd`, initial UI, open dispatch, preview marker, `jmd-file`
+  admission, image served (`served:1`, `bytes:68`) and `naturalWidth:1`.
+  `handlerExecuted:false`; `compatible:false`.
+- Evidence: `compatibility/reports/jmd-positive.json` and
+  `jmd-positive-adaptation.json`; screenshot
+  [jmd-positive-20261029.png](images/jmd-positive-20261029.png);
+  [docs/0075](0075-jmd-positive-adapted.md).
+- CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
+  `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
+  `CI=true` (missing source/build fails rather than skips). The workflow step
+  is NOT RUN in this increment; local evidence is above.
+- Save/edit, human input, IME, watcher events, `showMessageBox`, detach/screen,
+  and macOS are NOT RUN/out of scope. No strict-profile or compatibility claim.

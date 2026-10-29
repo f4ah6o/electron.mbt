@@ -5,8 +5,10 @@ Moji 1.0.7 renderer requests a relative image and the native host serves it
 through a runtime-owned broker. jmd's privileged `bypassCSP` declaration is
 rejected at main evaluation in a synthetic J1 fixture. The pinned jmd main is
 also rejected before any window, but earlier: the CJS loader refuses the
-`JMD_SMOKE` computed require, so the protocol gate is not reached. macOS is
-**NOT RUN**. This is not Electron protocol compatibility.
+`JMD_SMOKE` computed require, so the protocol gate is not reached. A separate
+adapted staged copy removes that dev hook and `bypassCSP` and now reaches a
+positive jmd boot/open/preview ([docs/0075](0075-jmd-positive-adapted.md)).
+macOS is **NOT RUN**. This is not Electron protocol compatibility.
 
 ## What changed
 
@@ -108,13 +110,13 @@ also rejected before any window, but earlier: the CJS loader refuses the
   The CLI only sends the host scheme list on Linux, so adapted Moji stages
   still boot on macOS but custom-scheme images are not served there. No
   macOS PASS is claimed.
-- The pinned jmd J1 is an expected-rejection at the CJS loader, not at the
-  protocol declaration; the `JMD_SMOKE` computed require is rejected by the
-  static graph builder. The synthetic fixture covers the `bypassCSP` path.
-  The remaining jmd blockers are unchanged: `nativeTheme`, preload pure
-  functions (`basename`/`resolveAsset`), `fs.watch`,
-  `dialog.showMessageBox`, multiple windows, menu, shell, `loadFile` query,
-  `net`, and a decision on `bypassCSP`.
+- The pinned raw jmd J1 is an expected-rejection at the CJS loader, not at
+  the protocol declaration; the `JMD_SMOKE` computed require is rejected by
+  the static graph builder. The synthetic fixture covers the `bypassCSP`
+  path. The adapted staged copy (docs/0075) removes that hook and
+  `bypassCSP`, adds a jmd page shim, and passes boot/open/preview. Save/edit,
+  `fs.watch` events, `dialog.showMessageBox`, `screen`, multiple windows,
+  menu installation, `shell`, `loadFile` query and `net` remain NOT RUN.
 - `emoon init/migrate/dev/bundle --asset-scheme <scheme[,scheme]>` writes the
   list to `.emoon/config.json` and the staged `nodeless-app.json`. Both the
   native and Node CLIs reject invalid/reserved/duplicate names and more than

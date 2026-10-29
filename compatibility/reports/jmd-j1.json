@@ -7,7 +7,7 @@
   "environment": {
     "platform": "linux",
     "node": "v26.13.0",
-    "cliSHA256": "afd486664fc67d4eb46e18817edce5ab573c8508caf289b17026b91be291c622"
+    "cliSHA256": "8addd1b900536dee04ade2a29ac24913e933cd186c016c18a52f50c974fb31d9"
   },
   "source": {
     "mainSHA256": "fd959bead9b8f05cab0f943676824f628d323b563508a0af9c03dc5765c9e737",

@@ -1,13 +1,15 @@
 {
   "schema": 1,
   "appId": "jmd-v0.2.3",
-  "status": "not-run",
-  "scenarios": [],
+  "status": "partial",
+  "scenarios": [
+    "J-P1"
+  ],
   "negativeScenarios": [
     "J1",
     "APP-N09"
   ],
-  "note": "J1 is a negative diagnostic, not a positive app scenario. The synthetic preflight exercises bypassCSP; the pinned run stops earlier at the CJS loader. Positive scenarios remain NOT_RUN.",
+  "note": "J-P1 passes on the adapted Linux profile. The pinned raw source still stops at the JMD_SMOKE computed require (J1 expected-rejection); the adapted copy is separate. save/edit and macOS are NOT_RUN/out of scope.",
   "preflight": {
     "id": "J1-synthetic",
     "verdict": "expected-rejection",
@@ -23,5 +25,20 @@
     "revision": "f875fc616feb89ea803a0fc140ec770a2ade041e",
     "evidence": "compatibility/reports/jmd-j1.json",
     "note": "The pinned main is rejected by the CJS loader (JMD_SMOKE computed require) before the protocol declaration. This is fail-closed, but it is not protocol-gate evidence."
+  },
+  "positive": {
+    "id": "J-P1",
+    "status": "PASS",
+    "profile": "electron-nodeless-adapted-v1",
+    "platform": "linux",
+    "evidence": "compatibility/reports/jmd-positive.json",
+    "checks": [
+      "adapted boot",
+      "initial UI",
+      "test-injected open dialog",
+      "preview marker",
+      "jmd-file image served"
+    ],
+    "saveEdit": "NOT_RUN"
   }
 }

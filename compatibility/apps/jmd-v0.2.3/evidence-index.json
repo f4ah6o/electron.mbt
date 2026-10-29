@@ -38,7 +38,14 @@
       "path": "../../reports/jmd-j1.json",
       "status": "expected-rejection",
       "note": "Pinned f875fc6 main stops at the CJS loader (JMD_SMOKE computed require) before the protocol declaration; protocolGateReached=false. Synthetic bypassCSP rejection is separate."
+    },
+    {
+      "id": "scenario:jmd-v0.2.3:positive",
+      "kind": "adapted-positive",
+      "path": "../../reports/jmd-positive.json",
+      "status": "PASS",
+      "note": "Linux GTK/WebKitGTK; test-injected open dialog; preview marker and jmd-file image. Original preload NOT_EXECUTED; macOS out of scope."
     }
   ],
-  "note": "Build/source/production-closure evidence plus the pinned J1 expected-rejection. No positive app scenario, window or compatibility result is recorded."
+  "note": "Build/source/production-closure evidence, the pinned raw J1 expected-rejection, and the adapted Linux J-P1 positive. No strict-profile, original-preload, save/edit or macOS result is recorded."
 }

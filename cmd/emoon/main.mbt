@@ -815,8 +815,10 @@ fn cli_hold(
   hold_seconds : Int,
   close_after_ms : Int,
   trigger_export_ui : Bool,
+  dispatch_main : String,
 ) -> Unit {
   let mut title = ""
+  let mut window_title = ""
   let mut url = ""
   let mut released = !adapted_configured
   let mut host_alive = true
@@ -837,6 +839,15 @@ fn cli_hold(
       Some(value) => {
         match cli_text(value, "title") {
           Some(text) => if text.length() > 0 { title = text }
+          None => ()
+        }
+      }
+      None => host_alive = false
+    }
+    match cli_host_payload("get-window-title", "{}") {
+      Some(value) => {
+        match cli_text(value, "title") {
+          Some(text) => if text.length() > 0 { window_title = text }
           None => ()
         }
       }
@@ -870,6 +881,7 @@ fn cli_hold(
       "platform": Json(cli_platform()),
       "profile": Json("electron-nodeless-adapted-v1"),
       "pageTitle": Json(title),
+      "windowTitle": Json(window_title),
       "pageURL": Json(url),
       "adapted": Json(adapted_configured),
       "released": Json(released),
@@ -884,6 +896,8 @@ fn cli_hold(
   let limit = if hold_seconds > 0 { hold_seconds * 10 } else { -1 }
   let mut ticks = 0
   let mut export_ui_sent = false
+  let mut dispatch_main_sent = false
+  let mut main_dispatch : Json = null
   let mut renderer_probe : Json = null
   let mut reason = "hold-seconds"
   let mut close_sent = false
@@ -892,6 +906,17 @@ fn cli_hold(
     if trigger_export_ui && !export_ui_sent && ticks >= 80 {
       export_ui_sent = true
       let _ = cli_host_payload("trigger-renderer-export-ui", "{}")
+    }
+    if dispatch_main.length() > 0 && !dispatch_main_sent && ticks >= 20 {
+      dispatch_main_sent = true
+      main_dispatch = match runner.dispatch(dispatch_main, "{}") {
+        Ok(text) => Json({ "ok": Json(true), "result": Json(text) })
+        Err(error) => Json({
+          "ok": Json(false),
+          "code": Json(error.code()),
+          "message": Json(error.message()),
+        })
+      }
     }
     if cli_platform() == "linux" && renderer_probe is Null && ticks >= 95 &&
       ticks % 5 == 0 {
@@ -927,6 +952,24 @@ fn cli_hold(
     nodeless_sleep_ms(50)
     ticks = ticks + 1
   }
+  match cli_host_payload("get-web-contents-title", "{}") {
+    Some(value) => {
+      match cli_text(value, "title") {
+        Some(text) => if text.length() > 0 { title = text }
+        None => ()
+      }
+    }
+    None => ()
+  }
+  match cli_host_payload("get-window-title", "{}") {
+    Some(value) => {
+      match cli_text(value, "title") {
+        Some(text) => if text.length() > 0 { window_title = text }
+        None => ()
+      }
+    }
+    None => ()
+  }
   runner.stop()
   let asset_status_exit = if cli_platform() == "linux" {
     cli_host_payload("get-asset-status", "{}").unwrap_or(null)
@@ -942,8 +985,11 @@ fn cli_hold(
       "reason": Json(reason),
       "ticks": Json(ticks),
       "pageTitle": Json(title),
+      "windowTitle": Json(window_title),
+      "pageURL": Json(url),
       "assets": Json(asset_status_exit),
       "rendererProbe": Json(renderer_probe),
+      "mainDispatch": Json(main_dispatch),
       "compatible": Json(false),
     }).stringify(),
   )
@@ -1292,6 +1338,7 @@ fn cli_main(args : Array[String]) -> Unit {
   let mut hold_seconds_set = false
   let mut hold_close_after_ms = 0
   let mut hold_close_after_set = false
+  let mut dispatch_main = ""
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--hold-seconds" && i + 1 < args.length() {
       hold_seconds_set = true
@@ -1300,6 +1347,9 @@ fn cli_main(args : Array[String]) -> Unit {
     if args[i] == "--hold-close-after-ms" && i + 1 < args.length() {
       hold_close_after_set = true
       hold_close_after_ms = cli_parse_seconds(args[i + 1])
+    }
+    if args[i] == "--dispatch-main" && i + 1 < args.length() {
+      dispatch_main = args[i + 1]
     }
   }
   let broker_selftest = args.contains("--broker-selftest")
@@ -1334,6 +1384,14 @@ fn cli_main(args : Array[String]) -> Unit {
   }
   if hold_close_after_set && (hold_close_after_ms < 1 || hold_close_after_ms > 60000) {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold-close-after-ms must be 1..60000")
+    return
+  }
+  if dispatch_main.length() > 128 {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--dispatch-main is too long")
+    return
+  }
+  if dispatch_main.length() > 0 && !hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--dispatch-main requires --hold")
     return
   }
   if hold_mode && (broker_selftest || fs_selftest || user_file_selftest ||
@@ -1738,7 +1796,7 @@ fn cli_main(args : Array[String]) -> Unit {
     let adapted_configured = adapted_adapter.length() > 0
     if hold_mode {
       cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
-               trigger_export_ui)
+               trigger_export_ui, dispatch_main)
       return
     }
     let mut adapted_observed = false

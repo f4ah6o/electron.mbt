@@ -158,6 +158,8 @@ root の `semver@6.3.1` や jmd root の `fs-extra@8.1.0` を updater の解決�
 6. updater package 自体は lazy require。packaged の起動では 8 秒後の `setTimeout(...).unref()` が登録され、実行時に条件を満たすと package / network / update path に進む。
 7. `JMD_SMOKE` があると任意指定 script を require する開発専用経路がある。製品環境では採用しない。[J-M], [J-U]
 
+2026-10-29 実装追記: pinned jmd `f875fc6` の main は `JMD_SMOKE` の computed require により CJS loader で `ELECTRON_MBT_DYNAMIC_REQUIRE` として停止し、`protocol.registerSchemesAsPrivileged` には到達しない（`protocolGateReached:false`）。`bypassCSP` の typed rejection は synthetic J1 fixture で確認した。pinned app の J1 は expected-rejection のまま positive を閉じない。詳細は [docs/0074](../../docs/0074-custom-protocol-asset-broker.md) と `compatibility/reports/jmd-j1.json`。
+
 **J1 の当初 positive 目標は、既知の protocol gate が解決するまで BLOCKED。** 同じ原本が明示 unsupported で止まり、native protocol / unrestricted file access が登録されないことを負例の PASS とする。これは `App Scenario Supported` ではない。
 
 #### 7.2 後続で必要になる surface
@@ -449,6 +451,7 @@ QuickJS の engine 選定、Moji/jmd の版、strict/adapted 分離、Moji の a
 - 2026-10-17: 固定 source/lock と 16 updater package instances、boot side effects、Moji API、M1〜M3/J1、APP-N01〜N15 を調査・設計。
 - 2026-10-17 polish: 11 必須見出しと必要な質問へ再編。全 pins・source citations・シナリオを保持し、A1 の最小実装、path 所在、app result shape と ingress error、具体 command、調査と runtime 保留の境界を追加。
 - 2026-10-20: M3e/M3f の adapted renderer 経路を test-injected open dialog と synthetic DOM edit で実行した。open-for-edit の exact-file read+replace grant で通常 save、再起動後の picker 再 open と re-save、47→74→103 bytes 一致を確認した。human picker/IME、metadata/TOCTOU は NOT RUN であり、M3e/M3f の checkbox は未完了のままとする。詳細は `docs/0055-moji-edit-save-restart.md`。
+- 2026-10-29: adapted profile の `assetSchemes` と Linux asset broker を実装した。pinned Moji 1.0.7 の実 renderer が相対 PNG を要求し、host が配信、manual screenshot で preview 表示を確認した。app の `protocol.handle` は NOT_EXECUTED、macOS は NOT RUN。pinned jmd J1 は CJS loader（`JMD_SMOKE` computed require）で expected-rejection となり、protocol gate には到達しない。synthetic J1 は `bypassCSP` を typed reject する。positive は未完了。詳細は `docs/0074-custom-protocol-asset-broker.md`。
 
 ## 注記
 

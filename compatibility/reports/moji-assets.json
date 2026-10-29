@@ -7,7 +7,7 @@
     "platform": "linux",
     "node": "v26.13.0",
     "hostSHA256": "00a4f2e8b7d46b160d42c3ec129ef39b5ef88dedc32bb2eeb4c0874b1831e56c",
-    "cliSHA256": "d21ca8d24f9a85e8286963a7f7f33cb79e190638635253c32ba0662e3eb38392"
+    "cliSHA256": "0a5e35b5ebe8cd0ce906631703929a8b88bdcd806223efffa5d9c1dae5f1fa18"
   },
   "stage": {
     "files": 143,
@@ -56,28 +56,28 @@
         "handlerExecuted": false
       },
       "rendererProbe": {
-        "editSave": "",
+        "image": null,
         "api": true,
-        "preview": "",
         "title": "note.md - Moji v1.0.7",
         "apiProbe": "",
+        "preview": "",
         "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nOUTLINE\n\nImage\nImage\n\n\n\nMoji v1.0.7\nMarkdown Guide\nLines: 4\nTokens: 7\nWords: 3",
         "rootChildren": 1,
-        "image": null
+        "editSave": ""
       }
     }
   },
   "rendererProbe": {
     "status": "NOT_EXPOSED",
     "probe": {
-      "editSave": "",
+      "image": null,
       "api": true,
-      "preview": "",
       "title": "note.md - Moji v1.0.7",
       "apiProbe": "",
+      "preview": "",
       "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nOUTLINE\n\nImage\nImage\n\n\n\nMoji v1.0.7\nMarkdown Guide\nLines: 4\nTokens: 7\nWords: 3",
       "rootChildren": 1,
-      "image": null
+      "editSave": ""
     }
   },
   "assets": {

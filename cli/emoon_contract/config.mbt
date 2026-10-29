@@ -6,6 +6,7 @@ pub(all) struct CliConfig {
   page : String
   include : Array[String]
   api : String?
+  asset_schemes : Array[String]
   config_file : String
   workspace : String
 }
@@ -165,6 +166,19 @@ pub fn config_from_json(
     Ok(path) => path
     Err(error) => return Err(error)
   }
+  let asset_schemes = match value {
+    Object(fields) =>
+      match fields.get("assetSchemes") {
+        Some(items) =>
+          match @core.protocol_manifest_asset_schemes(items) {
+            Ok(schemes) => schemes
+            Err(code) =>
+              return Err(CliError::new(code, "invalid .emoon/config.json assetSchemes"))
+          }
+        None => []
+      }
+    _ => []
+  }
   Ok({
     schema: 1,
     main: main,
@@ -172,6 +186,7 @@ pub fn config_from_json(
     page: page,
     include: include,
     api: api,
+    asset_schemes: asset_schemes,
     config_file: config_file,
     workspace: workspace,
   })
@@ -237,6 +252,22 @@ pub fn merge_config(
       Err(error) => return Err(error)
     }
   }
+  let asset_schemes = match args.value("asset-scheme") {
+    Some(text) => {
+      let schemes : Array[String] = []
+      for item in text.split(",") {
+        let trimmed = item.trim_space().to_owned()
+        if trimmed != "" {
+          schemes.push(trimmed)
+        }
+      }
+      match @core.admit_asset_schemes(schemes) {
+        Ok(_) => schemes
+        Err(code) => return Err(CliError::new(code, "invalid --asset-scheme"))
+      }
+    }
+    None => config.asset_schemes
+  }
   Ok({
     schema: 1,
     main: config.main,
@@ -244,6 +275,7 @@ pub fn merge_config(
     page: page,
     include: include,
     api: api,
+    asset_schemes: asset_schemes,
     config_file: config.config_file,
     workspace: config.workspace,
   })
@@ -252,7 +284,7 @@ pub fn merge_config(
 ///|
 /// The config file text, matching `JSON.stringify(config, null, 2) + "\n"`.
 pub fn config_text(config : CliConfig) -> String {
-  CliJson::object([
+  let fields : Array[(String, CliJson)] = [
     ("schema", CliJson::int(1)),
     ("main", CliJson::string(config.main)),
     ("renderer", CliJson::string(config.renderer)),
@@ -262,7 +294,14 @@ pub fn config_text(config : CliConfig) -> String {
       Some(path) => CliJson::string(path)
       None => CliJson::null()
     }),
-  ]).to_file_text()
+  ]
+  if config.asset_schemes.length() > 0 {
+    fields.push((
+      "assetSchemes",
+      CliJson::array(config.asset_schemes.map(item => CliJson::string(item))),
+    ))
+  }
+  CliJson::object(fields).to_file_text()
 }
 
 ///|
@@ -274,6 +313,7 @@ pub fn config_default(
   page : String?,
   include : Array[String],
   api : String?,
+  asset_schemes : Array[String],
   config_file : String,
   workspace : String,
 ) -> Result[CliConfig, CliError] {
@@ -309,6 +349,10 @@ pub fn config_default(
     }
     None => None
   }
+  match @core.admit_asset_schemes(asset_schemes) {
+    Ok(_) => ()
+    Err(code) => return Err(CliError::new(code, "invalid assetSchemes"))
+  }
   Ok({
     schema: 1,
     main: main,
@@ -316,6 +360,7 @@ pub fn config_default(
     page: normalized_page,
     include: normalized_include,
     api: normalized_api,
+    asset_schemes: asset_schemes,
     config_file: config_file,
     workspace: workspace,
   })

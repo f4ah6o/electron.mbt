@@ -202,6 +202,30 @@ fn cli_profile_adapter(
 }
 
 ///|
+/// The staged adapted manifest may admit custom schemes for the native asset
+/// broker. A missing manifest is the plain profile and admits none; a present
+/// but malformed list must fail before the host or main runs.
+fn cli_profile_asset_schemes(
+  sources : Map[String, String],
+) -> Result[Array[String], String] {
+  let raw = match sources.get("nodeless-app.json") {
+    Some(value) => value
+    None => return Ok([])
+  }
+  let parsed = @json.parse(raw) catch {
+    _ => return Err("invalid nodeless-app.json")
+  }
+  let value = match parsed {
+    Object(fields) => fields.get("assetSchemes").unwrap_or(null)
+    _ => null
+  }
+  match @core.protocol_manifest_asset_schemes(value) {
+    Ok(schemes) => Ok(schemes)
+    Err(code) => Err(code)
+  }
+}
+
+///|
 fn cli_broker_kind(kind : String) -> Bool {
   kind == "open" || kind == "save" || kind == "export-html" ||
   kind == "export-png" || kind == "export-pdf" || kind == "export-doc-png"
@@ -833,6 +857,11 @@ fn cli_hold(
     nodeless_sleep_ms(100)
     attempts = attempts + 1
   }
+  let asset_status = if cli_platform() == "linux" {
+    cli_host_payload("get-asset-status", "{}").unwrap_or(null)
+  } else {
+    null
+  }
   println(
     Json({
       "schema": Json(1),
@@ -844,6 +873,8 @@ fn cli_hold(
       "pageURL": Json(url),
       "adapted": Json(adapted_configured),
       "released": Json(released),
+      "assets": Json(asset_status),
+      "mainError": Json(runner.global_text("__mbt_last_error")),
       "holdSeconds": Json(hold_seconds),
       "hostPid": Json(nodeless_host_pid()),
       "compatible": Json(false),
@@ -853,6 +884,7 @@ fn cli_hold(
   let limit = if hold_seconds > 0 { hold_seconds * 10 } else { -1 }
   let mut ticks = 0
   let mut export_ui_sent = false
+  let mut renderer_probe : Json = null
   let mut reason = "hold-seconds"
   let mut close_sent = false
   while limit < 0 || ticks < limit {
@@ -860,6 +892,10 @@ fn cli_hold(
     if trigger_export_ui && !export_ui_sent && ticks >= 80 {
       export_ui_sent = true
       let _ = cli_host_payload("trigger-renderer-export-ui", "{}")
+    }
+    if cli_platform() == "linux" && renderer_probe is Null && ticks >= 95 &&
+      ticks % 5 == 0 {
+      renderer_probe = cli_host_payload("probe-renderer", "{}").unwrap_or(null)
     }
     if close_after_ms > 0 && !close_sent && ticks >= close_after_ms / 100 {
       close_sent = true
@@ -892,6 +928,11 @@ fn cli_hold(
     ticks = ticks + 1
   }
   runner.stop()
+  let asset_status_exit = if cli_platform() == "linux" {
+    cli_host_payload("get-asset-status", "{}").unwrap_or(null)
+  } else {
+    null
+  }
   let _ = nodeless_host_shutdown()
   println(
     Json({
@@ -900,6 +941,9 @@ fn cli_hold(
       "status": Json("HOLD_EXIT"),
       "reason": Json(reason),
       "ticks": Json(ticks),
+      "pageTitle": Json(title),
+      "assets": Json(asset_status_exit),
+      "rendererProbe": Json(renderer_probe),
       "compatible": Json(false),
     }).stringify(),
   )
@@ -1045,6 +1089,8 @@ fn cli_print_help() -> Unit {
   println("  migrate  stage the app under .emoon/app and write the migration report")
   println("  dev      init/inspect/migrate, validate with doctor, then run --window (--build runs npm run build)")
   println("  run      run a prepared app (--window, --entry, --profile, --hold, selftests)")
+  println("")
+  println("  --asset-scheme <s,...>  admit custom schemes for the adapted asset broker")
   println("  doctor   validate a prepared app without launching it")
   println("")
   println("other:")
@@ -1489,6 +1535,13 @@ fn cli_main(args : Array[String]) -> Unit {
       return
     }
   }
+  let asset_schemes = match cli_profile_asset_schemes(sources) {
+    Ok(value) => value
+    Err(code) => {
+      cli_fail(code, "invalid assetSchemes in nodeless-app.json")
+      return
+    }
+  }
   let mut requested_profile = ""
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--profile" && i + 1 < args.length() {
@@ -1621,6 +1674,7 @@ fn cli_main(args : Array[String]) -> Unit {
     cwd: app_dir,
     env: cli_fixture_env(),
     adapted_adapter,
+    asset_schemes,
   }
   let runner = @app.AppRunner::new(snapshot, config)
   if !window_mode {
@@ -1639,6 +1693,25 @@ fn cli_main(args : Array[String]) -> Unit {
       runner.stop()
       cli_fail("ELECTRON_MBT_NODELESS_HOST", "native host start failed")
       return
+    }
+    if asset_schemes.length() > 0 && cli_platform() == "linux" {
+      let schemes_json : Array[Json] = []
+      for scheme in asset_schemes {
+        schemes_json.push(Json(scheme))
+      }
+      let payload = Json({ "schemes": Json(schemes_json) }).stringify()
+      match cli_host_payload("set-asset-schemes", payload) {
+        Some(_) => ()
+        None => {
+          nodeless_host_kill()
+          runner.stop()
+          cli_fail(
+            "ELECTRON_MBT_NODELESS_PROTOCOL",
+            "native host rejected the asset scheme list",
+          )
+          return
+        }
+      }
     }
     if !runner.install_host_bridge() {
       nodeless_host_kill()
@@ -2251,6 +2324,11 @@ fn cli_main(args : Array[String]) -> Unit {
     let main_error = runner.global_text("__mbt_last_error")
     let rejection = runner.last_rejection()
     let host_pid = nodeless_host_pid()
+    let asset_status = if cli_platform() == "linux" {
+      cli_host_payload("get-asset-status", "{}").unwrap_or(null)
+    } else {
+      null
+    }
     let shutdown = nodeless_host_shutdown()
     let live = runner.live_leases()
     let manifest_hash = match cli_sha256(app_dir, "source-manifest.json") {
@@ -2332,6 +2410,7 @@ fn cli_main(args : Array[String]) -> Unit {
         "ingress": ingress,
       }),
       "ingressSelftest": ingress_selftest_json,
+      "assets": Json(asset_status),
       "grantStore": grant_store,
       "grantPersistSelftest": grant_persist_json,
       "grantRevokeSelftest": grant_revoke_json,

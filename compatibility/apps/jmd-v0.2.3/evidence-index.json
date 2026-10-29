@@ -31,7 +31,14 @@
       "kind": "sbom",
       "path": "sbom.cdx.json",
       "status": "PASS"
+    },
+    {
+      "id": "scenario:jmd-v0.2.3:j1",
+      "kind": "expected-rejection",
+      "path": "../../reports/jmd-j1.json",
+      "status": "expected-rejection",
+      "note": "Pinned f875fc6 main stops at the CJS loader (JMD_SMOKE computed require) before the protocol declaration; protocolGateReached=false. Synthetic bypassCSP rejection is separate."
     }
   ],
-  "note": "Build/source/production-closure evidence only. The M1 boot attempt failed at app.setName; no Node-less runtime or app-scenario acceptance is recorded."
+  "note": "Build/source/production-closure evidence plus the pinned J1 expected-rejection. No positive app scenario, window or compatibility result is recorded."
 }

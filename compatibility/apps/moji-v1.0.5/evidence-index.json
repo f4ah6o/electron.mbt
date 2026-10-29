@@ -44,7 +44,14 @@
       "kind": "sbom",
       "path": "sbom.cdx.json",
       "status": "PASS"
+    },
+    {
+      "id": "scenario:moji-v1.0.5:assets",
+      "kind": "asset-broker",
+      "path": "../../reports/moji-assets.json",
+      "status": "PASS",
+      "note": "Linux GTK/WebKitGTK test dialog; real Moji 1.0.7 renderer requested and received a relative PNG. App protocol handler NOT_EXECUTED; macOS NOT RUN."
     }
   ],
-  "note": "Build/source/production-closure and preload-gate evidence only. No contextBridge/ipcRenderer or app-scenario acceptance is recorded."
+  "note": "Build/source/production-closure, preload-gate and Linux asset-broker evidence only. No contextBridge/ipcRenderer, macOS or full app-scenario acceptance is recorded."
 }

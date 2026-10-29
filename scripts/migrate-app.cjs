@@ -111,6 +111,22 @@ function configPath(root, options) {
   if (!inside(root, resolved)) fail('ELECTRON_MBT_PATH_ESCAPE', '--config escapes the app root');
   return resolved;
 }
+function parseAssetSchemes(value, label = 'asset-scheme') {
+  if (value === undefined || value === null || value === '') return [];
+  if (typeof value !== 'string') fail('ELECTRON_MBT_PROTOCOL_INVALID_SCHEME', `${label} must be a string`);
+  const schemes = value.split(',').map(item => item.trim()).filter(Boolean);
+  if (schemes.length > 4) fail('ELECTRON_MBT_PROTOCOL_INVALID_SCHEME', `${label} allows at most four schemes`);
+  const seen = new Set();
+  for (const scheme of schemes) {
+    if (!/^[a-z][a-z0-9+.-]{2,31}$/.test(scheme) ||
+        ['http', 'https', 'file', 'data', 'blob', 'about', 'javascript', 'electron-mbt-app'].includes(scheme)) {
+      fail('ELECTRON_MBT_PROTOCOL_INVALID_SCHEME', `${label} has an invalid scheme: ${scheme}`);
+    }
+    if (seen.has(scheme)) fail('ELECTRON_MBT_PROTOCOL_INVALID_SCHEME', `${label} has a duplicate scheme: ${scheme}`);
+    seen.add(scheme);
+  }
+  return schemes;
+}
 function loadConfig(root, options) {
   const file = configPath(root, options);
   if (fs.existsSync(file)) {
@@ -121,6 +137,12 @@ function loadConfig(root, options) {
     const api = options.api !== undefined
       ? (options.api ? normalizeRelative(options.api, 'api') : null)
       : (config.api === null || config.api === undefined ? null : normalizeRelative(config.api, 'api'));
+    if (config.assetSchemes !== undefined && !Array.isArray(config.assetSchemes)) {
+      fail('ELECTRON_MBT_PROTOCOL_INVALID_SCHEME', 'assetSchemes must be an array');
+    }
+    const assetSchemes = options['asset-scheme'] !== undefined
+      ? parseAssetSchemes(options['asset-scheme'])
+      : parseAssetSchemes((Array.isArray(config.assetSchemes) ? config.assetSchemes.join(',') : ''), 'assetSchemes');
     return {
       schema: 1,
       main: normalizeRelative(config.main, 'main'),
@@ -130,6 +152,7 @@ function loadConfig(root, options) {
         : normalizeRelative(config.page || `${options.renderer ? normalizeRelative(options.renderer, 'renderer') : normalizeRelative(config.renderer, 'renderer')}/index.html`, 'page'),
       include,
       api,
+      assetSchemes,
       configFile: file,
       workspace: path.dirname(file),
     };
@@ -142,6 +165,7 @@ function loadConfig(root, options) {
     page: options.page ? normalizeRelative(options.page, 'page') : `${normalizeRelative(options.renderer, 'renderer')}/index.html`,
     include: options.include || [],
     api: options.api ? normalizeRelative(options.api, 'api') : null,
+    assetSchemes: parseAssetSchemes(options['asset-scheme']),
     configFile: file,
     workspace: path.join(root, WORKSPACE),
   };
@@ -309,7 +333,10 @@ function cliInit(argv) {
   try { configInfo = fs.lstatSync(file); } catch { configInfo = null; }
   if (configInfo && configInfo.isSymbolicLink()) fail('ELECTRON_MBT_MIGRATE_SYMLINK', `symlink is not admitted: ${file}`);
   if (configInfo && !options.force) fail('ELECTRON_MBT_MIGRATE_EXISTS', '.emoon/config.json already exists; pass --force to replace it');
-  const config = { schema: 1, main, renderer, page, include, api };
+  const assetSchemes = parseAssetSchemes(options['asset-scheme']);
+  const config = assetSchemes.length > 0
+    ? { schema: 1, main, renderer, page, include, api, assetSchemes }
+    : { schema: 1, main, renderer, page, include, api };
   writeJsonAtomic(file, config);
   const gitignore = path.join(path.dirname(file), '.gitignore');
   if (!fs.existsSync(gitignore)) fs.writeFileSync(gitignore, 'app/\napp.stale*/\n');
@@ -423,7 +450,10 @@ function cliMigrate(argv) {
     const adapterRelative = 'adapted/page-api.js';
     fs.mkdirSync(path.join(stage, 'adapted'), { recursive: true });
     fs.writeFileSync(path.join(stage, adapterRelative), built.source);
-    fs.writeFileSync(path.join(stage, 'nodeless-app.json'), `${JSON.stringify({ schema: 1, profile: 'electron-nodeless-adapted-v1', adapter: adapterRelative }, null, 2)}\n`);
+    const profile = config.assetSchemes && config.assetSchemes.length > 0
+      ? { schema: 1, profile: 'electron-nodeless-adapted-v1', adapter: adapterRelative, assetSchemes: config.assetSchemes }
+      : { schema: 1, profile: 'electron-nodeless-adapted-v1', adapter: adapterRelative };
+    fs.writeFileSync(path.join(stage, 'nodeless-app.json'), `${JSON.stringify(profile, null, 2)}\n`);
     files.push(adapterRelative, 'nodeless-app.json');
     generated.push({ path: adapterRelative, sha256: sha256(built.source), bytes: Buffer.byteLength(built.source) });
     generated.push({ path: 'nodeless-app.json', sha256: sha256(fs.readFileSync(path.join(stage, 'nodeless-app.json'))), bytes: fs.statSync(path.join(stage, 'nodeless-app.json')).size });

@@ -546,3 +546,29 @@ test('native dev runs the adapted window without a compatibility claim', {
     assert.equal(native.report.compatible, false);
   } finally { fs.rmSync(app, { recursive: true, force: true }); }
 });
+
+test('native and reference stage the same assetSchemes', () => {
+  const app = pair();
+  try {
+    const initArgs = ['init', '--api', 'adapted-preload.json', '--asset-scheme', 'moji-asset,extra-asset'];
+    compareReports(
+      runNative([initArgs[0], app.native, ...initArgs.slice(1)], app.native),
+      runNode([initArgs[0], app.node, ...initArgs.slice(1)], app.node),
+      app, 'init-asset',
+    );
+    assert.equal(
+      fs.readFileSync(path.join(app.native, '.emoon/config.json'), 'utf8'),
+      fs.readFileSync(path.join(app.node, '.emoon/config.json'), 'utf8'),
+    );
+    const migrateArgs = ['migrate', '--api', 'adapted-preload.json'];
+    compareReports(
+      runNative([migrateArgs[0], app.native, ...migrateArgs.slice(1)], app.native),
+      runNode([migrateArgs[0], app.node, ...migrateArgs.slice(1)], app.node),
+      app, 'migrate-asset',
+    );
+    assert.equal(
+      fs.readFileSync(path.join(app.native, '.emoon/app/nodeless-app.json'), 'utf8'),
+      fs.readFileSync(path.join(app.node, '.emoon/app/nodeless-app.json'), 'utf8'),
+    );
+  } finally { cleanup(app); }
+});

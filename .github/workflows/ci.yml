@@ -138,6 +138,17 @@ jobs:
         run: |
           dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" \
             node --test tests/nodeless-runtime.test.cjs 2>&1 | tee evidence/linux-native.log
+      - name: Run custom-scheme asset broker tests on Linux
+        shell: bash
+        env:
+          ELECTRON_MBT_REQUIRE_NATIVE_HOST: '1'
+          ELECTRON_MBT_ISOLATED_DISPLAY: '1'
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GDK_BACKEND: 'x11'
+        run: |
+          dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" \
+            node --test tests/asset-protocol.test.cjs 2>&1 | tee evidence/linux-asset-protocol.log
       - name: Run native emoon CLI parity on Linux
         shell: bash
         env:

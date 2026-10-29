@@ -58,6 +58,7 @@ fn ar_config() -> AppConfig {
     cwd: "/app",
     env: {},
     adapted_adapter: "",
+    asset_schemes: [],
   }
 }
 

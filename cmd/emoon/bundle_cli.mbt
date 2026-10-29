@@ -123,6 +123,7 @@ fn cli_bundle_usage_help() -> Unit {
   println("  --api <file>       forwarded to emoon init/migrate")
   println("  --include <paths>  forwarded to emoon init/migrate")
   println("  --config <file>    forwarded to emoon init/migrate")
+  println("  --asset-scheme <s> forwarded to emoon init/migrate (asset broker)")
   println("  --help             show this help")
   println("")
   println("the current bundle profile is electron-nodeless-adapted-v1;")
@@ -182,7 +183,7 @@ fn cli_bundle_parse(raw : Array[String]) -> BundleOptions {
       index = index + 1
     } else if arg == "--output" || arg == "--host" || arg == "--name" ||
       arg == "--renderer" || arg == "--page" || arg == "--api" ||
-      arg == "--include" || arg == "--config" {
+      arg == "--include" || arg == "--config" || arg == "--asset-scheme" {
       if index + 1 >= raw.length() || raw[index + 1].has_prefix("--") {
         cli_bundle_usage_fail(arg + " requires a value")
       }

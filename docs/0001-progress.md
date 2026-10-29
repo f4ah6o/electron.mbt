@@ -625,3 +625,56 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - The current bundle profile remains `electron-nodeless-adapted-v1`; a stage
   without `nodeless-app.json` is refused with a `--api <file>` hint. NOT RUN:
   macOS bundle launch/signing/notarization, Windows, human UI, DnD.
+
+## Custom protocol asset broker (2026-10-29)
+
+- Replaced the silent `electron.protocol.registerSchemesAsPrivileged` no-op in
+  the adapted prelude. The scheme must be admitted by the staged
+  `assetSchemes`; `bypassCSP`, service workers, code cache and streaming are
+  rejected with `ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE`; an unadmitted
+  scheme fails with `ELECTRON_MBT_PROTOCOL_SCHEME_NOT_ADMITTED`. `handle` is
+  recorded but never executed (`handlerExecuted:false`).
+- The Linux GTK/WebKitGTK host registers admitted schemes before the first
+  WebView and serves `scheme://local/<encoded absolute path>` from the app root
+  and session document directories. The broker enforces realpath containment,
+  image extensions, regular files, `O_NOFOLLOW`, a 4 MiB cap and GET/HEAD.
+  Denials return a failed resource plus a typed host code/counter; the
+  header-bearing WebKitGTK response API was not stable in this build.
+- Test evidence:
+  - `node --test tests/asset-protocol.test.cjs`: **7 PASS**. Dialog-granted
+    image title `asset-ok-1`, `served:1`, `bytes:68`, `denied:0`; ungranted
+    image `asset-error`, `denied:1`, `lastCode:ELECTRON_MBT_ASSET_DENIED`;
+    unadmitted scheme stops at main evaluation, no window; traversal
+    (`ESCAPE`), symlink escape (`DENIED`), non-image (`TYPE`) and >4 MiB
+    (`LIMIT`) are denied with no served bytes.
+  - `node scripts/nodeless-moji-assets.cjs`: **PASS**. Pinned Moji 1.0.7 real
+    renderer requested a relative PNG; host `served:1`, `bytes:68`,
+    `schemes:["moji-asset"]`, `handlerExecuted:false`. The page probe did not
+    expose a plain preview `<img>` (`NOT_EXPOSED`); the controlled asset
+    fixture verifies WebKit decoding and `naturalWidth:1`. Report:
+    `compatibility/reports/moji-assets.json`.
+  - `node --test tests/apps/jmd-j1.test.cjs`: **2 PASS** synthetic J1.
+    `bypassCSP` -> `ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE`; safe but
+    unadmitted -> `ELECTRON_MBT_PROTOCOL_SCHEME_NOT_ADMITTED`; unreachable
+    code after the declaration is not evaluated.
+  - `node scripts/jmd-j1.cjs`: **PASS expected-rejection** against the pinned
+    jmd `f875fc6` checkout. The pinned main stops earlier than the synthetic
+    fixture: the CJS loader rejects the `JMD_SMOKE` computed require
+    (`ELECTRON_MBT_DYNAMIC_REQUIRE`), so `protocolGateReached:false`. Report:
+    `compatibility/reports/jmd-j1.json`. This is fail-closed, not
+    protocol-gate evidence.
+  - MoonBit native prelude tests: admission/privilege/record-only handler.
+  - `node --test tests/nodeless-runtime.test.cjs`: **22 PASS / 0 FAIL / 21
+    SKIP** (Linux host available; Moji/pinned tests still skip).
+  - `emoon init/migrate/dev/bundle --asset-scheme` writes
+    `.emoon/config.json` and the staged `nodeless-app.json`; invalid names,
+    duplicates and >4 schemes fail before staging. Node/native stage bytes are
+    identical (`tests/emoon-cli-parity.test.cjs`).
+  - `npm test`: **562 tests / 529 PASS / 0 FAIL / 33 SKIP**;
+    `moon test --target js`: **174 PASS**; `--target native`: **211 PASS**.
+- Not run / not implemented: macOS WKURLSchemeHandler, CORS/canvas, the Moji
+  preview `<img>` probe (NOT_EXPOSED; controlled fixture PASS), persistent
+  asset directories, multi-window, `unhandle` broker shutdown. The pinned jmd run is expected-rejection but
+  does not reach the protocol gate because of the JMD_SMOKE computed require.
+  `compatible:false`, strict blocked, original preload NOT_EXECUTED.
+- See [docs/0074](0074-custom-protocol-asset-broker.md).

@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "probe": "moji-assets",
+  "status": "PASS",
+  "compatible": false,
+  "environment": {
+    "platform": "linux",
+    "node": "v26.13.0",
+    "hostSHA256": "14da24fd683ccda45f8318407ed779d7e1b16cdd76cd2f61c41b6373466f59d6",
+    "cliSHA256": "42a36913156554415b53f1b6b8ade6c4c3e174bf5a028af015fb72e0c3243ab8"
+  },
+  "stage": {
+    "files": 143,
+    "manifestSHA256": "28e9537b726dfc09d37b1408d00c11c7029f5a9f7f82b01d79b12ee2ca2e4697",
+    "mainSHA256": "b5cfd8ff61d7e10a470b1b4a20cdc0bfc5a91e417cb86535a138978d11b2682a",
+    "rendererIndexSHA256": "38d14bfc6f62d145d5aede23df476ead2ac1dbd92890705b03f97fb01a396db5"
+  },
+  "document": {
+    "path": "note.md",
+    "imageBytes": 68
+  },
+  "command": {
+    "exitCode": 0,
+    "holding": {
+      "pageTitle": "Moji v1.0.7",
+      "assets": {
+        "schemes": [
+          "moji-asset"
+        ],
+        "schemeCount": 1,
+        "directories": 1,
+        "requests": 0,
+        "served": 0,
+        "denied": 0,
+        "bytes": 0,
+        "lastCode": "",
+        "mode": "asset-broker",
+        "handlerExecuted": false
+      }
+    },
+    "exit": {
+      "reason": "hold-seconds",
+      "pageTitle": "Moji v1.0.7",
+      "assets": {
+        "schemes": [
+          "moji-asset"
+        ],
+        "schemeCount": 1,
+        "directories": 2,
+        "requests": 1,
+        "served": 1,
+        "denied": 0,
+        "bytes": 68,
+        "lastCode": "OK",
+        "mode": "asset-broker",
+        "handlerExecuted": false
+      },
+      "rendererProbe": {
+        "apiProbe": "",
+        "rootChildren": 1,
+        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nOUTLINE\n\nImage\nImage\n\n\n\nMoji v1.0.7\nMarkdown Guide\nLines: 4\nTokens: 7\nWords: 3",
+        "image": null,
+        "editSave": "",
+        "api": true,
+        "title": "note.md - Moji v1.0.7"
+      }
+    }
+  },
+  "rendererProbe": {
+    "status": "NOT_EXPOSED",
+    "probe": {
+      "apiProbe": "",
+      "rootChildren": 1,
+      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nOUTLINE\n\nImage\nImage\n\n\n\nMoji v1.0.7\nMarkdown Guide\nLines: 4\nTokens: 7\nWords: 3",
+      "image": null,
+      "editSave": "",
+      "api": true,
+      "title": "note.md - Moji v1.0.7"
+    }
+  },
+  "assets": {
+    "schemes": [
+      "moji-asset"
+    ],
+    "schemeCount": 1,
+    "directories": 2,
+    "requests": 1,
+    "served": 1,
+    "denied": 0,
+    "bytes": 68,
+    "lastCode": "OK",
+    "mode": "asset-broker",
+    "handlerExecuted": false
+  },
+  "note": "The pinned Moji renderer requested the relative image and the host broker served the exact bytes. The app protocol handler was not executed. The page probe did not expose a plain preview image element (NOT_EXPOSED); the controlled asset fixture covers WebKit decoding. This is not Electron protocol compatibility."
+}

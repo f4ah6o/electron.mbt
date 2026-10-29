@@ -2,6 +2,7 @@ supported_targets = "native"
 
 import {
   "f4ah6o/electromoon/cli/emoon_contract" @cli,
+  "f4ah6o/electromoon/core" @core,
   "f4ah6o/electromoon/runtime/app_runner" @app,
   "moonbitlang/core/encoding/utf8" @utf8,
   "moonbitlang/core/env" @env,

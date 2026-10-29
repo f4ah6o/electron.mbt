@@ -23,11 +23,11 @@ function printHelp() {
   console.log(`emoon ${VERSION} (node reference CLI)
 
 Usage:
-  emoon init [app-dir] [--renderer <dir>] [--include <path,...>] [--api <file>] [--force]
+  emoon init [app-dir] [--renderer <dir>] [--include <path,...>] [--api <file>] [--asset-scheme <s,...>] [--force]
   emoon inspect [app-dir] [--renderer <dir>] [--api <file>]
-  emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--force] [--reset-data] [--dry-run]
-  emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--runtime <path>]
-  emoon bundle [app-dir] [--output <file>] [--build] [--dry-run] [--runtime <path>]
+  emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--asset-scheme <s,...>] [--force] [--reset-data] [--dry-run]
+  emoon dev [app-dir] [--api <file>] [--asset-scheme <s,...>] [--build] [--no-launch] [--runtime <path>]
+  emoon bundle [app-dir] [--output <file>] [--asset-scheme <s,...>] [--build] [--dry-run] [--runtime <path>]
   emoon doctor <stage> [--profile <id>] [--runtime <path>]
   emoon run <stage> [--window] [--entry <file>] [--runtime <path>]
   emoon version | --version

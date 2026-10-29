@@ -104,7 +104,7 @@ try {
   fs.writeFileSync(path.join(temp, 'package.json'),
     `${JSON.stringify({ name: 'moji', version: '1.0.5', main: 'out/main/main.js' }, null, 2)}\n`);
   fs.writeFileSync(path.join(temp, 'nodeless-app.json'),
-    `${JSON.stringify({ schema: 1, profile: 'electron-nodeless-adapted-v1', adapter: 'adapted/page-api.js' }, null, 2)}\n`);
+    `${JSON.stringify({ schema: 1, profile: 'electron-nodeless-adapted-v1', adapter: 'adapted/page-api.js', assetSchemes: ['moji-asset'] }, null, 2)}\n`);
   fs.writeFileSync(path.join(temp, 'nodeless-broker.json'),
     `${JSON.stringify(brokerProfile, null, 2)}\n`);
   const rendererFiles = walk(path.join(temp, 'out/renderer'), temp);

@@ -386,6 +386,10 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "revoke-main-grant") == 0) {
     return send_control_frame(operation, payload, 0, 0, out, capacity);
   }
+  if (strcmp(operation, "set-asset-schemes") == 0 ||
+      strcmp(operation, "get-asset-status") == 0) {
+    return send_control_frame(operation, payload, 0, 0, out, capacity);
+  }
   if (strcmp(operation, "shutdown") == 0) {
     return send_control_frame(operation, payload, 0, 0, out, capacity);
   }

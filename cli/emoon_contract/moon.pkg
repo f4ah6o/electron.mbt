@@ -1,4 +1,5 @@
 import {
+  "f4ah6o/electromoon/core" @core,
   "moonbitlang/core/json" @json,
   "moonbitlang/core/encoding/utf8" @utf8,
   "f4ah6o/electromoon/runtime/modules" @modules,

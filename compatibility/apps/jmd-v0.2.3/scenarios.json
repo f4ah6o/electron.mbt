@@ -7,5 +7,21 @@
     "J1",
     "APP-N09"
   ],
-  "note": "J1 is a negative diagnostic, not a positive app scenario."
+  "note": "J1 is a negative diagnostic, not a positive app scenario. The synthetic preflight exercises bypassCSP; the pinned run stops earlier at the CJS loader. Positive scenarios remain NOT_RUN.",
+  "preflight": {
+    "id": "J1-synthetic",
+    "verdict": "expected-rejection",
+    "evidence": "tests/apps/jmd-j1.test.cjs",
+    "rejectionCode": "ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE",
+    "window": false,
+    "schemeRegistered": false
+  },
+  "pinnedJ1": {
+    "verdict": "expected-rejection",
+    "firstGate": "ELECTRON_MBT_DYNAMIC_REQUIRE",
+    "protocolGateReached": false,
+    "revision": "f875fc616feb89ea803a0fc140ec770a2ade041e",
+    "evidence": "compatibility/reports/jmd-j1.json",
+    "note": "The pinned main is rejected by the CJS loader (JMD_SMOKE computed require) before the protocol declaration. This is fail-closed, but it is not protocol-gate evidence."
+  }
 }

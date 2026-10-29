@@ -1,6 +1,6 @@
 ///|
 fn prelude_config() -> String {
-  "{\"app\":{\"name\":\"fixture\",\"version\":\"1.0.0\",\"appPath\":\"/app\",\"paths\":{\"userData\":\"/app/userData\"}},\"process\":{\"platform\":\"darwin\",\"arch\":\"arm64\",\"cwd\":\"/app\",\"env\":{},\"argv\":[\"nodeless\"],\"versions\":{\"quickjs\":\"2026-06-04\"}},\"limits\":{\"timers\":4}}"
+  "{\"app\":{\"name\":\"fixture\",\"version\":\"1.0.0\",\"appPath\":\"/app\",\"assetSchemes\":[\"protocol-test\"],\"paths\":{\"userData\":\"/app/userData\"}},\"process\":{\"platform\":\"darwin\",\"arch\":\"arm64\",\"cwd\":\"/app\",\"env\":{},\"argv\":[\"nodeless\"],\"versions\":{\"quickjs\":\"2026-06-04\"}},\"limits\":{\"timers\":4}}"
 }
 
 ///|
@@ -320,6 +320,40 @@ test "undefined lease serializes without a free bug" {
   let value = context.eval_raw("undefined", "<undefined>")
   assert_eq(value.text(), "undefined")
   value.release()
+  context.destroy()
+  engine.destroy()
+}
+
+///|
+test "protocol admission rejects privileged schemes and never runs handlers" {
+  let engine = Engine::new()
+  let context = Context::new(engine)
+  let modules = [
+    ModuleSource::new(
+      "entry",
+      "sha256:protocol-admission",
+      "const electron = require('electron');\n" +
+      "electron.protocol.registerSchemesAsPrivileged([{ scheme: 'protocol-test', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);\n" +
+      "let bypassCode = 'none'; try { electron.protocol.registerSchemesAsPrivileged([{ scheme: 'protocol-test', privileges: { bypassCSP: true } }]); } catch (error) { bypassCode = error.code; }\n" +
+      "let unadmittedCode = 'none'; try { electron.protocol.registerSchemesAsPrivileged([{ scheme: 'other-asset', privileges: { standard: true } }]); } catch (error) { unadmittedCode = error.code; }\n" +
+      "let handleCode = 'none'; try { electron.protocol.handle('other-asset', function () {}); } catch (error) { handleCode = error.code; }\n" +
+      "let executed = false;\n" +
+      "electron.protocol.handle('protocol-test', function () { executed = true; });\n" +
+      "electron.protocol.registerSchemesAsPrivileged([{ scheme: 'protocol-test', privileges: { standard: true } }]);\n" +
+      "const status = JSON.parse(globalThis.__mbt_protocol_status());\n" +
+      "module.exports = { bypassCode: bypassCode, unadmittedCode: unadmittedCode, handleCode: handleCode, handled: electron.protocol.isProtocolHandled('protocol-test'), executed: executed, admitted: status.admitted.length, handlerExecuted: status.handlerExecuted };\n",
+      {},
+      false,
+    ),
+  ]
+  let result = context.eval_cjs_with_prelude(modules, "entry", node_prelude(), prelude_config())
+  assert_true(result.status is Value)
+  assert_true(result.exports.contains("\"bypassCode\":\"ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE\""))
+  assert_true(result.exports.contains("\"unadmittedCode\":\"ELECTRON_MBT_PROTOCOL_SCHEME_NOT_ADMITTED\""))
+  assert_true(result.exports.contains("\"handleCode\":\"ELECTRON_MBT_PROTOCOL_SCHEME_NOT_ADMITTED\""))
+  assert_true(result.exports.contains("\"handled\":true"))
+  assert_true(result.exports.contains("\"executed\":false"))
+  assert_true(result.exports.contains("\"handlerExecuted\":false"))
   context.destroy()
   engine.destroy()
 }

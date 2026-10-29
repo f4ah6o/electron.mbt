@@ -91,6 +91,7 @@ function migrateArgs(options) {
   if (options.page) args.push('--page', options.page);
   for (const include of options.include || []) args.push('--include', include);
   if (options.api) args.push('--api', options.api);
+  if (options['asset-scheme']) args.push('--asset-scheme', options['asset-scheme']);
   if (options.out) args.push('--out', options.out);
   if (options.force) args.push('--force');
   if (options['reset-data']) args.push('--reset-data');

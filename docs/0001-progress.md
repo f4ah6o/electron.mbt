@@ -717,7 +717,8 @@ open dialog.
   [docs/0075](0075-jmd-positive-adapted.md).
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
-  `CI=true` (missing source/build fails rather than skips). The workflow step
-  is NOT RUN in this increment; local evidence is above.
+  `CI=true` (missing source/build fails rather than skips). GitHub Actions run
+  279 (`e543164`, `linux-native`) passed the checkout/build and smoke steps;
+  local evidence is above.
 - Save/edit, human input, IME, watcher events, `showMessageBox`, detach/screen,
   and macOS are NOT RUN/out of scope. No strict-profile or compatibility claim.

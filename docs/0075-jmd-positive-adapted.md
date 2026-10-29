@@ -69,7 +69,8 @@ The original `electron/preload.js` is copied for provenance but is
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
-  The workflow step is **NOT RUN** in this increment (local only; no push).
+  GitHub Actions run 279 (`e543164`, `linux-native`) completed successfully,
+  including the jmd checkout/build and positive smoke steps.
 
 ## Reproduction
 

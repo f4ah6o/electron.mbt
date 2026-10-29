@@ -107,8 +107,11 @@ function runHold(binary, appDir, env = {}, holdMs = 1800) {
   const fakeNode = path.join(fakeBin, 'node');
   fs.writeFileSync(fakeNode, '#!/bin/sh\nexit 99\n');
   fs.chmodSync(fakeNode, 0o700);
+  const holdArgs = holdMs >= 4000
+    ? ['--hold-seconds', String(Math.ceil(holdMs / 1000))]
+    : ['--hold-close-after-ms', String(holdMs)];
   const result = spawnSync(binary, [
-    'run', appDir, '--window', '--hold', '--hold-close-after-ms', String(holdMs),
+    'run', appDir, '--window', '--hold', ...holdArgs,
   ], {
     cwd: root,
     encoding: 'utf8',

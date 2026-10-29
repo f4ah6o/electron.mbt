@@ -445,6 +445,11 @@ test('watchFile, unwatchFile, recursive watch and close deliver bounded events',
     "    publish();",
     "  });",
     "  fs.writeFileSync(path.join(dir, 'a.txt'), 'a');",
+    "  win.setTitle('watch-start');",
+    "  setTimeout(function () { if (state.event === '') win.setTitle('watch-timeout'); }, 3000);",
+    "}).catch(function (error) {",
+    "  const win = BrowserWindow.getAllWindows()[0];",
+    "  if (win) win.setTitle('watch-error:' + String(error && (error.code || error.message) || error));",
     "});",
     '',
   ].join('\n'), assets.image, {}, '<!doctype html><title>watch</title>');
@@ -452,7 +457,7 @@ test('watchFile, unwatchFile, recursive watch and close deliver bounded events',
     const { result, holding, exit } = runHold(binary, app, {}, 5000);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const title = (exit && exit.windowTitle) || (holding && holding.windowTitle);
-    assert.equal(title, 'wf:1:2|rec:1:rename:a.txt', `watch title: ${title}`);
+    assert.equal(title, 'wf:1:2|rec:1:rename:a.txt', `watch title: ${title}; holding=${JSON.stringify(holding)} exit=${JSON.stringify(exit)}`);
   } finally {
     fs.rmSync(app, { recursive: true, force: true });
     fs.rmSync(assets.dir, { recursive: true, force: true });

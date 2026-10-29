@@ -98,9 +98,9 @@ The original `electron/preload.js` is copied for provenance but is
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
-  GitHub Actions run 283 (`212111e`, `linux-native`) completed successfully
-  for the previous save/watch version. The real-keyboard and expanded facade
-  smoke awaits the next push; the CI apt step now installs `xdotool`.
+  GitHub Actions run 298 (`0d3b1ac`, `linux-native`) completed successfully,
+  including the real X11/xdotool keyboard step and the expanded facade checks.
+  The CI apt step installs `xdotool`.
 
 ## Reproduction
 
@@ -121,9 +121,9 @@ writes `compatibility/reports/jmd-positive.json`.
 ## Limits
 
 - The open dialog, message box response and the fixed editor-edit hook are
-  test-injected. Keyboard input is real X11/xdotool ASCII, but a human picker,
-  IME and human-typing acceptance are NOT RUN; the desktop IME is disabled for
-  the test.
+  test-injected. Keyboard input is real X11/xdotool ASCII; a human picker,
+  IME and non-ASCII human typing acceptance are NOT RUN. The desktop IME is
+  disabled for the test.
 - Save goes through the app's `menu:save` renderer action for the synthetic
   edit, and through a real Ctrl+S chord for the X11 edit. The native menu is
   **store-only**; Ctrl+S is bound in the adapted page. Native menu installation

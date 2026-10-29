@@ -737,10 +737,11 @@ open dialog.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
   `CI=true` (missing source/build fails rather than skips); the apt step now
-  installs `xdotool`. GitHub Actions run 283 (`212111e`, `linux-native`)
-  passed the previous save/watch version; the real-keyboard version awaits
-  the next push. Local evidence is above.
-- Human input/IME, native menu installation, `net`, hardware multi-monitor
-  selection and macOS remain NOT RUN/out of scope. `fs.watchFile`/recursive
+  installs `xdotool`. GitHub Actions run 298 (`0d3b1ac`, `linux-native`)
+  passed the real X11/xdotool keyboard, watcher, display and negative checks.
+  Local evidence is above.
+- IME, native menu installation, `net`, hardware multi-monitor selection and
+  macOS remain NOT RUN/out of scope; the X11 ASCII keyboard path is covered
+  above and is not an IME claim. `fs.watchFile`/recursive
   watch are bounded polling facades, not inotify. No strict-profile or
   compatibility claim.

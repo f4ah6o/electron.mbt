@@ -58,16 +58,22 @@ command still owns the fallback chain.
 ## Native commands
 
 ```sh
-emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--force] [--config <file>]
+emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--asset-scheme <s,...>] [--force] [--config <file>]
 emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
-emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
-emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--config <file>]
+emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--asset-scheme <s,...>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
+emoon dev [app-dir] [--api <file>] [--asset-scheme <s,...>] [--build] [--no-launch] [--config <file>]
 emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ...] [selftests]
 emoon doctor <app-dir> [--profile <id>]
-emoon bundle [app-dir] [--output <file>] [--force] [--name <name>] [--host <path>] [--build] [--restage] [--reset-data] [--no-stage] [--dry-run] [--quiet] [staging options]
+emoon bundle [app-dir] [--output <file>] [--force] [--name <name>] [--host <path>] [--asset-scheme <s,...>] [--build] [--restage] [--reset-data] [--no-stage] [--dry-run] [--quiet] [staging options]
 emoon version
 emoon help
 ```
+
+`--asset-scheme <scheme[,scheme]>` admits custom schemes for the adapted
+asset broker. It is written to `.emoon/config.json` and the staged
+`nodeless-app.json`; invalid/reserved names, duplicates or more than four
+schemes fail before staging. The host serves admitted schemes on Linux only;
+macOS does not serve them yet ([docs/0074](0074-custom-protocol-asset-broker.md)).
 
 `doctor` validates the source manifest, file hashes, module graph, profile and
 adapter without starting the engine, window or app. `run` keeps the existing
@@ -183,10 +189,10 @@ while the preload scan reads the configured `main`; this mirrors the reference.
 ## Node commands
 
 ```sh
-emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--force] [--config <file>]
+emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [--api <file>] [--asset-scheme <s,...>] [--force] [--config <file>]
 emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
-emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
-emoon dev [app-dir] [--api <file>] [--build] [--no-launch] [--config <file>] [--runtime <path>]
+emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--asset-scheme <s,...>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
+emoon dev [app-dir] [--api <file>] [--asset-scheme <s,...>] [--build] [--no-launch] [--config <file>] [--runtime <path>]
 emoon doctor <stage> [--runtime <path>]
 emoon run <stage> [--window] [--entry <file>] [--runtime <path>]
 emoon version | --version

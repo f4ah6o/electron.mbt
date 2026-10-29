@@ -259,6 +259,7 @@ try {
       schema: 1,
       profile: 'electron-nodeless-adapted-v1',
       adapter: 'adapted/page-api.js',
+      assetSchemes: ['moji-asset'],
     }, null, 2)}\n`);
   // Open-for-edit must come from the dialog selection, not from an injected
   // grant-file entry: grants stay empty for both phases.

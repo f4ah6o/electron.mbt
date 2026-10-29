@@ -202,6 +202,30 @@ fn cli_profile_adapter(
 }
 
 ///|
+/// The staged adapted manifest may admit custom schemes for the native asset
+/// broker. A missing manifest is the plain profile and admits none; a present
+/// but malformed list must fail before the host or main runs.
+fn cli_profile_asset_schemes(
+  sources : Map[String, String],
+) -> Result[Array[String], String] {
+  let raw = match sources.get("nodeless-app.json") {
+    Some(value) => value
+    None => return Ok([])
+  }
+  let parsed = @json.parse(raw) catch {
+    _ => return Err("invalid nodeless-app.json")
+  }
+  let value = match parsed {
+    Object(fields) => fields.get("assetSchemes").unwrap_or(null)
+    _ => null
+  }
+  match @core.protocol_manifest_asset_schemes(value) {
+    Ok(schemes) => Ok(schemes)
+    Err(code) => Err(code)
+  }
+}
+
+///|
 fn cli_broker_kind(kind : String) -> Bool {
   kind == "open" || kind == "save" || kind == "export-html" ||
   kind == "export-png" || kind == "export-pdf" || kind == "export-doc-png"
@@ -791,8 +815,12 @@ fn cli_hold(
   hold_seconds : Int,
   close_after_ms : Int,
   trigger_export_ui : Bool,
+  dispatch_main : String,
+  jmd_edit_save : Bool,
+  focus_jmd_editor : Bool,
 ) -> Unit {
   let mut title = ""
+  let mut window_title = ""
   let mut url = ""
   let mut released = !adapted_configured
   let mut host_alive = true
@@ -818,6 +846,15 @@ fn cli_hold(
       }
       None => host_alive = false
     }
+    match cli_host_payload("get-window-title", "{}") {
+      Some(value) => {
+        match cli_text(value, "title") {
+          Some(text) => if text.length() > 0 { window_title = text }
+          None => ()
+        }
+      }
+      None => host_alive = false
+    }
     match cli_host_payload("get-web-contents-url", "{}") {
       Some(value) => {
         match cli_text(value, "url") {
@@ -833,6 +870,11 @@ fn cli_hold(
     nodeless_sleep_ms(100)
     attempts = attempts + 1
   }
+  let asset_status = if cli_platform() == "linux" {
+    cli_host_payload("get-asset-status", "{}").unwrap_or(null)
+  } else {
+    null
+  }
   println(
     Json({
       "schema": Json(1),
@@ -841,9 +883,12 @@ fn cli_hold(
       "platform": Json(cli_platform()),
       "profile": Json("electron-nodeless-adapted-v1"),
       "pageTitle": Json(title),
+      "windowTitle": Json(window_title),
       "pageURL": Json(url),
       "adapted": Json(adapted_configured),
       "released": Json(released),
+      "assets": Json(asset_status),
+      "mainError": Json(runner.global_text("__mbt_last_error")),
       "holdSeconds": Json(hold_seconds),
       "hostPid": Json(nodeless_host_pid()),
       "compatible": Json(false),
@@ -853,6 +898,14 @@ fn cli_hold(
   let limit = if hold_seconds > 0 { hold_seconds * 10 } else { -1 }
   let mut ticks = 0
   let mut export_ui_sent = false
+  let mut dispatch_main_sent = false
+  let mut main_dispatch : Json = null
+  let mut renderer_probe : Json = null
+  let mut jmd_edit_sent = false
+  let mut jmd_save_sent = false
+  let mut jmd_edit : Json = null
+  let mut jmd_save : Json = null
+  let mut jmd_focus : Json = null
   let mut reason = "hold-seconds"
   let mut close_sent = false
   while limit < 0 || ticks < limit {
@@ -860,6 +913,41 @@ fn cli_hold(
     if trigger_export_ui && !export_ui_sent && ticks >= 80 {
       export_ui_sent = true
       let _ = cli_host_payload("trigger-renderer-export-ui", "{}")
+    }
+    if dispatch_main.length() > 0 && !dispatch_main_sent && ticks >= 20 {
+      dispatch_main_sent = true
+      main_dispatch = match runner.dispatch(dispatch_main, "{}") {
+        Ok(text) => Json({ "ok": Json(true), "result": Json(text) })
+        Err(error) => Json({
+          "ok": Json(false),
+          "code": Json(error.code()),
+          "message": Json(error.message()),
+        })
+      }
+    }
+    if jmd_edit_save && !jmd_edit_sent && ticks >= 60 {
+      jmd_edit_sent = true
+      jmd_edit = cli_host_payload("trigger-jmd-edit", "{}").unwrap_or(Json({ "ok": Json(false) }))
+    }
+    if focus_jmd_editor && (ticks == 100 || ticks == 160) {
+      jmd_focus = cli_host_payload("focus-jmd-editor", "{}").unwrap_or(Json({ "ok": Json(false) }))
+    }
+    if jmd_edit_save && jmd_edit_sent && !jmd_save_sent && ticks >= 70 {
+      jmd_save_sent = true
+      jmd_save = match runner.dispatch("test:menu-save", "{}") {
+        Ok(text) => Json({ "ok": Json(true), "result": Json(text) })
+        Err(error) => Json({
+          "ok": Json(false),
+          "code": Json(error.code()),
+          "message": Json(error.message()),
+        })
+      }
+    }
+    if cli_platform() == "linux" && ticks >= 95 && ticks % 5 == 0 {
+      match cli_host_payload("probe-renderer", "{}") {
+        Some(value) => renderer_probe = value
+        None => ()
+      }
     }
     if close_after_ms > 0 && !close_sent && ticks >= close_after_ms / 100 {
       close_sent = true
@@ -889,9 +977,33 @@ fn cli_hold(
       break
     }
     nodeless_sleep_ms(50)
+    runner.pump_idle()
     ticks = ticks + 1
   }
+  match cli_host_payload("get-web-contents-title", "{}") {
+    Some(value) => {
+      match cli_text(value, "title") {
+        Some(text) => if text.length() > 0 { title = text }
+        None => ()
+      }
+    }
+    None => ()
+  }
+  match cli_host_payload("get-window-title", "{}") {
+    Some(value) => {
+      match cli_text(value, "title") {
+        Some(text) => if text.length() > 0 { window_title = text }
+        None => ()
+      }
+    }
+    None => ()
+  }
   runner.stop()
+  let asset_status_exit = if cli_platform() == "linux" {
+    cli_host_payload("get-asset-status", "{}").unwrap_or(null)
+  } else {
+    null
+  }
   let _ = nodeless_host_shutdown()
   println(
     Json({
@@ -900,6 +1012,15 @@ fn cli_hold(
       "status": Json("HOLD_EXIT"),
       "reason": Json(reason),
       "ticks": Json(ticks),
+      "pageTitle": Json(title),
+      "windowTitle": Json(window_title),
+      "pageURL": Json(url),
+      "assets": Json(asset_status_exit),
+      "rendererProbe": Json(renderer_probe),
+      "mainDispatch": Json(main_dispatch),
+      "jmdEdit": Json(jmd_edit),
+      "jmdSave": Json(jmd_save),
+      "jmdFocus": Json(jmd_focus),
       "compatible": Json(false),
     }).stringify(),
   )
@@ -976,6 +1097,15 @@ fn cli_fixture_env() -> Map[String, String] {
   if length > 0 {
     out["NODELESS_FIXTURE_ENV"] = @utf8.decode_lossy(buffer[:length])
   }
+  let test_box = Bytes::new(8)
+  let test_box_length = nodeless_env(
+    @utf8.encode("ELECTRON_MBT_TEST_MESSAGE_BOX"),
+    test_box,
+    test_box.length(),
+  )
+  if test_box_length > 0 {
+    out["ELECTRON_MBT_TEST_MESSAGE_BOX"] = @utf8.decode_lossy(test_box[:test_box_length])
+  }
   out
 }
 
@@ -1045,6 +1175,8 @@ fn cli_print_help() -> Unit {
   println("  migrate  stage the app under .emoon/app and write the migration report")
   println("  dev      init/inspect/migrate, validate with doctor, then run --window (--build runs npm run build)")
   println("  run      run a prepared app (--window, --entry, --profile, --hold, selftests)")
+  println("")
+  println("  --asset-scheme <s,...>  admit custom schemes for the adapted asset broker")
   println("  doctor   validate a prepared app without launching it")
   println("")
   println("other:")
@@ -1246,6 +1378,9 @@ fn cli_main(args : Array[String]) -> Unit {
   let mut hold_seconds_set = false
   let mut hold_close_after_ms = 0
   let mut hold_close_after_set = false
+  let mut dispatch_main = ""
+  let jmd_edit_save = args.contains("--jmd-edit-save")
+  let focus_jmd_editor = args.contains("--jmd-focus-editor")
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--hold-seconds" && i + 1 < args.length() {
       hold_seconds_set = true
@@ -1254,6 +1389,9 @@ fn cli_main(args : Array[String]) -> Unit {
     if args[i] == "--hold-close-after-ms" && i + 1 < args.length() {
       hold_close_after_set = true
       hold_close_after_ms = cli_parse_seconds(args[i + 1])
+    }
+    if args[i] == "--dispatch-main" && i + 1 < args.length() {
+      dispatch_main = args[i + 1]
     }
   }
   let broker_selftest = args.contains("--broker-selftest")
@@ -1288,6 +1426,22 @@ fn cli_main(args : Array[String]) -> Unit {
   }
   if hold_close_after_set && (hold_close_after_ms < 1 || hold_close_after_ms > 60000) {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--hold-close-after-ms must be 1..60000")
+    return
+  }
+  if dispatch_main.length() > 128 {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--dispatch-main is too long")
+    return
+  }
+  if dispatch_main.length() > 0 && !hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--dispatch-main requires --hold")
+    return
+  }
+  if jmd_edit_save && !hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--jmd-edit-save requires --hold")
+    return
+  }
+  if focus_jmd_editor && !hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--jmd-focus-editor requires --hold")
     return
   }
   if hold_mode && (broker_selftest || fs_selftest || user_file_selftest ||
@@ -1489,6 +1643,13 @@ fn cli_main(args : Array[String]) -> Unit {
       return
     }
   }
+  let asset_schemes = match cli_profile_asset_schemes(sources) {
+    Ok(value) => value
+    Err(code) => {
+      cli_fail(code, "invalid assetSchemes in nodeless-app.json")
+      return
+    }
+  }
   let mut requested_profile = ""
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--profile" && i + 1 < args.length() {
@@ -1621,6 +1782,7 @@ fn cli_main(args : Array[String]) -> Unit {
     cwd: app_dir,
     env: cli_fixture_env(),
     adapted_adapter,
+    asset_schemes,
   }
   let runner = @app.AppRunner::new(snapshot, config)
   if !window_mode {
@@ -1639,6 +1801,25 @@ fn cli_main(args : Array[String]) -> Unit {
       runner.stop()
       cli_fail("ELECTRON_MBT_NODELESS_HOST", "native host start failed")
       return
+    }
+    if asset_schemes.length() > 0 && cli_platform() == "linux" {
+      let schemes_json : Array[Json] = []
+      for scheme in asset_schemes {
+        schemes_json.push(Json(scheme))
+      }
+      let payload = Json({ "schemes": Json(schemes_json) }).stringify()
+      match cli_host_payload("set-asset-schemes", payload) {
+        Some(_) => ()
+        None => {
+          nodeless_host_kill()
+          runner.stop()
+          cli_fail(
+            "ELECTRON_MBT_NODELESS_PROTOCOL",
+            "native host rejected the asset scheme list",
+          )
+          return
+        }
+      }
     }
     if !runner.install_host_bridge() {
       nodeless_host_kill()
@@ -1665,7 +1846,7 @@ fn cli_main(args : Array[String]) -> Unit {
     let adapted_configured = adapted_adapter.length() > 0
     if hold_mode {
       cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
-               trigger_export_ui)
+               trigger_export_ui, dispatch_main, jmd_edit_save, focus_jmd_editor)
       return
     }
     let mut adapted_observed = false
@@ -2251,6 +2432,11 @@ fn cli_main(args : Array[String]) -> Unit {
     let main_error = runner.global_text("__mbt_last_error")
     let rejection = runner.last_rejection()
     let host_pid = nodeless_host_pid()
+    let asset_status = if cli_platform() == "linux" {
+      cli_host_payload("get-asset-status", "{}").unwrap_or(null)
+    } else {
+      null
+    }
     let shutdown = nodeless_host_shutdown()
     let live = runner.live_leases()
     let manifest_hash = match cli_sha256(app_dir, "source-manifest.json") {
@@ -2332,6 +2518,7 @@ fn cli_main(args : Array[String]) -> Unit {
         "ingress": ingress,
       }),
       "ingressSelftest": ingress_selftest_json,
+      "assets": Json(asset_status),
       "grantStore": grant_store,
       "grantPersistSelftest": grant_persist_json,
       "grantRevokeSelftest": grant_revoke_json,

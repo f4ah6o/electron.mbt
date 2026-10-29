@@ -329,6 +329,8 @@ static int ebt_host_request(const char *operation, const char *payload,
     return result;
   }
   if (strcmp(operation, "get-window-title") == 0 ||
+      strcmp(operation, "get-primary-display") == 0 ||
+      strcmp(operation, "get-all-displays") == 0 ||
       strcmp(operation, "set-window-title") == 0 ||
       strcmp(operation, "get-web-contents-title") == 0 ||
       strcmp(operation, "get-web-contents-url") == 0 ||
@@ -348,6 +350,8 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "trigger-renderer-api") == 0 ||
       strcmp(operation, "trigger-renderer-edit-save") == 0 ||
       strcmp(operation, "trigger-renderer-export-ui") == 0 ||
+      strcmp(operation, "trigger-jmd-edit") == 0 ||
+      strcmp(operation, "focus-jmd-editor") == 0 ||
       strcmp(operation, "probe-renderer") == 0 ||
       strcmp(operation, "app-reply") == 0 ||
       strcmp(operation, "main-stat") == 0 ||
@@ -386,6 +390,10 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "revoke-main-grant") == 0) {
     return send_control_frame(operation, payload, 0, 0, out, capacity);
   }
+  if (strcmp(operation, "set-asset-schemes") == 0 ||
+      strcmp(operation, "get-asset-status") == 0) {
+    return send_control_frame(operation, payload, 0, 0, out, capacity);
+  }
   if (strcmp(operation, "shutdown") == 0) {
     return send_control_frame(operation, payload, 0, 0, out, capacity);
   }
@@ -404,6 +412,8 @@ static int js_host_operation_allowed(const char *operation) {
     "load-file",
     "load-app-file",
     "get-window-title",
+    "get-primary-display",
+    "get-all-displays",
     "set-window-title",
     "get-web-contents-title",
     "get-web-contents-url",

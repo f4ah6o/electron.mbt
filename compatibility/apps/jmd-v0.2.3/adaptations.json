@@ -1,11 +1,142 @@
 {
   "schema": 1,
   "appId": "jmd-v0.2.3",
-  "adaptations": [],
-  "declaredUnsupported": [
-    "jmd-file privileged scheme (bypassCSP:true)",
-    "webUtils.getPathForFile",
-    "autoUpdater"
+  "adaptations": [
+    {
+      "id": "jmd-smoke-computed-require",
+      "kind": "staged-source-patch",
+      "path": "electron/main.js",
+      "beforeSHA256": "cdbd04a2f73377013ca1244e11f8c1d162326b206f087a88cce0f74da6824bc3",
+      "afterSHA256": "29504825c50e0d6f4f165ead6e4fa2e78e4f5acaa7268b811fea8ee9d0807cff",
+      "reason": "the static CJS graph builder rejects computed require before protocol registration",
+      "scope": "staged copy only; upstream checkout untouched"
+    },
+    {
+      "id": "jmd-file-bypassCSP",
+      "kind": "staged-source-patch",
+      "path": "electron/main.js",
+      "beforeSHA256": "232df6c5fd1188552022a74bdb932020704ebef844d96aa2aeeecc1deb682596",
+      "afterSHA256": "8afde3d172959e7ae3a599b0d866785e1e9ac21e8e04296a3b71f9ea6eabe10e",
+      "reason": "the adapted protocol admission rejects bypassCSP",
+      "scope": "staged copy only"
+    },
+    {
+      "id": "test-open-dialog-hook",
+      "kind": "test-only-staged-source-patch",
+      "path": "electron/main.js",
+      "beforeSHA256": "41fe34c17cfc630394391748bd8fb9641865b99acdbcdfa57bfd7ae1ced00f4e",
+      "afterSHA256": "26ab8a501bc641331acb75f2057576acf7f2444e316e3914ae9460c3b6e200b7",
+      "reason": "CLI-only hook to drive the real open dialog and probe the screen/message-box facades in the adapted smoke test",
+      "scope": "CLI dispatch only; renderer never calls it"
+    },
+    {
+      "id": "jmd-page-shim",
+      "kind": "page-adapter",
+      "path": "adapted/page-api.js",
+      "sha256": "9a01935f4629ee3ac2f9fb0824e78a2488047a8bd4d3f33172fcae7942bdf035",
+      "reason": "Linux has no original-preload execution; implements window.jmd IPC calls, pure basename/resolveAsset, event listeners, and an adapted Ctrl+S binding to jmd save(). IPC dispatch stays runtime/MoonBit-owned.",
+      "originalPreload": "NOT_EXECUTED"
+    },
+    {
+      "id": "nativeTheme-facade",
+      "kind": "runtime-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt",
+      "reason": "jmd reads nativeTheme.shouldUseDarkColors at window creation; the adapted facade returns false and exposes inert listener methods."
+    },
+    {
+      "id": "fs-watch-polling",
+      "kind": "runtime-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt",
+      "reason": "Bounded polling for fs.watch (250 ms), fs.watchFile/unwatchFile (250..60000 ms), and recursive fs.watch (4096-entry snapshot, change/rename event types). No native inotify claim."
+    },
+    {
+      "id": "loadFile-query",
+      "kind": "runtime-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt + platform/linux/NativeHost.c",
+      "reason": "jmd can open a path through loadFile options.query; values are encoded deterministically and the app scheme accepts a query."
+    },
+    {
+      "id": "message-box-test-injection",
+      "kind": "test-only-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt",
+      "reason": "ELECTRON_MBT_TEST_MESSAGE_BOX=0..2 returns a deterministic response. Without it showMessageBox stays typed unsupported; there is no destructive default."
+    },
+    {
+      "id": "screen-primary-display",
+      "kind": "runtime-facade",
+      "path": "bridges/embedded-js/node_prelude.mbt + platform/linux/NativeHost.c",
+      "reason": "Linux host get-primary-display/get-all-displays use GDK monitor geometry; prelude getAllDisplays/getDisplayNearestPoint/getDisplayMatching select by containment/intersection with a documented fallback."
+    },
+    {
+      "id": "jmd-edit-save-hook",
+      "kind": "test-only-staged-source-patch",
+      "path": "electron/main.js",
+      "reason": "CLI-only test:menu-save hook sends the same menu:save topic the native Save item sends; the native menu remains store-only."
+    },
+    {
+      "id": "jmd-ctrl-s-page-shortcut",
+      "kind": "page-adapter",
+      "path": "adapted/page-api.js",
+      "reason": "The native application menu is store-only in the adapted profile, so Ctrl+S is bound in the adapted page to jmd's own save(). This is not native menu installation.",
+      "nativeMenu": "NOT_RUN"
+    }
   ],
-  "note": "J1 remains an expected-rejection until the privileged protocol gate is resolved; no privileged scheme is registered."
+  "declaredUnsupported": [
+    "webUtils.getPathForFile",
+    "autoUpdater",
+    "native menu installation",
+    "net",
+    "showMessageBox without the test env",
+    "human input/IME",
+    "hardware multi-monitor selection",
+    "macOS"
+  ],
+  "note": "Pinned jmd 0.2.3 boots the real renderer, opens a markdown document through the test-injected native dialog, edits via the host hook and via real X11/xdotool input, saves via Ctrl+S through the adapted page shortcut, reloads after an external rewrite through the polling watcher, and reads GDK display geometry. The native menu remains store-only. compatible:false; IME and macOS are NOT_RUN/out of scope.",
+  "protocol": {
+    "mode": "asset-broker",
+    "synthetic": "PASS",
+    "pinnedRaw": "expected-rejection (ELECTRON_MBT_DYNAMIC_REQUIRE)",
+    "pinnedAdapted": "PASS",
+    "appHandlerExecuted": false,
+    "schemes": [
+      "jmd-file"
+    ],
+    "note": "The adapted stage admits jmd-file; the broker serves the document-directory PNG. protocol.handle is recorded, not executed."
+  },
+  "positive": {
+    "status": "PASS",
+    "profile": "electron-nodeless-adapted-v1",
+    "platform": "linux",
+    "evidence": "compatibility/reports/jmd-positive.json",
+    "checks": [
+      "exitZero",
+      "holdExit",
+      "adaptedBoot",
+      "pageUrl",
+      "windowTitle",
+      "initialUi",
+      "openDialog",
+      "previewMarker",
+      "schemeRegistered",
+      "assetServed",
+      "imageLoaded",
+      "noMainError",
+      "displayBounds",
+      "displayCount",
+      "matchingBounds",
+      "messageBox",
+      "editSaved",
+      "keyboardSaved",
+      "editCleanTitle",
+      "watcherReloaded",
+      "saveDispatched"
+    ],
+    "saveEdit": "PASS (synthetic host edit + real xdotool X11 input + Ctrl+S)",
+    "macOS": "out of scope",
+    "watcher": "PASS (external rewrite -> file:changed reload; polling facade)",
+    "facades": "screen GDK bounds PASS; showMessageBox response 2 PASS; query loadFile fixture PASS",
+    "keyboard": "PASS (xdotool ASCII; IME disabled in test env, IME NOT RUN)",
+    "watchers": "PASS (fs.watch polling; fs.watchFile/unwatchFile/recursive in asset suite)",
+    "multiDisplay": "PASS (one Xvfb monitor; multi-monitor selection NOT RUN)"
+  }
 }

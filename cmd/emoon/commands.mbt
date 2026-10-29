@@ -399,6 +399,7 @@ fn command_init_with_args(
     Some(page),
     include,
     api,
+    command_asset_schemes(args),
     config_file,
     if workspace == "." { root } else { @cli.join_path(root, workspace) },
   ) {
@@ -577,6 +578,23 @@ fn command_walk(
 }
 
 ///|
+fn command_asset_schemes(args : @cli.CliArgs) -> Array[String] {
+  match args.value("asset-scheme") {
+    Some(text) => {
+      let schemes : Array[String] = []
+      for item in text.split(",") {
+        let trimmed = item.trim_space().to_owned()
+        if trimmed != "" {
+          schemes.push(trimmed)
+        }
+      }
+      schemes
+    }
+    None => []
+  }
+}
+
+///|
 fn command_load_config(
   root : String,
   args : @cli.CliArgs,
@@ -601,6 +619,7 @@ fn command_load_config(
       None,
       [],
       None,
+      command_asset_schemes(args),
       config_file,
       root,
     ).unwrap()
@@ -630,7 +649,7 @@ fn command_load_config(
       Ok(value) => value
       Err(error) => {
         command_error(error)
-        return @cli.config_default("", "", None, [], None, config_file, workspace).unwrap()
+        return @cli.config_default("", "", None, [], None, [], config_file, workspace).unwrap()
       }
     }
     match @cli.merge_config(config, args) {
@@ -659,6 +678,7 @@ fn command_load_config(
         None,
         [],
         None,
+        command_asset_schemes(args),
         config_file,
         workspace,
       ).unwrap()
@@ -669,13 +689,14 @@ fn command_load_config(
       args.value("page"),
       args.include,
       args.value("api"),
+      command_asset_schemes(args),
       config_file,
       workspace,
     ) {
       Ok(value) => value
       Err(error) => {
         command_error(error)
-        return @cli.config_default("", "", None, [], None, config_file, workspace).unwrap()
+        return @cli.config_default("", "", None, [], None, [], config_file, workspace).unwrap()
       }
     }
   }
@@ -1377,11 +1398,20 @@ fn command_write_adapter(
   if fs_write_atomic(stage_root, adapter, source) != 0 {
     command_fail("ELECTRON_MBT_MIGRATE_IO", "cannot write " + adapter)
   }
-  let profile_text = @cli.CliJson::object([
+  let profile_fields : Array[(String, @cli.CliJson)] = [
     ("schema", @cli.CliJson::int(1)),
     ("profile", @cli.CliJson::string("electron-nodeless-adapted-v1")),
     ("adapter", @cli.CliJson::string(adapter)),
-  ]).to_file_text()
+  ]
+  if config.asset_schemes.length() > 0 {
+    profile_fields.push((
+      "assetSchemes",
+      @cli.CliJson::array(
+        config.asset_schemes.map(scheme => @cli.CliJson::string(scheme)),
+      ),
+    ))
+  }
+  let profile_text = @cli.CliJson::object(profile_fields).to_file_text()
   if fs_write_atomic(stage_root, profile, profile_text) != 0 {
     command_fail("ELECTRON_MBT_MIGRATE_IO", "cannot write " + profile)
   }

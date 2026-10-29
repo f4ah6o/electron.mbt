@@ -625,3 +625,122 @@ Implementation delegation through the GitHub Codex integration was attempted on 
 - The current bundle profile remains `electron-nodeless-adapted-v1`; a stage
   without `nodeless-app.json` is refused with a `--api <file>` hint. NOT RUN:
   macOS bundle launch/signing/notarization, Windows, human UI, DnD.
+
+## Custom protocol asset broker (2026-10-29)
+
+- Replaced the silent `electron.protocol.registerSchemesAsPrivileged` no-op in
+  the adapted prelude. The scheme must be admitted by the staged
+  `assetSchemes`; `bypassCSP`, service workers, code cache and streaming are
+  rejected with `ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE`; an unadmitted
+  scheme fails with `ELECTRON_MBT_PROTOCOL_SCHEME_NOT_ADMITTED`. `handle` is
+  recorded but never executed (`handlerExecuted:false`).
+- The Linux GTK/WebKitGTK host registers admitted schemes before the first
+  WebView and serves `scheme://local/<encoded absolute path>` from the app root
+  and session document directories. The broker enforces realpath containment,
+  image extensions, regular files, `O_NOFOLLOW`, a 4 MiB cap and GET/HEAD.
+  Responses carry status, CORS, nosniff, cache and SVG CSP headers; the
+  earlier host abort was an extra unref of the `SoupMessageHeaders` that
+  `set_http_headers` takes ownership of.
+- Test evidence:
+  - `node --test tests/asset-protocol.test.cjs`: **12 PASS**. Dialog-granted
+    image title `asset-ok-16`, `served:1`, `bytes:116`, `denied:0`; ungranted
+    image `asset-error`, `denied:1`, `lastCode:ELECTRON_MBT_ASSET_DENIED`;
+    unadmitted scheme stops at main evaluation, no window; traversal
+    (`ESCAPE`), symlink escape (`DENIED`), non-image (`TYPE`) and >4 MiB
+    (`LIMIT`) are denied with no served bytes; a `crossorigin` image draws to
+    canvas and `toDataURL` succeeds, so the CORS header path works.
+    WebKitGTK's `set_http_headers` owns the `SoupMessageHeaders`; the earlier
+    host abort was an extra unref. Responses now carry status, CORS, nosniff
+    and cache headers; `fetch()` to the custom scheme still reports a network
+    error (NOT RUN). Additional fixtures verify `loadFile` query
+    serialization reaches `location.search`, bounded
+    `fs.watchFile`/`unwatchFile`/recursive `fs.watch` delivery and close,
+    GDK `getAllDisplays`/nearest/matching selection on the Xvfb monitor, and
+    typed-unsupported `dialog.showMessageBox`/`net` without the test env.
+  - `node scripts/nodeless-moji-assets.cjs`: **PASS**. Pinned Moji 1.0.7 real
+    renderer requested a relative PNG; host `served:1`, `bytes:116`,
+    `schemes:["moji-asset"]`, `handlerExecuted:false`. The page probe did not
+    expose a plain preview `<img>` (`NOT_EXPOSED`); the controlled asset
+    fixture verifies WebKit decoding and `naturalWidth:16`. A separate manual
+    run with a 96x96 PNG visibly rendered the preview image
+    ([screenshot](images/moji-assets-20261029.png)). Report:
+    `compatibility/reports/moji-assets.json`.
+  - `node --test tests/apps/jmd-j1.test.cjs`: **2 PASS** synthetic J1.
+    `bypassCSP` -> `ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE`; safe but
+    unadmitted -> `ELECTRON_MBT_PROTOCOL_SCHEME_NOT_ADMITTED`; unreachable
+    code after the declaration is not evaluated.
+  - `node scripts/jmd-j1.cjs`: **PASS expected-rejection** against the pinned
+    jmd `f875fc6` checkout. The pinned main stops earlier than the synthetic
+    fixture: the CJS loader rejects the `JMD_SMOKE` computed require
+    (`ELECTRON_MBT_DYNAMIC_REQUIRE`), so `protocolGateReached:false`. Report:
+    `compatibility/reports/jmd-j1.json`. This is fail-closed, not
+    protocol-gate evidence.
+  - MoonBit native prelude tests: admission/privilege/record-only handler.
+  - `node --test tests/nodeless-runtime.test.cjs`: **22 PASS / 0 FAIL / 21
+    SKIP** (Linux host available; Moji/pinned tests still skip).
+  - `emoon init/migrate/dev/bundle --asset-scheme` writes
+    `.emoon/config.json` and the staged `nodeless-app.json`; invalid names,
+    duplicates and >4 schemes fail before staging. Node/native stage bytes are
+    identical (`tests/emoon-cli-parity.test.cjs`).
+  - `npm test`: **567 tests / 534 PASS / 0 FAIL / 33 SKIP**;
+    `moon test --target js`: **174 PASS**; `--target native`: **211 PASS**.
+- Not run / not implemented: macOS WKURLSchemeHandler, `fetch()` status,
+  no-cors canvas taint, SVG direct-navigation, the Moji preview `<img>` probe
+  (NOT_EXPOSED; controlled fixture and screenshot PASS), persistent asset
+  directories, multi-window, `unhandle` broker shutdown. The pinned raw jmd
+  J1 is expected-rejection at the JMD_SMOKE computed require; the separate
+  adapted stage reaches a positive (section 69). `compatible:false`, strict
+  blocked, original preload NOT_EXECUTED.
+- See [docs/0074](0074-custom-protocol-asset-broker.md).
+
+## jmd positive on the adapted Linux profile (2026-10-29)
+
+Pinned jmd 0.2.3 (`f875fc6`) now boots its real Vite renderer in the Linux
+GTK/WebKitGTK host and opens a markdown document through a test-injected native
+open dialog.
+
+- The upstream checkout is unchanged. `scripts/jmd-adapt.cjs` creates a staged
+  copy and records source edits with before/after SHA-256:
+  remove the `JMD_SMOKE` computed require, remove `bypassCSP` from the
+  `jmd-file` scheme, and add CLI-only `test:open-dialog`/`test:menu-save`
+  hooks. The bespoke `fixtures/jmd-adapted/page-api.js` implements
+  `window.jmd` (IPC calls, pure `basename`/`resolveAsset`, event listeners);
+  IPC dispatch stays runtime/MoonBit-owned. The original preload is
+  NOT_EXECUTED.
+- Runtime facades added: `nativeTheme`; a bounded 250 ms `fs.watch` stat
+  poller plus `fs.watchFile`/`unwatchFile` (250..60000 ms, `{curr,prev}`,
+  close/unref) and bounded recursive `fs.watch` (4096-entry snapshot,
+  change/rename event types, close); deterministic `loadFile` query encoding
+  with a query-accepting entry URL; test-injected `dialog.showMessageBox`
+  (`ELECTRON_MBT_TEST_MESSAGE_BOX=0..2`, typed unsupported otherwise); GDK
+  `get-all-displays` plus prelude `getAllDisplays`/
+  `getDisplayNearestPoint`/`getDisplayMatching`; typed-unsupported `net`.
+  Native menus stay store-only; `droppedFilePath` stays fail-closed.
+- `scripts/jmd-positive.cjs` boots the stage, opens the document, appends
+  `jmd-edit-marker-20261029` through CodeMirror's DOM and saves via
+  `test:menu-save`; then a fixed host helper focuses `.cm-content`, `xdotool`
+  types `jmd-key-marker-20261029` as real X11 ASCII input and sends Ctrl+S
+  (bound in the adapted page because the native menu is store-only); an
+  retry with direct window events at 12.5 s only if the file lacks the
+  keyboard marker, and an external rewrite at 20 s exercises `fs.watch`
+  reload. It asserts adapted
+  boot/release, page URL, window title, initial UI, open dispatch, preview
+  marker, `jmd-file` admission, image served, `naturalWidth:16`, exact edited
+  and keyboard bytes, clean title, watcher reload, display bounds/count/
+  matching, message-box response 2 and `handlerExecuted:false`.
+  `compatible:false`. The test disables the desktop IME and types ASCII only;
+  IME is NOT RUN.
+- Evidence: `compatibility/reports/jmd-positive.json` and
+  `jmd-positive-adaptation.json`; screenshot
+  [jmd-positive-20261029.png](images/jmd-positive-20261029.png);
+  [docs/0075](0075-jmd-positive-adapted.md).
+- CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
+  `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
+  `CI=true` (missing source/build fails rather than skips); the apt step now
+  installs `xdotool`. GitHub Actions run 283 (`212111e`, `linux-native`)
+  passed the previous save/watch version; the real-keyboard version awaits
+  the next push. Local evidence is above.
+- Human input/IME, native menu installation, `net`, hardware multi-monitor
+  selection and macOS remain NOT RUN/out of scope. `fs.watchFile`/recursive
+  watch are bounded polling facades, not inotify. No strict-profile or
+  compatibility claim.

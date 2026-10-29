@@ -7,6 +7,7 @@ test "config text matches Node pretty output" {
     page: "out/renderer/index.html",
     include: ["src/unused.js"],
     api: None,
+    asset_schemes: [],
     config_file: ".emoon/config.json",
     workspace: ".emoon",
   }
@@ -41,4 +42,23 @@ test "config rejects unsupported shapes" {
   assert_eq(config_from_json(@json.parse("{\"schema\":1,\"main\":\"/x\",\"renderer\":\"r\"}"), "c", "w") is Err(_), true)
   assert_eq(config_from_json(@json.parse("{\"schema\":1,\"main\":\"m\"}"), "c", "w") is Err(_), true)
   assert_eq(config_from_json(@json.parse("{\"schema\":1,\"main\":\"m\",\"renderer\":\"r\",\"api\":7}"), "c", "w") is Err(_), true)
+}
+
+///|
+test "asset scheme config round-trips and CLI merge validates" {
+  let parsed = @json.parse(
+    "{\"schema\":1,\"main\":\"m\",\"renderer\":\"r\",\"assetSchemes\":[\"moji-asset\"]}",
+  )
+  let config = config_from_json(parsed, "/app/.emoon/config.json", "/app/.emoon").unwrap()
+  assert_eq(config.asset_schemes, ["moji-asset"])
+  assert_true(config_text(config).contains("\"assetSchemes\""))
+  let args = parse_args(["--asset-scheme", "one-asset,two-asset"]).unwrap()
+  let merged = merge_config(config, args).unwrap()
+  assert_eq(merged.asset_schemes, ["one-asset", "two-asset"])
+  let cleared = merge_config(config, parse_args(["--asset-scheme", ""]).unwrap()).unwrap()
+  assert_eq(cleared.asset_schemes, [])
+  assert_true(config_from_json(
+    @json.parse("{\"schema\":1,\"main\":\"m\",\"renderer\":\"r\",\"assetSchemes\":[\"Bad\"]}"),
+    "c", "w",
+  ) is Err(_))
 }

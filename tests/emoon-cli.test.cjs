@@ -213,3 +213,20 @@ test('emoon version identifies the Node implementation', () => {
     assert.match(text.stdout, /^emoon 0\.1\.0 \(node/);
   } finally { fs.rmSync(app, { recursive: true, force: true }); }
 });
+
+test('emoon migrate --asset-scheme writes the stage field and rejects invalid names', () => {
+  const app = temporaryApp();
+  try {
+    const init = run(['init', '--api', 'adapted-preload.json', '--asset-scheme', 'moji-asset'], app);
+    assert.equal(init.result.status, 0, init.stderr);
+    const config = JSON.parse(fs.readFileSync(path.join(app, '.emoon/config.json'), 'utf8'));
+    assert.deepEqual(config.assetSchemes, ['moji-asset']);
+    const migrate = run(['migrate', '--api', 'adapted-preload.json'], app);
+    assert.equal(migrate.result.status, 0, migrate.stderr);
+    const profile = JSON.parse(fs.readFileSync(path.join(app, '.emoon/app/nodeless-app.json'), 'utf8'));
+    assert.deepEqual(profile.assetSchemes, ['moji-asset']);
+    const bad = run(['init', '--renderer', 'out/renderer', '--asset-scheme', 'Bad', '--force'], app);
+    assert.notEqual(bad.result.status, 0);
+    assert.equal(bad.report.code, 'ELECTRON_MBT_PROTOCOL_INVALID_SCHEME');
+  } finally { fs.rmSync(app, { recursive: true, force: true }); }
+});

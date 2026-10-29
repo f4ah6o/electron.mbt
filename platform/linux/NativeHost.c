@@ -37,8 +37,12 @@
 #include <zlib.h>
 #include <stdarg.h>
 #include <webkit2/webkit2.h>
+#include <libsoup/soup.h>
 
 #include "control_frame.h"
+
+static void on_asset_scheme_request(WebKitURISchemeRequest *request,
+                                    gpointer user_data);
 
 #define EBT_MAX_FRAME (1024 * 1024)
 #define EBT_MAX_SNAPSHOT_FILE (16 * 1024 * 1024)
@@ -59,6 +63,10 @@
 #define EBT_MAX_APP_WRITE (256 * 1024)
 #define EBT_MAX_MAIN_PATH 4096
 #define EBT_MAX_DIALOG_PATHS 16
+#define EBT_MAX_ASSET_SCHEMES 4
+#define EBT_MAX_ASSET_DIRS 16
+#define EBT_MAX_ASSET_BYTES (4 * 1024 * 1024)
+#define EBT_MAX_ASSET_PATH 4096
 #define EBT_GRANT_READ 1
 #define EBT_GRANT_WRITE 2
 
@@ -142,6 +150,13 @@ typedef struct Host {
   char ingress_last_code[128];
   GHashTable *pending;
   GHashTable *file_grants;
+  GPtrArray *asset_schemes;
+  GHashTable *asset_dirs;
+  guint64 asset_requests;
+  guint64 asset_served;
+  guint64 asset_denied;
+  guint64 asset_bytes;
+  char asset_last_code[64];
   GAsyncQueue *events;
   GtkWidget *active_dialog;
   gboolean close_after_dialog;
@@ -1248,7 +1263,7 @@ static void on_uri_scheme_request(WebKitURISchemeRequest *request,
   }
   const char *uri = webkit_uri_scheme_request_get_uri(request);
   ebt_debug("scheme request uri=%s\n", uri == NULL ? "(null)" : uri);
-  if (uri == NULL || strchr(uri, '?') != NULL || strchr(uri, '#') != NULL) {
+  if (uri == NULL || strchr(uri, '#') != NULL) {
     GError *error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "uri");
     webkit_uri_scheme_request_finish_error(request, error);
     g_error_free(error);
@@ -1332,6 +1347,21 @@ static void handle_create_window(Host *host, Request *request) {
   if (request->frame.window != 1 || request->frame.generation != 0 || host->created) {
     request_failure(request, "ELECTRON_MBT_WINDOW_OPTIONS");
     return;
+  }
+  /* The stage-admitted schemes must be installed before the first WebView is
+   * created. create-window is the last point at which WebKitGTK accepts a URI
+   * scheme for this context. */
+  WebKitWebContext *context = webkit_web_context_get_default();
+  WebKitSecurityManager *security =
+    webkit_web_context_get_security_manager(context);
+  for (guint index = 0; index < host->asset_schemes->len; index++) {
+    const char *scheme = (const char *)g_ptr_array_index(host->asset_schemes,
+                                                         index);
+    webkit_web_context_register_uri_scheme(context, scheme,
+                                           on_asset_scheme_request, host, NULL);
+    webkit_security_manager_register_uri_scheme_as_secure(security, scheme);
+    webkit_security_manager_register_uri_scheme_as_cors_enabled(security,
+                                                                 scheme);
   }
   host->manager = webkit_user_content_manager_new();
   host->web = WEBKIT_WEB_VIEW(
@@ -1571,7 +1601,7 @@ static void handle_begin_load(Host *host, Request *request) {
 
 static void start_load(Host *host, Request *request, JSCValue *payload,
                        gboolean snapshot_load) {
-  static const char *const expected[] = {"file"};
+  static const char *const expected[] = {"file", "query"};
   if (!require_current(host, request)) return;
   if (!host->content_alive) {
     request_failure(request, "ELECTRON_MBT_WEB_PROCESS_TERMINATED");
@@ -1581,7 +1611,8 @@ static void start_load(Host *host, Request *request, JSCValue *payload,
     request_failure(request, "ELECTRON_MBT_FILE_OR_GENERATION_DENIED");
     return;
   }
-  if (!object_has_exact_keys(payload, expected, 1)) {
+  gboolean has_query = object_has_exact_keys(payload, expected, 2);
+  if (!has_query && !object_has_exact_keys(payload, expected, 1)) {
     request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
     return;
   }
@@ -1589,6 +1620,21 @@ static void start_load(Host *host, Request *request, JSCValue *payload,
   if (file == NULL) {
     request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
     return;
+  }
+  char *query = has_query ? object_get_string(payload, "query") : NULL;
+  if (has_query) {
+    gboolean query_ok = query != NULL && strlen(query) <= 2048;
+    for (const char *cursor = query; query_ok && *cursor != 0; cursor++) {
+      if ((unsigned char)*cursor < 0x20 || *cursor == 0x7f || *cursor == '#') {
+        query_ok = FALSE;
+      }
+    }
+    if (!query_ok) {
+      g_free(query);
+      g_free(file);
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
   }
   char *url = NULL;
   char *loaded_file = NULL;
@@ -1621,6 +1667,12 @@ static void start_load(Host *host, Request *request, JSCValue *payload,
     free(canonical);
   }
   g_free(file);
+  if (url != NULL && query != NULL && query[0] != 0) {
+    char *with_query = g_strdup_printf("%s?%s", url, query);
+    g_free(url);
+    url = with_query;
+  }
+  g_free(query);
   if (url == NULL || loaded_file == NULL) {
     g_free(url);
     g_free(loaded_file);
@@ -1698,6 +1750,65 @@ static void handle_trigger_renderer_export_ui(Host *host, Request *request) {
   request_success_empty(request);
 }
 
+static void handle_trigger_jmd_edit(Host *host, Request *request) {
+  if (!require_current(host, request)) return;
+  if (!host->content_alive || !host->loaded) {
+    request_failure(request, "ELECTRON_MBT_STALE_DOCUMENT");
+    return;
+  }
+  static const char script[] =
+    "(function(){"
+    "var el=document.querySelector('.cm-content');"
+    "if(!el) return false;"
+    "el.focus();"
+    "var sel=window.getSelection();"
+    "var range=document.createRange();"
+    "var walker=document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);"
+    "var last=null; while(walker.nextNode()) last=walker.currentNode;"
+    "if(last){ range.setStart(last, last.data.length); range.collapse(true); }"
+    "else { range.selectNodeContents(el); range.collapse(false); }"
+    "sel.removeAllRanges();"
+    "sel.addRange(range);"
+    "try {"
+    "  var text=String.fromCharCode(10,10)+'jmd-edit-marker-20261029';"
+    "  var ok=document.execCommand('insertText', false, text);"
+    "  if(!ok){"
+    "    el.dispatchEvent(new InputEvent('beforeinput', {bubbles:true, cancelable:true, inputType:'insertText', data:text}));"
+    "  }"
+    "  return ok;"
+    "} catch(e) { return false; }"
+    "})()";
+  webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL,
+                                      NULL, NULL);
+  ebt_debug("trigger-jmd-edit\n");
+  request_success_empty(request);
+}
+
+static void handle_focus_jmd_editor(Host *host, Request *request) {
+  if (!require_current(host, request)) return;
+  if (!host->content_alive || !host->loaded) {
+    request_failure(request, "ELECTRON_MBT_STALE_DOCUMENT");
+    return;
+  }
+  static const char script[] =
+    "(function(){"
+    "var el=document.querySelector('.cm-content');"
+    "if(!el) return false;"
+    "el.focus();"
+    "var sel=window.getSelection();"
+    "var range=document.createRange();"
+    "range.selectNodeContents(el);"
+    "range.collapse(false);"
+    "sel.removeAllRanges();"
+    "sel.addRange(range);"
+    "return document.activeElement===el || el.contains(document.activeElement);"
+    "})()";
+  webkit_web_view_evaluate_javascript(host->web, script, -1, NULL, NULL, NULL,
+                                      NULL, NULL);
+  ebt_debug("focus-jmd-editor\n");
+  request_success_empty(request);
+}
+
 static void handle_probe_renderer(Host *host, Request *request) {
   if (!require_current(host, request)) return;
   if (!host->content_alive || !host->loaded) {
@@ -1709,6 +1820,10 @@ static void handle_probe_renderer(Host *host, Request *request) {
     "return {api: !!(window.api && typeof window.api.getSettings === 'function'), "
     "rootChildren: root ? root.childElementCount : 0, title: document.title, "
     "text: (document.body && document.body.innerText || '').slice(0, 160), "
+    "preview: (function(){ var p=document.getElementById('preview'); return p ? p.innerText.slice(0, 4096) : ''; })(), "
+    "image: (function(){ var img=document.querySelector('#preview img') || document.querySelector('article img'); "
+    "return img ? {src: img.currentSrc || img.src, complete: !!img.complete, "
+    "naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight} : null; })(), "
     "apiProbe: window.__mojiApiProbe ? JSON.stringify(window.__mojiApiProbe) : '', "
     "editSave: window.__mojiEditSaveProbe ? JSON.stringify(window.__mojiEditSaveProbe) : ''}; })()";
   ProbeContext *context = g_new0(ProbeContext, 1);
@@ -1912,6 +2027,371 @@ static gboolean path_is_under(const char *path, const char *root) {
   size_t root_length = strlen(root);
   if (root_length == 0 || strncmp(path, root, root_length) != 0) return FALSE;
   return path[root_length] == 0 || path[root_length] == '/';
+}
+
+/* ---- runtime-owned asset broker ---- */
+
+static gboolean asset_scheme_valid(const char *scheme) {
+  if (scheme == NULL) return FALSE;
+  size_t length = strlen(scheme);
+  if (length < 3 || length > 32) return FALSE;
+  if (scheme[0] < 'a' || scheme[0] > 'z') return FALSE;
+  for (size_t index = 1; index < length; index++) {
+    char c = scheme[index];
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+          c == '+' || c == '-' || c == '.')) return FALSE;
+  }
+  return strcmp(scheme, "http") != 0 && strcmp(scheme, "https") != 0 &&
+         strcmp(scheme, "file") != 0 && strcmp(scheme, "data") != 0 &&
+         strcmp(scheme, "blob") != 0 && strcmp(scheme, "about") != 0 &&
+         strcmp(scheme, "javascript") != 0 &&
+         strcmp(scheme, "electron-mbt-app") != 0;
+}
+
+static gboolean asset_extension_allowed(const char *path) {
+  const char *extension = strrchr(path, '.');
+  if (extension == NULL) return FALSE;
+  return g_ascii_strcasecmp(extension, ".png") == 0 ||
+         g_ascii_strcasecmp(extension, ".jpg") == 0 ||
+         g_ascii_strcasecmp(extension, ".jpeg") == 0 ||
+         g_ascii_strcasecmp(extension, ".gif") == 0 ||
+         g_ascii_strcasecmp(extension, ".webp") == 0 ||
+         g_ascii_strcasecmp(extension, ".avif") == 0 ||
+         g_ascii_strcasecmp(extension, ".bmp") == 0 ||
+         g_ascii_strcasecmp(extension, ".ico") == 0 ||
+         g_ascii_strcasecmp(extension, ".svg") == 0;
+}
+
+static const char *asset_mime_for(const char *path) {
+  const char *extension = strrchr(path, '.');
+  if (extension == NULL) return "application/octet-stream";
+  if (g_ascii_strcasecmp(extension, ".png") == 0) return "image/png";
+  if (g_ascii_strcasecmp(extension, ".jpg") == 0 ||
+      g_ascii_strcasecmp(extension, ".jpeg") == 0) return "image/jpeg";
+  if (g_ascii_strcasecmp(extension, ".gif") == 0) return "image/gif";
+  if (g_ascii_strcasecmp(extension, ".webp") == 0) return "image/webp";
+  if (g_ascii_strcasecmp(extension, ".avif") == 0) return "image/avif";
+  if (g_ascii_strcasecmp(extension, ".bmp") == 0) return "image/bmp";
+  if (g_ascii_strcasecmp(extension, ".ico") == 0) return "image/x-icon";
+  if (g_ascii_strcasecmp(extension, ".svg") == 0) return "image/svg+xml";
+  return "application/octet-stream";
+}
+
+/* Only the UI thread mutates or reads this table: dialog completion and the
+ * URI scheme callback both run on it, so no lock is needed. */
+static void asset_dir_add(Host *host, const char *canonical_file) {
+  if (host == NULL || canonical_file == NULL ||
+      g_hash_table_size(host->asset_dirs) >= EBT_MAX_ASSET_DIRS) return;
+  char *directory = g_path_get_dirname(canonical_file);
+  char *canonical = directory == NULL ? NULL : realpath(directory, NULL);
+  /* Never turn a document selected directly under "/" into a filesystem-wide
+   * image grant; the user chose one file, not the root directory. */
+  if (canonical != NULL && strcmp(canonical, "/") == 0) {
+    free(canonical);
+    canonical = NULL;
+  }
+  if (canonical != NULL && g_hash_table_size(host->asset_dirs) < EBT_MAX_ASSET_DIRS) {
+    g_hash_table_insert(host->asset_dirs, g_strdup(canonical),
+                        GINT_TO_POINTER(1));
+  }
+  free(canonical);
+  g_free(directory);
+}
+
+static gboolean asset_path_allowed(Host *host, const char *canonical) {
+  if (path_is_under(canonical, host->root)) return TRUE;
+  GHashTableIter iter;
+  gpointer key;
+  g_hash_table_iter_init(&iter, host->asset_dirs);
+  while (g_hash_table_iter_next(&iter, &key, NULL)) {
+    if (path_is_under(canonical, (const char *)key)) return TRUE;
+  }
+  return FALSE;
+}
+
+static gboolean asset_path_has_parent(const char *path) {
+  const char *cursor = path;
+  while ((cursor = strstr(cursor, "/../")) != NULL) return TRUE;
+  return g_str_has_suffix(path, "/..");
+}
+
+static gboolean asset_is_svg(const char *path) {
+  const char *extension = strrchr(path, '.');
+  return extension != NULL && g_ascii_strcasecmp(extension, ".svg") == 0;
+}
+
+static void asset_reply_status(WebKitURISchemeRequest *request, guint status,
+                               const char *reason, const char *code) {
+  (void)code;
+  char *body = g_strdup("denied");
+  GInputStream *stream =
+    g_memory_input_stream_new_from_data(body, 6, g_free);
+  WebKitURISchemeResponse *response =
+    webkit_uri_scheme_response_new(stream, 6);
+  webkit_uri_scheme_response_set_status(response, status, reason);
+  webkit_uri_scheme_response_set_content_type(response, "text/plain");
+  SoupMessageHeaders *headers =
+    soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
+  soup_message_headers_append(headers, "Cache-Control", "no-store");
+  soup_message_headers_append(headers, "X-Content-Type-Options", "nosniff");
+  /* set_http_headers takes ownership of the headers. Do not unref them. */
+  webkit_uri_scheme_response_set_http_headers(response, headers);
+  webkit_uri_scheme_request_finish_with_response(request, response);
+  g_object_unref(response);
+  g_object_unref(stream);
+}
+
+static void asset_deny(Host *host, WebKitURISchemeRequest *request,
+                       guint status, const char *reason, const char *code) {
+  host->asset_denied += 1;
+  ebt_debug("asset deny code=%s status=%u\n", code, status);
+  g_strlcpy(host->asset_last_code, code, sizeof(host->asset_last_code));
+  asset_reply_status(request, status, reason, code);
+}
+
+static void on_asset_scheme_request(WebKitURISchemeRequest *request,
+                                    gpointer user_data) {
+  Host *host = (Host *)user_data;
+  if (host == NULL || host->shutting_down) {
+    asset_reply_status(request, 503, "Service Unavailable",
+                       "ELECTRON_MBT_ASSET_SHUTDOWN");
+    return;
+  }
+  host->asset_requests += 1;
+  ebt_debug("asset request uri=%s\n", webkit_uri_scheme_request_get_uri(request));
+  const char *method = webkit_uri_scheme_request_get_http_method(request);
+  if (method == NULL) method = "GET";
+  if (g_ascii_strcasecmp(method, "GET") != 0 &&
+      g_ascii_strcasecmp(method, "HEAD") != 0) {
+    asset_deny(host, request, 405, "Method Not Allowed",
+               "ELECTRON_MBT_ASSET_METHOD");
+    return;
+  }
+  const char *scheme = webkit_uri_scheme_request_get_scheme(request);
+  const char *uri = webkit_uri_scheme_request_get_uri(request);
+  if (scheme == NULL || uri == NULL || !asset_scheme_valid(scheme)) {
+    asset_deny(host, request, 400, "Bad Request", "ELECTRON_MBT_ASSET_URI");
+    return;
+  }
+  size_t scheme_length = strlen(scheme);
+  static const char separator[] = "://local/";
+  if (strncmp(uri, scheme, scheme_length) != 0 ||
+      strncmp(uri + scheme_length, separator, sizeof(separator) - 1) != 0) {
+    asset_deny(host, request, 400, "Bad Request", "ELECTRON_MBT_ASSET_URI");
+    return;
+  }
+  const char *encoded = uri + scheme_length + sizeof(separator) - 1;
+  if (encoded[0] == 0 || strlen(encoded) > EBT_MAX_ASSET_PATH ||
+      strchr(encoded, '?') != NULL || strchr(encoded, '#') != NULL ||
+      strstr(encoded, "%00") != NULL) {
+    asset_deny(host, request, 400, "Bad Request", "ELECTRON_MBT_ASSET_URI");
+    return;
+  }
+  char *decoded = g_uri_unescape_string(encoded, NULL);
+  if (decoded == NULL || decoded[0] == 0 ||
+      strlen(decoded) > EBT_MAX_ASSET_PATH ||
+      !g_utf8_validate(decoded, -1, NULL)) {
+    g_free(decoded);
+    asset_deny(host, request, 400, "Bad Request", "ELECTRON_MBT_ASSET_URI");
+    return;
+  }
+  char *path = decoded;
+  if (path[0] != '/') {
+    size_t length = strlen(path);
+    char *absolute = (char *)malloc(length + 2);
+    if (absolute == NULL) {
+      g_free(decoded);
+      asset_deny(host, request, 500, "Internal Server Error",
+                 "ELECTRON_MBT_ASSET_READ");
+      return;
+    }
+    absolute[0] = '/';
+    memcpy(absolute + 1, path, length + 1);
+    g_free(decoded);
+    path = absolute;
+  }
+  if (asset_path_has_parent(path)) {
+    g_free(path);
+    asset_deny(host, request, 403, "Forbidden", "ELECTRON_MBT_ASSET_ESCAPE");
+    return;
+  }
+  char *canonical = realpath(path, NULL);
+  g_free(path);
+  if (canonical == NULL) {
+    asset_deny(host, request, 404, "Not Found", "ELECTRON_MBT_ASSET_NOT_FOUND");
+    return;
+  }
+  if (!asset_path_allowed(host, canonical)) {
+    free(canonical);
+    asset_deny(host, request, 403, "Forbidden", "ELECTRON_MBT_ASSET_DENIED");
+    return;
+  }
+  if (!asset_extension_allowed(canonical)) {
+    free(canonical);
+    asset_deny(host, request, 415, "Unsupported Media Type",
+               "ELECTRON_MBT_ASSET_TYPE");
+    return;
+  }
+  struct stat info;
+  int fd = open(canonical, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+  if (fd < 0 || fstat(fd, &info) != 0 || !S_ISREG(info.st_mode)) {
+    if (fd >= 0) close(fd);
+    free(canonical);
+    asset_deny(host, request, 404, "Not Found", "ELECTRON_MBT_ASSET_NOT_FOUND");
+    return;
+  }
+  if (info.st_size <= 0 || info.st_size > EBT_MAX_ASSET_BYTES) {
+    close(fd);
+    free(canonical);
+    asset_deny(host, request, 413, "Payload Too Large",
+               "ELECTRON_MBT_ASSET_LIMIT");
+    return;
+  }
+  gsize length = (gsize)info.st_size;
+  char *bytes = (char *)g_malloc(length);
+  gsize offset = 0;
+  while (offset < length && bytes != NULL) {
+    ssize_t got = read(fd, bytes + offset, length - offset);
+    if (got <= 0) break;
+    offset += (gsize)got;
+  }
+  close(fd);
+  if (offset != length) {
+    g_free(bytes);
+    free(canonical);
+    asset_deny(host, request, 500, "Internal Server Error",
+               "ELECTRON_MBT_ASSET_READ");
+    return;
+  }
+  const char *mime = asset_mime_for(canonical);
+  gboolean head = g_ascii_strcasecmp(method, "HEAD") == 0;
+  GInputStream *stream = head
+    ? g_memory_input_stream_new_from_data(g_strdup(""), 0, g_free)
+    : g_memory_input_stream_new_from_data(bytes, (gssize)length, g_free);
+  if (head) {
+    g_free(bytes);
+  }
+  WebKitURISchemeResponse *response =
+    webkit_uri_scheme_response_new(stream, head ? 0 : (gint64)length);
+  webkit_uri_scheme_response_set_status(response, 200, "OK");
+  webkit_uri_scheme_response_set_content_type(response, mime);
+  SoupMessageHeaders *headers =
+    soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
+  char content_length[64];
+  snprintf(content_length, sizeof(content_length), "%" G_GSIZE_FORMAT, length);
+  soup_message_headers_append(headers, "Content-Length", content_length);
+  soup_message_headers_append(headers, "Cache-Control", "no-store");
+  soup_message_headers_append(headers, "X-Content-Type-Options", "nosniff");
+  soup_message_headers_append(headers, "Access-Control-Allow-Origin", "*");
+  if (asset_is_svg(canonical)) {
+    soup_message_headers_append(headers, "Content-Security-Policy",
+                                 "default-src 'none'; style-src 'unsafe-inline'");
+  }
+  /* set_http_headers takes ownership of the headers. Do not unref them. */
+  webkit_uri_scheme_response_set_http_headers(response, headers);
+  webkit_uri_scheme_request_finish_with_response(request, response);
+  g_object_unref(response);
+  g_object_unref(stream);
+  host->asset_served += 1;
+  host->asset_bytes += (guint64)length;
+  g_strlcpy(host->asset_last_code, "OK", sizeof(host->asset_last_code));
+  free(canonical);
+}
+
+static void handle_set_asset_schemes(Host *host, Request *request,
+                                     JSCValue *payload) {
+  if (host->created) {
+    request_failure(request, "ELECTRON_MBT_PROTOCOL_TOO_LATE");
+    return;
+  }
+  static const char *const expected[] = {"schemes"};
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  JSCValue *schemes = object_get_value(payload, "schemes");
+  JSCValue *length_value = schemes == NULL ? NULL
+    : object_get_value(schemes, "length");
+  gint32 length = length_value == NULL ? -1 : jsc_value_to_int32(length_value);
+  if (length_value != NULL) g_object_unref(length_value);
+  if (schemes == NULL || !jsc_value_is_array(schemes) ||
+      length <= 0 || length > EBT_MAX_ASSET_SCHEMES) {
+    if (schemes != NULL) g_object_unref(schemes);
+    request_failure(request, "ELECTRON_MBT_PROTOCOL_INVALID_SCHEME");
+    return;
+  }
+  GPtrArray *next = g_ptr_array_new_with_free_func(g_free);
+  for (gint32 index = 0; index < length; index++) {
+    JSCValue *item = jsc_value_object_get_property_at_index(schemes, (guint)index);
+    if (item == NULL || !jsc_value_is_string(item)) {
+      if (item != NULL) g_object_unref(item);
+      g_ptr_array_free(next, TRUE);
+      g_object_unref(schemes);
+      request_failure(request, "ELECTRON_MBT_PROTOCOL_INVALID_SCHEME");
+      return;
+    }
+    char *name = jsc_value_to_string(item);
+    g_object_unref(item);
+    if (name == NULL) {
+      g_ptr_array_free(next, TRUE);
+      g_object_unref(schemes);
+      request_failure(request, "ELECTRON_MBT_PROTOCOL_INVALID_SCHEME");
+      return;
+    }
+    gboolean duplicate = FALSE;
+    for (guint seen = 0; seen < next->len; seen++) {
+      if (strcmp(name, (const char *)g_ptr_array_index(next, seen)) == 0) {
+        duplicate = TRUE;
+        break;
+      }
+    }
+    if (!asset_scheme_valid(name) || duplicate) {
+      g_free(name);
+      g_ptr_array_free(next, TRUE);
+      g_object_unref(schemes);
+      request_failure(request, "ELECTRON_MBT_PROTOCOL_INVALID_SCHEME");
+      return;
+    }
+    g_ptr_array_add(next, name);
+  }
+  g_object_unref(schemes);
+  g_ptr_array_set_size(host->asset_schemes, 0);
+  for (guint index = 0; index < next->len; index++) {
+    g_ptr_array_add(host->asset_schemes,
+                    g_strdup((const char *)g_ptr_array_index(next, index)));
+  }
+  g_ptr_array_free(next, TRUE);
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "ok", TRUE);
+  object_set_number(host, reply, "schemeCount",
+                    (double)host->asset_schemes->len);
+  object_set_string(host, reply, "mode", "asset-broker");
+  request_complete(request, "success", reply);
+}
+
+static void handle_get_asset_status(Host *host, Request *request,
+                                    JSCValue *payload) {
+  (void)payload;
+  JSCValue *reply = object_new(host);
+  const char *names[EBT_MAX_ASSET_SCHEMES + 1];
+  for (guint index = 0; index < host->asset_schemes->len; index++) {
+    names[index] = (const char *)g_ptr_array_index(host->asset_schemes, index);
+  }
+  names[host->asset_schemes->len] = NULL;
+  JSCValue *schemes = jsc_value_new_array_from_strv(host->json, names);
+  jsc_value_object_set_property(reply, "schemes", schemes);
+  g_object_unref(schemes);
+  object_set_number(host, reply, "schemeCount", (double)host->asset_schemes->len);
+  object_set_number(host, reply, "directories",
+                    (double)g_hash_table_size(host->asset_dirs));
+  object_set_number(host, reply, "requests", (double)host->asset_requests);
+  object_set_number(host, reply, "served", (double)host->asset_served);
+  object_set_number(host, reply, "denied", (double)host->asset_denied);
+  object_set_number(host, reply, "bytes", (double)host->asset_bytes);
+  object_set_string(host, reply, "lastCode", host->asset_last_code);
+  object_set_string(host, reply, "mode", "asset-broker");
+  object_set_boolean(host, reply, "handlerExecuted", FALSE);
+  request_complete(request, "success", reply);
 }
 
 static char *host_join_path(Host *host, const char *path) {
@@ -3075,6 +3555,7 @@ static void handle_main_open_dialog(Host *host, Request *request,
     char *canonical = held == NULL ? NULL : realpath(held, NULL);
     if (canonical != NULL) {
       grant_file(host, canonical, EBT_GRANT_READ | EBT_GRANT_WRITE);
+      asset_dir_add(host, canonical);
       g_ptr_array_add(held_paths, canonical);
     }
     g_free(default_path);
@@ -3127,6 +3608,9 @@ static void handle_main_open_dialog(Host *host, Request *request,
        * Grant read+write so an editor can save back to the file it opened;
        * directory subtrees are still never granted. */
       grant_file(host, canonical, EBT_GRANT_READ | EBT_GRANT_WRITE);
+      /* The document's own directory is readable for images only; this does
+       * not widen the exact-file write grant or the main fs directory set. */
+      asset_dir_add(host, canonical);
       g_ptr_array_add(paths, canonical);
     }
     g_free(selected);
@@ -3937,6 +4421,18 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     handle_prepare_source(host, request, payload);
     return;
   }
+  if (strcmp(operation, "set-asset-schemes") == 0) {
+    handle_set_asset_schemes(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "get-asset-status") == 0) {
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    handle_get_asset_status(host, request, payload);
+    return;
+  }
   if (strcmp(operation, "install-adapted-adapter") == 0) {
     handle_install_adapter(host, request, payload);
     return;
@@ -3959,6 +4455,22 @@ static void dispatch_request(Request *request, JSCValue *payload) {
   }
   if (strcmp(operation, "trigger-renderer-export-ui") == 0) {
     handle_trigger_renderer_export_ui(host, request);
+    return;
+  }
+  if (strcmp(operation, "trigger-jmd-edit") == 0) {
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    handle_trigger_jmd_edit(host, request);
+    return;
+  }
+  if (strcmp(operation, "focus-jmd-editor") == 0) {
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    handle_focus_jmd_editor(host, request);
     return;
   }
   if (strcmp(operation, "probe-renderer") == 0) {
@@ -4052,6 +4564,81 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     const char *title = gtk_window_get_title(GTK_WINDOW(host->window));
     JSCValue *reply = object_new(host);
     object_set_string(host, reply, "title", title == NULL ? "" : title);
+    request_complete(request, "success", reply);
+    return;
+  }
+  if (strcmp(operation, "get-primary-display") == 0) {
+    if (!require_current(host, request)) return;
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    GdkDisplay *display = gdk_display_get_default();
+    GdkMonitor *monitor = display == NULL
+      ? NULL : gdk_display_get_primary_monitor(display);
+    if (monitor == NULL && display != NULL &&
+        gdk_display_get_n_monitors(display) > 0) {
+      monitor = gdk_display_get_monitor(display, 0);
+    }
+    if (monitor == NULL) {
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
+    GdkRectangle geometry;
+    GdkRectangle workarea;
+    gdk_monitor_get_geometry(monitor, &geometry);
+    gdk_monitor_get_workarea(monitor, &workarea);
+    JSCValue *reply = object_new(host);
+    object_set_number(host, reply, "x", (double)geometry.x);
+    object_set_number(host, reply, "y", (double)geometry.y);
+    object_set_number(host, reply, "width", (double)geometry.width);
+    object_set_number(host, reply, "height", (double)geometry.height);
+    object_set_number(host, reply, "workX", (double)workarea.x);
+    object_set_number(host, reply, "workY", (double)workarea.y);
+    object_set_number(host, reply, "workWidth", (double)workarea.width);
+    object_set_number(host, reply, "workHeight", (double)workarea.height);
+    object_set_number(host, reply, "scaleFactor",
+                      (double)gdk_monitor_get_scale_factor(monitor));
+    request_complete(request, "success", reply);
+    return;
+  }
+  if (strcmp(operation, "get-all-displays") == 0) {
+    if (!require_current(host, request)) return;
+    if (!object_has_exact_keys(payload, NULL, 0)) {
+      request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+      return;
+    }
+    GdkDisplay *display = gdk_display_get_default();
+    int count = display == NULL ? 0 : gdk_display_get_n_monitors(display);
+    if (count <= 0) {
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
+    if (count > 16) count = 16;
+    GString *json = g_string_new("{\"displays\":[");
+    for (int index = 0; index < count; index++) {
+      GdkMonitor *monitor = gdk_display_get_monitor(display, index);
+      if (monitor == NULL) continue;
+      GdkRectangle geometry;
+      GdkRectangle workarea;
+      gdk_monitor_get_geometry(monitor, &geometry);
+      gdk_monitor_get_workarea(monitor, &workarea);
+      g_string_append_printf(json,
+        "%s{\"id\":%d,\"bounds\":{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d},"
+        "\"workArea\":{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d},"
+        "\"scaleFactor\":%d}",
+        index == 0 ? "" : ",", index,
+        geometry.x, geometry.y, geometry.width, geometry.height,
+        workarea.x, workarea.y, workarea.width, workarea.height,
+        gdk_monitor_get_scale_factor(monitor));
+    }
+    g_string_append(json, "]}");
+    JSCValue *reply = jsc_value_new_from_json(host->json, json->str);
+    g_string_free(json, TRUE);
+    if (reply == NULL) {
+      request_failure(request, "ELECTRON_MBT_NATIVE_FAILURE");
+      return;
+    }
     request_complete(request, "success", reply);
     return;
   }
@@ -4402,6 +4989,9 @@ int main(int argc, char **argv) {
   host->event_fd = EBT_EVENT_CHANNEL;
   host->pending = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, pending_free);
   host->file_grants = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+  host->asset_schemes = g_ptr_array_new_with_free_func(g_free);
+  host->asset_dirs = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+  g_hash_table_insert(host->asset_dirs, g_strdup(root), GINT_TO_POINTER(1));
   host->events = g_async_queue_new();
   /* App-local data roots are the only paths writable without a dialog grant.
    * Creating them here keeps the main-thread fs handler from having to create

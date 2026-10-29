@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "probe": "jmd-j1",
+  "status": "PASS",
+  "compatible": false,
+  "revision": "f875fc616feb89ea803a0fc140ec770a2ade041e",
+  "environment": {
+    "platform": "linux",
+    "node": "v26.13.0",
+    "cliSHA256": "74e1a30df46615aa60c4a86860629e0366adb8912a776a78606ae84eab19cccd"
+  },
+  "source": {
+    "mainSHA256": "fd959bead9b8f05cab0f943676824f628d323b563508a0af9c03dc5765c9e737",
+    "updaterSHA256": "cbcf0a8099a617a2f0f71dba3bb32141d07c0ea449d290f44b80b7741928f948",
+    "packageSHA256": "9e152e040693571c222b13f56b466a254b9578074de2afb49f3aa0986f5433eb"
+  },
+  "stage": {
+    "files": 4,
+    "manifestSHA256": "6ccea420ce9a2ee3c901a8581ecb62068e6ea2e8b669fbb2e9a4f208d3892096"
+  },
+  "command": {
+    "exitCode": 1,
+    "report": {
+      "schema": 1,
+      "probe": "nodeless-main-runtime",
+      "status": "FAIL",
+      "code": "ELECTRON_MBT_DYNAMIC_REQUIRE",
+      "message": "computed require in electron/main.js",
+      "compatible": false
+    }
+  },
+  "firstGate": "ELECTRON_MBT_DYNAMIC_REQUIRE",
+  "protocolGateReached": false,
+  "verdict": "expected-rejection",
+  "note": "The pinned jmd main is rejected by the CJS loader (JMD_SMOKE computed require) before the protocol declaration. This is a fail-closed expected-rejection, not protocol-gate evidence; the synthetic J1 fixture covers the bypassCSP rejection."
+}

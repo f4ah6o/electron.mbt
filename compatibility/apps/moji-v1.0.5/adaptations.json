@@ -7,6 +7,19 @@
       "status": "planned",
       "scope": "document save",
       "reason": "Moji adapted save policy must be explicit; Node truncate/write equivalence is not claimed."
+    },
+    {
+      "id": "asset-broker-v1",
+      "status": "tested-linux",
+      "scope": "moji-asset image preview",
+      "schemes": [
+        "moji-asset"
+      ],
+      "handlerExecuted": false,
+      "grants": "app root plus session document directories; image-only, read-only",
+      "evidence": "compatibility/reports/moji-assets.json",
+      "limits": "Linux GTK/WebKitGTK test dialog only; macOS NOT RUN; page naturalWidth NOT_EXPOSED (manual screenshot PASS); controlled crossorigin canvas PASS; Moji diagram export NOT RUN",
+      "canvas": "PASS (controlled crossorigin image; Moji export path NOT RUN)"
     }
   ],
   "declaredUnsupported": [
@@ -14,5 +27,5 @@
     "webUtils.getPathForFile",
     "export/PDF/image features"
   ],
-  "note": "Planned adaptations are not executed. The eager updater/zlib/Buffer boot closure remains an EP-05/DEC-05 decision."
+  "note": "Planned adaptations are not executed. asset-broker-v1 is a runtime-owned Linux test result; the app's protocol.handle is recorded but never executed. No compatibility claim."
 }

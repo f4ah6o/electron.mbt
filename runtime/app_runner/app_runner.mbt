@@ -81,6 +81,9 @@ pub(all) struct AppConfig {
   // Empty for a plain app. In the adapted profile this is the manifest-listed
   // generated page adapter installed before the renderer document loads.
   adapted_adapter : String
+  // Custom schemes the staged adapted app may serve through the native asset
+  // broker. The host is configured with the same list before main evaluation.
+  asset_schemes : Array[String]
 }
 
 ///|
@@ -598,11 +601,16 @@ pub fn app_config_json(config : AppConfig) -> String {
     env[key] = Json(value)
   }
   let versions : Map[String, Json] = { "quickjs": Json("2026-06-04") }
+  let asset_schemes : Array[Json] = []
+  for scheme in config.asset_schemes {
+    asset_schemes.push(Json(scheme))
+  }
   let app : Map[String, Json] = {
     "name": Json(config.name),
     "version": Json(config.version),
     "appPath": Json(config.app_path),
     "adaptedAdapter": Json(config.adapted_adapter),
+    "assetSchemes": Json(asset_schemes),
     "paths": Json(paths),
   }
   let process : Map[String, Json] = {

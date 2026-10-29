@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "probe": "jmd-positive-adaptation",
+  "status": "PASS",
+  "compatible": false,
+  "revision": "f875fc616feb89ea803a0fc140ec770a2ade041e",
+  "source": {
+    "mainSHA256": "fd959bead9b8f05cab0f943676824f628d323b563508a0af9c03dc5765c9e737",
+    "preloadSHA256": "2c1ea55d13a4d663603b14f33488143e296c37f88feb2fc6d4c2122a768cfd6e",
+    "updaterSHA256": "cbcf0a8099a617a2f0f71dba3bb32141d07c0ea449d290f44b80b7741928f948",
+    "packageSHA256": "9e152e040693571c222b13f56b466a254b9578074de2afb49f3aa0986f5433eb"
+  },
+  "build": {
+    "rendererIndexSHA256": "aa20dcdfb3d99bc7f514e9519611db2c2c058db8aa63651646e83cf29dce0fa6",
+    "source": "dist/index.html from the pinned Vite build"
+  },
+  "adapted": {
+    "mainSHA256": "ef9d322ec97ebdc39a011972202d5850df6a87f100892d477abae99c3432aca9",
+    "pageApiSHA256": "9a01935f4629ee3ac2f9fb0824e78a2488047a8bd4d3f33172fcae7942bdf035",
+    "manifestSHA256": "78249357ec7685c5e8cd916e4f44b64ef60f0ed88e098251e9503a9a1e17fdff",
+    "files": 183,
+    "stage": "_build/jmd-positive-stage"
+  },
+  "edits": [
+    {
+      "id": "jmd-smoke-computed-require",
+      "reason": "the static CJS graph builder rejects computed require before protocol registration",
+      "beforeSHA256": "cdbd04a2f73377013ca1244e11f8c1d162326b206f087a88cce0f74da6824bc3",
+      "afterSHA256": "29504825c50e0d6f4f165ead6e4fa2e78e4f5acaa7268b811fea8ee9d0807cff",
+      "before": "  // Development affordance: run a script against the freshly created window\n  // (used by `npm run smoke` to drive the UI and capture screenshots).\n  if (process.env.JMD_SMOKE) {\n    require(path.resolve(process.env.JMD_SMOKE))(first, { app });\n  }\n\n",
+      "after": "  // Adapted profile: the JMD_SMOKE dev hook was removed because the static\n  // CJS loader rejects the computed require. See compatibility/apps/jmd-v0.2.3.\n\n"
+    },
+    {
+      "id": "jmd-file-bypassCSP",
+      "reason": "the adapted protocol admission rejects bypassCSP",
+      "beforeSHA256": "232df6c5fd1188552022a74bdb932020704ebef844d96aa2aeeecc1deb682596",
+      "afterSHA256": "8afde3d172959e7ae3a599b0d866785e1e9ac21e8e04296a3b71f9ea6eabe10e",
+      "before": "  { scheme: 'jmd-file', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } },",
+      "after": "  { scheme: 'jmd-file', privileges: { standard: true, secure: true, supportFetchAPI: true } },"
+    },
+    {
+      "id": "test-open-dialog-hook",
+      "reason": "CLI-only hook to drive the real open dialog and probe the screen/message-box facades in the adapted smoke test",
+      "beforeSHA256": "41fe34c17cfc630394391748bd8fb9641865b99acdbcdfa57bfd7ae1ced00f4e",
+      "afterSHA256": "f78838f2393c715e81f37efad36ece72c8896cd4b9c567367484cd36101dcc0e",
+      "before": "  if (canceled || !filePaths.length) return;\n  openPath(filePaths[0]);\n}\n\nasync function openPath(filePath) {",
+      "after": "  if (canceled || !filePaths.length) return;\n  openPath(filePaths[0]);\n}\n\n// Adapted-profile test hook: let the CLI drive the real open dialog and probe\n// the screen/message-box facades from the trusted main realm.\nipcMain.handle('test:open-dialog', async () => {\n  await openFileDialog();\n  const display = screen.getDisplayNearestPoint({ x: 10, y: 10 });\n  const all = screen.getAllDisplays();\n  const matching = screen.getDisplayMatching({ x: 0, y: 0, width: 10, height: 10 });\n  const box = await dialog.showMessageBox({\n    type: 'question',\n    buttons: ['Save', \"Don't Save\", 'Cancel'],\n    defaultId: 0,\n    cancelId: 2,\n    message: 'jmd adapted facade probe',\n  });\n  return { open: true, display: display, all: all.length, matching: matching.bounds, box: box };\n});\n\n// Adapted-profile test hook: deliver the same menu:save topic the native Save\n// menu item would send. The native menu itself remains store-only.\nipcMain.handle('test:menu-save', () => {\n  send('menu:save');\n  return true;\n});\n\nasync function openPath(filePath) {"
+    }
+  ],
+  "document": {
+    "marker": "jmd-positive-marker-20261029",
+    "path": "_build/jmd-positive-doc/note.md"
+  },
+  "note": "The upstream checkout is unchanged; only this staged copy is adapted. app protocol.handle is recorded, not executed."
+}

@@ -102,13 +102,14 @@ function makeApp(mainSource, imagePath, extraFiles = {}, html = null) {
   return dir;
 }
 
-function runHold(binary, appDir, env = {}, holdMs = 1800) {
+function runHold(binary, appDir, env = {}, holdMs = 1800, holdSeconds = null) {
   const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-asset-path-'));
   const fakeNode = path.join(fakeBin, 'node');
   fs.writeFileSync(fakeNode, '#!/bin/sh\nexit 99\n');
   fs.chmodSync(fakeNode, 0o700);
   const result = spawnSync(binary, [
-    'run', appDir, '--window', '--hold', '--hold-close-after-ms', String(holdMs),
+    'run', appDir, '--window', '--hold',
+    ...(holdSeconds === null ? ['--hold-close-after-ms', String(holdMs)] : ['--hold-seconds', String(holdSeconds)]),
   ], {
     cwd: root,
     encoding: 'utf8',
@@ -449,10 +450,11 @@ test('watchFile, unwatchFile, recursive watch and close deliver bounded events',
     '',
   ].join('\n'), assets.image, {}, '<!doctype html><title>watch</title>');
   try {
-    const { result, holding, exit } = runHold(binary, app, {}, 5000);
+    const { result, exit } = runHold(binary, app, {}, 5000, 10);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    const title = (exit && exit.windowTitle) || (holding && holding.windowTitle);
-    assert.equal(title, 'wf:1:2|rec:1:rename:a.txt', `watch title: ${title}`);
+    assert.ok(exit, 'missing hold exit report');
+    assert.equal(exit.reason, 'hold-seconds');
+    assert.equal(exit.windowTitle, 'wf:1:2|rec:1:rename:a.txt', `watch title: ${exit.windowTitle}`);
   } finally {
     fs.rmSync(app, { recursive: true, force: true });
     fs.rmSync(assets.dir, { recursive: true, force: true });

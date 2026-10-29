@@ -725,7 +725,7 @@ open dialog.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
   `CI=true` (missing source/build fails rather than skips). GitHub Actions run
-  281 (`05f3a74`, `linux-native`) passed the edit/save and external-rewrite
+  283 (`212111e`, `linux-native`) passed the edit/save and external-rewrite
   watcher checks. Local evidence is above.
 - Human input/IME, native menu installation, `net`, `screen` multi-monitor
   selection, recursive `fs.watch`, `fs.watchFile`, and macOS remain

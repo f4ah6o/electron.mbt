@@ -9,9 +9,12 @@ key events), saves through the app's `menu:save` action and a real Ctrl+S
 chord, verifies the exact file bytes, and reloads after an external rewrite
 via the bounded polling `fs.watch` facade. `fs.watchFile`/`fs.unwatchFile` and
 bounded recursive `fs.watch` are implemented and covered by the fixture.
-Multi-display selection is exercised against the single Xvfb monitor. The
-original preload is not executed. IME, native menu installation, `net` and
-macOS remain **NOT RUN/out of scope**.
+The native GTK menu is installed and File > Save dispatches jmd's own click
+handler; real Ctrl+S reaches it through the host accelerator mapping. Two-
+display selection is covered by a test-only injection (hardware multi-monitor
+is NOT RUN), and `net.fetch` is exercised against a local HTTP server. The
+original preload is not executed. IME, role-menu actions and macOS remain
+**NOT RUN/out of scope**.
 
 This is not an Electron-compatibility result and does not unblock the strict
 `electron-nodeless-v1` profile.
@@ -35,13 +38,24 @@ This is not an Electron-compatibility result and does not unblock the strict
   `menu:save` topic the native Save item would send. The app's own `save()`
   writes the file; the test checks the bytes, the preview and the dirty title.
 - A real X11 path focuses `.cm-content` through a fixed host helper, then
-  `xdotool` types `jmd-key-marker-20261029` and sends Ctrl+S. The adapted page
-  binds Ctrl+S to jmd's own `save()` because the native menu is store-only;
-  this is a page adaptation, not native menu installation. The test disables
-  the desktop IME (`GTK_IM_MODULE=gtk-im-context-simple`) so only ASCII is
-  typed; IME is NOT RUN. A direct window-event retry runs only if the file
-  still lacks the keyboard marker at 12.5 s; an external rewrite follows at
-  20 s.
+  `xdotool` types `jmd-key-marker-20261029` and sends Ctrl+S. Ctrl+S is mapped
+  by the Linux host to the native File > Save menu accelerator; there is no
+  page-level Ctrl+S binding. The test disables the desktop IME
+  (`GTK_IM_MODULE=gtk-im-context-simple`) so only ASCII is typed; IME is NOT
+  RUN. A direct window-event retry runs only if the file still lacks the
+  keyboard marker at 12.5 s; an external rewrite follows at 20 s.
+- `Menu.buildFromTemplate`/`setApplicationMenu` serialize a bounded tree
+  (256 items, depth 8). The host installs a real GtkMenuBar, maps the
+  accelerator display and a WebView key handler, and publishes `menu-click`
+  ids. The runtime dispatches the app's own click handler; role-only items are
+  display-only and return a typed unsupported error when activated.
+- `net.fetch` performs bounded http(s) GET/HEAD through libsoup (512 KiB body
+  cap, 5 s timeout, no redirects/credentials); `net.request` remains typed
+  unsupported. A local HTTP fixture checks 200 text/JSON, 404, over-cap and
+  `file://` rejection.
+- `--run-loop` provides a real window event loop (menu clicks, page requests,
+  timers) without the test hold; the menu test uses it. `--hold` remains the
+  test harness.
 - A second process appends `jmd-watch-marker-20261029` while the app is open.
   The prelude's bounded `fs.watch` stat poller emits a change; jmd's
   `file:changed` path reloads the tab and the preview updates.
@@ -61,8 +75,9 @@ adapted SHA-256s and each before/after snippet.
 | Remove the `JMD_SMOKE` block | It contains a computed `require`; the static CJS graph builder rejects it with `ELECTRON_MBT_DYNAMIC_REQUIRE` before protocol registration. |
 | Remove `bypassCSP: true` from the `jmd-file` scheme | The adapted admission rejects `bypassCSP` with `ELECTRON_MBT_UNSUPPORTED_PROTOCOL_PRIVILEGE`. The scheme remains `standard`, `secure`, `supportFetchAPI`. |
 | Add `ipcMain.handle('test:open-dialog')` | CLI-only test hook to drive the real open dialog; the renderer never calls it. |
-| Bespoke `window.jmd` page shim | Linux has no original-preload execution. It implements the preload's IPC calls, pure `basename`/`resolveAsset`, the event listeners, and a Ctrl+S binding to jmd's own `save()`. IPC dispatch stays runtime/MoonBit-owned. The native menu remains store-only. |
+| Bespoke `window.jmd` page shim | Linux has no original-preload execution. It implements the preload's IPC calls, pure `basename`/`resolveAsset` and the event listeners. IPC dispatch stays runtime/MoonBit-owned. Ctrl+S is handled by the native menu accelerator, not a page binding. |
 | Host `focus-jmd-editor` | Fixed test-only helper that focuses `.cm-content` and places the caret at the end before X11 typing. It does not expose generic script execution. |
+| Native GTK menu + accelerators | `Menu.setApplicationMenu` installs a real GtkMenuBar; the host publishes `menu-click` ids and maps `CmdOrCtrl` accelerators to WebView key handling. Role items are display-only. |
 | `nativeTheme` facade | jmd reads `shouldUseDarkColors` at window creation. The facade returns `false` and exposes inert listener methods. |
 
 The original `electron/preload.js` is copied for provenance but is
@@ -77,7 +92,7 @@ The original `electron/preload.js` is copied for provenance but is
     `imageLoaded:true`, `handlerExecuted:false`, `editSaved:true`,
     `keyboardSaved:true`, `editCleanTitle:true`, `watcherReloaded:true`,
     `saveDispatched:true`, `displayBounds:true`, `displayCount:true`,
-    `matchingBounds:true`, `messageBox:true`.
+    `matchingBounds:true`, `messageBox:true`, `nativeMenu:true`.
   - Assets: `schemes:["jmd-file"]`, `requests:1`, `served:1`,
     `bytes:116`, `denied:0`, `handlerExecuted:false`.
   - Preview text:
@@ -95,12 +110,13 @@ The original `electron/preload.js` is copied for provenance but is
 
   ![jmd 0.2.3 adapted positive](images/jmd-positive-20261029.png)
 
+- `tests/asset-protocol.test.cjs`: **15 PASS**, including native-menu
+  activation, `net.fetch` against a local HTTP server, two-display injection
+  and the watcher/facade negatives.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
-  GitHub Actions run 298 (`0d3b1ac`, `linux-native`) completed successfully,
-  including the real X11/xdotool keyboard step and the expanded facade checks.
-  The CI apt step installs `xdotool`.
+  The CI apt step installs `xdotool`; the latest run is recorded after push.
 
 ## Reproduction
 
@@ -125,9 +141,9 @@ writes `compatibility/reports/jmd-positive.json`.
   IME and non-ASCII human typing acceptance are NOT RUN. The desktop IME is
   disabled for the test.
 - Save goes through the app's `menu:save` renderer action for the synthetic
-  edit, and through a real Ctrl+S chord for the X11 edit. The native menu is
-  **store-only**; Ctrl+S is bound in the adapted page. Native menu installation
-  is not claimed.
+  edit, and through a real Ctrl+S chord for the X11 edit. The native GtkMenuBar
+  is installed; Ctrl+S is mapped by the host accelerator handler to the native
+  Save item. Role-only items are display-only.
 - `fs.watch`, `fs.watchFile` and recursive `fs.watch` are bounded polling
   facades, not inotify. They deliver the jmd reload path and fixture events but
   not native event fidelity; recursive/`watchFile` caps are 4096 entries and
@@ -142,8 +158,9 @@ writes `compatibility/reports/jmd-positive.json`.
   `getDisplayMatching` select by containment/intersection. The fixture has one
   Xvfb monitor; hardware multi-monitor selection is NOT RUN. A 1280x800
   fallback remains if the host op is unavailable.
-- `net` remains unsupported/out of scope; native menu installation is not
-  claimed; `droppedFilePath` stays fail-closed.
+- `net.fetch` is bounded (512 KiB, 5 s, no redirects); `net.request` remains
+  unsupported. Native menu roles (quit/undo/copy/zoom/…) are display-only, not
+  Electron role actions. `droppedFilePath` stays fail-closed.
 - jmd's `protocol.handle` is recorded, not executed; the broker owns the
   response. This is an adapted-profile substitution.
 - macOS is out of scope.

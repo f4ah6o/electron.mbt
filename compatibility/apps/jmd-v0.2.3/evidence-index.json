@@ -44,8 +44,8 @@
       "kind": "adapted-positive",
       "path": "../../reports/jmd-positive.json",
       "status": "PASS",
-      "note": "Linux GTK/WebKitGTK; test-injected open dialog; synthetic and real X11/xdotool edit + Ctrl+S; preview, image, watcher reload, GDK display selection. Original preload NOT_EXECUTED; IME, native menu, net and macOS out of scope."
+      "note": "Linux GTK/WebKitGTK; native GTK menu + Ctrl+S accelerator; test-injected open dialog; preview marker, jmd-file image, watcher reload, net.fetch and two-display injection. Original preload NOT_EXECUTED; IME/role menu/hardware multi-monitor/macOS out of scope."
     }
   ],
-  "note": "Build/source/production-closure evidence, the pinned raw J1 expected-rejection, and the adapted Linux J-P1 positive with edit/save, watcher reload, query loadFile, GDK display bounds and a test-injected message box. No strict-profile, original-preload, human-input, native-menu or macOS result is recorded."
+  "note": "Build/source/production-closure evidence, the pinned raw J1 expected-rejection, and the adapted Linux J-P1 positive including native menu, keyboard, watcher, net.fetch and two-display injection. No strict-profile, original-preload, IME, role-menu, hardware multi-monitor or macOS result is recorded."
 }

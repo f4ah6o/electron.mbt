@@ -6,8 +6,8 @@
   "environment": {
     "platform": "linux",
     "node": "v26.13.0",
-    "hostSHA256": "19962d1de585537ac99543232fffe61a000d3bf1202081a53553d7b4212aa1a3",
-    "cliSHA256": "ce4af9fe98326d62187b780fd09dfd5d3954f9262c1dc71d727eff5518c8c925"
+    "hostSHA256": "c3285ff4c8bf0ca51883e9194c125ee1a531abdfb226094b6bb26e9090ed0d24",
+    "cliSHA256": "40c3b94988ecf9165c01e7433b575ccf7a19d7406bb143c7299138d769c2d99a"
   },
   "stage": {
     "files": 143,
@@ -56,28 +56,28 @@
         "handlerExecuted": false
       },
       "rendererProbe": {
+        "rootChildren": 1,
+        "preview": "",
+        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes",
         "image": null,
         "api": true,
-        "apiProbe": "",
-        "preview": "",
-        "rootChildren": 1,
-        "editSave": "",
         "title": "note.md - Moji v1.0.7",
-        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes"
+        "editSave": "",
+        "apiProbe": ""
       }
     }
   },
   "rendererProbe": {
     "status": "NOT_EXPOSED",
     "probe": {
+      "rootChildren": 1,
+      "preview": "",
+      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes",
       "image": null,
       "api": true,
-      "apiProbe": "",
-      "preview": "",
-      "rootChildren": 1,
-      "editSave": "",
       "title": "note.md - Moji v1.0.7",
-      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes"
+      "editSave": "",
+      "apiProbe": ""
     }
   },
   "assets": {

@@ -7,11 +7,11 @@
   "environment": {
     "platform": "linux",
     "scriptNode": "v26.13.0",
-    "npmOnPath": "11.20.0",
+    "npmOnPath": "12.2.1",
     "cli": "dist/emoon",
-    "cliSHA256": "74e1a30df46615aa60c4a86860629e0366adb8912a776a78606ae84eab19cccd",
+    "cliSHA256": "40aa150ffb31db316139e2190f7ecf408221a3aa3918b7883a3ed2a7c5b966ca",
     "host": "dist/emoon-host",
-    "hostSHA256": "19962d1de585537ac99543232fffe61a000d3bf1202081a53553d7b4212aa1a3",
+    "hostSHA256": "c3285ff4c8bf0ca51883e9194c125ee1a531abdfb226094b6bb26e9090ed0d24",
     "testMode": "test-injected open dialog/message box; xdotool X11 ASCII with IME disabled; external rewrite"
   },
   "source": {
@@ -25,9 +25,9 @@
     "source": "dist/index.html from the pinned Vite build"
   },
   "adapted": {
-    "mainSHA256": "ef9d322ec97ebdc39a011972202d5850df6a87f100892d477abae99c3432aca9",
-    "pageApiSHA256": "9a01935f4629ee3ac2f9fb0824e78a2488047a8bd4d3f33172fcae7942bdf035",
-    "manifestSHA256": "78249357ec7685c5e8cd916e4f44b64ef60f0ed88e098251e9503a9a1e17fdff",
+    "mainSHA256": "22cc128abe25274411463f29cc07c7c8e7aa84bc8d0b86ccc28492b7404dee1a",
+    "pageApiSHA256": "b460698625b271f1e6f7428f606f8b72c70ed96b01b2d1fc42f9abd3eb90368f",
+    "manifestSHA256": "5365813e89ac36894e2c499eeb4f3c78ab8c00f95cf0d181782d7324b093ef72",
     "files": 183,
     "stage": "_build/jmd-positive-stage"
   },
@@ -40,7 +40,7 @@
   },
   "commands": [
     "node scripts/jmd-adapt.cjs",
-    "dist/emoon run /home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-stage --window --hold --hold-seconds 38 --dispatch-main test:open-dialog --jmd-edit-save --jmd-focus-editor",
+    "dist/emoon run /home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-stage --window --hold --hold-seconds 38 --dispatch-main test:open-dialog --jmd-edit-save --jmd-focus-editor --menu-activate Save",
     "xdotool search --name note.md; windowfocus; type; key ctrl+s"
   ],
   "checks": {
@@ -64,13 +64,14 @@
     "keyboardSaved": true,
     "editCleanTitle": true,
     "watcherReloaded": true,
-    "saveDispatched": true
+    "saveDispatched": true,
+    "nativeMenu": true
   },
   "result": {
     "pageTitle": "jmd",
     "windowTitle": "note.md — jmd",
     "pageURL": "electron-mbt-app://app/dist/index.html",
-    "preview": "jmd positive\n\njmd-positive-marker-20261029\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n\n\njmd-edit-marker-20261029jmd-key-marker-20261029 jmd-key-marker-20261029\n\njmd-watch-marker-20261029\n",
+    "preview": "jmd positive\n\njmd-positive-marker-20261029\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n\n\njmd-edit-marker-20261029jmd-key-marker-20261029\n\njmd-watch-marker-20261029\n",
     "pageText": "\n/home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-doc/note.md\n⚙\nnote.md\n×\n+\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n# jmd positive\n\njmd-positive-marker-20261029",
     "dispatch": {
       "ok": true,
@@ -132,10 +133,16 @@
       "ok": true,
       "result": "{\"ok\":true,\"result\":true}"
     },
+    "menu": {
+      "activate": {
+        "activated": true
+      },
+      "events": 50
+    },
     "keyboard": [
       {
         "phase": "primary",
-        "window": "119537678",
+        "window": "98566158",
         "searchStatus": 0,
         "searchStderr": "",
         "focusStatus": 0,
@@ -145,7 +152,7 @@
       },
       {
         "phase": "window-retry",
-        "window": "119537678",
+        "window": "98566158",
         "searchStatus": 0,
         "typeStatus": 0,
         "keyStatus": 0,
@@ -153,7 +160,7 @@
       }
     ],
     "file": {
-      "bytes": 243,
+      "bytes": 220,
       "editMarker": true,
       "keyMarker": true,
       "watchMarker": true
@@ -162,12 +169,12 @@
   "limitations": [
     "app protocol.handle is recorded, not executed",
     "the open dialog and message box are test-injected; keyboard input is xdotool X11 input, IME is NOT RUN",
-    "the native menu is store-only; test:menu-save delivers the same menu:save topic and the adapted page binds Ctrl+S to jmd save()",
+    "the native menu is installed; File > Save activation dispatches jmd's own click handler. Role items are display-only/unsupported; Ctrl+S uses jmd's own shortcut",
     "fs.watch is a bounded polling facade; no native inotify claim",
     "macOS is out of scope"
   ],
   "originalPreload": "NOT_EXECUTED",
-  "note": "The real pinned jmd renderer boots, opens a document, edits via a fixed host hook, types through X11/xdotool and saves via Ctrl+S, reloads after an external rewrite through the polling watcher, and reports GDK display geometry. The native menu remains store-only. This is an adapted-profile result, not Electron compatibility.",
+  "note": "The real pinned jmd renderer boots, opens a document, edits via a fixed host hook, types through X11/xdotool and saves via Ctrl+S, reloads after an external rewrite through the polling watcher, and reports GDK display geometry. The native menu is installed and its click handlers are dispatched. This is an adapted-profile result, not Electron compatibility.",
   "visual": {
     "path": "docs/images/jmd-positive-20261029.png",
     "note": "Manual run of the same stage: the jmd window shows note.md, the editor text and the preview marker."

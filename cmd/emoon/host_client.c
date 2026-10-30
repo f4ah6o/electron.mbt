@@ -329,6 +329,10 @@ static int ebt_host_request(const char *operation, const char *payload,
     return result;
   }
   if (strcmp(operation, "get-window-title") == 0 ||
+      strcmp(operation, "install-menu") == 0 ||
+      strcmp(operation, "activate-menu-item") == 0 ||
+      strcmp(operation, "get-menu-status") == 0 ||
+      strcmp(operation, "net-fetch") == 0 ||
       strcmp(operation, "get-primary-display") == 0 ||
       strcmp(operation, "get-all-displays") == 0 ||
       strcmp(operation, "set-window-title") == 0 ||
@@ -412,6 +416,9 @@ static int js_host_operation_allowed(const char *operation) {
     "load-file",
     "load-app-file",
     "get-window-title",
+    "install-menu",
+    "get-menu-status",
+    "net-fetch",
     "get-primary-display",
     "get-all-displays",
     "set-window-title",

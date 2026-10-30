@@ -642,7 +642,7 @@ Implementation delegation through the GitHub Codex integration was attempted on 
   earlier host abort was an extra unref of the `SoupMessageHeaders` that
   `set_http_headers` takes ownership of.
 - Test evidence:
-  - `node --test tests/asset-protocol.test.cjs`: **12 PASS**. Dialog-granted
+  - `node --test tests/asset-protocol.test.cjs`: **15 PASS**. Dialog-granted
     image title `asset-ok-16`, `served:1`, `bytes:116`, `denied:0`; ungranted
     image `asset-error`, `denied:1`, `lastCode:ELECTRON_MBT_ASSET_DENIED`;
     unadmitted scheme stops at main evaluation, no window; traversal
@@ -682,7 +682,7 @@ Implementation delegation through the GitHub Codex integration was attempted on 
     `.emoon/config.json` and the staged `nodeless-app.json`; invalid names,
     duplicates and >4 schemes fail before staging. Node/native stage bytes are
     identical (`tests/emoon-cli-parity.test.cjs`).
-  - `npm test`: **567 tests / 534 PASS / 0 FAIL / 33 SKIP**;
+  - `npm test`: **570 tests / 537 PASS / 0 FAIL / 33 SKIP**;
     `moon test --target js`: **174 PASS**; `--target native`: **211 PASS**.
 - Not run / not implemented: macOS WKURLSchemeHandler, `fetch()` status,
   no-cors canvas taint, SVG direct-navigation, the Moji preview `<img>` probe
@@ -714,22 +714,27 @@ open dialog.
   with a query-accepting entry URL; test-injected `dialog.showMessageBox`
   (`ELECTRON_MBT_TEST_MESSAGE_BOX=0..2`, typed unsupported otherwise); GDK
   `get-all-displays` plus prelude `getAllDisplays`/
-  `getDisplayNearestPoint`/`getDisplayMatching`; typed-unsupported `net`.
-  Native menus stay store-only; `droppedFilePath` stays fail-closed.
+  `getDisplayNearestPoint`/`getDisplayMatching`; a bounded `net.fetch`
+  (http(s) GET/HEAD, 512 KiB, 5 s, no redirects/credentials) with
+  `net.request` typed unsupported; a real GtkMenuBar with bounded
+  serialization, `menu-click` dispatch to the app's own click handlers, and
+  native `CmdOrCtrl` accelerator mapping. Role-only menu items are
+  display-only; `droppedFilePath` stays fail-closed.
 - `scripts/jmd-positive.cjs` boots the stage, opens the document, appends
   `jmd-edit-marker-20261029` through CodeMirror's DOM and saves via
   `test:menu-save`; then a fixed host helper focuses `.cm-content`, `xdotool`
   types `jmd-key-marker-20261029` as real X11 ASCII input and sends Ctrl+S
-  (bound in the adapted page because the native menu is store-only); an
-  retry with direct window events at 12.5 s only if the file lacks the
-  keyboard marker, and an external rewrite at 20 s exercises `fs.watch`
-  reload. It asserts adapted
+  through the native menu accelerator (no page binding); a retry with direct
+  window events at 12.5 s only if the file lacks the keyboard marker, and an
+  external rewrite at 20 s exercises `fs.watch` reload. The host also
+  activates File > Save through the native GtkMenuBar and checks its click
+  dispatch. It asserts adapted
   boot/release, page URL, window title, initial UI, open dispatch, preview
   marker, `jmd-file` admission, image served, `naturalWidth:16`, exact edited
   and keyboard bytes, clean title, watcher reload, display bounds/count/
-  matching, message-box response 2 and `handlerExecuted:false`.
-  `compatible:false`. The test disables the desktop IME and types ASCII only;
-  IME is NOT RUN.
+  matching, native menu activation, message-box response 2 and
+  `handlerExecuted:false`. `compatible:false`. The test disables the desktop
+  IME and types ASCII only; IME is NOT RUN.
 - Evidence: `compatibility/reports/jmd-positive.json` and
   `jmd-positive-adaptation.json`; screenshot
   [jmd-positive-20261029.png](images/jmd-positive-20261029.png);
@@ -737,11 +742,10 @@ open dialog.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
   `CI=true` (missing source/build fails rather than skips); the apt step now
-  installs `xdotool`. GitHub Actions run 298 (`0d3b1ac`, `linux-native`)
-  passed the real X11/xdotool keyboard, watcher, display and negative checks.
-  Local evidence is above.
-- IME, native menu installation, `net`, hardware multi-monitor selection and
-  macOS remain NOT RUN/out of scope; the X11 ASCII keyboard path is covered
-  above and is not an IME claim. `fs.watchFile`/recursive
-  watch are bounded polling facades, not inotify. No strict-profile or
-  compatibility claim.
+  installs `xdotool`. The native-menu/net/two-display CI run is recorded after
+  push; local evidence is above.
+- IME, native role actions, `net.request`, hardware multi-monitor selection
+  and macOS remain NOT RUN/out of scope; the X11 ASCII keyboard path is
+  covered above and is not an IME claim. The two-display result uses a
+  test-only injection. `fs.watchFile`/recursive watch are bounded polling
+  facades, not inotify. No strict-profile or compatibility claim.

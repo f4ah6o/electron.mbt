@@ -102,7 +102,7 @@ function makeApp(mainSource, imagePath, extraFiles = {}, html = null) {
   return dir;
 }
 
-function runHold(binary, appDir, env = {}, holdMs = 1800) {
+function runHold(binary, appDir, env = {}, holdMs = 1800, extraArgs = []) {
   const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-asset-path-'));
   const fakeNode = path.join(fakeBin, 'node');
   fs.writeFileSync(fakeNode, '#!/bin/sh\nexit 99\n');
@@ -111,7 +111,7 @@ function runHold(binary, appDir, env = {}, holdMs = 1800) {
     ? ['--hold-seconds', String(Math.ceil(holdMs / 1000))]
     : ['--hold-close-after-ms', String(holdMs)];
   const result = spawnSync(binary, [
-    'run', appDir, '--window', '--hold', ...holdArgs,
+    'run', appDir, '--window', '--hold', ...holdArgs, ...extraArgs,
   ], {
     cwd: root,
     encoding: 'utf8',
@@ -131,6 +131,26 @@ function runHold(binary, appDir, env = {}, holdMs = 1800) {
   const holding = reports.find(report => report.status === 'HOLDING') || null;
   const exit = reports.find(report => report.status === 'HOLD_EXIT') || null;
   return { result, holding, exit, reports };
+}
+
+function runLoop(binary, appDir, env = {}, seconds = 8, extraArgs = []) {
+  const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), 'electron-mbt-loop-path-'));
+  const fakeNode = path.join(fakeBin, 'node');
+  fs.writeFileSync(fakeNode, '#!/bin/sh\nexit 99\n');
+  fs.chmodSync(fakeNode, 0o700);
+  const result = spawnSync(binary, [
+    'run', appDir, '--window', '--run-loop', '--run-loop-seconds', String(seconds),
+    ...extraArgs,
+  ], {
+    cwd: root, encoding: 'utf8', timeout: 60000,
+    env: { ...process.env, PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ''}`, ELECTRON_MBT_TEST_MODE: '1', ...env },
+  });
+  fs.rmSync(fakeBin, { recursive: true, force: true });
+  const reports = `${result.stdout || ''}\n${result.stderr || ''}`.split('\n')
+    .map(line => line.trim()).filter(line => line.startsWith('{') && line.endsWith('}'))
+    .map(line => { try { return JSON.parse(line); } catch { return null; } })
+    .filter(Boolean);
+  return { result, exit: reports.find(r => r.status === 'RUN_EXIT') || null, reports };
 }
 
 function makeAssetsDir(name) {
@@ -510,7 +530,7 @@ test('message box and net fail closed without the test injection', {
     "  const out = [];",
     "  try { await dialog.showMessageBox({ message: 'x' }); out.push('box-resolved'); } catch (error) { out.push('box:' + error.code); }",
     "  try { dialog.showMessageBoxSync({ message: 'x' }); out.push('sync-resolved'); } catch (error) { out.push('sync:' + error.code); }",
-    "  try { net.fetch('https://example.invalid'); out.push('fetch-resolved'); } catch (error) { out.push('fetch:' + error.code); }",
+    "  try { await net.fetch('file:///etc/passwd'); out.push('fetch-resolved'); } catch (error) { out.push('fetch:' + error.code); }",
     "  try { net.request('https://example.invalid'); out.push('request-resolved'); } catch (error) { out.push('request:' + error.code); }",
     "  out.push('online:' + net.isOnline());",
     "  win.setTitle(out.join('|'));",
@@ -522,8 +542,124 @@ test('message box and net fail closed without the test injection', {
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const title = (exit && exit.windowTitle) || (holding && holding.windowTitle);
     assert.equal(title,
-      'box:ELECTRON_MBT_UNSUPPORTED_API|sync:ELECTRON_MBT_UNSUPPORTED_API|fetch:ELECTRON_MBT_UNSUPPORTED_API|request:ELECTRON_MBT_UNSUPPORTED_API|online:false',
+      'box:ELECTRON_MBT_UNSUPPORTED_API|sync:ELECTRON_MBT_UNSUPPORTED_API|fetch:ELECTRON_MBT_NET_URL|request:ELECTRON_MBT_UNSUPPORTED_API|online:false',
       `negative title: ${title}`);
+  } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
+});
+
+test('native menu installs and dispatches the app click handler', {
+  skip: !supported || !hostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const assets = makeAssetsDir('menu');
+  const app = makeApp([
+    "'use strict';",
+    "const { app, BrowserWindow, Menu } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'menu', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "  const menu = Menu.buildFromTemplate([{ label: 'File', submenu: [",
+    "    { label: 'Save', click: function () { win.setTitle('menu-saved'); } },",
+    "  ] }]);",
+    "  Menu.setApplicationMenu(menu);",
+    "});",
+    '',
+  ].join('\n'), assets.image, {}, '<!doctype html><title>menu</title>');
+  try {
+    const { result, exit } = runLoop(binary, app, {}, 8, ['--menu-activate', 'Save']);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const title = exit && exit.windowTitle;
+    assert.equal(title, 'menu-saved', `menu title: ${title}; ${JSON.stringify(exit)}; stderr=${result.stderr}`);
+  } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
+});
+
+test('net.fetch returns bounded HTTP responses and rejects unsafe schemes', {
+  skip: !supported || !hostAvailable,
+}, async () => {
+  const { spawn } = require('node:child_process');
+  const port = 38991;
+  const server = spawn(process.execPath, ['-e', `
+    const http = require('http');
+    const body = 'x'.repeat(600 * 1024);
+    const server = http.createServer((req, res) => {
+      if (req.url === '/ok') { res.writeHead(200, {'content-type':'text/plain'}); res.end('hello'); }
+      else if (req.url === '/json') { res.writeHead(200, {'content-type':'application/json'}); res.end('{"value":42}'); }
+      else if (req.url === '/bad') { res.writeHead(404, {'content-type':'text/plain'}); res.end('missing'); }
+      else if (req.url === '/big') { res.writeHead(200, {'content-type':'text/plain'}); res.end(body); }
+      else { res.writeHead(500); res.end('unknown'); }
+    });
+    server.listen(${port}, '127.0.0.1', () => console.log('READY'));
+    process.on('SIGTERM', () => server.close(() => process.exit(0)));
+  `], { stdio: ['ignore', 'pipe', 'pipe'] });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('net server did not start')), 5000);
+    server.stdout.on('data', chunk => { if (String(chunk).includes('READY')) { clearTimeout(timer); resolve(); } });
+    server.on('error', reject);
+  });
+  const binary = buildBinary();
+  const assets = makeAssetsDir('net');
+  const app = makeApp([
+    "'use strict';",
+    "const { app, BrowserWindow, net } = require('electron');",
+    "app.whenReady().then(async function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'net', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "  const out = [];",
+    "  const ok = await net.fetch('http://127.0.0.1:38991/ok');",
+    "  out.push('ok:' + ok.status + ':' + (await ok.text()));",
+    "  const json = await net.fetch('http://127.0.0.1:38991/json');",
+    "  out.push('json:' + (await json.json()).value);",
+    "  const bad = await net.fetch('http://127.0.0.1:38991/bad');",
+    "  out.push('bad:' + bad.status);",
+    "  try { await net.fetch('http://127.0.0.1:38991/big'); out.push('big:ok'); } catch (error) { out.push('big:' + error.code); }",
+    "  try { await net.fetch('file:///etc/passwd'); out.push('file:ok'); } catch (error) { out.push('file:' + error.code); }",
+    "  win.setTitle(out.join('|'));",
+    "});",
+    '',
+  ].join('\n'), assets.image, {}, '<!doctype html><title>net</title>');
+  try {
+    const { result, exit } = runLoop(binary, app, {}, 8);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(exit && exit.windowTitle,
+      'ok:200:hello|json:42|bad:404|big:ELECTRON_MBT_NET_LIMIT|file:ELECTRON_MBT_NET_URL',
+      `net title: ${exit && exit.windowTitle}; ${result.stderr}`);
+  } finally {
+    server.kill('SIGTERM');
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
+});
+
+test('multi-display injection selects by point and matching rectangle', {
+  skip: !supported || !hostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const assets = makeAssetsDir('displays2');
+  const app = makeApp([
+    "'use strict';",
+    "const { app, BrowserWindow, screen } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'displays2', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "  const all = screen.getAllDisplays();",
+    "  const nearest = screen.getDisplayNearestPoint({ x: 900, y: 100 });",
+    "  const matching = screen.getDisplayMatching({ x: 850, y: 50, width: 100, height: 100 });",
+    "  win.setTitle('displays:' + all.length + ':' + nearest.bounds.x + ':' + matching.bounds.x);",
+    "});",
+    '',
+  ].join('\n'), assets.image, {}, '<!doctype html><title>displays2</title>');
+  try {
+    const { result, exit } = runLoop(binary, app, {
+      ELECTRON_MBT_TEST_DISPLAYS: '0,0,800,600,1;800,0,800,600,1',
+    }, 8);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(exit && exit.windowTitle, 'displays:2:800:800', `displays title: ${exit && exit.windowTitle}`);
   } finally {
     fs.rmSync(app, { recursive: true, force: true });
     fs.rmSync(assets.dir, { recursive: true, force: true });

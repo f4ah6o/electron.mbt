@@ -29,7 +29,7 @@ Usage:
   emoon dev [app-dir] [--api <file>] [--asset-scheme <s,...>] [--build] [--no-launch] [--runtime <path>]
   emoon bundle [app-dir] [--output <file>] [--asset-scheme <s,...>] [--build] [--dry-run] [--runtime <path>]
   emoon doctor <stage> [--profile <id>] [--runtime <path>]
-  emoon run <stage> [--window] [--entry <file>] [--runtime <path>]
+  emoon run <stage> [--window] [--entry <file>] [--run-loop [--run-loop-seconds <n>]] [--menu-activate <label>] [--runtime <path>]
   emoon version | --version
   emoon help | --help
 

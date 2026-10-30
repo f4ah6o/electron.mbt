@@ -62,7 +62,7 @@ emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [
 emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
 emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--asset-scheme <s,...>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
 emoon dev [app-dir] [--api <file>] [--asset-scheme <s,...>] [--build] [--no-launch] [--config <file>]
-emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ...] [selftests]
+emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ... | --run-loop [--run-loop-seconds <n>]] [--menu-activate <label>] [selftests]
 emoon doctor <app-dir> [--profile <id>]
 emoon bundle [app-dir] [--output <file>] [--force] [--name <name>] [--host <path>] [--asset-scheme <s,...>] [--build] [--restage] [--reset-data] [--no-stage] [--dry-run] [--quiet] [staging options]
 emoon version
@@ -77,6 +77,12 @@ macOS does not serve them yet ([docs/0074](0074-custom-protocol-asset-broker.md)
 
 `doctor` validates the source manifest, file hashes, module graph, profile and
 adapter without starting the engine, window or app. `run` keeps the existing
+`--run-loop` keeps a real window open until it closes (or
+`--run-loop-seconds` 1..3600), pumping menu clicks, page requests and main
+timers; it is the non-test app loop. `--menu-activate <label>` is a
+test-only helper that activates a native menu item by exact label; it requires
+`--hold` or `--run-loop`.
+
 fixture and window modes. If `--entry` is omitted and the manifest entry is the
 page, the runtime uses `package.json`'s `main` as the module entry.
 
@@ -194,7 +200,7 @@ emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
 emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--asset-scheme <s,...>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
 emoon dev [app-dir] [--api <file>] [--asset-scheme <s,...>] [--build] [--no-launch] [--config <file>] [--runtime <path>]
 emoon doctor <stage> [--runtime <path>]
-emoon run <stage> [--window] [--entry <file>] [--runtime <path>]
+emoon run <stage> [--window] [--entry <file>] [--run-loop [--run-loop-seconds <n>]] [--menu-activate <label>] [--runtime <path>]
 emoon version | --version
 emoon help | --help
 ```

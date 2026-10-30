@@ -54,8 +54,9 @@ macOS is **NOT RUN**. This is not Electron protocol compatibility.
 ## Evidence
 
 - `node --test tests/asset-protocol.test.cjs` (Linux, real GTK/WebKitGTK
-  window): **12 PASS** (8 asset cases, a `loadFile` query fixture, a bounded
-  `watchFile`/recursive-watch fixture, a GDK display fixture, and a
+  window): **15 PASS** (asset cases, a `loadFile` query fixture, bounded
+  watcher fixtures, a GDK display fixture, a native-menu activation fixture,
+  a local-HTTP `net.fetch` fixture, a two-display injection fixture, and a
   messageBox/net negative fixture).
   - dialog-granted image: page title `asset-ok-16`, host `served:1`,
     `bytes:116`, `denied:0`, `handlerExecuted:false`;
@@ -124,7 +125,9 @@ macOS is **NOT RUN**. This is not Electron protocol compatibility.
   `bypassCSP`, adds a jmd page shim, and passes boot/open/preview plus
   CodeMirror edit + `menu:save`, a polling `fs.watch` reload, a test-injected
   `showMessageBox`, GDK display bounds and `loadFile` query. Multiple windows,
-  native menu installation, `shell` and `net` remain NOT RUN.
+  native role actions, `shell`, `net.request` and hardware multi-monitor
+  remain NOT RUN; `net.fetch` is bounded and native menu installation is
+  covered by the jmd positive.
 - `emoon init/migrate/dev/bundle --asset-scheme <scheme[,scheme]>` writes the
   list to `.emoon/config.json` and the staged `nodeless-app.json`. Both the
   native and Node CLIs reject invalid/reserved/duplicate names and more than

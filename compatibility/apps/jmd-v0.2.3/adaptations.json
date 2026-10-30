@@ -25,16 +25,16 @@
       "kind": "test-only-staged-source-patch",
       "path": "electron/main.js",
       "beforeSHA256": "41fe34c17cfc630394391748bd8fb9641865b99acdbcdfa57bfd7ae1ced00f4e",
-      "afterSHA256": "26ab8a501bc641331acb75f2057576acf7f2444e316e3914ae9460c3b6e200b7",
-      "reason": "CLI-only hook to drive the real open dialog and probe the screen/message-box facades in the adapted smoke test",
+      "afterSHA256": "d1c17acab32d12df0830c28d4c64842b300479597580ae346b069b2dee5e666f",
+      "reason": "CLI-only hook to drive the real open dialog and probe screen/message-box facades in the adapted smoke test",
       "scope": "CLI dispatch only; renderer never calls it"
     },
     {
       "id": "jmd-page-shim",
       "kind": "page-adapter",
       "path": "adapted/page-api.js",
-      "sha256": "9a01935f4629ee3ac2f9fb0824e78a2488047a8bd4d3f33172fcae7942bdf035",
-      "reason": "Linux has no original-preload execution; implements window.jmd IPC calls, pure basename/resolveAsset, event listeners, and an adapted Ctrl+S binding to jmd save(). IPC dispatch stays runtime/MoonBit-owned.",
+      "sha256": "b460698625b271f1e6f7428f606f8b72c70ed96b01b2d1fc42f9abd3eb90368f",
+      "reason": "Linux has no original-preload execution; implements window.jmd IPC calls, pure basename/resolveAsset and event listeners. IPC dispatch stays runtime/MoonBit-owned; Ctrl+S is handled by the native menu accelerator, not a page binding.",
       "originalPreload": "NOT_EXECUTED"
     },
     {
@@ -71,14 +71,31 @@
       "id": "jmd-edit-save-hook",
       "kind": "test-only-staged-source-patch",
       "path": "electron/main.js",
-      "reason": "CLI-only test:menu-save hook sends the same menu:save topic the native Save item sends; the native menu remains store-only."
+      "reason": "CLI-only test:menu-save hook sends the same menu:save topic the native Save item sends; the native GtkMenuBar is installed separately."
     },
     {
-      "id": "jmd-ctrl-s-page-shortcut",
-      "kind": "page-adapter",
-      "path": "adapted/page-api.js",
-      "reason": "The native application menu is store-only in the adapted profile, so Ctrl+S is bound in the adapted page to jmd's own save(). This is not native menu installation.",
-      "nativeMenu": "NOT_RUN"
+      "id": "native-gtk-menu",
+      "kind": "runtime-host",
+      "path": "platform/linux/NativeHost.c",
+      "reason": "Menu.setApplicationMenu serializes a bounded template; the Linux host installs a real GtkMenuBar and dispatches menu-click ids back to the app's own click handlers. Role items are display-only."
+    },
+    {
+      "id": "native-menu-accelerators",
+      "kind": "runtime-host",
+      "path": "platform/linux/NativeHost.c",
+      "reason": "CmdOrCtrl accelerators are mapped to GTK/WebView key handling so Ctrl+S reaches the menu item's click handler; no page Ctrl+S binding remains."
+    },
+    {
+      "id": "net-fetch",
+      "kind": "runtime-host",
+      "path": "platform/linux/NativeHost.c",
+      "reason": "Bounded http(s) GET/HEAD via libsoup, 512 KiB body cap, 5 s timeout, no redirects/credentials. net.request remains unsupported."
+    },
+    {
+      "id": "multi-display-test-injection",
+      "kind": "test-only",
+      "path": "platform/linux/NativeHost.c",
+      "reason": "ELECTRON_MBT_TEST_DISPLAYS injects up to eight displays only when ELECTRON_MBT_TEST_MODE=1; hardware multi-monitor remains NOT RUN."
     }
   ],
   "declaredUnsupported": [
@@ -91,7 +108,7 @@
     "hardware multi-monitor selection",
     "macOS"
   ],
-  "note": "Pinned jmd 0.2.3 boots the real renderer, opens a markdown document through the test-injected native dialog, edits via the host hook and via real X11/xdotool input, saves via Ctrl+S through the adapted page shortcut, reloads after an external rewrite through the polling watcher, and reads GDK display geometry. The native menu remains store-only. compatible:false; IME and macOS are NOT_RUN/out of scope.",
+  "note": "Pinned jmd 0.2.3 boots the real renderer, opens a markdown document through the test-injected native dialog, renders the marker and a relative image, edits and saves through the real Ctrl+S/menu accelerator, reloads after an external rewrite, installs a native GTK menu, and exercises net.fetch and two-display selection via test injection. Original preload NOT_EXECUTED; compatible:false; macOS out of scope.",
   "protocol": {
     "mode": "asset-broker",
     "synthetic": "PASS",
@@ -101,7 +118,10 @@
     "schemes": [
       "jmd-file"
     ],
-    "note": "The adapted stage admits jmd-file; the broker serves the document-directory PNG. protocol.handle is recorded, not executed."
+    "note": "The adapted stage admits jmd-file; the broker serves the document-directory PNG. protocol.handle is recorded, not executed.",
+    "nativeMenu": "PASS (Linux GtkMenuBar; File > Save activation dispatches jmd click; accelerators native)",
+    "netFetch": "PASS (localhost fixture; GET/status/body cap/unsafe scheme)",
+    "multiDisplay": "PASS (two-display test injection; hardware NOT RUN)"
   },
   "positive": {
     "status": "PASS",

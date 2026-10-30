@@ -141,6 +141,7 @@ try {
   const assetsReport = (exit && exit.assets) || (holding && holding.assets) || null;
   const probe = exit && exit.rendererProbe ? exit.rendererProbe : null;
   const problems = [];
+  if (result.status !== 0) report.stderr = (result.stderr || '').slice(-4000);
   if (result.status !== 0) problems.push(`exit ${result.status}`);
   if (probe && probe.image) {
     report.rendererProbe = {

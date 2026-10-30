@@ -813,6 +813,27 @@ fn AppRunner::fire_timer(self : AppRunner, id : Int32) -> Result[Unit, AppError]
 }
 
 ///|
+pub fn AppRunner::menu_click(self : AppRunner, id : Int) -> Result[String, AppError] {
+  let click = self.context.get_global("__mbt_menu_click")
+  if click.kind() < 0 {
+    click.release()
+    return Err(Dispatch("ELECTRON_MBT_MENU_UNAVAILABLE"))
+  }
+  let argument = self.context.new_string(id.to_string())
+  let result = click.call1(argument)
+  let kind = result.kind()
+  let text = result.text()
+  result.release()
+  argument.release()
+  click.release()
+  if kind != 0 {
+    Err(Dispatch(text))
+  } else {
+    Ok(text)
+  }
+}
+
+///|
 fn AppRunner::run_timers(self : AppRunner, now : Int64, limit : Int32) -> Result[Int, AppError] {
   match self.scheduler.advance_to(now) {
     Ok(_) => ()

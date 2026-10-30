@@ -110,7 +110,8 @@ ipcMain.handle('test:open-dialog', async () => {
 });
 
 // Adapted-profile test hook: deliver the same menu:save topic the native Save
-// menu item would send. The native menu itself remains store-only.
+// menu item would send. The real GTK menu is installed separately; this hook
+// keeps the synthetic edit/save path independent of the native menu.
 ipcMain.handle('test:menu-save', () => {
   send('menu:save');
   return true;

@@ -204,7 +204,7 @@ async function main() {
     XMODIFIERS: '@im=none',
   };
   const args = ['run', stage, '--window', '--hold', '--hold-seconds', '38',
-    '--dispatch-main', 'test:open-dialog', '--jmd-edit-save', '--jmd-focus-editor'];
+    '--dispatch-main', 'test:open-dialog', '--jmd-edit-save', '--jmd-focus-editor', '--menu-activate', 'Save'];
   const run = await runApp(binary, args, env);
   const output = `${run.stdout || ''}\n${run.stderr || ''}`;
   const frames = output.split('\n').map(line => line.trim())
@@ -232,6 +232,8 @@ async function main() {
   const displayCount = dispatch && typeof dispatch.all === 'number' ? dispatch.all : 0;
   const matching = dispatch && dispatch.matching ? dispatch.matching : null;
   const save = exit && exit.jmdSave ? exit.jmdSave : null;
+  const menuActivate = exit && exit.menuActivate ? exit.menuActivate : null;
+  const menuEvents = exit && typeof exit.menuEvents === 'number' ? exit.menuEvents : 0;
 
   let fileContent = '';
   try { fileContent = fs.readFileSync(documentPath, 'utf8'); } catch (_) {}
@@ -262,6 +264,7 @@ async function main() {
     editCleanTitle: !!(exit && typeof exit.windowTitle === 'string' && !exit.windowTitle.includes('●')),
     watcherReloaded: fileContent.includes(watchMarker) && preview.includes(watchMarker),
     saveDispatched: !!(save && save.ok === true),
+    nativeMenu: !!(menuActivate && menuActivate.activated === true && menuEvents >= 1),
   };
 
   const report = {
@@ -300,6 +303,7 @@ async function main() {
       facades: dispatch,
       assets: exit && exit.assets,
       save: save,
+      menu: { activate: menuActivate, events: menuEvents },
       keyboard: run.keyboard,
       file: {
         bytes: Buffer.byteLength(fileContent),
@@ -311,12 +315,12 @@ async function main() {
     limitations: [
       'app protocol.handle is recorded, not executed',
       'the open dialog and message box are test-injected; keyboard input is xdotool X11 input, IME is NOT RUN',
-      'the native menu is store-only; test:menu-save delivers the same menu:save topic and the adapted page binds Ctrl+S to jmd save()',
+      'the native menu is installed; File > Save activation dispatches jmd\'s own click handler. Role items are display-only/unsupported; Ctrl+S uses jmd\'s own shortcut',
       'fs.watch is a bounded polling facade; no native inotify claim',
       'macOS is out of scope',
     ],
     originalPreload: 'NOT_EXECUTED',
-    note: 'The real pinned jmd renderer boots, opens a document, edits via a fixed host hook, types through X11/xdotool and saves via Ctrl+S, reloads after an external rewrite through the polling watcher, and reports GDK display geometry. The native menu remains store-only. This is an adapted-profile result, not Electron compatibility.',
+    note: 'The real pinned jmd renderer boots, opens a document, edits via a fixed host hook, types through X11/xdotool and saves via Ctrl+S, reloads after an external rewrite through the polling watcher, and reports GDK display geometry. The native menu is installed and its click handlers are dispatched. This is an adapted-profile result, not Electron compatibility.',
   };
   if (run.timedOut) report.timedOut = true;
   if (run.status !== 0) {

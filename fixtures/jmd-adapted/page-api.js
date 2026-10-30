@@ -210,21 +210,6 @@
     onMenuTheme: listener('menu:theme'),
     onMenuAction: listener('menu:action'),
   });
-  // Adapted-profile substitution for the native menu accelerator: the native
-  // menu is store-only, so bind the renderer's own Ctrl+S to its own save().
-  // This is a page adaptation, not native menu installation.
-  window.addEventListener('keydown', function (event) {
-    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey &&
-        typeof event.key === 'string' && event.key.toLowerCase() === 's') {
-      const app = window.__jmd;
-      if (app && typeof app.save === 'function') {
-        event.preventDefault();
-        event.stopPropagation();
-        Promise.resolve(app.save()).catch(function () {});
-      }
-    }
-  }, true);
-
   Object.defineProperty(window, 'jmd', {
     value: jmd, enumerable: true, configurable: false, writable: false
   });

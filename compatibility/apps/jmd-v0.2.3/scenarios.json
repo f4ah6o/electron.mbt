@@ -9,7 +9,7 @@
     "J1",
     "APP-N09"
   ],
-  "note": "J-P1 passes on the adapted Linux profile with synthetic and real X11 edit/save paths. The pinned raw source still stops at the JMD_SMOKE computed require (J1 expected-rejection); the adapted copy is separate. IME, native menu, net and macOS are NOT_RUN/out of scope.",
+  "note": "J-P1 passes on the adapted Linux profile, including the native GTK menu, real Ctrl+S accelerator, bounded watchers, local net.fetch and a two-display injection. The pinned raw source still stops at the JMD_SMOKE computed require (J1 expected-rejection); the adapted copy is separate. IME, role menu actions, hardware multi-monitor and macOS are NOT_RUN/out of scope.",
   "preflight": {
     "id": "J1-synthetic",
     "verdict": "expected-rejection",
@@ -38,16 +38,18 @@
       "test-injected open dialog",
       "preview marker",
       "jmd-file image served",
-      "synthetic edit/save",
-      "real X11 keyboard edit + Ctrl+S save",
-      "external fs.watch reload",
-      "GDK display bounds/count/matching",
-      "test-injected message box response"
+      "real X11 keyboard + native Ctrl+S",
+      "native GTK menu File > Save",
+      "bounded fs.watch reload",
+      "two-display injection",
+      "net.fetch local HTTP"
     ],
     "saveEdit": "PASS (synthetic + real xdotool Ctrl+S)",
     "watcher": "PASS (external rewrite, polling facade)",
     "keyboard": "PASS (ASCII; IME disabled for the test; IME NOT RUN)",
     "watchers": "PASS (fs.watch; fs.watchFile/unwatchFile/recursive in asset suite)",
-    "multiDisplay": "PASS (one Xvfb monitor; hardware multi-monitor NOT RUN)"
+    "multiDisplay": "PASS (test injection; hardware NOT RUN)",
+    "nativeMenu": "PASS",
+    "netFetch": "PASS (localhost; GET/status/body cap/unsafe scheme)"
   }
 }

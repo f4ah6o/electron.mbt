@@ -23,8 +23,9 @@ work.
 | `fs.watch` | bounded 250 ms `fs.stat` poller; `FSWatcher` with `on('change')`, `close()`, `persistent`; emits on mtime/size change | polling, not inotify; no `fs.watchFile`, recursive watch or native event fidelity |
 | `BrowserWindow.loadFile(file, { query })` | string/number/boolean values percent-encoded in key insertion order; entry URL accepts a query; empty/absent query unchanged | only the entry document query is verified; `loadURL` query and unusual types are not covered |
 | `dialog.showMessageBox`/`Sync` | deterministic response 0..2 only when `ELECTRON_MBT_TEST_MESSAGE_BOX` is set; otherwise typed unsupported | no native GTK message box, no human input, no destructive default |
-| `screen.getDisplayNearestPoint`/`getPrimaryDisplay` | GDK primary-monitor `bounds`, `workArea`, `size`, `scaleFactor`; `getDisplayMatching` returns the primary | multi-monitor selection is approximated by the primary; 1280x800 fallback if the host op is unavailable |
-| `electron.net` | `fetch`/`request` throw `ELECTRON_MBT_UNSUPPORTED_API`; `isOnline` returns `false` | no network implementation; the app's recorded protocol handler is not executed |
+| `screen.getDisplayNearestPoint`/`getPrimaryDisplay` | GDK monitor `bounds`, `workArea`, `size`, `scaleFactor`; `getAllDisplays`, nearest-point containment/center and matching-rect intersection | hardware multi-monitor NOT RUN; two-display test injection; 1280x800 fallback if the host op is unavailable |
+| `electron.net` | `fetch` supports bounded http(s) GET/HEAD via the host (512 KiB body, 5 s, no redirects/credentials) with a minimal Response-like object; `request` throws `ELECTRON_MBT_UNSUPPORTED_API`; `isOnline` returns `false` | no proxy/stream/body support; `net.request` unsupported |
+| `Menu` | `buildFromTemplate`/`setApplicationMenu` install a bounded native GtkMenuBar; click handlers dispatch by stable id; `CmdOrCtrl` accelerators map to WebView key handling | role-only items are display-only; no native role action or arbitrary host command |
 
 ## Moji 1.0.7 evidence
 

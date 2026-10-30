@@ -705,7 +705,8 @@ fn cli_pump_events(
     if !(cli_text(parsed, "session") is Some(value) && value == session) {
       continue
     }
-    if !(cli_text(parsed, "operation") is Some("app-request")) {
+    let event_operation = cli_text(parsed, "operation").unwrap_or("")
+    if event_operation != "app-request" && event_operation != "menu-click" {
       continue
     }
     let event_window = match cli_field(parsed, "window") {
@@ -726,6 +727,22 @@ fn cli_pump_events(
     let payload = match cli_field(parsed, "payload") {
       Object(values) => values
       _ => continue
+    }
+    if event_operation == "menu-click" {
+      let id = match payload.get("id") {
+        Some(Number(number, ..)) => number.to_int()
+        _ => -1
+      }
+      if id <= 0 {
+        rejected += 1
+        continue
+      }
+      match runner.menu_click(id) {
+        Ok(_) => handled += 1
+        Err(_) => errors += 1
+      }
+      runner.pump_idle()
+      continue
     }
     let request = match payload.get("request") {
       Some(String(value)) if value.length() > 0 && value.length() <= 64 => value
@@ -818,6 +835,7 @@ fn cli_hold(
   dispatch_main : String,
   jmd_edit_save : Bool,
   focus_jmd_editor : Bool,
+  menu_activate : String,
 ) -> Unit {
   let mut title = ""
   let mut window_title = ""
@@ -906,6 +924,9 @@ fn cli_hold(
   let mut jmd_edit : Json = null
   let mut jmd_save : Json = null
   let mut jmd_focus : Json = null
+  let mut menu_activate_json : Json = null
+  let mut menu_activate_sent = false
+  let mut menu_events = 0
   let mut reason = "hold-seconds"
   let mut close_sent = false
   while limit < 0 || ticks < limit {
@@ -942,6 +963,18 @@ fn cli_hold(
           "message": Json(error.message()),
         })
       }
+    }
+    if menu_activate.length() > 0 && !menu_activate_sent && ticks >= 30 {
+      menu_activate_sent = true
+      menu_activate_json = cli_host_payload(
+        "activate-menu-item",
+        Json({ "label": Json(menu_activate) }).stringify(),
+      ).unwrap_or(Json({ "ok": Json(false) }))
+    }
+    if menu_activate.length() > 0 {
+      let (menu_handled, _, _) =
+        cli_pump_events(runner, session, attempts=1, idle_limit=1)
+      menu_events = menu_events + menu_handled
     }
     if cli_platform() == "linux" && ticks >= 95 && ticks % 5 == 0 {
       match cli_host_payload("probe-renderer", "{}") {
@@ -1021,6 +1054,8 @@ fn cli_hold(
       "jmdEdit": Json(jmd_edit),
       "jmdSave": Json(jmd_save),
       "jmdFocus": Json(jmd_focus),
+      "menuActivate": Json(menu_activate_json),
+      "menuEvents": Json(menu_events),
       "compatible": Json(false),
     }).stringify(),
   )
@@ -1381,6 +1416,17 @@ fn cli_main(args : Array[String]) -> Unit {
   let mut dispatch_main = ""
   let jmd_edit_save = args.contains("--jmd-edit-save")
   let focus_jmd_editor = args.contains("--jmd-focus-editor")
+  let mut menu_activate = ""
+  let run_loop = args.contains("--run-loop")
+  let mut run_loop_seconds = 0
+  for i = 0; i < args.length(); i = i + 1 {
+    if args[i] == "--menu-activate" && i + 1 < args.length() {
+      menu_activate = args[i + 1]
+    }
+    if args[i] == "--run-loop-seconds" && i + 1 < args.length() {
+      run_loop_seconds = cli_parse_seconds(args[i + 1])
+    }
+  }
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--hold-seconds" && i + 1 < args.length() {
       hold_seconds_set = true
@@ -1442,6 +1488,26 @@ fn cli_main(args : Array[String]) -> Unit {
   }
   if focus_jmd_editor && !hold_mode {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--jmd-focus-editor requires --hold")
+    return
+  }
+  if menu_activate.length() > 128 {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--menu-activate is too long")
+    return
+  }
+  if menu_activate.length() > 0 && !hold_mode && !run_loop {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--menu-activate requires --hold or --run-loop")
+    return
+  }
+  if run_loop && !window_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--run-loop requires --window")
+    return
+  }
+  if run_loop && hold_mode {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--run-loop is mutually exclusive with --hold")
+    return
+  }
+  if run_loop_seconds < 0 || run_loop_seconds > 3600 {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--run-loop-seconds must be 0..3600")
     return
   }
   if hold_mode && (broker_selftest || fs_selftest || user_file_selftest ||
@@ -1846,7 +1912,8 @@ fn cli_main(args : Array[String]) -> Unit {
     let adapted_configured = adapted_adapter.length() > 0
     if hold_mode {
       cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
-               trigger_export_ui, dispatch_main, jmd_edit_save, focus_jmd_editor)
+               trigger_export_ui, dispatch_main, jmd_edit_save, focus_jmd_editor,
+               menu_activate)
       return
     }
     let mut adapted_observed = false
@@ -1961,6 +2028,63 @@ fn cli_main(args : Array[String]) -> Unit {
       adapted_errors = errors
       adapted_rejected = rejected
       ingress = cli_host_payload("get-ingress-status", "{}").unwrap_or(null)
+    }
+    if run_loop {
+      let mut ticks = 0
+      let mut menu_sent = false
+      let mut menu_json : Json = null
+      let mut reason = "run-loop-seconds"
+      while run_loop_seconds == 0 || ticks < run_loop_seconds * 10 {
+        if menu_activate.length() > 0 && !menu_sent && ticks >= 30 {
+          menu_sent = true
+          menu_json = cli_host_payload(
+            "activate-menu-item",
+            Json({ "label": Json(menu_activate) }).stringify(),
+          ).unwrap_or(Json({ "ok": Json(false) }))
+        }
+        let _ = cli_pump_events(runner, session, attempts=1, idle_limit=1)
+        runner.pump_idle()
+        let mut open = true
+        match cli_host_payload("get-window-state", "{}") {
+          Some(value) =>
+            if cli_field(value, "open") is False {
+              open = false
+              reason = "window-closed"
+            }
+          None => open = false
+        }
+        if !open {
+          break
+        }
+        nodeless_sleep_ms(50)
+        ticks = ticks + 1
+      }
+      let mut final_page_title = ""
+      match cli_host_payload("get-web-contents-title", "{}") {
+        Some(value) => final_page_title = cli_text(value, "title").unwrap_or("")
+        None => ()
+      }
+      let mut final_window_title = ""
+      match cli_host_payload("get-window-title", "{}") {
+        Some(value) => final_window_title = cli_text(value, "title").unwrap_or("")
+        None => ()
+      }
+      println(
+        Json({
+          "schema": Json(1),
+          "probe": Json("nodeless-run-loop"),
+          "status": Json("RUN_EXIT"),
+          "reason": Json(reason),
+          "ticks": Json(ticks),
+          "pageTitle": Json(final_page_title),
+          "windowTitle": Json(final_window_title),
+          "menuActivate": Json(menu_json),
+          "compatible": Json(false),
+        }).stringify(),
+      )
+      let _ = nodeless_host_shutdown()
+      runner.stop()
+      return
     }
     if ingress_selftest {
       let (identity_window, identity_generation) = cli_host_identity()

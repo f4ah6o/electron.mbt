@@ -583,7 +583,6 @@ test('net.fetch returns bounded HTTP responses and rejects unsafe schemes', {
   skip: !supported || !hostAvailable,
 }, async () => {
   const { spawn } = require('node:child_process');
-  const port = 38991;
   const server = spawn(process.execPath, ['-e', `
     const http = require('http');
     const body = 'x'.repeat(600 * 1024);
@@ -594,12 +593,15 @@ test('net.fetch returns bounded HTTP responses and rejects unsafe schemes', {
       else if (req.url === '/big') { res.writeHead(200, {'content-type':'text/plain'}); res.end(body); }
       else { res.writeHead(500); res.end('unknown'); }
     });
-    server.listen(${port}, '127.0.0.1', () => console.log('READY'));
+    server.listen(0, '127.0.0.1', () => console.log('READY ' + server.address().port));
     process.on('SIGTERM', () => server.close(() => process.exit(0)));
   `], { stdio: ['ignore', 'pipe', 'pipe'] });
-  await new Promise((resolve, reject) => {
+  const netPort = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('net server did not start')), 5000);
-    server.stdout.on('data', chunk => { if (String(chunk).includes('READY')) { clearTimeout(timer); resolve(); } });
+    server.stdout.on('data', chunk => {
+      const match = String(chunk).match(/READY (\d+)/);
+      if (match) { clearTimeout(timer); resolve(Number(match[1])); }
+    });
     server.on('error', reject);
   });
   const binary = buildBinary();
@@ -611,13 +613,13 @@ test('net.fetch returns bounded HTTP responses and rejects unsafe schemes', {
     "  const win = new BrowserWindow({ width: 320, height: 200, title: 'net', show: false });",
     "  win.loadFile('renderer/index.html');",
     "  const out = [];",
-    "  const ok = await net.fetch('http://127.0.0.1:38991/ok');",
+    `  const ok = await net.fetch('http://127.0.0.1:${netPort}/ok');`,
     "  out.push('ok:' + ok.status + ':' + (await ok.text()));",
-    "  const json = await net.fetch('http://127.0.0.1:38991/json');",
+    `  const json = await net.fetch('http://127.0.0.1:${netPort}/json');`,
     "  out.push('json:' + (await json.json()).value);",
-    "  const bad = await net.fetch('http://127.0.0.1:38991/bad');",
+    `  const bad = await net.fetch('http://127.0.0.1:${netPort}/bad');`,
     "  out.push('bad:' + bad.status);",
-    "  try { await net.fetch('http://127.0.0.1:38991/big'); out.push('big:ok'); } catch (error) { out.push('big:' + error.code); }",
+    `  try { await net.fetch('http://127.0.0.1:${netPort}/big'); out.push('big:ok'); } catch (error) { out.push('big:' + error.code); }`,
     "  try { await net.fetch('file:///etc/passwd'); out.push('file:ok'); } catch (error) { out.push('file:' + error.code); }",
     "  win.setTitle(out.join('|'));",
     "});",

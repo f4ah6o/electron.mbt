@@ -77,14 +77,13 @@ macOS does not serve them yet ([docs/0074](0074-custom-protocol-asset-broker.md)
 
 `doctor` validates the source manifest, file hashes, module graph, profile and
 adapter without starting the engine, window or app. `run` keeps the existing
-`--run-loop` keeps a real window open until it closes (or
-`--run-loop-seconds` 1..3600), pumping menu clicks, page requests and main
-timers; it is the non-test app loop. `--menu-activate <label>` is a
-test-only helper that activates a native menu item by exact label; it requires
-`--hold` or `--run-loop`.
-
 fixture and window modes. If `--entry` is omitted and the manifest entry is the
-page, the runtime uses `package.json`'s `main` as the module entry.
+page, the runtime uses `package.json`'s `main` as the module entry. `--run-loop`
+keeps a real window open until it closes (or `--run-loop-seconds` 0..3600;
+0 means no time limit), pumping menu clicks, page requests and main timers; it
+is the non-test app loop. `--menu-activate <label>` is a test-only helper that
+activates a native menu item by exact label; it requires `--hold` or
+`--run-loop`.
 
 `bundle` packages a prepared stage into one self-extracting native ELF. With an
 app directory it stages `.emoon/app` when missing or stale (including a

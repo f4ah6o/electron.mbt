@@ -159,7 +159,8 @@ writes `compatibility/reports/jmd-positive.json`.
   Xvfb monitor; hardware multi-monitor selection is NOT RUN. A 1280x800
   fallback remains if the host op is unavailable.
 - `net.fetch` is bounded (512 KiB, 5 s, no redirects); `net.request` remains
-  unsupported. Native menu roles (quit/undo/copy/zoom/…) are display-only, not
+  unsupported. There is no private-network/SSRF allowlist; the adapted main is
+  trusted and network access is a deliberate capability, not a sandbox. Native menu roles (quit/undo/copy/zoom/…) are display-only, not
   Electron role actions. `droppedFilePath` stays fail-closed.
 - jmd's `protocol.handle` is recorded, not executed; the broker owns the
   response. This is an adapted-profile substitution.

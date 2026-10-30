@@ -964,7 +964,7 @@ fn cli_hold(
         })
       }
     }
-    if menu_activate.length() > 0 && !menu_activate_sent && ticks >= 30 {
+    if menu_activate.length() > 0 && !menu_activate_sent && ticks >= 60 {
       menu_activate_sent = true
       menu_activate_json = cli_host_payload(
         "activate-menu-item",
@@ -2035,7 +2035,7 @@ fn cli_main(args : Array[String]) -> Unit {
       let mut menu_json : Json = null
       let mut reason = "run-loop-seconds"
       while run_loop_seconds == 0 || ticks < run_loop_seconds * 10 {
-        if menu_activate.length() > 0 && !menu_sent && ticks >= 30 {
+        if menu_activate.length() > 0 && !menu_sent && ticks >= 60 {
           menu_sent = true
           menu_json = cli_host_payload(
             "activate-menu-item",

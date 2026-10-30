@@ -9,9 +9,9 @@
     "scriptNode": "v26.13.0",
     "npmOnPath": "12.2.1",
     "cli": "dist/emoon",
-    "cliSHA256": "40aa150ffb31db316139e2190f7ecf408221a3aa3918b7883a3ed2a7c5b966ca",
+    "cliSHA256": "7c50ee69a2b638a3538f112d0651a280671636d4ffd20cf8cc2910ae09eefa24",
     "host": "dist/emoon-host",
-    "hostSHA256": "c3285ff4c8bf0ca51883e9194c125ee1a531abdfb226094b6bb26e9090ed0d24",
+    "hostSHA256": "41dd620ae318eb0fdb7f78a4897242353cfef2f654f440b3fed24b300d08075b",
     "testMode": "test-injected open dialog/message box; xdotool X11 ASCII with IME disabled; external rewrite"
   },
   "source": {
@@ -40,7 +40,7 @@
   },
   "commands": [
     "node scripts/jmd-adapt.cjs",
-    "dist/emoon run /home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-stage --window --hold --hold-seconds 38 --dispatch-main test:open-dialog --jmd-edit-save --jmd-focus-editor --menu-activate Save",
+    "dist/emoon run /home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-stage --window --hold --hold-seconds 38 --dispatch-main test:open-dialog --jmd-edit-save --jmd-focus-editor --menu-activate Save --menu-activate-role Zoom In",
     "xdotool search --name note.md; windowfocus; type; key ctrl+s"
   ],
   "checks": {
@@ -65,7 +65,8 @@
     "editCleanTitle": true,
     "watcherReloaded": true,
     "saveDispatched": true,
-    "nativeMenu": true
+    "nativeMenu": true,
+    "nativeMenuRole": true
   },
   "result": {
     "pageTitle": "jmd",
@@ -135,9 +136,16 @@
     },
     "menu": {
       "activate": {
-        "activated": true
+        "activated": true,
+        "action": "click"
       },
-      "events": 51
+      "roleActivate": {
+        "activated": true,
+        "action": "zoomIn",
+        "role": "zoomIn"
+      },
+      "events": 49,
+      "zoomLevel": 1.2
     },
     "keyboard": [
       {

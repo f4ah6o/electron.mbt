@@ -531,7 +531,7 @@ test('message box and net fail closed without the test injection', {
     "  try { await dialog.showMessageBox({ message: 'x' }); out.push('box-resolved'); } catch (error) { out.push('box:' + error.code); }",
     "  try { dialog.showMessageBoxSync({ message: 'x' }); out.push('sync-resolved'); } catch (error) { out.push('sync:' + error.code); }",
     "  try { await net.fetch('file:///etc/passwd'); out.push('fetch-resolved'); } catch (error) { out.push('fetch:' + error.code); }",
-    "  try { net.request('https://example.invalid'); out.push('request-resolved'); } catch (error) { out.push('request:' + error.code); }",
+    "  try { net.request({ url: 'https://example.invalid', method: 'TRACE' }); out.push('request-resolved'); } catch (error) { out.push('request:' + error.code); }",
     "  out.push('online:' + net.isOnline());",
     "  win.setTitle(out.join('|'));",
     "});",
@@ -542,7 +542,7 @@ test('message box and net fail closed without the test injection', {
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const title = (exit && exit.windowTitle) || (holding && holding.windowTitle);
     assert.equal(title,
-      'box:ELECTRON_MBT_UNSUPPORTED_API|sync:ELECTRON_MBT_UNSUPPORTED_API|fetch:ELECTRON_MBT_NET_URL|request:ELECTRON_MBT_UNSUPPORTED_API|online:false',
+      'box:ELECTRON_MBT_UNSUPPORTED_API|sync:ELECTRON_MBT_UNSUPPORTED_API|fetch:ELECTRON_MBT_NET_URL|request:ELECTRON_MBT_NET_METHOD|online:false',
       `negative title: ${title}`);
   } finally {
     fs.rmSync(app, { recursive: true, force: true });
@@ -663,6 +663,118 @@ test('multi-display injection selects by point and matching rectangle', {
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.equal(exit && exit.windowTitle, 'displays:2:800:800', `displays title: ${exit && exit.windowTitle}`);
   } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
+});
+
+test('native menu role actions zoom and close', {
+  skip: !supported || !hostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const assets = makeAssetsDir('roles');
+  const source = [
+    "'use strict';",
+    "const { app, BrowserWindow, Menu } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'roles', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "  Menu.setApplicationMenu(Menu.buildFromTemplate([",
+    "    { label: 'View', submenu: [{ role: 'zoomIn', label: 'Zoom In' }] },",
+    "    { label: 'Window', submenu: [{ role: 'close', label: 'Close' }] },",
+    "  ]));",
+    "});",
+    '',
+  ].join('\n');
+  const app = makeApp(source, assets.image, {}, '<!doctype html><title>roles</title>');
+  try {
+    const zoom = runLoop(binary, app, {}, 8, ['--menu-activate', 'Zoom In']);
+    assert.equal(zoom.result.status, 0, `${zoom.result.stdout}\n${zoom.result.stderr}`);
+    assert.ok(zoom.exit && zoom.exit.zoomLevel > 1, `zoom exit: ${JSON.stringify(zoom.exit)}`);
+    assert.equal(zoom.exit.menuActivate && zoom.exit.menuActivate.action, 'zoomIn');
+    const close = runLoop(binary, app, {}, 8, ['--menu-activate', 'Close']);
+    assert.equal(close.result.status, 0, `${close.result.stdout}\n${close.result.stderr}`);
+    assert.equal(close.exit && close.exit.reason, 'window-closed');
+  } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
+});
+
+test('net.request is bounded and emits buffered responses', {
+  skip: !supported || !hostAvailable,
+}, async () => {
+  const { spawn } = require('node:child_process');
+  const server = spawn(process.execPath, ['-e', `
+    const http = require('http');
+    const body = 'x'.repeat(600 * 1024);
+    const server = http.createServer((req, res) => {
+      if (req.url === '/echo') {
+        let data = '';
+        req.on('data', chunk => { data += chunk; });
+        req.on('end', () => {
+          res.writeHead(201, {'content-type': 'text/plain', 'x-test': 'yes'});
+          res.end(req.method + ':' + data);
+        });
+      } else if (req.url === '/big') {
+        res.writeHead(200, {'content-type': 'text/plain'}); res.end(body);
+      } else { res.writeHead(500); res.end('unknown'); }
+    });
+    server.listen(0, '127.0.0.1', () => console.log('READY ' + server.address().port));
+    process.on('SIGTERM', () => server.close(() => process.exit(0)));
+  `], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const port = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('net server did not start')), 5000);
+    server.stdout.on('data', chunk => {
+      const match = String(chunk).match(/READY (\d+)/);
+      if (match) { clearTimeout(timer); resolve(Number(match[1])); }
+    });
+    server.on('error', reject);
+  });
+  const binary = buildBinary();
+  const assets = makeAssetsDir('netrequest');
+  const base = `http://127.0.0.1:${port}`;
+  const app = makeApp([
+    "'use strict';",
+    "const { app, BrowserWindow, net } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'netrequest', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "  const out = [];",
+    "  let pending = 3;",
+    "  function done() { if (--pending === 0) win.setTitle(out.join('|')); }",
+    `  const echo = net.request({ url: ${JSON.stringify(base + '/echo')}, method: 'POST', headers: { 'x-test': 'yes' } });`,
+    "  echo.on('error', function (error) { out.push('posterr:' + error.code); done(); });",
+    "  echo.on('response', function (response) {",
+    "    let body = '';",
+    "    response.on('data', function (chunk) { body += chunk.toString(); });",
+    "    response.on('end', function () {",
+    "      out.push('post:' + response.statusCode + ':' + body + ':' + response.headers['x-test']);",
+    "      done();",
+    "    });",
+    "  });",
+    "  echo.write('hello');",
+    "  echo.end();",
+    `  const big = net.request(${JSON.stringify(base + '/big')});`,
+    "  big.on('response', function () { out.push('big:response'); done(); });",
+    "  big.on('error', function (error) { out.push('big:' + error.code); done(); });",
+    "  big.end();",
+    "  const file = net.request('file:///etc/passwd');",
+    "  file.on('error', function (error) { out.push('file:' + error.code); done(); });",
+    "  file.end();",
+    "  try { const over = net.request(" + JSON.stringify(base + '/echo') + "); over.write('x'.repeat(300 * 1024)); out.push('overreq:ok'); } catch (error) { out.push('overreq:' + error.code); }",
+    "  try { net.request({ url: " + JSON.stringify(base) + ", method: 'TRACE' }); out.push('method:ok'); } catch (error) { out.push('method:' + error.code); }",
+    "});",
+    '',
+  ].join('\n'), assets.image, {}, '<!doctype html><title>netrequest</title>');
+  try {
+    const { result, exit } = runLoop(binary, app, {}, 10);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(exit && exit.windowTitle,
+      'overreq:ELECTRON_MBT_NET_LIMIT|method:ELECTRON_MBT_NET_METHOD|post:201:POST:hello:yes|big:ELECTRON_MBT_NET_LIMIT|file:ELECTRON_MBT_NET_URL',
+      `net.request title: ${exit && exit.windowTitle}; ${result.stderr}`);
+  } finally {
+    server.kill('SIGTERM');
     fs.rmSync(app, { recursive: true, force: true });
     fs.rmSync(assets.dir, { recursive: true, force: true });
   }

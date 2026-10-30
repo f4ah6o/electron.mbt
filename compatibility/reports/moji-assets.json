@@ -6,8 +6,8 @@
   "environment": {
     "platform": "linux",
     "node": "v26.13.0",
-    "hostSHA256": "c3285ff4c8bf0ca51883e9194c125ee1a531abdfb226094b6bb26e9090ed0d24",
-    "cliSHA256": "40c3b94988ecf9165c01e7433b575ccf7a19d7406bb143c7299138d769c2d99a"
+    "hostSHA256": "41dd620ae318eb0fdb7f78a4897242353cfef2f654f440b3fed24b300d08075b",
+    "cliSHA256": "c14a57fa0129ea56eda7626802cc52ef7940310fcc76c9e36daf5c9e638e153d"
   },
   "stage": {
     "files": 143,
@@ -56,28 +56,28 @@
         "handlerExecuted": false
       },
       "rendererProbe": {
-        "rootChildren": 1,
-        "preview": "",
-        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes",
         "image": null,
         "api": true,
-        "title": "note.md - Moji v1.0.7",
+        "apiProbe": "",
+        "preview": "",
+        "rootChildren": 1,
         "editSave": "",
-        "apiProbe": ""
+        "title": "note.md - Moji v1.0.7",
+        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes"
       }
     }
   },
   "rendererProbe": {
     "status": "NOT_EXPOSED",
     "probe": {
-      "rootChildren": 1,
-      "preview": "",
-      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes",
       "image": null,
       "api": true,
-      "title": "note.md - Moji v1.0.7",
+      "apiProbe": "",
+      "preview": "",
+      "rootChildren": 1,
       "editSave": "",
-      "apiProbe": ""
+      "title": "note.md - Moji v1.0.7",
+      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes"
     }
   },
   "assets": {

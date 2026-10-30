@@ -125,6 +125,7 @@ typedef struct Host {
   guint menu_item_count;
   GtkAccelGroup *accel_group;
   GArray *menu_accels;
+  gboolean menu_fullscreen;
   WebKitWebView *web;
   WebKitUserContentManager *manager;
   gboolean created;
@@ -1866,18 +1867,72 @@ static void menu_publish_click(Host *host, int id) {
   }
 }
 
+static const char *menu_apply_role(Host *host, const char *role) {
+  if (host == NULL || host->web == NULL || role == NULL || role[0] == 0) {
+    return "unsupported";
+  }
+  if (strcmp(role, "undo") == 0 || strcmp(role, "redo") == 0 ||
+      strcmp(role, "cut") == 0 || strcmp(role, "copy") == 0 ||
+      strcmp(role, "paste") == 0 || strcmp(role, "selectAll") == 0) {
+    const char *command = strcmp(role, "selectAll") == 0 ? "SelectAll" :
+      (role[0] == 'u' ? "Undo" : role[0] == 'r' ? "Redo" :
+       role[0] == 'c' && role[1] == 'u' ? "Cut" :
+       role[0] == 'c' ? "Copy" : "Paste");
+    gtk_widget_grab_focus(GTK_WIDGET(host->web));
+    webkit_web_view_execute_editing_command(host->web, command);
+    return role;
+  }
+  if (strcmp(role, "resetZoom") == 0 || strcmp(role, "zoomIn") == 0 ||
+      strcmp(role, "zoomOut") == 0) {
+    double zoom = webkit_web_view_get_zoom_level(host->web);
+    if (strcmp(role, "resetZoom") == 0) zoom = 1.0;
+    else if (strcmp(role, "zoomIn") == 0) zoom *= 1.2;
+    else zoom /= 1.2;
+    if (zoom < 0.25) zoom = 0.25;
+    if (zoom > 5.0) zoom = 5.0;
+    webkit_web_view_set_zoom_level(host->web, zoom);
+    return role;
+  }
+  if (strcmp(role, "togglefullscreen") == 0) {
+    if (host->menu_fullscreen) {
+      gtk_window_unfullscreen(GTK_WINDOW(host->window));
+      host->menu_fullscreen = FALSE;
+    } else {
+      gtk_window_fullscreen(GTK_WINDOW(host->window));
+      host->menu_fullscreen = TRUE;
+    }
+    return role;
+  }
+  if (strcmp(role, "minimize") == 0) {
+    gtk_window_iconify(GTK_WINDOW(host->window));
+    return role;
+  }
+  if (strcmp(role, "close") == 0 || strcmp(role, "quit") == 0) {
+    gtk_window_close(GTK_WINDOW(host->window));
+    return role;
+  }
+  ebt_debug("menu role unsupported: %s\n", role);
+  return "unsupported";
+}
+
 static void on_menu_item_activate(GtkMenuItem *item, gpointer user_data) {
   Host *host = (Host *)user_data;
   gpointer raw = g_object_get_data(G_OBJECT(item), "emoon-menu-id");
   if (host == NULL || raw == NULL) return;
-  menu_publish_click(host, GPOINTER_TO_INT(raw));
+  gpointer click = g_object_get_data(G_OBJECT(item), "emoon-menu-click");
+  const char *role = g_object_get_data(G_OBJECT(item), "emoon-menu-role");
+  if (click != NULL) menu_publish_click(host, GPOINTER_TO_INT(raw));
+  else if (role != NULL) {
+    const char *action = menu_apply_role(host, role);
+    ebt_debug("menu role id=%d role=%s action=%s\n", GPOINTER_TO_INT(raw), role, action);
+  }
 }
 
 static gboolean menu_build_items(MenuBuild *build, JSCValue *items,
                                  GtkWidget *container, int depth) {
   static const char *const allowed[] = {
     "id", "label", "type", "enabled", "checked", "role", "accelerator",
-    "submenu"
+    "submenu", "click"
   };
   if (build == NULL || container == NULL || items == NULL ||
       !jsc_value_is_array(items) || depth > 8) return FALSE;
@@ -1899,23 +1954,32 @@ static gboolean menu_build_items(MenuBuild *build, JSCValue *items,
     char *accelerator = object_get_string(item, "accelerator");
     gboolean enabled = TRUE;
     gboolean checked = FALSE;
+    gboolean has_click = FALSE;
     JSCValue *enabled_raw = object_get_value(item, "enabled");
     JSCValue *checked_raw = object_get_value(item, "checked");
+    JSCValue *click_raw = object_get_value(item, "click");
     gboolean enabled_present = enabled_raw != NULL &&
       !jsc_value_is_undefined(enabled_raw) && !jsc_value_is_null(enabled_raw);
     gboolean checked_present = checked_raw != NULL &&
       !jsc_value_is_undefined(checked_raw) && !jsc_value_is_null(checked_raw);
+    gboolean click_present = click_raw != NULL &&
+      !jsc_value_is_undefined(click_raw) && !jsc_value_is_null(click_raw);
     gboolean booleans_ok =
       (!enabled_present || jsc_value_is_boolean(enabled_raw)) &&
-      (!checked_present || jsc_value_is_boolean(checked_raw));
+      (!checked_present || jsc_value_is_boolean(checked_raw)) &&
+      (!click_present || jsc_value_is_boolean(click_raw));
     if (enabled_present && jsc_value_is_boolean(enabled_raw)) {
       enabled = jsc_value_to_boolean(enabled_raw);
     }
     if (checked_present && jsc_value_is_boolean(checked_raw)) {
       checked = jsc_value_to_boolean(checked_raw);
     }
+    if (click_present && jsc_value_is_boolean(click_raw)) {
+      has_click = jsc_value_to_boolean(click_raw);
+    }
     if (enabled_raw != NULL) g_object_unref(enabled_raw);
     if (checked_raw != NULL) g_object_unref(checked_raw);
+    if (click_raw != NULL) g_object_unref(click_raw);
     JSCValue *submenu_raw = object_get_value(item, "submenu");
     JSCValue *submenu = submenu_raw != NULL &&
       !jsc_value_is_undefined(submenu_raw) && !jsc_value_is_null(submenu_raw)
@@ -1976,6 +2040,12 @@ static gboolean menu_build_items(MenuBuild *build, JSCValue *items,
         g_hash_table_insert(build->widgets, GINT_TO_POINTER((int)id), widget);
         g_object_set_data(G_OBJECT(widget), "emoon-menu-id",
                           GINT_TO_POINTER((int)id));
+        g_object_set_data(G_OBJECT(widget), "emoon-menu-click",
+                          GINT_TO_POINTER(has_click ? 1 : 0));
+        if (role != NULL) {
+          g_object_set_data_full(G_OBJECT(widget), "emoon-menu-role",
+                                 g_strdup(role), g_free);
+        }
         if (accelerator != NULL && accelerator[0] != 0) {
           g_object_set_data_full(G_OBJECT(widget), "emoon-accel",
                                  g_strdup(accelerator), g_free);
@@ -2023,7 +2093,14 @@ static gboolean on_web_key_press(GtkWidget *widget, GdkEventKey *event,
   for (guint index = 0; index < host->menu_accels->len; index++) {
     MenuAccel *accel = &g_array_index(host->menu_accels, MenuAccel, index);
     if (accel->keyval == keyval && accel->modifiers == modifiers) {
-      menu_publish_click(host, accel->id);
+      GtkWidget *widget = g_hash_table_lookup(host->menu_widgets,
+                                              GINT_TO_POINTER(accel->id));
+      gpointer click = widget == NULL ? NULL :
+        g_object_get_data(G_OBJECT(widget), "emoon-menu-click");
+      const char *role = widget == NULL ? NULL :
+        g_object_get_data(G_OBJECT(widget), "emoon-menu-role");
+      if (click != NULL) menu_publish_click(host, accel->id);
+      else if (role != NULL) menu_apply_role(host, role);
       return TRUE;
     }
   }
@@ -2273,6 +2350,196 @@ static void handle_net_fetch(Host *host, Request *request, JSCValue *payload) {
   request_complete(request, "success", reply);
 }
 
+static void handle_net_request(Host *host, Request *request,
+                               JSCValue *payload) {
+  static const char *const allowed[] = {"url", "method", "bodyBase64", "headers"};
+  if (!require_current(host, request)) return;
+  if (!object_has_only_keys(payload, allowed, G_N_ELEMENTS(allowed))) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *url = object_get_string(payload, "url");
+  char *method = object_get_string(payload, "method");
+  if (url == NULL || url[0] == 0 || strlen(url) > 2048 || method == NULL) {
+    g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_URL");
+    return;
+  }
+  if (g_ascii_strcasecmp(method, "GET") != 0 &&
+      g_ascii_strcasecmp(method, "HEAD") != 0 &&
+      g_ascii_strcasecmp(method, "POST") != 0 &&
+      g_ascii_strcasecmp(method, "PUT") != 0 &&
+      g_ascii_strcasecmp(method, "PATCH") != 0 &&
+      g_ascii_strcasecmp(method, "DELETE") != 0) {
+    g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_METHOD");
+    return;
+  }
+  guint8 *body = NULL;
+  gsize body_length = 0;
+  char *body_base64 = object_get_string(payload, "bodyBase64");
+  if (body_base64 != NULL && body_base64[0] != 0) {
+    gsize encoded_length = strlen(body_base64);
+    if (encoded_length > 400 * 1024) {
+      g_free(body_base64); g_free(url); g_free(method);
+      request_failure(request, "ELECTRON_MBT_NET_LIMIT");
+      return;
+    }
+    body = g_base64_decode(body_base64, &body_length);
+    if (body == NULL || body_length > 256 * 1024) {
+      g_free(body); g_free(body_base64); g_free(url); g_free(method);
+      request_failure(request, "ELECTRON_MBT_NET_LIMIT");
+      return;
+    }
+  }
+  g_free(body_base64);
+  if (body != NULL && (g_ascii_strcasecmp(method, "GET") == 0 ||
+                       g_ascii_strcasecmp(method, "HEAD") == 0)) {
+    g_free(body); g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_METHOD");
+    return;
+  }
+  GError *uri_error = NULL;
+  GUri *uri = g_uri_parse(url, G_URI_FLAGS_NONE, &uri_error);
+  const char *scheme = uri == NULL ? NULL : g_uri_get_scheme(uri);
+  const char *uri_host = uri == NULL ? NULL : g_uri_get_host(uri);
+  const char *userinfo = uri == NULL ? NULL : g_uri_get_userinfo(uri);
+  if (uri_error != NULL) g_error_free(uri_error);
+  if (uri == NULL || scheme == NULL || uri_host == NULL || uri_host[0] == 0 ||
+      (g_ascii_strcasecmp(scheme, "http") != 0 &&
+       g_ascii_strcasecmp(scheme, "https") != 0) ||
+      (userinfo != NULL && userinfo[0] != 0)) {
+    if (uri != NULL) g_uri_unref(uri);
+    g_free(body); g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_URL");
+    return;
+  }
+  g_uri_unref(uri);
+  SoupSession *session = soup_session_new();
+  g_object_set(session, "timeout", 5, NULL);
+  GProxyResolver *resolver = g_simple_proxy_resolver_new(NULL, NULL);
+  if (resolver != NULL) {
+    g_object_set(session, "proxy-resolver", resolver, NULL);
+    g_object_unref(resolver);
+  }
+  SoupMessage *message = soup_message_new(method, url);
+  if (message == NULL) {
+    g_object_unref(session); g_free(body); g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_URL");
+    return;
+  }
+  soup_message_set_flags(message, SOUP_MESSAGE_NO_REDIRECT);
+  JSCValue *headers_raw = object_get_value(payload, "headers");
+  gboolean headers_ok = TRUE;
+  if (headers_raw != NULL && !jsc_value_is_undefined(headers_raw) &&
+      !jsc_value_is_null(headers_raw)) {
+    if (!jsc_value_is_array(headers_raw)) {
+      headers_ok = FALSE;
+    } else {
+      JSCValue *length_value = object_get_value(headers_raw, "length");
+      gint32 header_count = length_value == NULL ? -1 :
+        jsc_value_to_int32(length_value);
+      if (length_value != NULL) g_object_unref(length_value);
+      if (header_count < 0 || header_count > 32) headers_ok = FALSE;
+      SoupMessageHeaders *request_headers = soup_message_get_request_headers(message);
+      for (gint32 index = 0; headers_ok && index < header_count; index++) {
+        JSCValue *entry = jsc_value_object_get_property_at_index(headers_raw,
+                                                                 (guint)index);
+        static const char *const header_keys[] = {"name", "value"};
+        if (entry == NULL || !object_has_exact_keys(entry, header_keys, 2)) {
+          if (entry != NULL) g_object_unref(entry);
+          headers_ok = FALSE;
+          break;
+        }
+        char *name = object_get_string(entry, "name");
+        char *value = object_get_string(entry, "value");
+        g_object_unref(entry);
+        if (name == NULL || value == NULL || name[0] == 0 ||
+            strlen(name) > 256 || strlen(value) > 1024 ||
+            strchr(name, '\r') != NULL || strchr(name, '\n') != NULL ||
+            strchr(value, '\r') != NULL || strchr(value, '\n') != NULL ||
+            g_ascii_strcasecmp(name, "host") == 0 ||
+            g_ascii_strcasecmp(name, "content-length") == 0 ||
+            g_ascii_strcasecmp(name, "transfer-encoding") == 0 ||
+            g_ascii_strcasecmp(name, "connection") == 0) {
+          g_free(name); g_free(value);
+          headers_ok = FALSE;
+          break;
+        }
+        soup_message_headers_append(request_headers, name, value);
+        g_free(name); g_free(value);
+      }
+    }
+  }
+  if (headers_raw != NULL) g_object_unref(headers_raw);
+  if (!headers_ok) {
+    g_object_unref(message); g_object_unref(session);
+    g_free(body); g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  if (body != NULL) {
+    GBytes *bytes = g_bytes_new_take(body, body_length);
+    const char *content_type =
+      soup_message_headers_get_one(soup_message_get_request_headers(message),
+                                   "Content-Type");
+    soup_message_set_request_body_from_bytes(message,
+      content_type == NULL ? "application/octet-stream" : content_type, bytes);
+    g_bytes_unref(bytes);
+    body = NULL;
+  }
+  GError *error = NULL;
+  GInputStream *stream = soup_session_send(session, message, NULL, &error);
+  if (stream == NULL) {
+    if (error != NULL) g_error_free(error);
+    g_object_unref(message); g_object_unref(session);
+    g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_FAILURE");
+    return;
+  }
+  GByteArray *response_body = g_byte_array_new();
+  gboolean too_large = FALSE;
+  if (g_ascii_strcasecmp(method, "HEAD") != 0) {
+    guint8 buffer[8192];
+    for (;;) {
+      gssize read = g_input_stream_read(stream, buffer, sizeof(buffer), NULL, &error);
+      if (read < 0) { too_large = TRUE; break; }
+      if (read == 0) break;
+      if (response_body->len + (guint)read > EBT_NET_MAX_BODY) {
+        too_large = TRUE; break;
+      }
+      g_byte_array_append(response_body, buffer, (guint)read);
+    }
+  }
+  g_input_stream_close(stream, NULL, NULL);
+  g_object_unref(stream);
+  guint status = soup_message_get_status(message);
+  const char *reason = soup_message_get_reason_phrase(message);
+  JSCValue *response_headers = jsc_value_new_array(host->json, G_TYPE_NONE);
+  NetHeaderBuild build = { .host = host, .headers = response_headers, .count = 0 };
+  SoupMessageHeaders *headers = soup_message_get_response_headers(message);
+  if (headers != NULL) soup_message_headers_foreach(headers, net_header_cb, &build);
+  char *base64 = too_large ? NULL : g_base64_encode(response_body->data,
+                                                    response_body->len);
+  JSCValue *reply = object_new(host);
+  object_set_number(host, reply, "status", (double)status);
+  object_set_boolean(host, reply, "ok", status >= 200 && status < 300);
+  object_set_string(host, reply, "statusText", reason == NULL ? "" : reason);
+  jsc_value_object_set_property(reply, "headers", response_headers);
+  object_set_string(host, reply, "bodyBase64", base64 == NULL ? "" : base64);
+  g_free(base64);
+  g_object_unref(response_headers);
+  g_byte_array_free(response_body, TRUE);
+  g_object_unref(message); g_object_unref(session);
+  g_free(url); g_free(method);
+  if (too_large) {
+    g_object_unref(reply);
+    request_failure(request, "ELECTRON_MBT_NET_LIMIT");
+    return;
+  }
+  request_complete(request, "success", reply);
+}
+
 static void handle_install_menu(Host *host, Request *request,
                                 JSCValue *payload) {
   static const char *const expected[] = {"items"};
@@ -2409,10 +2676,24 @@ static void handle_activate_menu_item(Host *host, Request *request,
   }
   /* Publish the same activation the GTK "activate" signal would emit. Calling
    * gtk_menu_item_activate here enters GTK's menu-shell nested loop and blocks
-   * the main-side click handler's host calls. */
-  menu_publish_click(host, GPOINTER_TO_INT(raw));
+   * the main-side click handler's host calls. Role-only items execute a fixed
+   * allowlisted host action instead. */
+  gpointer click = g_object_get_data(G_OBJECT(widget), "emoon-menu-click");
+  const char *role = g_object_get_data(G_OBJECT(widget), "emoon-menu-role");
+  const char *action = NULL;
+  if (click != NULL) {
+    menu_publish_click(host, GPOINTER_TO_INT(raw));
+    action = "click";
+  } else if (role != NULL) {
+    action = menu_apply_role(host, role);
+  } else {
+    request_failure(request, "ELECTRON_MBT_MENU_INVALID");
+    return;
+  }
   JSCValue *reply = object_new(host);
   object_set_boolean(host, reply, "activated", TRUE);
+  object_set_string(host, reply, "action", action == NULL ? "" : action);
+  if (role != NULL) object_set_string(host, reply, "role", role);
   request_complete(request, "success", reply);
 }
 
@@ -2427,6 +2708,20 @@ static void handle_get_menu_status(Host *host, Request *request,
   object_set_boolean(host, reply, "installed",
                      host->menu_item_count > 0 && host->menu_bar != NULL);
   object_set_number(host, reply, "items", (double)host->menu_item_count);
+  request_complete(request, "success", reply);
+}
+
+static void handle_get_zoom_level(Host *host, Request *request,
+                                  JSCValue *payload) {
+  if (!require_current(host, request)) return;
+  if (!object_has_exact_keys(payload, NULL, 0)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  JSCValue *reply = object_new(host);
+  object_set_number(host, reply, "zoomLevel",
+                    host->web == NULL ? 1.0 :
+                    webkit_web_view_get_zoom_level(host->web));
   request_complete(request, "success", reply);
 }
 
@@ -4982,6 +5277,7 @@ static void handle_destroy_window(Host *host, Request *request) {
   host->menu_bar = NULL;
   host->menu_item_count = 0;
   host->accel_group = NULL;
+  host->menu_fullscreen = FALSE;
   if (host->menu_widgets != NULL) g_hash_table_remove_all(host->menu_widgets);
   destroy_export_window(host);
   teardown_window_state(host, "ELECTRON_MBT_WINDOW_DESTROYED");
@@ -5304,6 +5600,10 @@ static void dispatch_request(Request *request, JSCValue *payload) {
     handle_net_fetch(host, request, payload);
     return;
   }
+  if (strcmp(operation, "net-request") == 0) {
+    handle_net_request(host, request, payload);
+    return;
+  }
   if (strcmp(operation, "install-menu") == 0) {
     handle_install_menu(host, request, payload);
     return;
@@ -5314,6 +5614,10 @@ static void dispatch_request(Request *request, JSCValue *payload) {
   }
   if (strcmp(operation, "get-menu-status") == 0) {
     handle_get_menu_status(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "get-zoom-level") == 0) {
+    handle_get_zoom_level(host, request, payload);
     return;
   }
   if (strcmp(operation, "set-window-title") == 0) {
@@ -5619,6 +5923,7 @@ static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event,
   host->menu_bar = NULL;
   host->menu_item_count = 0;
   host->accel_group = NULL;
+  host->menu_fullscreen = FALSE;
   if (host->menu_widgets != NULL) g_hash_table_remove_all(host->menu_widgets);
   teardown_window_state(host, "ELECTRON_MBT_WINDOW_CLOSED");
   /* Let GTK perform the default destroy after this handler returns. Calling

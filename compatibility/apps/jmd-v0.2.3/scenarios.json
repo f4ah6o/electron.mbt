@@ -9,7 +9,7 @@
     "J1",
     "APP-N09"
   ],
-  "note": "J-P1 passes on the adapted Linux profile, including the native GTK menu, real Ctrl+S accelerator, bounded watchers, local net.fetch and a two-display injection. The pinned raw source still stops at the JMD_SMOKE computed require (J1 expected-rejection); the adapted copy is separate. IME, role menu actions, hardware multi-monitor and macOS are NOT_RUN/out of scope.",
+  "note": "J-P1 passes on the adapted Linux profile, now including native menu click/role actions and buffered net.request. The pinned raw source still stops at the JMD_SMOKE computed require; save/edit uses synthetic + real X11 input; hardware multi-monitor and macOS NOT RUN.",
   "preflight": {
     "id": "J1-synthetic",
     "verdict": "expected-rejection",
@@ -42,14 +42,17 @@
       "native GTK menu File > Save",
       "bounded fs.watch reload",
       "two-display injection",
-      "net.fetch local HTTP"
+      "net.fetch local HTTP",
+      "native View > Zoom In role",
+      "buffered net.request local HTTP"
     ],
     "saveEdit": "PASS (synthetic + real xdotool Ctrl+S)",
     "watcher": "PASS (external rewrite, polling facade)",
     "keyboard": "PASS (ASCII; IME disabled for the test; IME NOT RUN)",
     "watchers": "PASS (fs.watch; fs.watchFile/unwatchFile/recursive in asset suite)",
     "multiDisplay": "PASS (test injection; hardware NOT RUN)",
-    "nativeMenu": "PASS",
-    "netFetch": "PASS (localhost; GET/status/body cap/unsafe scheme)"
+    "nativeMenu": "PASS (click + allowlisted zoom role; editing roles not observed)",
+    "netFetch": "PASS (localhost; GET/status/body cap/unsafe scheme)",
+    "netRequest": "PASS (buffered POST echo/status/headers/over-cap)"
   }
 }

@@ -836,6 +836,7 @@ fn cli_hold(
   jmd_edit_save : Bool,
   focus_jmd_editor : Bool,
   menu_activate : String,
+  menu_activate_role : String,
 ) -> Unit {
   let mut title = ""
   let mut window_title = ""
@@ -926,6 +927,8 @@ fn cli_hold(
   let mut jmd_focus : Json = null
   let mut menu_activate_json : Json = null
   let mut menu_activate_sent = false
+  let mut menu_role_activate_json : Json = null
+  let mut menu_role_activate_sent = false
   let mut menu_events = 0
   let mut reason = "hold-seconds"
   let mut close_sent = false
@@ -971,7 +974,15 @@ fn cli_hold(
         Json({ "label": Json(menu_activate) }).stringify(),
       ).unwrap_or(Json({ "ok": Json(false) }))
     }
-    if menu_activate.length() > 0 {
+    if menu_activate_role.length() > 0 && !menu_role_activate_sent &&
+      ticks >= 80 {
+      menu_role_activate_sent = true
+      menu_role_activate_json = cli_host_payload(
+        "activate-menu-item",
+        Json({ "label": Json(menu_activate_role) }).stringify(),
+      ).unwrap_or(Json({ "ok": Json(false) }))
+    }
+    if menu_activate.length() > 0 || menu_activate_role.length() > 0 {
       let (menu_handled, _, _) =
         cli_pump_events(runner, session, attempts=1, idle_limit=1)
       menu_events = menu_events + menu_handled
@@ -1031,6 +1042,19 @@ fn cli_hold(
     }
     None => ()
   }
+  let zoom_level_exit = if cli_platform() == "linux" {
+    match cli_host_payload("get-zoom-level", "{}") {
+      Some(value) => {
+        match cli_field(value, "zoomLevel") {
+          Number(number, ..) => Json(number)
+          _ => null
+        }
+      }
+      None => null
+    }
+  } else {
+    null
+  }
   runner.stop()
   let asset_status_exit = if cli_platform() == "linux" {
     cli_host_payload("get-asset-status", "{}").unwrap_or(null)
@@ -1055,7 +1079,9 @@ fn cli_hold(
       "jmdSave": Json(jmd_save),
       "jmdFocus": Json(jmd_focus),
       "menuActivate": Json(menu_activate_json),
+      "menuRoleActivate": Json(menu_role_activate_json),
       "menuEvents": Json(menu_events),
+      "zoomLevel": Json(zoom_level_exit),
       "compatible": Json(false),
     }).stringify(),
   )
@@ -1417,11 +1443,15 @@ fn cli_main(args : Array[String]) -> Unit {
   let jmd_edit_save = args.contains("--jmd-edit-save")
   let focus_jmd_editor = args.contains("--jmd-focus-editor")
   let mut menu_activate = ""
+  let mut menu_activate_role = ""
   let run_loop = args.contains("--run-loop")
   let mut run_loop_seconds = 0
   for i = 0; i < args.length(); i = i + 1 {
     if args[i] == "--menu-activate" && i + 1 < args.length() {
       menu_activate = args[i + 1]
+    }
+    if args[i] == "--menu-activate-role" && i + 1 < args.length() {
+      menu_activate_role = args[i + 1]
     }
     if args[i] == "--run-loop-seconds" && i + 1 < args.length() {
       run_loop_seconds = cli_parse_seconds(args[i + 1])
@@ -1490,11 +1520,12 @@ fn cli_main(args : Array[String]) -> Unit {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--jmd-focus-editor requires --hold")
     return
   }
-  if menu_activate.length() > 128 {
+  if menu_activate.length() > 128 || menu_activate_role.length() > 128 {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--menu-activate is too long")
     return
   }
-  if menu_activate.length() > 0 && !hold_mode && !run_loop {
+  if (menu_activate.length() > 0 || menu_activate_role.length() > 0) &&
+    !hold_mode && !run_loop {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--menu-activate requires --hold or --run-loop")
     return
   }
@@ -1913,7 +1944,7 @@ fn cli_main(args : Array[String]) -> Unit {
     if hold_mode {
       cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
                trigger_export_ui, dispatch_main, jmd_edit_save, focus_jmd_editor,
-               menu_activate)
+               menu_activate, menu_activate_role)
       return
     }
     let mut adapted_observed = false
@@ -2033,6 +2064,8 @@ fn cli_main(args : Array[String]) -> Unit {
       let mut ticks = 0
       let mut menu_sent = false
       let mut menu_json : Json = null
+      let mut menu_role_sent = false
+      let mut menu_role_json : Json = null
       let mut reason = "run-loop-seconds"
       while run_loop_seconds == 0 || ticks < run_loop_seconds * 10 {
         if menu_activate.length() > 0 && !menu_sent && ticks >= 60 {
@@ -2040,6 +2073,13 @@ fn cli_main(args : Array[String]) -> Unit {
           menu_json = cli_host_payload(
             "activate-menu-item",
             Json({ "label": Json(menu_activate) }).stringify(),
+          ).unwrap_or(Json({ "ok": Json(false) }))
+        }
+        if menu_activate_role.length() > 0 && !menu_role_sent && ticks >= 80 {
+          menu_role_sent = true
+          menu_role_json = cli_host_payload(
+            "activate-menu-item",
+            Json({ "label": Json(menu_activate_role) }).stringify(),
           ).unwrap_or(Json({ "ok": Json(false) }))
         }
         let _ = cli_pump_events(runner, session, attempts=1, idle_limit=1)
@@ -2069,6 +2109,19 @@ fn cli_main(args : Array[String]) -> Unit {
         Some(value) => final_window_title = cli_text(value, "title").unwrap_or("")
         None => ()
       }
+      let zoom_level = if cli_platform() == "linux" {
+        match cli_host_payload("get-zoom-level", "{}") {
+          Some(value) => {
+            match cli_field(value, "zoomLevel") {
+              Number(number, ..) => Json(number)
+              _ => null
+            }
+          }
+          None => null
+        }
+      } else {
+        null
+      }
       println(
         Json({
           "schema": Json(1),
@@ -2079,6 +2132,8 @@ fn cli_main(args : Array[String]) -> Unit {
           "pageTitle": Json(final_page_title),
           "windowTitle": Json(final_window_title),
           "menuActivate": Json(menu_json),
+          "menuRoleActivate": Json(menu_role_json),
+          "zoomLevel": Json(zoom_level),
           "compatible": Json(false),
         }).stringify(),
       )

@@ -62,7 +62,7 @@ emoon init [app-dir] [--renderer <dir>] [--page <file>] [--include <path,...>] [
 emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
 emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--asset-scheme <s,...>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
 emoon dev [app-dir] [--api <file>] [--asset-scheme <s,...>] [--build] [--no-launch] [--config <file>]
-emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ... | --run-loop [--run-loop-seconds <n>]] [--menu-activate <label>] [selftests]
+emoon run <app-dir> [--window] [--entry <file>] [--profile <id>] [--hold ... | --run-loop [--run-loop-seconds <n>]] [--menu-activate <label>] [--menu-activate-role <label>] [selftests]
 emoon doctor <app-dir> [--profile <id>]
 emoon bundle [app-dir] [--output <file>] [--force] [--name <name>] [--host <path>] [--asset-scheme <s,...>] [--build] [--restage] [--reset-data] [--no-stage] [--dry-run] [--quiet] [staging options]
 emoon version
@@ -82,8 +82,8 @@ page, the runtime uses `package.json`'s `main` as the module entry. `--run-loop`
 keeps a real window open until it closes (or `--run-loop-seconds` 0..3600;
 0 means no time limit), pumping menu clicks, page requests and main timers; it
 is the non-test app loop. `--menu-activate <label>` is a test-only helper that
-activates a native menu item by exact label; it requires `--hold` or
-`--run-loop`.
+activates a native menu item by exact label; `--menu-activate-role` does the
+same for a role item and is test-only. Both require `--hold` or `--run-loop`.
 
 `bundle` packages a prepared stage into one self-extracting native ELF. With an
 app directory it stages `.emoon/app` when missing or stale (including a
@@ -199,7 +199,7 @@ emoon inspect [app-dir] [--renderer <dir>] [--api <file>] [--config <file>]
 emoon migrate [app-dir] [--renderer <dir>] [--api <file>] [--asset-scheme <s,...>] [--out <dir>] [--force] [--reset-data] [--dry-run] [--config <file>]
 emoon dev [app-dir] [--api <file>] [--asset-scheme <s,...>] [--build] [--no-launch] [--config <file>] [--runtime <path>]
 emoon doctor <stage> [--runtime <path>]
-emoon run <stage> [--window] [--entry <file>] [--run-loop [--run-loop-seconds <n>]] [--menu-activate <label>] [--runtime <path>]
+emoon run <stage> [--window] [--entry <file>] [--run-loop [--run-loop-seconds <n>]] [--menu-activate <label>] [--menu-activate-role <label>] [--runtime <path>]
 emoon version | --version
 emoon help | --help
 ```

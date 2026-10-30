@@ -682,7 +682,7 @@ Implementation delegation through the GitHub Codex integration was attempted on 
     `.emoon/config.json` and the staged `nodeless-app.json`; invalid names,
     duplicates and >4 schemes fail before staging. Node/native stage bytes are
     identical (`tests/emoon-cli-parity.test.cjs`).
-  - `npm test`: **570 tests / 537 PASS / 0 FAIL / 33 SKIP**;
+  - `npm test`: **572 tests / 539 PASS / 0 FAIL / 33 SKIP**;
     `moon test --target js`: **174 PASS**; `--target native`: **211 PASS**.
 - Not run / not implemented: macOS WKURLSchemeHandler, `fetch()` status,
   no-cors canvas taint, SVG direct-navigation, the Moji preview `<img>` probe
@@ -715,11 +715,13 @@ open dialog.
   (`ELECTRON_MBT_TEST_MESSAGE_BOX=0..2`, typed unsupported otherwise); GDK
   `get-all-displays` plus prelude `getAllDisplays`/
   `getDisplayNearestPoint`/`getDisplayMatching`; a bounded `net.fetch`
-  (http(s) GET/HEAD, 512 KiB, 5 s, no redirects/credentials) with
-  `net.request` typed unsupported; a real GtkMenuBar with bounded
-  serialization, `menu-click` dispatch to the app's own click handlers, and
-  native `CmdOrCtrl` accelerator mapping. Role-only menu items are
-  display-only; `droppedFilePath` stays fail-closed.
+  (http(s) GET/HEAD, 512 KiB, 5 s, no redirects/credentials) plus a buffered
+  `net.request` (GET/HEAD/POST/PUT/PATCH/DELETE, 256 KiB request/512 KiB
+  response) with no streaming or abort cancellation; a real GtkMenuBar with
+  bounded serialization, `menu-click` dispatch to the app's own click
+  handlers, native `CmdOrCtrl` accelerator mapping, and allowlisted native
+  roles (editing commands, zoom, fullscreen, minimize/close). Unknown roles
+  and `toggleDevTools` are no-ops; `droppedFilePath` stays fail-closed.
 - `scripts/jmd-positive.cjs` boots the stage, opens the document, appends
   `jmd-edit-marker-20261029` through CodeMirror's DOM and saves via
   `test:menu-save`; then a fixed host helper focuses `.cm-content`, `xdotool`
@@ -728,11 +730,12 @@ open dialog.
   window events at 12.5 s only if the file lacks the keyboard marker, and an
   external rewrite at 20 s exercises `fs.watch` reload. The host also
   activates File > Save through the native GtkMenuBar and checks its click
-  dispatch. It asserts adapted
+  dispatch, and activates View > Zoom In through the native role path
+  (`zoomLevel:1.2`). It asserts adapted
   boot/release, page URL, window title, initial UI, open dispatch, preview
   marker, `jmd-file` admission, image served, `naturalWidth:16`, exact edited
   and keyboard bytes, clean title, watcher reload, display bounds/count/
-  matching, native menu activation, message-box response 2 and
+  matching, native menu click/role activation, message-box response 2 and
   `handlerExecuted:false`. `compatible:false`. The test disables the desktop
   IME and types ASCII only; IME is NOT RUN.
 - Evidence: `compatibility/reports/jmd-positive.json` and
@@ -744,8 +747,9 @@ open dialog.
   `CI=true` (missing source/build fails rather than skips); the apt step now
   installs `xdotool`. GitHub Actions run 302 (`6f7f708`) passed the native
   menu, net.fetch and two-display injection tests; local evidence is above.
-- IME, native role actions, `net.request`, hardware multi-monitor selection
-  and macOS remain NOT RUN/out of scope; the X11 ASCII keyboard path is
-  covered above and is not an IME claim. The two-display result uses a
+- IME, editing-role observation, `net.request` streaming/abort cancellation,
+  hardware multi-monitor selection, `toggleDevTools` and macOS remain
+  NOT RUN/out of scope; the X11 ASCII keyboard path is covered above and is
+  not an IME claim. The two-display result uses a
   test-only injection. `fs.watchFile`/recursive watch are bounded polling
   facades, not inotify. No strict-profile or compatibility claim.

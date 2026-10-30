@@ -101,12 +101,12 @@
   "declaredUnsupported": [
     "webUtils.getPathForFile",
     "autoUpdater",
-    "native menu installation",
-    "net",
     "showMessageBox without the test env",
     "human input/IME",
     "hardware multi-monitor selection",
-    "macOS"
+    "macOS",
+    "net.request streaming/backpressure/abort cancellation",
+    "toggleDevTools/unknown native roles"
   ],
   "note": "Pinned jmd 0.2.3 boots the real renderer, opens a markdown document through the test-injected native dialog, renders the marker and a relative image, edits and saves through the real Ctrl+S/menu accelerator, reloads after an external rewrite, installs a native GTK menu, and exercises net.fetch and two-display selection via test injection. Original preload NOT_EXECUTED; compatible:false; macOS out of scope.",
   "protocol": {
@@ -121,7 +121,9 @@
     "note": "The adapted stage admits jmd-file; the broker serves the document-directory PNG. protocol.handle is recorded, not executed.",
     "nativeMenu": "PASS (Linux GtkMenuBar; File > Save activation dispatches jmd click; accelerators native)",
     "netFetch": "PASS (localhost fixture; GET/status/body cap/unsafe scheme)",
-    "multiDisplay": "PASS (two-display test injection; hardware NOT RUN)"
+    "multiDisplay": "PASS (two-display test injection; hardware NOT RUN)",
+    "nativeMenuRole": "PASS (allowlisted host roles; View > Zoom In; role close in asset fixture)",
+    "netRequest": "PASS (buffered localhost fixture)"
   },
   "positive": {
     "status": "PASS",
@@ -149,7 +151,9 @@
       "keyboardSaved",
       "editCleanTitle",
       "watcherReloaded",
-      "saveDispatched"
+      "saveDispatched",
+      "nativeMenu",
+      "nativeMenuRole"
     ],
     "saveEdit": "PASS (synthetic host edit + real xdotool X11 input + Ctrl+S)",
     "macOS": "out of scope",
@@ -157,6 +161,9 @@
     "facades": "screen GDK bounds PASS; showMessageBox response 2 PASS; query loadFile fixture PASS",
     "keyboard": "PASS (xdotool ASCII; IME disabled in test env, IME NOT RUN)",
     "watchers": "PASS (fs.watch polling; fs.watchFile/unwatchFile/recursive in asset suite)",
-    "multiDisplay": "PASS (one Xvfb monitor; multi-monitor selection NOT RUN)"
+    "multiDisplay": "PASS (one Xvfb monitor; multi-monitor selection NOT RUN)",
+    "nativeMenu": "PASS (GtkMenuBar; click dispatch + CmdOrCtrl accelerator; View > Zoom In native role, zoomLevel 1.2)",
+    "netFetch": "PASS (localhost fixture; GET/status/body cap/unsafe scheme)",
+    "netRequest": "PASS (buffered POST echo/status/headers/data/end/over-cap/unsafe scheme)"
   }
 }

@@ -12,9 +12,9 @@ bounded recursive `fs.watch` are implemented and covered by the fixture.
 The native GTK menu is installed and File > Save dispatches jmd's own click
 handler; real Ctrl+S reaches it through the host accelerator mapping. Two-
 display selection is covered by a test-only injection (hardware multi-monitor
-is NOT RUN), and `net.fetch` is exercised against a local HTTP server. The
-original preload is not executed. IME, role-menu actions and macOS remain
-**NOT RUN/out of scope**.
+is NOT RUN), and `net.fetch`/buffered `net.request` are exercised against a
+local HTTP server. The original preload is not executed. IME,
+`toggleDevTools`/unknown roles and macOS remain **NOT RUN/out of scope**.
 
 This is not an Electron-compatibility result and does not unblock the strict
 `electron-nodeless-v1` profile.
@@ -47,12 +47,15 @@ This is not an Electron-compatibility result and does not unblock the strict
 - `Menu.buildFromTemplate`/`setApplicationMenu` serialize a bounded tree
   (256 items, depth 8). The host installs a real GtkMenuBar, maps the
   accelerator display and a WebView key handler, and publishes `menu-click`
-  ids. The runtime dispatches the app's own click handler; role-only items are
-  display-only and return a typed unsupported error when activated.
-- `net.fetch` performs bounded http(s) GET/HEAD through libsoup (512 KiB body
-  cap, 5 s timeout, no redirects/credentials); `net.request` remains typed
-  unsupported. A local HTTP fixture checks 200 text/JSON, 404, over-cap and
-  `file://` rejection.
+  ids. The runtime dispatches the app's own click handler. Role-only items
+  execute a fixed host allowlist (editing commands, zoom, fullscreen,
+  minimize/close); `toggleDevTools` and unknown roles are no-ops.
+- `net.fetch` performs bounded http(s) GET/HEAD through libsoup (512 KiB
+  response cap, 5 s timeout, no redirects/credentials). `net.request` is a
+  buffered ClientRequest-like EventEmitter (GET/HEAD/POST/PUT/PATCH/DELETE,
+  256 KiB request cap, 512 KiB response cap); it emits `response` with a
+  buffered IncomingMessage and `data`/`end`. Local fixtures check 200
+  text/JSON, 404, over-cap, `file://` rejection, POST echo and headers.
 - `--run-loop` provides a real window event loop (menu clicks, page requests,
   timers) without the test hold; the menu test uses it. `--hold` remains the
   test harness.
@@ -92,7 +95,8 @@ The original `electron/preload.js` is copied for provenance but is
     `imageLoaded:true`, `handlerExecuted:false`, `editSaved:true`,
     `keyboardSaved:true`, `editCleanTitle:true`, `watcherReloaded:true`,
     `saveDispatched:true`, `displayBounds:true`, `displayCount:true`,
-    `matchingBounds:true`, `messageBox:true`, `nativeMenu:true`.
+    `matchingBounds:true`, `messageBox:true`, `nativeMenu:true`,
+    `nativeMenuRole:true` (`zoomLevel:1.2`).
   - Assets: `schemes:["jmd-file"]`, `requests:1`, `served:1`,
     `bytes:116`, `denied:0`, `handlerExecuted:false`.
   - Preview text:
@@ -110,9 +114,9 @@ The original `electron/preload.js` is copied for provenance but is
 
   ![jmd 0.2.3 adapted positive](images/jmd-positive-20261029.png)
 
-- `tests/asset-protocol.test.cjs`: **15 PASS**, including native-menu
-  activation, `net.fetch` against a local HTTP server, two-display injection
-  and the watcher/facade negatives.
+- `tests/asset-protocol.test.cjs`: **17 PASS**, including native-menu
+  click/role activation, `net.fetch` and `net.request` against local HTTP
+  servers, two-display injection and the watcher/facade negatives.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
@@ -144,7 +148,8 @@ writes `compatibility/reports/jmd-positive.json`.
 - Save goes through the app's `menu:save` renderer action for the synthetic
   edit, and through a real Ctrl+S chord for the X11 edit. The native GtkMenuBar
   is installed; Ctrl+S is mapped by the host accelerator handler to the native
-  Save item. Role-only items are display-only.
+  Save item. Allowlisted native roles run in the host; editing-role behavior is
+  not independently observed, and `toggleDevTools`/unknown roles are no-ops.
 - `fs.watch`, `fs.watchFile` and recursive `fs.watch` are bounded polling
   facades, not inotify. They deliver the jmd reload path and fixture events but
   not native event fidelity; recursive/`watchFile` caps are 4096 entries and
@@ -157,12 +162,16 @@ writes `compatibility/reports/jmd-positive.json`.
   typed unsupported. `showMessageBoxSync` follows the same injection.
 - `screen.getAllDisplays` uses GDK monitors; `getDisplayNearestPoint` and
   `getDisplayMatching` select by containment/intersection. The fixture has one
-  Xvfb monitor; hardware multi-monitor selection is NOT RUN. A 1280x800
-  fallback remains if the host op is unavailable.
-- `net.fetch` is bounded (512 KiB, 5 s, no redirects); `net.request` remains
-  unsupported. There is no private-network/SSRF allowlist; the adapted main is
-  trusted and network access is a deliberate capability, not a sandbox. Native menu roles (quit/undo/copy/zoom/…) are display-only, not
-  Electron role actions. `droppedFilePath` stays fail-closed.
+  Xvfb monitor; a local Xephyr `xrandr --setmonitor` attempt did not expose a
+  second GDK monitor, so hardware multi-monitor selection is NOT RUN. The
+  two-display fixture uses a test-only injection. A 1280x800 fallback remains
+  if the host op is unavailable.
+- `net.fetch` is bounded (512 KiB, 5 s, no redirects); `net.request` is
+  buffered (256 KiB request, 512 KiB response) with no streaming/backpressure
+  and no abort-time cancellation. There is no private-network/SSRF allowlist;
+  the adapted main is trusted and network access is a deliberate capability,
+  not a sandbox. Native role actions are a fixed allowlist; `toggleDevTools`
+  and unknown roles are no-ops. `droppedFilePath` stays fail-closed.
 - jmd's `protocol.handle` is recorded, not executed; the broker owns the
   response. This is an adapted-profile substitution.
 - macOS is out of scope.

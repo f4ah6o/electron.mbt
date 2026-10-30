@@ -204,7 +204,7 @@ async function main() {
     XMODIFIERS: '@im=none',
   };
   const args = ['run', stage, '--window', '--hold', '--hold-seconds', '38',
-    '--dispatch-main', 'test:open-dialog', '--jmd-edit-save', '--jmd-focus-editor', '--menu-activate', 'Save'];
+    '--dispatch-main', 'test:open-dialog', '--jmd-edit-save', '--jmd-focus-editor', '--menu-activate', 'Save', '--menu-activate-role', 'Zoom In'];
   const run = await runApp(binary, args, env);
   const output = `${run.stdout || ''}\n${run.stderr || ''}`;
   const frames = output.split('\n').map(line => line.trim())
@@ -233,7 +233,9 @@ async function main() {
   const matching = dispatch && dispatch.matching ? dispatch.matching : null;
   const save = exit && exit.jmdSave ? exit.jmdSave : null;
   const menuActivate = exit && exit.menuActivate ? exit.menuActivate : null;
+  const menuRoleActivate = exit && exit.menuRoleActivate ? exit.menuRoleActivate : null;
   const menuEvents = exit && typeof exit.menuEvents === 'number' ? exit.menuEvents : 0;
+  const zoomLevel = exit && typeof exit.zoomLevel === 'number' ? exit.zoomLevel : 0;
 
   let fileContent = '';
   try { fileContent = fs.readFileSync(documentPath, 'utf8'); } catch (_) {}
@@ -265,6 +267,8 @@ async function main() {
     watcherReloaded: fileContent.includes(watchMarker) && preview.includes(watchMarker),
     saveDispatched: !!(save && save.ok === true),
     nativeMenu: !!(menuActivate && menuActivate.activated === true && menuEvents >= 1),
+    nativeMenuRole: !!(menuRoleActivate && menuRoleActivate.activated === true &&
+      menuRoleActivate.action === 'zoomIn' && zoomLevel > 1),
   };
 
   const report = {
@@ -303,7 +307,7 @@ async function main() {
       facades: dispatch,
       assets: exit && exit.assets,
       save: save,
-      menu: { activate: menuActivate, events: menuEvents },
+      menu: { activate: menuActivate, roleActivate: menuRoleActivate, events: menuEvents, zoomLevel: zoomLevel },
       keyboard: run.keyboard,
       file: {
         bytes: Buffer.byteLength(fileContent),

@@ -116,7 +116,8 @@ The original `electron/preload.js` is copied for provenance but is
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
-  The CI apt step installs `xdotool`; the latest run is recorded after push.
+  The CI apt step installs `xdotool`. GitHub Actions run 302 (`6f7f708`,
+  `linux-native`) passed the native-menu, net.fetch and two-display tests.
 
 ## Reproduction
 

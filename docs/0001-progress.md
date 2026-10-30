@@ -742,8 +742,8 @@ open dialog.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
   `CI=true` (missing source/build fails rather than skips); the apt step now
-  installs `xdotool`. The native-menu/net/two-display CI run is recorded after
-  push; local evidence is above.
+  installs `xdotool`. GitHub Actions run 302 (`6f7f708`) passed the native
+  menu, net.fetch and two-display injection tests; local evidence is above.
 - IME, native role actions, `net.request`, hardware multi-monitor selection
   and macOS remain NOT RUN/out of scope; the X11 ASCII keyboard path is
   covered above and is not an IME claim. The two-display result uses a

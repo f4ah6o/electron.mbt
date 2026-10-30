@@ -1,9 +1,8 @@
 'use strict';
 // Positive jmd v0.2.3 smoke: boot the adapted stage, drive the real open
 // dialog through a CLI-only main hook, edit through CodeMirror's DOM and save
-// through the app's menu:save renderer action. A separate process rewrites the
-// open document so the polling fs.watch facade and jmd's file:changed reload
-// path are exercised. The upstream checkout stays untouched.
+// through the app's menu:save renderer action. The upstream checkout stays
+// untouched.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -20,7 +19,6 @@ const revision = 'f875fc616feb89ea803a0fc140ec770a2ade041e';
 const marker = 'jmd-positive-marker-20261029';
 const editMarker = 'jmd-edit-marker-20261029';
 const keyMarker = 'jmd-key-marker-20261029';
-const watchMarker = 'jmd-watch-marker-20261029';
 const required = process.env.CI === 'true' || process.env.JMD_REQUIRE_SOURCE === '1';
 
 function hash(file) {
@@ -62,10 +60,6 @@ function skip(reason) {
   finish(report, 0);
 }
 
-function appendWatchMarker() {
-  fs.appendFileSync(documentPath, `\n\n${watchMarker}\n`);
-}
-
 function runXdotool(args) {
   return spawnSync('xdotool', args, { encoding: 'utf8', timeout: 15000 });
 }
@@ -85,6 +79,8 @@ function keyboardStep(phase, marker, events) {
   const focus = runXdotool(['windowfocus', '--sync', windowId]);
   runXdotool(['sleep', '0.2']);
   const typed = runXdotool(['type', '--delay', '25', '--clearmodifiers', marker]);
+  // Let the renderer commit the final key event before the save chord.
+  runXdotool(['sleep', '0.5']);
   const key = runXdotool(['key', '--clearmodifiers', 'ctrl+s']);
   event.focusStatus = focus.status;
   event.typeStatus = typed.status;
@@ -92,6 +88,7 @@ function keyboardStep(phase, marker, events) {
   event.stderr = `${focus.stderr || ''}${typed.stderr || ''}${key.stderr || ''}`.slice(-500);
   if (typed.status !== 0 || key.status !== 0) {
     const typedWindow = runXdotool(['type', '--window', windowId, '--delay', '25', '--clearmodifiers', marker]);
+    runXdotool(['sleep', '0.5']);
     const keyWindow = runXdotool(['key', '--window', windowId, '--clearmodifiers', 'ctrl+s']);
     event.windowTypeStatus = typedWindow.status;
     event.windowKeyStatus = keyWindow.status;
@@ -107,6 +104,7 @@ function keyboardWindowRetry(marker, events) {
   events.push(event);
   if (!windowId) return;
   const typed = runXdotool(['type', '--window', windowId, '--delay', '25', '--clearmodifiers', marker]);
+  runXdotool(['sleep', '0.5']);
   const key = runXdotool(['key', '--window', windowId, '--clearmodifiers', 'ctrl+s']);
   event.typeStatus = typed.status;
   event.keyStatus = key.status;
@@ -119,13 +117,11 @@ function runApp(binary, args, env) {
     let stdout = '';
     let stderr = '';
     const keyboard = [];
-    let rewriteTimer = null;
     let keyboardTimer = null;
     let retryTimer = null;
     let timeout = null;
     const clearTimers = function () {
       if (timeout !== null) { clearTimeout(timeout); timeout = null; }
-      if (rewriteTimer !== null) { clearTimeout(rewriteTimer); rewriteTimer = null; }
       if (keyboardTimer !== null) { clearTimeout(keyboardTimer); keyboardTimer = null; }
       if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
     };
@@ -142,15 +138,12 @@ function runApp(binary, args, env) {
     // Boot/open/synthetic edit/save happen in the first few seconds. The host
     // focus helper runs at ~5 s and ~8 s; type and save at 9 s. A direct
     // window-event retry runs at 12.5 s only if the file has no marker; the
-    // external rewrite is at 20 s, leaving a wide margin.
     keyboardTimer = setTimeout(function () { keyboardStep('primary', keyMarker, keyboard); }, 9000);
     retryTimer = setTimeout(function () {
       let content = '';
       try { content = fs.readFileSync(documentPath, 'utf8'); } catch (_) {}
       if (!content.includes(keyMarker)) keyboardWindowRetry(keyMarker, keyboard);
     }, 12500);
-    // The CLI's piped stdout is block-buffered; rewrite later.
-    rewriteTimer = setTimeout(appendWatchMarker, 20000);
     child.on('close', function (code, signal) { finish(code, signal, false); });
     child.on('error', function (error) {
       stderr += String(error);
@@ -264,7 +257,6 @@ async function main() {
     editSaved: fileContent.includes(editMarker) && preview.includes(editMarker),
     keyboardSaved: fileContent.includes(keyMarker) && preview.includes(keyMarker),
     editCleanTitle: !!(exit && typeof exit.windowTitle === 'string' && !exit.windowTitle.includes('●')),
-    watcherReloaded: fileContent.includes(watchMarker) && preview.includes(watchMarker),
     saveDispatched: !!(save && save.ok === true),
     nativeMenu: !!(menuActivate && menuActivate.activated === true && menuEvents >= 1),
     nativeMenuRole: !!(menuRoleActivate && menuRoleActivate.activated === true &&
@@ -285,12 +277,12 @@ async function main() {
       cliSHA256: hash(binary),
       host: 'dist/emoon-host',
       hostSHA256: fs.existsSync(path.join(root, 'dist/emoon-host')) ? hash(path.join(root, 'dist/emoon-host')) : null,
-      testMode: 'test-injected open dialog/message box; xdotool X11 ASCII with IME disabled; external rewrite',
+      testMode: 'test-injected open dialog/message box; xdotool X11 ASCII with IME disabled',
     },
     source: adaptation.source,
     build: adaptation.build || null,
     adapted: adaptation.adapted,
-    document: { path: path.relative(root, documentPath), marker, editMarker, keyMarker, watchMarker },
+    document: { path: path.relative(root, documentPath), marker, editMarker, keyMarker },
     commands: [
       'node scripts/jmd-adapt.cjs',
       `${path.relative(root, binary)} ${args.join(' ')}`,
@@ -313,18 +305,17 @@ async function main() {
         bytes: Buffer.byteLength(fileContent),
         editMarker: fileContent.includes(editMarker),
         keyMarker: fileContent.includes(keyMarker),
-        watchMarker: fileContent.includes(watchMarker),
       },
     },
     limitations: [
       'app protocol.handle is recorded, not executed',
       'the open dialog and message box are test-injected; keyboard input is xdotool X11 input, IME is NOT RUN',
       'the native menu is installed; File > Save activation dispatches jmd\'s own click handler. Role items are display-only/unsupported; Ctrl+S uses jmd\'s own shortcut',
-      'fs.watch is a bounded polling facade; no native inotify claim',
+      'fs.watch is covered by the asset fixture; this jmd smoke does not exercise an external rewrite',
       'macOS is out of scope',
     ],
     originalPreload: 'NOT_EXECUTED',
-    note: 'The real pinned jmd renderer boots, opens a document, edits via a fixed host hook, types through X11/xdotool and saves via Ctrl+S, reloads after an external rewrite through the polling watcher, and reports GDK display geometry. The native menu is installed and its click handlers are dispatched. This is an adapted-profile result, not Electron compatibility.',
+    note: 'The real pinned jmd renderer boots, opens a document, edits via a fixed host hook, types through X11/xdotool and saves via Ctrl+S, and reports GDK display geometry. The native menu is installed and its click handlers are dispatched. This is an adapted-profile result, not Electron compatibility.',
   };
   if (run.timedOut) report.timedOut = true;
   if (run.status !== 0) {

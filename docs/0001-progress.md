@@ -727,15 +727,14 @@ open dialog.
   `test:menu-save`; then a fixed host helper focuses `.cm-content`, `xdotool`
   types `jmd-key-marker-20261029` as real X11 ASCII input and sends Ctrl+S
   through the native menu accelerator (no page binding); a retry with direct
-  window events at 12.5 s only if the file lacks the keyboard marker, and an
-  external rewrite at 20 s exercises `fs.watch` reload. The host also
+  window events at 12.5 s only if the file lacks the keyboard marker. The host also
   activates File > Save through the native GtkMenuBar and checks its click
   dispatch, and activates View > Zoom In through the native role path
   (`zoomLevel:1.2`). It asserts adapted
   boot/release, page URL, window title, initial UI, open dispatch, preview
   marker, `jmd-file` admission, image served, `naturalWidth:16`, exact edited
-  and keyboard bytes, clean title, watcher reload, display bounds/count/
-  matching, native menu click/role activation, message-box response 2 and
+  and keyboard bytes, clean title, display bounds/count/matching, native menu
+  click/role activation, message-box response 2 and
   `handlerExecuted:false`. `compatible:false`. The test disables the desktop
   IME and types ASCII only; IME is NOT RUN.
 - Evidence: `compatibility/reports/jmd-positive.json` and

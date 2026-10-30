@@ -6,9 +6,9 @@ document through a test-injected native open dialog, renders the marker in the
 preview, and loads a relative PNG through the `jmd-file` broker. It then edits
 the real CodeMirror editor (both a fixed host hook and real X11/xdotool ASCII
 key events), saves through the app's `menu:save` action and a real Ctrl+S
-chord, verifies the exact file bytes, and reloads after an external rewrite
-via the bounded polling `fs.watch` facade. `fs.watchFile`/`fs.unwatchFile` and
-bounded recursive `fs.watch` are implemented and covered by the fixture.
+chord, and verifies the exact file bytes. `fs.watch`/`fs.watchFile`/recursive
+`fs.watch` are implemented and covered by the asset fixture; the jmd smoke no
+longer performs an external rewrite.
 The native GTK menu is installed and File > Save dispatches jmd's own click
 handler; real Ctrl+S reaches it through the host accelerator mapping. Two-
 display selection is covered by a test-only injection (hardware multi-monitor
@@ -43,7 +43,7 @@ This is not an Electron-compatibility result and does not unblock the strict
   page-level Ctrl+S binding. The test disables the desktop IME
   (`GTK_IM_MODULE=gtk-im-context-simple`) so only ASCII is typed; IME is NOT
   RUN. A direct window-event retry runs only if the file still lacks the
-  keyboard marker at 12.5 s; an external rewrite follows at 20 s.
+  keyboard marker at 12.5 s.
 - `Menu.buildFromTemplate`/`setApplicationMenu` serialize a bounded tree
   (256 items, depth 8). The host installs a real GtkMenuBar, maps the
   accelerator display and a WebView key handler, and publishes `menu-click`
@@ -59,9 +59,9 @@ This is not an Electron-compatibility result and does not unblock the strict
 - `--run-loop` provides a real window event loop (menu clicks, page requests,
   timers) without the test hold; the menu test uses it. `--hold` remains the
   test harness.
-- A second process appends `jmd-watch-marker-20261029` while the app is open.
-  The prelude's bounded `fs.watch` stat poller emits a change; jmd's
-  `file:changed` path reloads the tab and the preview updates.
+- The jmd smoke does not perform an external rewrite; the bounded polling
+  watcher behavior is covered by the asset fixture. jmd app-level
+  `file:changed` reload remains NOT RUN in this smoke.
 - The document includes `![pixel](pixel.png)`. The bespoke page shim's
   `resolveAsset` produces `jmd-file://local/<encoded path>`; the stage admits
   `jmd-file` and the asset broker serves the dialog-granted document-directory
@@ -93,7 +93,7 @@ The original `electron/preload.js` is copied for provenance but is
     `adaptedBoot:true`, `windowTitle:"note.md — jmd"`,
     `openDialog:true`, `previewMarker:true`, `assetServed:true`,
     `imageLoaded:true`, `handlerExecuted:false`, `editSaved:true`,
-    `keyboardSaved:true`, `editCleanTitle:true`, `watcherReloaded:true`,
+    `keyboardSaved:true`, `editCleanTitle:true`,
     `saveDispatched:true`, `displayBounds:true`, `displayCount:true`,
     `matchingBounds:true`, `messageBox:true`, `nativeMenu:true`,
     `nativeMenuRole:true` (`zoomLevel:1.2`).
@@ -107,16 +107,14 @@ The original `electron/preload.js` is copied for provenance but is
 
     A pinned jmd renderer opened this document through the adapted open dialog.
 
-    jmd-edit-marker-20261029jmd-key-marker-20261029
-    jmd-watch-marker-20261029
-    ```
+    jmd-edit-marker-20261029jmd-key-marker-20261029    ```
 - The same stage in a manual run:
 
   ![jmd 0.2.3 adapted positive](images/jmd-positive-20261029.png)
 
 - `tests/asset-protocol.test.cjs`: **17 PASS**, including native-menu
   click/role activation, `net.fetch` and `net.request` against local HTTP
-  servers, two-display injection and the watcher/facade negatives.
+  servers, two-display injection and the watcher/role/facade negatives.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
@@ -151,8 +149,9 @@ writes `compatibility/reports/jmd-positive.json`.
   Save item. Allowlisted native roles run in the host; editing-role behavior is
   not independently observed, and `toggleDevTools`/unknown roles are no-ops.
 - `fs.watch`, `fs.watchFile` and recursive `fs.watch` are bounded polling
-  facades, not inotify. They deliver the jmd reload path and fixture events but
-  not native event fidelity; recursive/`watchFile` caps are 4096 entries and
+  facades, not inotify. The asset fixture covers file/watchFile/recursive
+  events; jmd app-level reload is NOT RUN in this smoke. Recursive/`watchFile`
+  caps are 4096 entries and
   250..60000 ms intervals. `persistent`/`unref()` are accepted but do not claim
   a process-lifecycle behavior.
 - `loadFile` query supports string/number/boolean values only; the app scheme

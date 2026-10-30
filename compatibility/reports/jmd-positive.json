@@ -12,7 +12,7 @@
     "cliSHA256": "7c50ee69a2b638a3538f112d0651a280671636d4ffd20cf8cc2910ae09eefa24",
     "host": "dist/emoon-host",
     "hostSHA256": "41dd620ae318eb0fdb7f78a4897242353cfef2f654f440b3fed24b300d08075b",
-    "testMode": "test-injected open dialog/message box; xdotool X11 ASCII with IME disabled; external rewrite"
+    "testMode": "test-injected open dialog/message box; xdotool X11 ASCII with IME disabled"
   },
   "source": {
     "mainSHA256": "fd959bead9b8f05cab0f943676824f628d323b563508a0af9c03dc5765c9e737",
@@ -35,8 +35,7 @@
     "path": "_build/jmd-positive-doc/note.md",
     "marker": "jmd-positive-marker-20261029",
     "editMarker": "jmd-edit-marker-20261029",
-    "keyMarker": "jmd-key-marker-20261029",
-    "watchMarker": "jmd-watch-marker-20261029"
+    "keyMarker": "jmd-key-marker-20261029"
   },
   "commands": [
     "node scripts/jmd-adapt.cjs",
@@ -63,7 +62,6 @@
     "editSaved": true,
     "keyboardSaved": true,
     "editCleanTitle": true,
-    "watcherReloaded": true,
     "saveDispatched": true,
     "nativeMenu": true,
     "nativeMenuRole": true
@@ -72,8 +70,8 @@
     "pageTitle": "jmd",
     "windowTitle": "note.md — jmd",
     "pageURL": "electron-mbt-app://app/dist/index.html",
-    "preview": "jmd positive\n\njmd-positive-marker-20261029\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n\n\njmd-edit-marker-20261029jmd-key-marker-20261029\n\njmd-watch-marker-20261029\n",
-    "pageText": "\n/home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-doc/note.md\n⚙\nnote.md\n×\n+\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n# jmd positive\n\njmd-positive-marker-20261029",
+    "preview": "jmd positive\n\njmd-positive-marker-20261029\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n\n\njmd-edit-marker-20261029jmd-key-marker-20261029\n",
+    "pageText": "\n/home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-doc/note.md\n⚙\nnote.md\n×\n+\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n# jmd positive\n\njmd-positive-marker-20261029\n\nA pinne",
     "dispatch": {
       "ok": true,
       "result": "{\"ok\":true,\"result\":{\"open\":true,\"display\":{\"id\":0,\"bounds\":{\"x\":0,\"y\":0,\"width\":1920,\"height\":1080},\"workArea\":{\"x\":49,\"y\":27,\"width\":1871,\"height\":1053},\"workAreaSize\":{\"width\":1871,\"height\":1053},\"size\":{\"width\":1920,\"height\":1080},\"scaleFactor\":1},\"all\":1,\"matching\":{\"x\":0,\"y\":0,\"width\":1920,\"height\":1080},\"box\":{\"response\":2,\"checkboxChecked\":false}}}"
@@ -144,13 +142,13 @@
         "action": "zoomIn",
         "role": "zoomIn"
       },
-      "events": 49,
+      "events": 48,
       "zoomLevel": 1.2
     },
     "keyboard": [
       {
         "phase": "primary",
-        "window": "98566158",
+        "window": "119537678",
         "searchStatus": 0,
         "searchStderr": "",
         "focusStatus": 0,
@@ -160,7 +158,7 @@
       },
       {
         "phase": "window-retry",
-        "window": "98566158",
+        "window": "119537678",
         "searchStatus": 0,
         "typeStatus": 0,
         "keyStatus": 0,
@@ -168,21 +166,20 @@
       }
     ],
     "file": {
-      "bytes": 220,
+      "bytes": 192,
       "editMarker": true,
-      "keyMarker": true,
-      "watchMarker": true
+      "keyMarker": true
     }
   },
   "limitations": [
     "app protocol.handle is recorded, not executed",
     "the open dialog and message box are test-injected; keyboard input is xdotool X11 input, IME is NOT RUN",
     "the native menu is installed; File > Save activation dispatches jmd's own click handler. Role items are display-only/unsupported; Ctrl+S uses jmd's own shortcut",
-    "fs.watch is a bounded polling facade; no native inotify claim",
+    "fs.watch is covered by the asset fixture; this jmd smoke does not exercise an external rewrite",
     "macOS is out of scope"
   ],
   "originalPreload": "NOT_EXECUTED",
-  "note": "The real pinned jmd renderer boots, opens a document, edits via a fixed host hook, types through X11/xdotool and saves via Ctrl+S, reloads after an external rewrite through the polling watcher, and reports GDK display geometry. The native menu is installed and its click handlers are dispatched. This is an adapted-profile result, not Electron compatibility.",
+  "note": "The real pinned jmd renderer boots, opens a document, edits via a fixed host hook, types through X11/xdotool and saves via Ctrl+S, and reports GDK display geometry. The native menu is installed and its click handlers are dispatched. This is an adapted-profile result, not Electron compatibility.",
   "visual": {
     "path": "docs/images/jmd-positive-20261029.png",
     "note": "Manual run of the same stage: the jmd window shows note.md, the editor text and the preview marker."

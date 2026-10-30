@@ -1487,6 +1487,9 @@ static void handle_create_window(Host *host, Request *request) {
   g_signal_connect(host->web, "web-process-terminated",
                    G_CALLBACK(on_web_process_terminated), host);
   gtk_widget_show_all(host->window);
+  /* The menu bar is the first focusable child; start keyboard focus on the
+   * WebView so real typing reaches the page without a mouse click. */
+  gtk_widget_grab_focus(GTK_WIDGET(host->web));
   ebt_debug("window-realized=%d mapped=%d\n",
             gtk_widget_get_realized(host->window),
             gtk_widget_get_mapped(host->window));
@@ -1831,6 +1834,9 @@ static void handle_focus_jmd_editor(Host *host, Request *request) {
     request_failure(request, "ELECTRON_MBT_STALE_DOCUMENT");
     return;
   }
+  /* The native menu bar can hold GTK keyboard focus after a menu action.
+   * Restore WebView focus before asking the page to focus the editor. */
+  if (host->web != NULL) gtk_widget_grab_focus(GTK_WIDGET(host->web));
   static const char script[] =
     "(function(){"
     "var el=document.querySelector('.cm-content');"

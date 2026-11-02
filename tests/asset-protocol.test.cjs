@@ -638,6 +638,101 @@ test('net.fetch returns bounded HTTP responses and rejects unsafe schemes', {
   }
 });
 
+test('net.request streams response before body completion and aborts', {
+  skip: !supported || !hostAvailable,
+}, async () => {
+  const { spawn } = require('node:child_process');
+  const server = spawn(process.execPath, ['-e', `
+    const http = require('http');
+    let closed = 0;
+    const server = http.createServer((req, res) => {
+      if (req.url === '/stats') {
+        res.writeHead(200, {'content-type':'application/json'});
+        res.end(JSON.stringify({closed: closed}));
+      } else if (req.url === '/stream') {
+        res.writeHead(200, {'content-type':'text/plain', 'x-stream':'yes'});
+        res.write('first');
+        setTimeout(() => { res.write('second'); res.end(); }, 400);
+      } else if (req.url === '/abort') {
+        res.writeHead(200, {'content-type':'text/plain'});
+        res.write('first');
+        req.on('close', () => { closed += 1; });
+      } else {
+        res.writeHead(500); res.end('unknown');
+      }
+    });
+    server.listen(0, '127.0.0.1', () => console.log('READY ' + server.address().port));
+    process.on('SIGTERM', () => server.close(() => process.exit(0)));
+  `], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const port = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('stream server did not start')), 5000);
+    server.stdout.on('data', chunk => {
+      const match = String(chunk).match(/READY (\d+)/);
+      if (match) { clearTimeout(timer); resolve(Number(match[1])); }
+    });
+    server.on('error', reject);
+  });
+  const binary = buildBinary();
+  const assets = makeAssetsDir('netstream');
+  const base = `http://127.0.0.1:${port}`;
+  const app = makeApp([
+    "'use strict';",
+    "const { app, BrowserWindow, net } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'netstream', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "  const out = [];",
+    "  let pending = 2;",
+    "  function done() { if (--pending === 0) win.setTitle(out.join('|')); }",
+    `  const stream = net.request(${JSON.stringify(base + '/stream')});`,
+    "  let streamChunks = 0;",
+    "  let streamEnded = false;",
+    "  let responseBeforeSecond = false;",
+    "  stream.on('error', function (error) { out.push('streamerr:' + error.code); done(); });",
+    "  stream.on('response', function (response) {",
+    "    out.push('stream-status:' + response.statusCode);",
+    "    setTimeout(function () {",
+    "      responseBeforeSecond = streamChunks >= 1 && !streamEnded;",
+    "      out.push('stream-before:' + responseBeforeSecond);",
+    "      done();",
+    "    }, 200);",
+    "    response.on('data', function () { streamChunks += 1; });",
+    "    response.on('end', function () { streamEnded = true; out.push('stream-chunks:' + streamChunks); });",
+    "  });",
+    "  stream.end();",
+    `  const abort = net.request(${JSON.stringify(base + '/abort')});`,
+    "  let abortEvent = false;",
+    "  let abortEnd = false;",
+    "  abort.on('response', function (response) {",
+    "    response.on('data', function () { if (!abortEvent) abort.abort(); });",
+    "    response.on('end', function () { abortEnd = true; });",
+    "  });",
+    "  abort.on('abort', function () { abortEvent = true; });",
+    "  abort.on('error', function () { abortEvent = true; });",
+    "  abort.end();",
+    "  setTimeout(function () {",
+    "    out.push('abort:' + abortEvent + ':' + abortEnd);",
+    "    done();",
+    "  }, 1200);",
+    "});",
+    '',
+  ].join('\n'), assets.image, {}, '<!doctype html><title>netstream</title>');
+  try {
+    const { result, exit } = runLoop(binary, app, {}, 12);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const actual = String(exit && exit.windowTitle).split('|').sort();
+    const expected = 'stream-status:200|stream-before:true|stream-chunks:2|abort:true:false'.split('|').sort();
+    assert.deepEqual(actual, expected,
+      `net stream title: ${exit && exit.windowTitle}; ${result.stderr}`);
+    const stats = await (await fetch(`http://127.0.0.1:${port}/stats`)).json();
+    assert.ok(stats.closed >= 1, `abort did not close the server request: ${JSON.stringify(stats)}`);
+  } finally {
+    server.kill('SIGTERM');
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
+});
+
 test('multi-display injection selects by point and matching rectangle', {
   skip: !supported || !hostAvailable,
 }, () => {
@@ -701,7 +796,61 @@ test('native menu role actions zoom and close', {
   }
 });
 
-test('net.request is bounded and emits buffered responses', {
+test('native editing roles select, cut, undo and redo', {
+  skip: !supported || !hostAvailable,
+}, () => {
+  const binary = buildBinary();
+  const assets = makeAssetsDir('editroles');
+  const html = [
+    '<!doctype html>',
+    '<title>start</title>',
+    '<textarea id="editor">alpha beta gamma</textarea>',
+    '<script>',
+    'const editor = document.getElementById("editor");',
+    'const history = [];',
+    'function focusEditor() { editor.focus(); editor.setSelectionRange(0, 0); }',
+    'focusEditor();',
+    'window.addEventListener("focus", focusEditor);',
+    'setTimeout(focusEditor, 1000);',
+    'setTimeout(focusEditor, 1800);',
+    'editor.addEventListener("input", function () {',
+    '  history.push(editor.value);',
+    '  document.title = "history:" + history.join("|");',
+    '});',
+    'document.title = "start:" + editor.value;',
+    '</script>',
+    '',
+  ].join('\n');
+  const app = makeApp([
+    "'use strict';",
+    "const { app, BrowserWindow, Menu } = require('electron');",
+    "app.whenReady().then(function () {",
+    "  const win = new BrowserWindow({ width: 320, height: 200, title: 'editroles', show: false });",
+    "  win.loadFile('renderer/index.html');",
+    "  Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'Edit', submenu: [",
+    "    { role: 'selectAll', label: 'Select All' },",
+    "    { role: 'cut', label: 'Cut' },",
+    "    { role: 'undo', label: 'Undo' },",
+    "    { role: 'redo', label: 'Redo' },",
+    "  ] }]));",
+    "});",
+    '',
+  ].join('\n'), assets.image, {}, html);
+  try {
+    const { result, exit } = runLoop(binary, app, {}, 12, [
+      '--menu-activate-sequence', 'Select All,Cut,Undo,Redo',
+    ]);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(exit && exit.pageTitle, 'history:|alpha beta gamma|',
+      `editing role title: ${exit && exit.pageTitle}; ${JSON.stringify(exit)}; stderr=${result.stderr}`);
+    assert.equal((exit.menuSequence || []).length, 4, JSON.stringify(exit.menuSequence));
+  } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.rmSync(assets.dir, { recursive: true, force: true });
+  }
+});
+
+test('net.request streams responses and enforces bounds', {
   skip: !supported || !hostAvailable,
 }, async () => {
   const { spawn } = require('node:child_process');
@@ -756,7 +905,10 @@ test('net.request is bounded and emits buffered responses', {
     "  echo.write('hello');",
     "  echo.end();",
     `  const big = net.request(${JSON.stringify(base + '/big')});`,
-    "  big.on('response', function () { out.push('big:response'); done(); });",
+    "  big.on('response', function (response) {",
+    "    response.on('data', function () {});",
+    "    response.on('end', function () { out.push('big:end'); done(); });",
+    "  });",
     "  big.on('error', function (error) { out.push('big:' + error.code); done(); });",
     "  big.end();",
     "  const file = net.request('file:///etc/passwd');",
@@ -770,8 +922,9 @@ test('net.request is bounded and emits buffered responses', {
   try {
     const { result, exit } = runLoop(binary, app, {}, 10);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.equal(exit && exit.windowTitle,
-      'overreq:ELECTRON_MBT_NET_LIMIT|method:ELECTRON_MBT_NET_METHOD|post:201:POST:hello:yes|big:ELECTRON_MBT_NET_LIMIT|file:ELECTRON_MBT_NET_URL',
+    const actual = String(exit && exit.windowTitle).split('|').sort();
+    const expected = 'overreq:ELECTRON_MBT_NET_LIMIT|method:ELECTRON_MBT_NET_METHOD|post:201:POST:hello:yes|big:ELECTRON_MBT_NET_LIMIT|file:ELECTRON_MBT_NET_URL'.split('|').sort();
+    assert.deepEqual(actual, expected,
       `net.request title: ${exit && exit.windowTitle}; ${result.stderr}`);
   } finally {
     server.kill('SIGTERM');

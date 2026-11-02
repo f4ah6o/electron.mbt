@@ -12,8 +12,9 @@ longer performs an external rewrite.
 The native GTK menu is installed and File > Save dispatches jmd's own click
 handler; real Ctrl+S reaches it through the host accelerator mapping. Two-
 display selection is covered by a test-only injection (hardware multi-monitor
-is NOT RUN), and `net.fetch`/buffered `net.request` are exercised against a
-local HTTP server. The original preload is not executed. IME,
+is NOT RUN), and `net.fetch`/chunked `net.request` are exercised against a
+local HTTP server; a separate `scripts/jmd-watch.cjs` verifies jmd's
+external-reload path. The original preload is not executed. IME,
 `toggleDevTools`/unknown roles and macOS remain **NOT RUN/out of scope**.
 
 This is not an Electron-compatibility result and does not unblock the strict
@@ -51,17 +52,20 @@ This is not an Electron-compatibility result and does not unblock the strict
   execute a fixed host allowlist (editing commands, zoom, fullscreen,
   minimize/close); `toggleDevTools` and unknown roles are no-ops.
 - `net.fetch` performs bounded http(s) GET/HEAD through libsoup (512 KiB
-  response cap, 5 s timeout, no redirects/credentials). `net.request` is a
-  buffered ClientRequest-like EventEmitter (GET/HEAD/POST/PUT/PATCH/DELETE,
-  256 KiB request cap, 512 KiB response cap); it emits `response` with a
-  buffered IncomingMessage and `data`/`end`. Local fixtures check 200
-  text/JSON, 404, over-cap, `file://` rejection, POST echo and headers.
+  response cap, 5 s timeout, no redirects/credentials). `net.request` is an
+  asynchronous ClientRequest-like EventEmitter (GET/HEAD/POST/PUT/PATCH/
+  DELETE, 256 KiB request cap, 512 KiB response cap); the host starts the
+  request, emits `response` before the body, then bounded `data` chunks and
+  `end`, and supports in-flight `abort()`. Local fixtures check 200
+  text/JSON, 404, over-cap, `file://` rejection, POST echo, headers, delayed
+  chunks (response before second chunk) and abort (no end; server sees close).
 - `--run-loop` provides a real window event loop (menu clicks, page requests,
   timers) without the test hold; the menu test uses it. `--hold` remains the
   test harness.
-- The jmd smoke does not perform an external rewrite; the bounded polling
-  watcher behavior is covered by the asset fixture. jmd app-level
-  `file:changed` reload remains NOT RUN in this smoke.
+- The jmd positive smoke does not perform an external rewrite. A separate
+  `scripts/jmd-watch.cjs` boots the same stage without xdotool/menu
+  interaction, rewrites `note.md` externally and verifies jmd's
+  `file:changed` reload through `probe-renderer`.
 - The document includes `![pixel](pixel.png)`. The bespoke page shim's
   `resolveAsset` produces `jmd-file://local/<encoded path>`; the stage admits
   `jmd-file` and the asset broker serves the dialog-granted document-directory
@@ -112,20 +116,27 @@ The original `electron/preload.js` is copied for provenance but is
 
   ![jmd 0.2.3 adapted positive](images/jmd-positive-20261029.png)
 
-- `tests/asset-protocol.test.cjs`: **17 PASS**, including native-menu
-  click/role activation, `net.fetch` and `net.request` against local HTTP
+- `scripts/jmd-watch.cjs`: **PASS**; external rewrite reloads the open
+  `note.md` through jmd's `file:changed` path; evidence in
+  `compatibility/reports/jmd-watch.json`.
+- `tests/asset-protocol.test.cjs`: **19 PASS**, including native-menu
+  click/role activation, native editing roles (select/cut/undo/redo),
+  `net.fetch` and streaming/abortable `net.request` against local HTTP
   servers, two-display injection and the watcher/role/facade negatives.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
   The CI apt step installs `xdotool`. GitHub Actions run 304 (`e731add`,
-  `linux-native`) passed the native-menu role, net.fetch/net.request and
-  two-display tests.
+  `linux-native`) passed the earlier native-menu role, net.fetch/net.request
+  and two-display increment. This increment adds the editing-role and
+  streaming/abort fixtures and the separate jmd-watch step; its CI run is
+  pending parent push.
 
 ## Reproduction
 
 ```
 node scripts/jmd-positive.cjs
+node scripts/jmd-watch.cjs
 ```
 
 The script requires:
@@ -147,8 +158,9 @@ writes `compatibility/reports/jmd-positive.json`.
 - Save goes through the app's `menu:save` renderer action for the synthetic
   edit, and through a real Ctrl+S chord for the X11 edit. The native GtkMenuBar
   is installed; Ctrl+S is mapped by the host accelerator handler to the native
-  Save item. Allowlisted native roles run in the host; editing-role behavior is
-  not independently observed, and `toggleDevTools`/unknown roles are no-ops.
+  Save item. Allowlisted native roles run in the host; select/cut/undo/redo
+  are observed with a focused textarea fixture, and `toggleDevTools`/unknown
+  roles are no-ops.
 - `fs.watch`, `fs.watchFile` and recursive `fs.watch` are bounded polling
   facades, not inotify. The asset fixture covers file/watchFile/recursive
   events; jmd app-level reload is NOT RUN in this smoke. Recursive/`watchFile`
@@ -166,9 +178,10 @@ writes `compatibility/reports/jmd-positive.json`.
   second GDK monitor, so hardware multi-monitor selection is NOT RUN. The
   two-display fixture uses a test-only injection. A 1280x800 fallback remains
   if the host op is unavailable.
-- `net.fetch` is bounded (512 KiB, 5 s, no redirects); `net.request` is
-  buffered (256 KiB request, 512 KiB response) with no streaming/backpressure
-  and no abort-time cancellation. There is no private-network/SSRF allowlist;
+- `net.fetch` is bounded (512 KiB, 5 s, no redirects); `net.request` streams
+  response chunks and supports in-flight abort, with a 256 KiB request cap,
+  512 KiB response cap, no backpressure and no abort after `end`. There is no
+  private-network/SSRF allowlist;
   the adapted main is trusted and network access is a deliberate capability,
   not a sandbox. Native role actions are a fixed allowlist; `toggleDevTools`
   and unknown roles are no-ops. `droppedFilePath` stays fail-closed.

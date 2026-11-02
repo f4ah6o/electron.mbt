@@ -334,6 +334,8 @@ static int ebt_host_request(const char *operation, const char *payload,
       strcmp(operation, "activate-menu-item") == 0 ||
       strcmp(operation, "get-menu-status") == 0 ||
       strcmp(operation, "net-fetch") == 0 ||
+      strcmp(operation, "net-request-start") == 0 ||
+      strcmp(operation, "net-request-abort") == 0 ||
       strcmp(operation, "net-request") == 0 ||
       strcmp(operation, "get-primary-display") == 0 ||
       strcmp(operation, "get-all-displays") == 0 ||
@@ -421,6 +423,8 @@ static int js_host_operation_allowed(const char *operation) {
     "install-menu",
     "get-menu-status",
     "net-fetch",
+    "net-request-start",
+    "net-request-abort",
     "net-request",
     "get-primary-display",
     "get-all-displays",

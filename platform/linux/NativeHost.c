@@ -111,6 +111,8 @@ typedef struct Snapshot {
   guint64 total_bytes;
 } Snapshot;
 
+typedef struct NetRequest NetRequest;
+
 typedef struct Host {
   char *root;
   char session[33];
@@ -150,7 +152,11 @@ typedef struct Host {
   gboolean ingress_released;
   gint64 ingress_released_generation;
   guint64 next_event;
+  gint raw_event_seq;
   guint64 next_request;
+  GHashTable *net_requests;
+  GMutex net_lock;
+  gint next_net_id;
   guint64 ingress_admitted;
   guint64 ingress_denied;
   guint64 ingress_unhandled;
@@ -179,6 +185,7 @@ typedef struct Host {
   gboolean shutting_down;
 } Host;
 
+static void menu_focus_web(Host *host);
 static void menu_apply_accelerators(Host *host);
 static void menu_replace_accel_group(Host *host);
 static gboolean on_web_key_press(GtkWidget *widget, GdkEventKey *event,
@@ -775,6 +782,57 @@ static gboolean publish_event(Host *host, const char *operation, gint64 generati
   }
   char *text = jsc_value_to_json(notice, 0);
   g_object_unref(notice);
+  if (text == NULL || strlen(text) > EBT_MAX_FRAME) {
+    g_free(text);
+    return FALSE;
+  }
+  g_async_queue_push(host->events, text);
+  return TRUE;
+}
+
+static char *json_quote(const char *text) {
+  GString *out = g_string_new("\"");
+  if (text != NULL) {
+    for (const unsigned char *cursor = (const unsigned char *)text;
+         *cursor != 0; cursor++) {
+      switch (*cursor) {
+        case '"': g_string_append(out, "\\\""); break;
+        case '\\': g_string_append(out, "\\\\"); break;
+        case '\b': g_string_append(out, "\\b"); break;
+        case '\f': g_string_append(out, "\\f"); break;
+        case '\n': g_string_append(out, "\\n"); break;
+        case '\r': g_string_append(out, "\\r"); break;
+        case '\t': g_string_append(out, "\\t"); break;
+        default:
+          if (*cursor < 0x20) {
+            g_string_append_printf(out, "\\u%04x", (unsigned)*cursor);
+          } else {
+            g_string_append_c(out, (char)*cursor);
+          }
+      }
+    }
+  }
+  g_string_append_c(out, '"');
+  return g_string_free(out, FALSE);
+}
+
+/* Worker threads must not touch the JSC context. Build the event JSON
+ * directly and push it onto the same async queue used by event_writer. */
+static gboolean publish_event_raw(Host *host, const char *operation,
+                                  gint64 generation, const char *payload_json) {
+  if (host == NULL || operation == NULL || payload_json == NULL ||
+      host->shutting_down) {
+    return FALSE;
+  }
+  if (g_async_queue_length(host->events) >= EBT_MAX_EVENTS) return FALSE;
+  char *session = json_quote(host->session);
+  gint sequence = g_atomic_int_add(&host->raw_event_seq, 1) + 1;
+  char *text = g_strdup_printf(
+    "{\"version\":1,\"session\":%s,\"request\":%d,\"window\":1,"
+    "\"generation\":%" G_GINT64_FORMAT ",\"operation\":\"%s\","
+    "\"payload\":%s}",
+    session, sequence, generation, operation, payload_json);
+  g_free(session);
   if (text == NULL || strlen(text) > EBT_MAX_FRAME) {
     g_free(text);
     return FALSE;
@@ -1489,7 +1547,7 @@ static void handle_create_window(Host *host, Request *request) {
   gtk_widget_show_all(host->window);
   /* The menu bar is the first focusable child; start keyboard focus on the
    * WebView so real typing reaches the page without a mouse click. */
-  gtk_widget_grab_focus(GTK_WIDGET(host->web));
+  menu_focus_web(host);
   ebt_debug("window-realized=%d mapped=%d\n",
             gtk_widget_get_realized(host->window),
             gtk_widget_get_mapped(host->window));
@@ -1873,10 +1931,20 @@ static void menu_publish_click(Host *host, int id) {
   }
 }
 
+static void menu_focus_web(Host *host) {
+  if (host == NULL || host->window == NULL || host->web == NULL) return;
+  gtk_window_present(GTK_WINDOW(host->window));
+  GdkWindow *gdk_window = gtk_widget_get_window(host->window);
+  if (gdk_window != NULL) gdk_window_focus(gdk_window, GDK_CURRENT_TIME);
+  gtk_window_set_focus(GTK_WINDOW(host->window), GTK_WIDGET(host->web));
+  gtk_widget_grab_focus(GTK_WIDGET(host->web));
+}
+
 static const char *menu_apply_role(Host *host, const char *role) {
   if (host == NULL || host->web == NULL || role == NULL || role[0] == 0) {
     return "unsupported";
   }
+  menu_focus_web(host);
   if (strcmp(role, "undo") == 0 || strcmp(role, "redo") == 0 ||
       strcmp(role, "cut") == 0 || strcmp(role, "copy") == 0 ||
       strcmp(role, "paste") == 0 || strcmp(role, "selectAll") == 0) {
@@ -2544,6 +2612,425 @@ static void handle_net_request(Host *host, Request *request,
     return;
   }
   request_complete(request, "success", reply);
+}
+
+
+/* ---- asynchronous net.request ------------------------------------------ */
+
+typedef struct NetRequestHeader {
+  char *name;
+  char *value;
+} NetRequestHeader;
+
+struct NetRequest {
+  Host *host;
+  gint id;
+  gint64 generation;
+  char *url;
+  char *method;
+  guint8 *body;
+  gsize body_length;
+  GArray *headers;
+  GCancellable *cancel;
+  gint aborted;
+};
+
+typedef struct NetThreadStart {
+  NetRequest *request;
+  GThread *thread;
+  GMutex lock;
+  GCond cond;
+} NetThreadStart;
+
+static void net_request_free(NetRequest *request) {
+  if (request == NULL) return;
+  g_free(request->url);
+  g_free(request->method);
+  g_free(request->body);
+  if (request->headers != NULL) {
+    for (guint index = 0; index < request->headers->len; index++) {
+      NetRequestHeader *header = &g_array_index(request->headers, NetRequestHeader, index);
+      g_free(header->name);
+      g_free(header->value);
+    }
+    g_array_free(request->headers, TRUE);
+  }
+  if (request->cancel != NULL) g_object_unref(request->cancel);
+  g_free(request);
+}
+
+static gboolean net_url_is_safe(const char *url) {
+  if (url == NULL || url[0] == 0 || strlen(url) > 2048) return FALSE;
+  GError *error = NULL;
+  GUri *uri = g_uri_parse(url, G_URI_FLAGS_NONE, &error);
+  if (error != NULL) g_error_free(error);
+  if (uri == NULL) return FALSE;
+  const char *scheme = g_uri_get_scheme(uri);
+  const char *host = g_uri_get_host(uri);
+  const char *userinfo = g_uri_get_userinfo(uri);
+  gboolean ok = scheme != NULL && host != NULL && host[0] != 0 &&
+    (g_ascii_strcasecmp(scheme, "http") == 0 ||
+     g_ascii_strcasecmp(scheme, "https") == 0) &&
+    (userinfo == NULL || userinfo[0] == 0);
+  g_uri_unref(uri);
+  return ok;
+}
+
+static gboolean net_request_header_allowed(const char *name, const char *value) {
+  if (name == NULL || value == NULL || name[0] == 0 ||
+      strlen(name) > 256 || strlen(value) > 1024 ||
+      strchr(name, '\r') != NULL || strchr(name, '\n') != NULL ||
+      strchr(value, '\r') != NULL || strchr(value, '\n') != NULL) {
+    return FALSE;
+  }
+  return g_ascii_strcasecmp(name, "host") != 0 &&
+    g_ascii_strcasecmp(name, "content-length") != 0 &&
+    g_ascii_strcasecmp(name, "transfer-encoding") != 0 &&
+    g_ascii_strcasecmp(name, "connection") != 0;
+}
+
+typedef struct NetResponseHeaderJson {
+  GString *out;
+  int count;
+} NetResponseHeaderJson;
+
+static void net_response_header_cb(const char *name, const char *value,
+                                   gpointer user_data) {
+  NetResponseHeaderJson *build = user_data;
+  if (build == NULL || build->out == NULL || build->count >= EBT_NET_MAX_HEADERS) return;
+  if (name == NULL || value == NULL || strlen(name) > 256 ||
+      strlen(value) > EBT_NET_MAX_HEADER_VALUE) return;
+  char *quoted_name = json_quote(name);
+  char *quoted_value = json_quote(value);
+  if (build->count > 0) g_string_append_c(build->out, ',');
+  g_string_append_printf(build->out, "{\"name\":%s,\"value\":%s}",
+                         quoted_name, quoted_value);
+  g_free(quoted_name);
+  g_free(quoted_value);
+  build->count += 1;
+}
+
+static gboolean net_publish_error(NetRequest *request, const char *code) {
+  char *payload = g_strdup_printf(
+    "{\"id\":%d,\"type\":\"error\",\"code\":\"%s\"}", request->id, code);
+  gboolean ok = publish_event_raw(request->host, "net-event",
+                                  request->generation, payload);
+  g_free(payload);
+  return ok;
+}
+
+static gboolean net_publish_response(NetRequest *request, SoupMessage *message) {
+  GString *headers = g_string_new("[");
+  NetResponseHeaderJson build = { .out = headers, .count = 0 };
+  SoupMessageHeaders *response_headers = soup_message_get_response_headers(message);
+  if (response_headers != NULL) {
+    soup_message_headers_foreach(response_headers, net_response_header_cb, &build);
+  }
+  g_string_append_c(headers, ']');
+  char *reason = json_quote(soup_message_get_reason_phrase(message) == NULL
+    ? "" : soup_message_get_reason_phrase(message));
+  char *payload = g_strdup_printf(
+    "{\"id\":%d,\"type\":\"response\",\"status\":%u,\"statusText\":%s,"
+    "\"headers\":%s}",
+    request->id, soup_message_get_status(message), reason, headers->str);
+  g_free(reason);
+  g_string_free(headers, TRUE);
+  gboolean ok = publish_event_raw(request->host, "net-event",
+                                  request->generation, payload);
+  g_free(payload);
+  return ok;
+}
+
+static gboolean net_publish_data(NetRequest *request, const guint8 *bytes,
+                                 gsize length) {
+  char *base64 = g_base64_encode(bytes, length);
+  char *payload = g_strdup_printf(
+    "{\"id\":%d,\"type\":\"data\",\"base64\":\"%s\"}", request->id, base64);
+  g_free(base64);
+  gboolean ok = publish_event_raw(request->host, "net-event",
+                                  request->generation, payload);
+  g_free(payload);
+  return ok;
+}
+
+static gboolean net_publish_end(NetRequest *request) {
+  char *payload = g_strdup_printf("{\"id\":%d,\"type\":\"end\"}", request->id);
+  gboolean ok = publish_event_raw(request->host, "net-event",
+                                  request->generation, payload);
+  g_free(payload);
+  return ok;
+}
+
+static void net_request_run(NetRequest *request) {
+  Host *host = request->host;
+  SoupSession *session = soup_session_new();
+  g_object_set(session, "timeout", 5, NULL);
+  GProxyResolver *resolver = g_simple_proxy_resolver_new(NULL, NULL);
+  if (resolver != NULL) {
+    g_object_set(session, "proxy-resolver", resolver, NULL);
+    g_object_unref(resolver);
+  }
+  SoupMessage *message = soup_message_new(request->method, request->url);
+  if (message == NULL) {
+    if (!g_cancellable_is_cancelled(request->cancel)) {
+      net_publish_error(request, "ELECTRON_MBT_NET_URL");
+    }
+    g_object_unref(session);
+    goto done;
+  }
+  soup_message_set_flags(message, SOUP_MESSAGE_NO_REDIRECT);
+  SoupMessageHeaders *request_headers = soup_message_get_request_headers(message);
+  const char *content_type = NULL;
+  for (guint index = 0; index < request->headers->len; index++) {
+    NetRequestHeader *header = &g_array_index(request->headers, NetRequestHeader, index);
+    soup_message_headers_append(request_headers, header->name, header->value);
+    if (g_ascii_strcasecmp(header->name, "content-type") == 0) {
+      content_type = header->value;
+    }
+  }
+  if (request->body_length > 0) {
+    GBytes *bytes = g_bytes_new(request->body, request->body_length);
+    soup_message_set_request_body_from_bytes(message,
+      content_type == NULL ? "application/octet-stream" : content_type, bytes);
+    g_bytes_unref(bytes);
+  }
+  GError *error = NULL;
+  GInputStream *stream = soup_session_send(session, message, request->cancel, &error);
+  if (stream == NULL) {
+    if (!g_cancellable_is_cancelled(request->cancel)) {
+      net_publish_error(request, "ELECTRON_MBT_NET_FAILURE");
+    }
+    if (error != NULL) g_error_free(error);
+    g_object_unref(message);
+    g_object_unref(session);
+    goto done;
+  }
+  if (!g_cancellable_is_cancelled(request->cancel)) {
+    if (!net_publish_response(request, message)) {
+      g_input_stream_close(stream, NULL, NULL);
+      g_object_unref(stream);
+      g_object_unref(message);
+      g_object_unref(session);
+      goto done;
+    }
+    if (g_ascii_strcasecmp(request->method, "HEAD") != 0) {
+      guint8 buffer[8192];
+      gsize total = 0;
+      for (;;) {
+        gssize read = g_input_stream_read(stream, buffer, sizeof(buffer),
+                                          request->cancel, &error);
+        if (read < 0) {
+          if (!g_cancellable_is_cancelled(request->cancel)) {
+            net_publish_error(request, "ELECTRON_MBT_NET_FAILURE");
+          }
+          if (error != NULL) { g_error_free(error); error = NULL; }
+          break;
+        }
+        if (read == 0) {
+          net_publish_end(request);
+          break;
+        }
+        total += (gsize)read;
+        if (total > EBT_NET_MAX_BODY) {
+          net_publish_error(request, "ELECTRON_MBT_NET_LIMIT");
+          break;
+        }
+        if (!net_publish_data(request, buffer, (gsize)read)) break;
+      }
+    } else {
+      net_publish_end(request);
+    }
+  }
+  g_input_stream_close(stream, NULL, NULL);
+  g_object_unref(stream);
+  g_object_unref(message);
+  g_object_unref(session);
+done:
+  g_mutex_lock(&host->net_lock);
+  g_hash_table_remove(host->net_requests, GINT_TO_POINTER(request->id));
+  g_mutex_unlock(&host->net_lock);
+  net_request_free(request);
+}
+
+static gpointer net_thread_entry(gpointer data) {
+  NetThreadStart *start = data;
+  g_mutex_lock(&start->lock);
+  while (start->thread == NULL) g_cond_wait(&start->cond, &start->lock);
+  GThread *thread = start->thread;
+  g_mutex_unlock(&start->lock);
+  g_mutex_clear(&start->lock);
+  g_cond_clear(&start->cond);
+  NetRequest *request = start->request;
+  g_free(start);
+  net_request_run(request);
+  g_thread_unref(thread);
+  return NULL;
+}
+
+static void handle_net_request_start(Host *host, Request *request,
+                                     JSCValue *payload) {
+  static const char *const allowed[] = {"url", "method", "bodyBase64", "headers"};
+  if (!require_current(host, request)) return;
+  if (!object_has_only_keys(payload, allowed, G_N_ELEMENTS(allowed))) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  char *url = object_get_string(payload, "url");
+  char *method = object_get_string(payload, "method");
+  if (!net_url_is_safe(url) || method == NULL) {
+    g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_URL");
+    return;
+  }
+  if (g_ascii_strcasecmp(method, "GET") != 0 &&
+      g_ascii_strcasecmp(method, "HEAD") != 0 &&
+      g_ascii_strcasecmp(method, "POST") != 0 &&
+      g_ascii_strcasecmp(method, "PUT") != 0 &&
+      g_ascii_strcasecmp(method, "PATCH") != 0 &&
+      g_ascii_strcasecmp(method, "DELETE") != 0) {
+    g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_METHOD");
+    return;
+  }
+  guint8 *body = NULL;
+  gsize body_length = 0;
+  char *body_base64 = object_get_string(payload, "bodyBase64");
+  if (body_base64 != NULL && body_base64[0] != 0) {
+    if (strlen(body_base64) > 400 * 1024) {
+      g_free(body_base64); g_free(url); g_free(method);
+      request_failure(request, "ELECTRON_MBT_NET_LIMIT");
+      return;
+    }
+    body = g_base64_decode(body_base64, &body_length);
+    if (body == NULL || body_length > 256 * 1024) {
+      g_free(body); g_free(body_base64); g_free(url); g_free(method);
+      request_failure(request, "ELECTRON_MBT_NET_LIMIT");
+      return;
+    }
+  }
+  g_free(body_base64);
+  if (body != NULL && (g_ascii_strcasecmp(method, "GET") == 0 ||
+                       g_ascii_strcasecmp(method, "HEAD") == 0)) {
+    g_free(body); g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_NET_METHOD");
+    return;
+  }
+  GArray *headers = g_array_new(FALSE, FALSE, sizeof(NetRequestHeader));
+  JSCValue *headers_raw = object_get_value(payload, "headers");
+  gboolean headers_ok = TRUE;
+  if (headers_raw != NULL && !jsc_value_is_undefined(headers_raw) &&
+      !jsc_value_is_null(headers_raw)) {
+    if (!jsc_value_is_array(headers_raw)) {
+      headers_ok = FALSE;
+    } else {
+      JSCValue *length_value = object_get_value(headers_raw, "length");
+      gint32 count = length_value == NULL ? -1 : jsc_value_to_int32(length_value);
+      if (length_value != NULL) g_object_unref(length_value);
+      if (count < 0 || count > 32) headers_ok = FALSE;
+      for (gint32 index = 0; headers_ok && index < count; index++) {
+        JSCValue *entry = jsc_value_object_get_property_at_index(headers_raw, (guint)index);
+        static const char *const header_keys[] = {"name", "value"};
+        if (entry == NULL || !object_has_exact_keys(entry, header_keys, 2)) {
+          if (entry != NULL) g_object_unref(entry);
+          headers_ok = FALSE;
+          break;
+        }
+        char *name = object_get_string(entry, "name");
+        char *value = object_get_string(entry, "value");
+        g_object_unref(entry);
+        if (!net_request_header_allowed(name, value)) {
+          g_free(name); g_free(value);
+          headers_ok = FALSE;
+          break;
+        }
+        NetRequestHeader header = { .name = name, .value = value };
+        g_array_append_val(headers, header);
+      }
+    }
+  }
+  if (headers_raw != NULL) g_object_unref(headers_raw);
+  if (!headers_ok) {
+    for (guint index = 0; index < headers->len; index++) {
+      NetRequestHeader *header = &g_array_index(headers, NetRequestHeader, index);
+      g_free(header->name); g_free(header->value);
+    }
+    g_array_free(headers, TRUE);
+    g_free(body); g_free(url); g_free(method);
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  NetRequest *net = g_new0(NetRequest, 1);
+  net->host = host;
+  net->generation = host->generation;
+  net->url = url;
+  net->method = method;
+  net->body = body;
+  net->body_length = body_length;
+  net->headers = headers;
+  net->cancel = g_cancellable_new();
+  g_mutex_lock(&host->net_lock);
+  if (g_hash_table_size(host->net_requests) >= 4) {
+    g_mutex_unlock(&host->net_lock);
+    net_request_free(net);
+    request_failure(request, "ELECTRON_MBT_NET_BUSY");
+    return;
+  }
+  net->id = ++host->next_net_id;
+  gint net_id = net->id;
+  g_hash_table_insert(host->net_requests, GINT_TO_POINTER(net->id), net);
+  g_mutex_unlock(&host->net_lock);
+  NetThreadStart *start = g_new0(NetThreadStart, 1);
+  start->request = net;
+  g_mutex_init(&start->lock);
+  g_cond_init(&start->cond);
+  GThread *thread = g_thread_new("electron-mbt-net", net_thread_entry, start);
+  g_mutex_lock(&start->lock);
+  start->thread = thread;
+  g_cond_signal(&start->cond);
+  g_mutex_unlock(&start->lock);
+  JSCValue *reply = object_new(host);
+  object_set_number(host, reply, "id", (double)net_id);
+  request_complete(request, "success", reply);
+}
+
+static void handle_net_request_abort(Host *host, Request *request,
+                                     JSCValue *payload) {
+  static const char *const expected[] = {"id"};
+  if (!require_current(host, request)) return;
+  if (!object_has_exact_keys(payload, expected, 1)) {
+    request_failure(request, "ELECTRON_MBT_INVALID_ENVELOPE");
+    return;
+  }
+  gint64 id = 0;
+  if (!object_get_integer(payload, "id", &id) || id <= 0) {
+    request_failure(request, "ELECTRON_MBT_NET_URL");
+    return;
+  }
+  g_mutex_lock(&host->net_lock);
+  NetRequest *net = g_hash_table_lookup(host->net_requests, GINT_TO_POINTER((int)id));
+  if (net != NULL) {
+    g_atomic_int_set(&net->aborted, 1);
+    g_cancellable_cancel(net->cancel);
+  }
+  g_mutex_unlock(&host->net_lock);
+  JSCValue *reply = object_new(host);
+  object_set_boolean(host, reply, "aborted", net != NULL);
+  request_complete(request, "success", reply);
+}
+
+static void net_cancel_all(Host *host) {
+  if (host == NULL || host->net_requests == NULL) return;
+  g_mutex_lock(&host->net_lock);
+  GHashTableIter iterator;
+  gpointer key;
+  gpointer value;
+  g_hash_table_iter_init(&iterator, host->net_requests);
+  while (g_hash_table_iter_next(&iterator, &key, &value)) {
+    NetRequest *net = value;
+    g_atomic_int_set(&net->aborted, 1);
+    g_cancellable_cancel(net->cancel);
+  }
+  g_mutex_unlock(&host->net_lock);
 }
 
 static void handle_install_menu(Host *host, Request *request,
@@ -5316,6 +5803,7 @@ static void dispatch_request(Request *request, JSCValue *payload) {
       return;
     }
     host->shutting_down = TRUE;
+    net_cancel_all(host);
     request_success_empty(request);
     return;
   }
@@ -5608,6 +6096,14 @@ static void dispatch_request(Request *request, JSCValue *payload) {
   }
   if (strcmp(operation, "net-request") == 0) {
     handle_net_request(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "net-request-start") == 0) {
+    handle_net_request_start(host, request, payload);
+    return;
+  }
+  if (strcmp(operation, "net-request-abort") == 0) {
+    handle_net_request_abort(host, request, payload);
     return;
   }
   if (strcmp(operation, "install-menu") == 0) {
@@ -5985,6 +6481,9 @@ int main(int argc, char **argv) {
   host->menu_widgets = g_hash_table_new(g_direct_hash, g_direct_equal);
   host->menu_accels = g_array_new(FALSE, FALSE, sizeof(MenuAccel));
   host->events = g_async_queue_new();
+  host->net_requests = g_hash_table_new(g_direct_hash, g_direct_equal);
+  g_mutex_init(&host->net_lock);
+  host->raw_event_seq = 1000000;
   /* App-local data roots are the only paths writable without a dialog grant.
    * Creating them here keeps the main-thread fs handler from having to create
    * arbitrary parents (and therefore from following an app-controlled symlink

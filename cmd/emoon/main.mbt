@@ -706,7 +706,8 @@ fn cli_pump_events(
       continue
     }
     let event_operation = cli_text(parsed, "operation").unwrap_or("")
-    if event_operation != "app-request" && event_operation != "menu-click" {
+    if event_operation != "app-request" && event_operation != "menu-click" &&
+      event_operation != "net-event" {
       continue
     }
     let event_window = match cli_field(parsed, "window") {
@@ -738,6 +739,15 @@ fn cli_pump_events(
         continue
       }
       match runner.menu_click(id) {
+        Ok(_) => handled += 1
+        Err(_) => errors += 1
+      }
+      runner.pump_idle()
+      continue
+    }
+    if event_operation == "net-event" {
+      let event_text = Json::object(payload).stringify()
+      match runner.net_event(event_text) {
         Ok(_) => handled += 1
         Err(_) => errors += 1
       }
@@ -825,6 +835,22 @@ fn cli_parse_seconds(text : String) -> Int {
 }
 
 ///|
+fn cli_parse_menu_sequence(text : String) -> Array[String] {
+  let out : Array[String] = []
+  if text.length() == 0 || text.length() > 1024 {
+    return out
+  }
+  for item in text.split(",") {
+    let label = item.to_owned()
+    if label.length() == 0 || label.length() > 128 || out.length() >= 8 {
+      return []
+    }
+    out.push(label)
+  }
+  out
+}
+
+///|
 fn cli_hold(
   runner : @app.AppRunner,
   session : String,
@@ -837,6 +863,7 @@ fn cli_hold(
   focus_jmd_editor : Bool,
   menu_activate : String,
   menu_activate_role : String,
+  menu_sequence : Array[String],
 ) -> Unit {
   let mut title = ""
   let mut window_title = ""
@@ -927,6 +954,8 @@ fn cli_hold(
   let mut jmd_focus : Json = null
   let mut menu_activate_json : Json = null
   let mut menu_activate_sent = false
+  let menu_sequence_json : Array[Json] = []
+  let mut menu_sequence_sent = 0
   let mut menu_role_activate_json : Json = null
   let mut menu_role_activate_sent = false
   let mut menu_events = 0
@@ -982,7 +1011,18 @@ fn cli_hold(
         Json({ "label": Json(menu_activate_role) }).stringify(),
       ).unwrap_or(Json({ "ok": Json(false) }))
     }
-    if menu_activate.length() > 0 || menu_activate_role.length() > 0 {
+    if menu_sequence.length() > 0 && menu_sequence_sent < menu_sequence.length() &&
+      ticks >= 40 + menu_sequence_sent * 20 {
+      let label = menu_sequence[menu_sequence_sent]
+      let result = cli_host_payload(
+        "activate-menu-item",
+        Json({ "label": Json(label) }).stringify(),
+      ).unwrap_or(Json({ "ok": Json(false) }))
+      menu_sequence_json.push(result)
+      menu_sequence_sent = menu_sequence_sent + 1
+    }
+    if menu_activate.length() > 0 || menu_activate_role.length() > 0 ||
+      menu_sequence.length() > 0 {
       let (menu_handled, _, _) =
         cli_pump_events(runner, session, attempts=1, idle_limit=1)
       menu_events = menu_events + menu_handled
@@ -1080,6 +1120,7 @@ fn cli_hold(
       "jmdFocus": Json(jmd_focus),
       "menuActivate": Json(menu_activate_json),
       "menuRoleActivate": Json(menu_role_activate_json),
+      "menuSequence": Json(menu_sequence_json),
       "menuEvents": Json(menu_events),
       "zoomLevel": Json(zoom_level_exit),
       "compatible": Json(false),
@@ -1444,6 +1485,8 @@ fn cli_main(args : Array[String]) -> Unit {
   let focus_jmd_editor = args.contains("--jmd-focus-editor")
   let mut menu_activate = ""
   let mut menu_activate_role = ""
+  let mut menu_sequence : Array[String] = []
+  let mut menu_sequence_set = false
   let run_loop = args.contains("--run-loop")
   let mut run_loop_seconds = 0
   for i = 0; i < args.length(); i = i + 1 {
@@ -1452,6 +1495,10 @@ fn cli_main(args : Array[String]) -> Unit {
     }
     if args[i] == "--menu-activate-role" && i + 1 < args.length() {
       menu_activate_role = args[i + 1]
+    }
+    if args[i] == "--menu-activate-sequence" && i + 1 < args.length() {
+      menu_sequence_set = true
+      menu_sequence = cli_parse_menu_sequence(args[i + 1])
     }
     if args[i] == "--run-loop-seconds" && i + 1 < args.length() {
       run_loop_seconds = cli_parse_seconds(args[i + 1])
@@ -1522,6 +1569,10 @@ fn cli_main(args : Array[String]) -> Unit {
   }
   if menu_activate.length() > 128 || menu_activate_role.length() > 128 {
     cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--menu-activate is too long")
+    return
+  }
+  if menu_sequence_set && menu_sequence.length() == 0 {
+    cli_fail("ELECTRON_MBT_NODELESS_USAGE", "--menu-activate-sequence is invalid")
     return
   }
   if (menu_activate.length() > 0 || menu_activate_role.length() > 0) &&
@@ -1944,7 +1995,7 @@ fn cli_main(args : Array[String]) -> Unit {
     if hold_mode {
       cli_hold(runner, session, adapted_configured, hold_seconds, hold_close_after_ms,
                trigger_export_ui, dispatch_main, jmd_edit_save, focus_jmd_editor,
-               menu_activate, menu_activate_role)
+               menu_activate, menu_activate_role, menu_sequence)
       return
     }
     let mut adapted_observed = false
@@ -2066,6 +2117,8 @@ fn cli_main(args : Array[String]) -> Unit {
       let mut menu_json : Json = null
       let mut menu_role_sent = false
       let mut menu_role_json : Json = null
+      let menu_sequence_json : Array[Json] = []
+      let mut menu_sequence_sent = 0
       let mut reason = "run-loop-seconds"
       while run_loop_seconds == 0 || ticks < run_loop_seconds * 10 {
         if menu_activate.length() > 0 && !menu_sent && ticks >= 60 {
@@ -2081,6 +2134,16 @@ fn cli_main(args : Array[String]) -> Unit {
             "activate-menu-item",
             Json({ "label": Json(menu_activate_role) }).stringify(),
           ).unwrap_or(Json({ "ok": Json(false) }))
+        }
+        if menu_sequence.length() > 0 && menu_sequence_sent < menu_sequence.length() &&
+          ticks >= 40 + menu_sequence_sent * 20 {
+          let label = menu_sequence[menu_sequence_sent]
+          let result = cli_host_payload(
+            "activate-menu-item",
+            Json({ "label": Json(label) }).stringify(),
+          ).unwrap_or(Json({ "ok": Json(false) }))
+          menu_sequence_json.push(result)
+          menu_sequence_sent = menu_sequence_sent + 1
         }
         let _ = cli_pump_events(runner, session, attempts=1, idle_limit=1)
         runner.pump_idle()
@@ -2133,6 +2196,7 @@ fn cli_main(args : Array[String]) -> Unit {
           "windowTitle": Json(final_window_title),
           "menuActivate": Json(menu_json),
           "menuRoleActivate": Json(menu_role_json),
+          "menuSequence": Json(menu_sequence_json),
           "zoomLevel": Json(zoom_level),
           "compatible": Json(false),
         }).stringify(),

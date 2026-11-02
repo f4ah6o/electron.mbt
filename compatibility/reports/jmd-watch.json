@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "probe": "jmd-watch",
+  "status": "PASS",
+  "compatible": false,
+  "revision": "f875fc616feb89ea803a0fc140ec770a2ade041e",
+  "environment": {
+    "platform": "linux",
+    "cli": "dist/emoon",
+    "cliSHA256": "7c50ee69a2b638a3538f112d0651a280671636d4ffd20cf8cc2910ae09eefa24",
+    "hostSHA256": "3a512d251ad0f55f5353e9af7da41738d9d41cae58e2983762760b64134a2102",
+    "testMode": "test-injected open dialog; no xdotool or menu activation"
+  },
+  "source": {
+    "mainSHA256": "fd959bead9b8f05cab0f943676824f628d323b563508a0af9c03dc5765c9e737",
+    "preloadSHA256": "2c1ea55d13a4d663603b14f33488143e296c37f88feb2fc6d4c2122a768cfd6e",
+    "updaterSHA256": "cbcf0a8099a617a2f0f71dba3bb32141d07c0ea449d290f44b80b7741928f948",
+    "packageSHA256": "9e152e040693571c222b13f56b466a254b9578074de2afb49f3aa0986f5433eb"
+  },
+  "adapted": {
+    "mainSHA256": "22cc128abe25274411463f29cc07c7c8e7aa84bc8d0b86ccc28492b7404dee1a",
+    "pageApiSHA256": "b460698625b271f1e6f7428f606f8b72c70ed96b01b2d1fc42f9abd3eb90368f",
+    "manifestSHA256": "5365813e89ac36894e2c499eeb4f3c78ab8c00f95cf0d181782d7324b093ef72",
+    "files": 183,
+    "stage": "_build/jmd-positive-stage"
+  },
+  "document": {
+    "path": "_build/jmd-positive-doc/note.md",
+    "marker": "jmd-watch-marker-20261029"
+  },
+  "command": "dist/emoon run /home/hirohito-fujita/src/electron.mbt/_build/jmd-positive-stage --window --hold --hold-seconds 20 --dispatch-main test:open-dialog",
+  "checks": {
+    "exitZero": true,
+    "holdExit": true,
+    "adaptedBoot": true,
+    "openDialog": true,
+    "watcherReloaded": true,
+    "noMainError": true
+  },
+  "result": {
+    "pageTitle": "jmd",
+    "windowTitle": "note.md — jmd",
+    "preview": "jmd positive\n\njmd-positive-marker-20261029\n\nA pinned jmd renderer opened this document through the adapted open dialog.\n\n\n\njmd-watch-marker-20261029\n"
+  },
+  "limitations": [
+    "fs.watch is a bounded polling facade; no native inotify claim",
+    "test-injected open dialog; no human input",
+    "app protocol.handle is recorded, not executed",
+    "macOS is out of scope"
+  ],
+  "originalPreload": "NOT_EXECUTED",
+  "note": "The pinned jmd renderer reloads an externally rewritten document through the polling fs.watch facade. This is an adapted-profile result, not Electron compatibility."
+}

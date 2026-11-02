@@ -744,11 +744,12 @@ open dialog.
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, then the smoke under Xvfb with
   `CI=true` (missing source/build fails rather than skips); the apt step now
-  installs `xdotool`. GitHub Actions run 304 (`e731add`) passed native menu
-  roles/zoom, net.fetch/net.request and two-display injection; local evidence
-  is above.
-- IME, editing-role observation, `net.request` streaming/abort cancellation,
-  hardware multi-monitor selection, `toggleDevTools` and macOS remain
+  installs `xdotool`. GitHub Actions run 304 (`e731add`) passed the earlier
+  native menu roles/zoom, net.fetch/net.request and two-display increment.
+  This increment adds editing roles, streaming/abortable net.request and a
+  separate `scripts/jmd-watch.cjs` external-reload smoke; its CI run is
+  pending parent push, while local evidence is above.
+- IME, hardware multi-monitor selection, `toggleDevTools` and macOS remain
   NOT RUN/out of scope; the X11 ASCII keyboard path is covered above and is
   not an IME claim. The two-display result uses a
   test-only injection. `fs.watchFile`/recursive watch are bounded polling

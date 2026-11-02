@@ -6,8 +6,8 @@
   "environment": {
     "platform": "linux",
     "node": "v26.13.0",
-    "hostSHA256": "41dd620ae318eb0fdb7f78a4897242353cfef2f654f440b3fed24b300d08075b",
-    "cliSHA256": "c14a57fa0129ea56eda7626802cc52ef7940310fcc76c9e36daf5c9e638e153d"
+    "hostSHA256": "3a512d251ad0f55f5353e9af7da41738d9d41cae58e2983762760b64134a2102",
+    "cliSHA256": "55e0fe7a3423a73371f7f671dc27c3d3424fbe79acaca85e6e9d9292a1a30afe"
   },
   "stage": {
     "files": 143,

@@ -36,7 +36,6 @@ function finish(report, code) {
     status: report.status,
     reason: report.reason,
     editSaved: report.checks && report.checks.editSaved,
-    watcherReloaded: report.checks && report.checks.watcherReloaded,
     pageTitle: report.result && report.result.pageTitle,
   }));
   process.exit(code);
@@ -310,7 +309,7 @@ async function main() {
     limitations: [
       'app protocol.handle is recorded, not executed',
       'the open dialog and message box are test-injected; keyboard input is xdotool X11 input, IME is NOT RUN',
-      'the native menu is installed; File > Save activation dispatches jmd\'s own click handler. Role items are display-only/unsupported; Ctrl+S uses jmd\'s own shortcut',
+      'the native menu is installed; File > Save dispatches jmd\'s click handler; allowlisted role actions (including View > Zoom In) run in the host, while editing roles are observed by the asset fixture; Ctrl+S uses the native accelerator',
       'fs.watch is covered by the asset fixture; this jmd smoke does not exercise an external rewrite',
       'macOS is out of scope',
     ],

@@ -53,6 +53,12 @@
     "multiDisplay": "PASS (test injection; hardware NOT RUN)",
     "nativeMenu": "PASS (click + allowlisted zoom role; editing roles not observed)",
     "netFetch": "PASS (localhost; GET/status/body cap/unsafe scheme)",
-    "netRequest": "PASS (buffered POST echo/status/headers/over-cap)"
+    "netRequest": "PASS (buffered POST echo/status/headers/over-cap)",
+    "watch": {
+      "id": "J-P2",
+      "status": "PASS",
+      "evidence": "compatibility/reports/jmd-watch.json",
+      "note": "Separate external-reload smoke; no xdotool/menu interaction."
+    }
   }
 }

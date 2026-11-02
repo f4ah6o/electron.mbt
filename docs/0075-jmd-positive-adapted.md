@@ -126,11 +126,10 @@ The original `electron/preload.js` is copied for provenance but is
 - CI: `.github/workflows/ci.yml` checks out the pinned jmd source, runs
   `npm ci --ignore-scripts` + `npm run build`, and runs the smoke under Xvfb.
   `CI=true` makes a missing source/build a hard failure instead of a skip.
-  The CI apt step installs `xdotool`. GitHub Actions run 304 (`e731add`,
-  `linux-native`) passed the earlier native-menu role, net.fetch/net.request
-  and two-display increment. This increment adds the editing-role and
-  streaming/abort fixtures and the separate jmd-watch step; its CI run is
-  pending parent push.
+  The CI apt step installs `xdotool`. GitHub Actions run 306 (`55dddfc`,
+  `linux-native`) passed the editing-role, streaming/abortable net.request,
+  native-menu role and separate jmd-watch steps. A macOS native WebKit test
+  flaked in the first attempt and passed on rerun; no macOS feature is claimed.
 
 ## Reproduction
 

@@ -56,28 +56,28 @@
         "handlerExecuted": false
       },
       "rendererProbe": {
-        "image": null,
-        "api": true,
-        "apiProbe": "",
-        "preview": "",
         "rootChildren": 1,
-        "editSave": "",
+        "preview": "",
+        "image": null,
+        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes",
+        "api": true,
         "title": "note.md - Moji v1.0.7",
-        "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes"
+        "editSave": "",
+        "apiProbe": ""
       }
     }
   },
   "rendererProbe": {
     "status": "NOT_EXPOSED",
     "probe": {
-      "image": null,
-      "api": true,
-      "apiProbe": "",
-      "preview": "",
       "rootChildren": 1,
-      "editSave": "",
+      "preview": "",
+      "image": null,
+      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes",
+      "api": true,
       "title": "note.md - Moji v1.0.7",
-      "text": "New\nOpen\nSave\n\n\nPreview\nEditor\nExport\n\n\n\n\n\n\n\n\nnote.md\n\nExport Document\n\nFormat\n\n\nExport as PDF\nIdeal for printing and sharing exact layouts.\n\nExport as HTML\nBes"
+      "editSave": "",
+      "apiProbe": ""
     }
   },
   "assets": {

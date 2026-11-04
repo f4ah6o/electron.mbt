@@ -6,7 +6,7 @@ const PROFILE_IDS = Object.keys(profiles);
 const INPUT_MODES = ['original-cjs', 'prepared-js', 'ts-build', 'moonbit-source'];
 const PRELOAD_MODES = ['original', 'generated-adapter', 'none'];
 const COMPARISON_MODES = ['strict', 'adapted', 'unit', 'negative'];
-const SCOPES = ['unit', 'kernel', 'native-ingress', 'app-scenario', 'release'];
+const SCOPES = ['unit', 'kernel', 'native-probe', 'native-ingress', 'app-scenario', 'release'];
 const HARNESS = ['completed', 'failed', 'not-run', 'invalid-evidence'];
 const SEMANTIC = ['equivalent', 'diverged', 'expected-rejection', 'not-run'];
 const OBSERVATION_STATUS = ['observed', 'rejected', 'expected-rejection', 'not-run', 'stalled'];
@@ -22,6 +22,18 @@ function isString(value) {
 
 function isStringArray(value) {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function jsonValue(value) {
+  try {
+    return JSON.stringify(value) ?? 'undefined';
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+function diagnosticValue(value) {
+  return typeof value === 'string' ? value : jsonValue(value);
 }
 
 function requireObject(value, name, problems) {
@@ -41,7 +53,7 @@ function requireBoolean(value, name, problems) {
 }
 
 function requireEnum(value, name, allowed, problems) {
-  if (!allowed.includes(value)) problems.push(`${name} is ${JSON.stringify(value)}, expected ${allowed.join('|')}`);
+  if (!allowed.includes(value)) problems.push(`${name} is ${jsonValue(value)}, expected ${allowed.join('|')}`);
 }
 
 // Admit a versioned evidence bundle for one profile/scope. This is an
@@ -50,7 +62,7 @@ function requireEnum(value, name, allowed, problems) {
 function validateEvidence(evidence, expected = {}) {
   const problems = [];
   if (!isObject(evidence)) return { ok: false, problems: ['evidence is not an object'] };
-  if (evidence.schema !== 2) problems.push(`schema is ${JSON.stringify(evidence.schema)}, expected 2`);
+  if (evidence.schema !== 2) problems.push(`schema is ${jsonValue(evidence.schema)}, expected 2`);
   requireString(evidence.evidenceId, 'evidenceId', problems);
 
   const identity = requireObject(evidence.identity, 'identity', problems);
@@ -68,15 +80,20 @@ function validateEvidence(evidence, expected = {}) {
     requireString(profile.profileHash, 'profile.profileHash', problems);
     requireEnum(profile.inputMode, 'profile.inputMode', INPUT_MODES, problems);
     requireEnum(profile.preloadMode, 'profile.preloadMode', PRELOAD_MODES, problems);
-    if (!Array.isArray(profile.dependencyAdaptations)) problems.push('profile.dependencyAdaptations is not an array');
+    if (!Array.isArray(profile.dependencyAdaptations) || !profile.dependencyAdaptations.every(isObject)) {
+      problems.push('profile.dependencyAdaptations is not an array of objects');
+    }
     requireEnum(profile.comparisonMode, 'profile.comparisonMode', COMPARISON_MODES, problems);
     if (PROFILE_IDS.includes(profile.profileId)) {
       const declared = profiles[profile.profileId];
-      if (!declared.inputMode.includes(profile.inputMode)) problems.push(`profile ${profile.profileId} does not allow inputMode ${profile.inputMode}`);
-      if (!declared.preloadMode.includes(profile.preloadMode)) problems.push(`profile ${profile.profileId} does not allow preloadMode ${profile.preloadMode}`);
+      if (!declared.inputMode.includes(profile.inputMode)) problems.push(`profile ${profile.profileId} does not allow inputMode ${diagnosticValue(profile.inputMode)}`);
+      if (!declared.preloadMode.includes(profile.preloadMode)) problems.push(`profile ${profile.profileId} does not allow preloadMode ${diagnosticValue(profile.preloadMode)}`);
     }
     if (profile.profileId === 'electron-nodeless-v1' && profile.comparisonMode !== 'strict') {
       problems.push('the strict profile requires comparisonMode strict');
+    }
+    if (profile.profileId === 'electron-nodeless-v1' && Array.isArray(profile.dependencyAdaptations) && profile.dependencyAdaptations.length > 0) {
+      problems.push('the strict profile does not allow dependency adaptations');
     }
     if (profile.profileId === 'electron-nodeless-adapted-v1' && profile.comparisonMode === 'strict') {
       problems.push('adapted evidence cannot claim strict comparison mode');
@@ -124,6 +141,12 @@ function validateEvidence(evidence, expected = {}) {
     requireString(execution.startedAt, 'execution.startedAt', problems);
     requireString(execution.finishedAt, 'execution.finishedAt', problems);
     requireEnum(execution.driverScope, 'execution.driverScope', SCOPES, problems);
+    if (profile && PROFILE_IDS.includes(profile.profileId) && !profiles[profile.profileId].scope.includes(execution.driverScope)) {
+      problems.push(`profile ${profile.profileId} does not allow driverScope ${diagnosticValue(execution.driverScope)}`);
+    }
+    if (profile && profile.comparisonMode === 'unit' && !['unit', 'kernel'].includes(execution.driverScope)) {
+      problems.push(`unit comparisonMode does not allow driverScope ${diagnosticValue(execution.driverScope)}`);
+    }
   }
 
   if (!Array.isArray(evidence.observations) || evidence.observations.length === 0) {
@@ -133,12 +156,19 @@ function validateEvidence(evidence, expected = {}) {
     for (const observation of evidence.observations) {
       if (!isObject(observation)) { problems.push('observation is not an object'); continue; }
       requireString(observation.stepId, 'observation.stepId', problems);
-      if (steps.has(observation.stepId)) problems.push(`duplicate observation stepId ${observation.stepId}`);
+      const stepId = diagnosticValue(observation.stepId);
+      if (steps.has(observation.stepId)) problems.push(`duplicate observation stepId ${stepId}`);
       steps.add(observation.stepId);
-      requireEnum(observation.status, `observation ${observation.stepId}.status`, OBSERVATION_STATUS, problems);
+      requireEnum(observation.status, `observation ${stepId}.status`, OBSERVATION_STATUS, problems);
+      if (observation.exception !== undefined && observation.exception !== null && typeof observation.exception !== 'string') {
+        problems.push(`observation ${stepId}.exception is not a string or null`);
+      }
+      if (observation.detail !== undefined && observation.detail !== null && !isObject(observation.detail)) {
+        problems.push(`observation ${stepId}.detail is not an object or null`);
+      }
       if (observation.status === 'observed' || observation.status === 'rejected' || observation.status === 'expected-rejection') {
         if (observation.value === undefined && observation.exception === undefined && observation.detail === undefined) {
-          problems.push(`observation ${observation.stepId} carries no value, exception or detail`);
+          problems.push(`observation ${stepId} carries no value, exception or detail`);
         }
       }
     }
@@ -153,20 +183,31 @@ function validateEvidence(evidence, expected = {}) {
     if (!isStringArray(verdict.missingEvidence)) problems.push('verdict.missingEvidence is not an array of strings');
     if (verdict.compatible !== false) problems.push('verdict.compatible must remain false');
     if (execution && verdict.supportedScope !== execution.driverScope) {
-      problems.push(`verdict.supportedScope ${verdict.supportedScope} does not match execution.driverScope ${execution.driverScope}`);
+      problems.push(`verdict.supportedScope ${diagnosticValue(verdict.supportedScope)} does not match execution.driverScope ${diagnosticValue(execution.driverScope)}`);
     }
     if (verdict.gate === 'satisfied') {
       if (verdict.harness !== 'completed') problems.push('satisfied evidence requires a completed harness');
-      if (verdict.semantic !== 'equivalent' && verdict.semantic !== 'expected-rejection') problems.push('satisfied evidence requires equivalent or expected-rejection semantics');
+      if (verdict.semantic !== 'equivalent') problems.push('satisfied evidence requires equivalent semantics');
+      if (profile && profile.comparisonMode === 'negative') problems.push('negative comparisonMode cannot satisfy a gate');
       if (Array.isArray(verdict.missingEvidence) && verdict.missingEvidence.length > 0) problems.push('satisfied evidence has missing evidence');
-      for (const observation of evidence.observations || []) {
-        if (observation.status === 'not-run' || observation.status === 'stalled') {
-          problems.push(`satisfied evidence contains ${observation.status} observation ${observation.stepId}`);
+      for (const observation of Array.isArray(evidence.observations) ? evidence.observations : []) {
+        if (isObject(observation) && (observation.status === 'not-run' || observation.status === 'stalled')) {
+          problems.push(`satisfied evidence contains ${observation.status} observation ${diagnosticValue(observation.stepId)}`);
         }
       }
     }
-    if (verdict.harness === 'completed' && execution && execution.exitCode !== 0) {
-      problems.push('a completed harness must have exitCode 0');
+    if (verdict.harness === 'completed' && execution) {
+      if (execution.exitCode !== 0) problems.push('a completed harness must have exitCode 0');
+      if (execution.signal !== null) problems.push('a completed harness must not have a signal');
+      if (execution.timeout !== false) problems.push('a completed harness must not time out');
+    }
+    if (verdict.semantic === 'equivalent' || verdict.semantic === 'expected-rejection') {
+      if (verdict.harness !== 'completed') problems.push(`${verdict.semantic} semantics require a completed harness`);
+      for (const observation of Array.isArray(evidence.observations) ? evidence.observations : []) {
+        if (isObject(observation) && ['not-run', 'stalled'].includes(observation.status)) {
+          problems.push(`${verdict.semantic} semantics contain ${observation.status} observation ${diagnosticValue(observation.stepId)}`);
+        }
+      }
     }
   }
 
@@ -179,16 +220,16 @@ function validateEvidence(evidence, expected = {}) {
   }
 
   if (expected.profileId && profile && profile.profileId !== expected.profileId) {
-    problems.push(`profile is ${profile.profileId}, expected ${expected.profileId}`);
+    problems.push(`profile is ${diagnosticValue(profile.profileId)}, expected ${diagnosticValue(expected.profileId)}`);
   }
   if (expected.sourceHash && source && source.fixtureHash !== expected.sourceHash) {
-    problems.push(`source.fixtureHash is ${source.fixtureHash}, expected ${expected.sourceHash}`);
+    problems.push(`source.fixtureHash is ${diagnosticValue(source.fixtureHash)}, expected ${diagnosticValue(expected.sourceHash)}`);
   }
   if (expected.candidateHash && candidate && candidate.compiledCoreHash !== expected.candidateHash) {
-    problems.push(`candidate.compiledCoreHash is ${candidate.compiledCoreHash}, expected ${expected.candidateHash}`);
+    problems.push(`candidate.compiledCoreHash is ${diagnosticValue(candidate.compiledCoreHash)}, expected ${diagnosticValue(expected.candidateHash)}`);
   }
   if (expected.driverScope && execution && execution.driverScope !== expected.driverScope) {
-    problems.push(`execution.driverScope is ${execution.driverScope}, expected ${expected.driverScope}`);
+    problems.push(`execution.driverScope is ${diagnosticValue(execution.driverScope)}, expected ${diagnosticValue(expected.driverScope)}`);
   }
   return { ok: problems.length === 0, problems };
 }

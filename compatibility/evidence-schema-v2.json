@@ -30,7 +30,7 @@
         "preloadMode": { "enum": ["original", "generated-adapter", "none"] },
         "dependencyAdaptations": { "type": "array", "items": { "type": "object" } },
         "adaptationManifestHash": { "type": ["string", "null"] },
-        "comparisonMode": { "enum": ["strict", "adapted", "unit", "negative"] }
+        "comparisonMode": { "description": "Unit comparison is limited to unit or kernel driverScope. Negative comparison cannot satisfy a gate.", "enum": ["strict", "adapted", "unit", "negative"] }
       }
     },
     "source": {
@@ -93,7 +93,7 @@
         "timeout": { "type": "boolean" },
         "startedAt": { "type": "string", "minLength": 1 },
         "finishedAt": { "type": "string", "minLength": 1 },
-        "driverScope": { "enum": ["unit", "kernel", "native-ingress", "app-scenario", "release"] }
+        "driverScope": { "enum": ["unit", "kernel", "native-probe", "native-ingress", "app-scenario", "release"] }
       }
     },
     "observations": {
@@ -116,9 +116,9 @@
       "required": ["harness", "semantic", "supportedScope", "gate", "missingEvidence", "compatible"],
       "properties": {
         "harness": { "enum": ["completed", "failed", "not-run", "invalid-evidence"] },
-        "semantic": { "enum": ["equivalent", "diverged", "expected-rejection", "not-run"] },
-        "supportedScope": { "enum": ["unit", "kernel", "native-ingress", "app-scenario", "release"] },
-        "gate": { "enum": ["open", "blocked", "satisfied"] },
+        "semantic": { "description": "Successful semantic results require a completed harness and no incomplete observation.", "enum": ["equivalent", "diverged", "expected-rejection", "not-run"] },
+        "supportedScope": { "enum": ["unit", "kernel", "native-probe", "native-ingress", "app-scenario", "release"] },
+        "gate": { "description": "A satisfied profile/scope gate requires equivalent semantics; an expected-rejection result remains open or blocked.", "enum": ["open", "blocked", "satisfied"] },
         "missingEvidence": { "type": "array", "items": { "type": "string" } },
         "compatible": { "const": false }
       }
